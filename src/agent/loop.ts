@@ -361,8 +361,6 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
   const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, searchConfig, signal } = params
   const maxIter = params.maxIterations ?? MAX_ITERATIONS
   const warnIter = Math.max(1, maxIter - 10)
-  const store = useAppStore.getState
-
   const emit = {
     thinking: (content: string) => {
       const step: AgentStep = { kind: 'thinking', content }

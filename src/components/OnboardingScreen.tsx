@@ -111,7 +111,7 @@ const backBtnStyle: React.CSSProperties = {
 }
 
 export function OnboardingScreen() {
-  const { setApiKey, setApiBase, setProvider, setWorkspacePath, addRecentWorkspacePath } = useAppStore()
+  const { setApiKey, setApiBase, setProvider, setWorkspacePath, addRecentWorkspacePath, setOnboardingComplete } = useAppStore()
   const [step, setStep] = useState<Step>('welcome')
 
   // Provider step
@@ -143,14 +143,16 @@ export function OnboardingScreen() {
         apiBase: effectiveBase,
         provider: selectedProvider.id,
       })
-      setApiKey(key)
-      setApiBase(effectiveBase)
-      setProvider(selectedProvider.id)
-      if (path) {
-        setWorkspacePath(path)
-        addRecentWorkspacePath(path)
-      }
-      setStep('done')
+        setApiKey(key)
+        setApiBase(effectiveBase)
+        setProvider(selectedProvider.id)
+        if (path) {
+          setWorkspacePath(path)
+          addRecentWorkspacePath(path)
+        }
+        setStep('done')
+        // Brief "done" flash before entering the app
+        setTimeout(() => setOnboardingComplete(), 1200)
     } catch (err) {
       setWorkspaceError(String(err))
       setSaving(false)

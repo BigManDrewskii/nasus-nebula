@@ -16,6 +16,12 @@ import { WorkspacePicker } from './WorkspacePicker'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
+/** Resolves the per-task workspace directory consistently everywhere */
+function resolveTaskWorkspace(basePath: string, taskId: string): string {
+  const base = basePath.trim()
+  return base ? `${base}/${taskId}` : `/tmp/nasus-workspace/${taskId}`
+}
+
 interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
@@ -342,9 +348,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     history: LlmMessage[],
   ) => {
     const cfg = configRef.current
-    const taskWorkspace = cfg.workspacePath
-      ? `${cfg.workspacePath}/${taskId}`
-      : `/tmp/nasus-workspace/${taskId}`
+      const taskWorkspace = resolveTaskWorkspace(cfg.workspacePath, taskId)
     try {
       if (isTauri) {
         await tauriInvoke('run_agent', {
@@ -574,7 +578,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       {showMemory && (
         <MemoryViewer
           taskId={task.id}
-          workspacePath={workspacePath ? `${workspacePath}/${task.id}` : `/tmp/nasus-workspace/${task.id}`}
+          workspacePath={resolveTaskWorkspace(workspacePath, task.id)}
           onResume={handleResume}
           onClose={() => setShowMemory(false)}
         />
@@ -757,9 +761,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
                         whiteSpace: 'nowrap',
                         textAlign: 'left',
                       }}
-                    >
-                      {workspacePath || '/tmp/nasus-workspace (default)'}
-                    </span>
+                      >
+                        {workspacePath || '/tmp/nasus-workspace (default)'}
+                      </span>
                     <Pxi name="pen" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
                   </button>
                 )}

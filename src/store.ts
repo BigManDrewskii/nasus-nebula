@@ -8,19 +8,21 @@ interface AppState {
   messages: Record<string, Message[]>
   // Full raw LLM history per task — includes tool_calls / tool results for proper multi-turn context
   rawHistory: Record<string, LlmMessage[]>
-  apiKey: string
-  model: string
-  workspacePath: string
-  recentWorkspacePaths: string[]
-  apiBase: string
-  provider: string
-  dynamicModels: string[]
-  braveSearchKey: string
-  googleCseKey: string
-  googleCseId: string
-  // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
-  searchProvider: string
-  maxIterations: number
+    apiKey: string
+    model: string
+    workspacePath: string
+    recentWorkspacePaths: string[]
+    apiBase: string
+    provider: string
+    dynamicModels: string[]
+    braveSearchKey: string
+    googleCseKey: string
+    googleCseId: string
+    // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
+    searchProvider: string
+    maxIterations: number
+    /** Set to true after the user completes onboarding */
+    onboardingComplete: boolean
 
   setActiveTaskId: (id: string | null) => void
   setDynamicModels: (models: string[]) => void
@@ -49,8 +51,9 @@ interface AppState {
   setBraveSearchKey: (key: string) => void
   setGoogleCseKey: (key: string) => void
   setGoogleCseId: (id: string) => void
-  setSearchProvider: (provider: string) => void
-  setMaxIterations: (n: number) => void
+    setSearchProvider: (provider: string) => void
+    setMaxIterations: (n: number) => void
+    setOnboardingComplete: () => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -89,8 +92,9 @@ export const useAppStore = create<AppState>()(
           braveSearchKey: '',
           googleCseKey: '',
           googleCseId: '',
-          searchProvider: 'auto',
-          maxIterations: 50,
+            searchProvider: 'auto',
+            maxIterations: 50,
+            onboardingComplete: false,
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
         setDynamicModels: (models) => set({ dynamicModels: models }),
@@ -179,13 +183,17 @@ export const useAppStore = create<AppState>()(
 
       appendChunk: (taskId, messageId, delta) =>
         set((state) => {
-          const msgs = state.messages[taskId] ?? []
+          const msgs = state.messages[taskId]
+          if (!msgs) return {}
+          const idx = msgs.findIndex((m) => m.id === messageId)
+          if (idx === -1) return {}
+          // Mutate a shallow clone of just the target message — avoids mapping every message
+          const updated = [...msgs]
+          updated[idx] = { ...updated[idx], content: updated[idx].content + delta }
           return {
             messages: {
               ...state.messages,
-              [taskId]: msgs.map((m) =>
-                m.id === messageId ? { ...m, content: m.content + delta } : m,
-              ),
+              [taskId]: updated,
             },
           }
         }),
@@ -312,8 +320,9 @@ export const useAppStore = create<AppState>()(
           setBraveSearchKey: (key) => set({ braveSearchKey: key }),
           setGoogleCseKey: (key) => set({ googleCseKey: key }),
           setGoogleCseId: (id) => set({ googleCseId: id }),
-          setSearchProvider: (provider) => set({ searchProvider: provider }),
-          setMaxIterations: (n) => set({ maxIterations: n }),
+            setSearchProvider: (provider) => set({ searchProvider: provider }),
+            setMaxIterations: (n) => set({ maxIterations: n }),
+            setOnboardingComplete: () => set({ onboardingComplete: true }),
     }),
     {
       name: 'nasus-store-v2',
@@ -338,11 +347,14 @@ export const useAppStore = create<AppState>()(
           })
         }
 
-        return {
-          tasks: state.tasks,
-          messages: trimmedMessages,
-          rawHistory: state.rawHistory,
-          apiKey: state.apiKey,
+          return {
+            tasks: state.tasks,
+            messages: trimmedMessages,
+            // Trim rawHistory to last 60 messages per task to avoid localStorage bloat
+            rawHistory: Object.fromEntries(
+              Object.entries(state.rawHistory).map(([tid, msgs]) => [tid, msgs.slice(-60)])
+            ),
+            apiKey: state.apiKey,
           model: state.model,
             workspacePath: state.workspacePath,
             recentWorkspacePaths: state.recentWorkspacePaths,
@@ -353,8 +365,9 @@ export const useAppStore = create<AppState>()(
             googleCseKey: state.googleCseKey,
             googleCseId: state.googleCseId,
             searchProvider: state.searchProvider,
-            maxIterations: state.maxIterations,
-          }
+              maxIterations: state.maxIterations,
+              onboardingComplete: state.onboardingComplete,
+            }
       },
       // On rehydration, clear any streaming:true flags left by a previous crashed session
       onRehydrateStorage: () => (state) => {
@@ -362,10 +375,11 @@ export const useAppStore = create<AppState>()(
         const fixedMessages: Record<string, Message[]> = {}
         for (const [tid, msgs] of Object.entries(state.messages)) {
           fixedMessages[tid] = msgs.map((m) =>
-            m.streaming ? { ...m, streaming: false, error: m.error ?? undefined } : m,
+            m.streaming ? { ...m, streaming: false } : m,
           )
         }
-        state.messages = fixedMessages
+        // Use setState to update rather than direct mutation (safer with zustand persist)
+        useAppStore.setState({ messages: fixedMessages })
       },
     },
   ),

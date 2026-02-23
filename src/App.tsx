@@ -7,15 +7,12 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { OnboardingScreen } from './components/OnboardingScreen'
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, apiBase } = useAppStore()
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete } = useAppStore()
   const [showSettings, setShowSettings] = useState(false)
   const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null
 
-  // Show onboarding if no provider has been configured yet.
-  // LiteLLM/custom users may have a blank apiKey (auth disabled proxy) —
-  // so we gate on apiBase being set, not apiKey.
-  const isConfigured = apiBase.length > 0
-  if (!isConfigured) {
+  // Show onboarding until the user explicitly completes it
+  if (!onboardingComplete) {
     return <OnboardingScreen />
   }
 

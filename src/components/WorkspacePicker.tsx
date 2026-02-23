@@ -3,6 +3,8 @@ import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
 interface WorkspacePickerProps {
   value: string
   onChange: (path: string) => void
@@ -31,14 +33,23 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
   // Debounced path validation
   useEffect(() => {
     if (checkTimer.current) clearTimeout(checkTimer.current)
-    if (!value.trim() || !value.startsWith('/')) { setValid(null); return }
+    const trimmed = value.trim()
+    if (!trimmed || !trimmed.startsWith('/')) { setValid(null); setChecking(false); return }
+
+    if (!isTauri) {
+      // In browser mode: validate_path is unavailable — use a simple heuristic
+      // (absolute path, non-empty) and skip the Tauri call
+      setValid(trimmed.length > 1)
+      return
+    }
+
     setChecking(true)
     checkTimer.current = setTimeout(async () => {
       try {
-        const ok = await tauriInvoke<boolean>('validate_path', { path: value.trim() })
+        const ok = await tauriInvoke<boolean>('validate_path', { path: trimmed })
         setValid(ok)
       } catch {
-        setValid(null) // command not registered — skip silently
+        setValid(null)
       } finally {
         setChecking(false)
       }
