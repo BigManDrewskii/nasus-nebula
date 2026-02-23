@@ -7,7 +7,7 @@
  */
 
 import { streamCompletion, chatOnce, type LlmMessage, type ToolDefinition } from './llm'
-import { executeTool } from './tools'
+import { executeTool, type SearchConfig, type SearchStatusCallback } from './tools'
 import { useAppStore } from '../store'
 import type { AgentStep } from '../types'
 
@@ -93,23 +93,47 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'search_web',
-      description:
-        'Search the web using DuckDuckGo and get results with titles, URLs, and snippets.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query string.' },
-          num_results: { type: 'integer', description: 'Number of results (default 5, max 10).', default: 5 },
+    {
+      type: 'function',
+      function: {
+        name: 'patch_file',
+        description:
+          'Replace an exact string in a workspace file. Safer than write_file for small edits like checking off a phase checkbox in task_plan.md. Fails if old_str is not found — read the file first.',
+        parameters: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Path relative to /workspace or absolute.' },
+            old_str: { type: 'string', description: 'Exact string to find (must be unique in the file).' },
+            new_str: { type: 'string', description: 'Replacement string.' },
+          },
+          required: ['path', 'old_str', 'new_str'],
         },
-        required: ['query'],
       },
     },
-  },
-]
+    {
+      type: 'function',
+      function: {
+        name: 'search_web',
+        description:
+          'Search the web for current information. Use this tool when you need: real-time data, recent events, facts you are unsure about, current prices/stats, or anything that may have changed after your training cutoff. Do NOT use for general knowledge you are already confident about, coding syntax, math, or creative writing. Do NOT search again if results are already in context for the same topic.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'A concise, specific search query written like you would type into Google — use keywords, not full sentences. GOOD: "React 19 release date 2025", "SearXNG JSON API format". BAD: "Can you please find information about when React 19 was released?" (too verbose). The agent should generate the query, never pass the user\'s raw message directly.',
+            },
+            num_results: {
+              type: 'integer',
+              description: 'Number of results to return. Use 3 for simple factual lookups, 5 (default) for general research, 10 for comprehensive research.',
+              default: 5,
+            },
+          },
+          required: ['query'],
+        },
+      },
+    },
+  ]
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -117,90 +141,103 @@ const SYSTEM_PROMPT = `You are Nasus, an autonomous AI agent.
 Your job: take the user's goal and independently plan and execute a multi-step solution until fully complete.
 
 IMPORTANT: You are running in browser mode. The sandbox environment has limitations:
-- bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available
-- read_file / write_file: use these directly for all file operations — they work reliably
-- http_fetch: external requests may be blocked by CORS — JSON APIs with CORS headers work best
-- search_web: uses Brave Search API (or DuckDuckGo fallback) — always available for real web results
+  - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available
+  - read_file / write_file: use these directly for all file operations — they work reliably
+  - http_fetch: external requests may be blocked by CORS — JSON APIs with CORS headers work best
+  - search_web: multi-backend search (Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
 
 ═══════════════════════════════════════════════════════
-MEMORY PROTOCOL (MANDATORY - follow exactly)
+TASK COMPLEXITY JUDGEMENT (decide FIRST)
 ═══════════════════════════════════════════════════════
 
-You have THREE persistent memory files in /workspace that survive context resets.
-These are your external brain. Use them religiously.
+Before acting, classify the task:
 
-**1. task_plan.md** — Your master plan
-   Structure:
+**Simple** (1–3 tool calls expected): answer directly, write output files, done.
+  - Examples: "write a poem", "create index.html", "summarise this text"
+  - Do NOT write task_plan.md, findings.md, or progress.md for simple tasks.
+  - Just do the work and deliver the result.
+
+**Complex** (4+ tool calls, research, multi-phase): use memory files.
+  - Examples: "build a full website", "research X and write a report", "multi-step data pipeline"
+  - Write task_plan.md FIRST, then proceed.
+
+═══════════════════════════════════════════════════════
+WEB SEARCH GUIDELINES
+═══════════════════════════════════════════════════════
+
+**When to search:**
+- User asks about recent events, news, or current data
+- You need to verify a fact you are uncertain about
+- The topic requires information after your training cutoff
+- User explicitly asks to "look up" or "search for" something
+
+**When NOT to search:**
+- You already know the answer with high confidence
+- The question is about coding syntax, math, logic, or creative writing
+- The question is purely conversational
+- You just searched for this topic and results are in context — do not re-search
+
+**Best practices:**
+- Use concise keyword queries, not full sentences
+- Search once, then work with the results
+- Always cite sources (URL) when presenting search results
+- Synthesize; do not dump raw snippets
+
+═══════════════════════════════════════════════════════
+MEMORY PROTOCOL (complex tasks only)
+═══════════════════════════════════════════════════════
+
+For complex tasks, use THREE persistent files in /workspace:
+
+**1. task_plan.md** — Master plan (write FIRST for complex tasks)
    \`\`\`
    # Goal
-   <one-sentence description of what you are achieving>
-
+   <one sentence>
    # Phases
-   - [ ] Phase 1: <description>
-   - [ ] Phase 2: <description>
-   ...
-
+   - [ ] Phase 1: …
    # Current Phase
-   Phase N: <what you are doing right now>
-
+   Phase N: …
    # Error Log
    | Error | Tool | Attempt # | What I tried | Outcome |
-   |-------|------|-----------|--------------|---------|
    \`\`\`
-   - Write this file FIRST before any other action
-   - Update phase checkboxes as you complete them: [ ] → [x]
-   - Log every error to the Error Log table immediately
+   Update phase checkboxes as you complete them ([ ] → [x]).
 
-**2. findings.md** — Research and discoveries
-   Structure:
-   \`\`\`
-   # Findings
-   ## <Topic>
-   - Key fact 1
-   - URL: <url> → <what it contains>
-   ...
-   \`\`\`
-   - Save findings every 2 search/browse/read operations (the "2-Action Rule")
-   - Never lose research by leaving it only in the context window
+**2. findings.md** — Research notes
+   Save key findings after every 3 search/fetch/read operations.
 
-**3. progress.md** — Chronological action log
-   Structure:
-   \`\`\`
-   # Progress Log
-   | Time | Tool | Action | Result |
-   |------|------|--------|--------|
-   \`\`\`
-   - Append a row AFTER EVERY tool call
-   - This is your recovery log — if the context resets, you read this to know where you are
+**3. progress.md** — Action log (optional for very long tasks)
+   Append a row after each tool call if the task spans many iterations.
 
 ═══════════════════════════════════════════════════════
 3-STRIKE ERROR PROTOCOL
 ═══════════════════════════════════════════════════════
 
-When a tool call fails or produces wrong output:
-- **Strike 1**: Diagnose the specific error. Apply a targeted fix. Log to task_plan.md error table.
-- **Strike 2**: The targeted fix didn't work. Try a COMPLETELY DIFFERENT approach or tool.
-- **Strike 3**: Fundamental rethink. Search for solutions online. Reconsider the entire method.
-- **Failure (3 strikes exhausted)**: STOP. Explain to the user exactly what you tried and why it failed.
-  Do NOT keep retrying the same thing.
-
-═══════════════════════════════════════════════════════
-2-ACTION SAVE RULE
-═══════════════════════════════════════════════════════
-
-After every 2 calls to search_web, http_fetch, read_file:
-→ IMMEDIATELY write key findings to findings.md before continuing.
+- **Strike 1**: Diagnose. Apply a targeted fix.
+- **Strike 2**: Try a COMPLETELY DIFFERENT approach or tool.
+- **Strike 3**: Fundamental rethink. Search for solutions. Reconsider the method.
+- **After 3 strikes**: STOP. Explain exactly what failed and why.
 
 ═══════════════════════════════════════════════════════
 RULES
 ═══════════════════════════════════════════════════════
 
 1. NEVER fabricate tool outputs. Always call the tool.
-2. Write task_plan.md FIRST on every new task using write_file.
-3. Update progress.md AFTER every tool call using write_file.
-4. Apply the 2-Action Save Rule without exception.
-5. Follow the 3-Strike protocol on errors — never exceed 3 attempts on the same failure.
-6. When done, summarize: what was accomplished, what files are in the workspace, and any caveats.`
+2. For simple tasks: skip memory files entirely — go straight to the work.
+3. For complex tasks: write task_plan.md first; save findings after every 3 operations.
+4. Follow the 3-Strike protocol — never exceed 3 attempts on the same failure.
+5. Use patch_file for small edits (e.g., checking off a checkbox).
+6. When done, summarise: what was accomplished, what files are in /workspace, any caveats.
+
+═══════════════════════════════════════════════════════
+USER FILE UPLOADS
+═══════════════════════════════════════════════════════
+
+When files are attached:
+1. They appear as: [User attached N file(s): - uploads/filename.ext …]
+2. Access with read_file("uploads/filename.ext")
+3. Acknowledge files specifically (describe images, note document contents, identify code language)
+4. Files < 8 KB are inlined in the message. Larger files need explicit read_file.
+5. Save outputs derived from uploads to /workspace and note them in your summary.`
 
 // ── Error tracker ─────────────────────────────────────────────────────────────
 
@@ -208,19 +245,27 @@ class ErrorTracker {
   private strikes: Map<string, { count: number; attempts: string[] }> = new Map()
 
   record(tool: string, summary: string): number {
-    const entry = this.strikes.get(tool) ?? { count: 0, attempts: [] }
+    const sig = `${tool}::${summary.slice(0, 60)}`
+    const entry = this.strikes.get(sig) ?? { count: 0, attempts: [] }
     entry.count++
     entry.attempts.push(summary)
-    this.strikes.set(tool, entry)
+    this.strikes.set(sig, entry)
     return entry.count
   }
 
   reset(tool: string) {
-    this.strikes.delete(tool)
+    // Clear all strike keys for this tool (any error signature)
+    for (const key of this.strikes.keys()) {
+      if (key.startsWith(`${tool}::`)) this.strikes.delete(key)
+    }
   }
 
   attempts(tool: string): string[] {
-    return this.strikes.get(tool)?.attempts ?? []
+    const all: string[] = []
+    for (const [key, val] of this.strikes.entries()) {
+      if (key.startsWith(`${tool}::`)) all.push(...val.attempts)
+    }
+    return all
   }
 }
 
@@ -259,7 +304,7 @@ function compressContext(messages: LlmMessage[], taskId: string, messageId: stri
   if (kept.length > 1) {
     kept.splice(1, 0, {
       role: 'system',
-      content: `[Context compressed: ${removed} old tool call/result pairs removed to save space. Your memory files in /workspace still contain full history.]`,
+      content: `[Context compressed: ${removed} old tool call/result pairs removed to save space. Key recovery files are in /workspace — read task_plan.md to confirm current phase, findings.md for research, progress.md for action history.]`,
     })
   }
 
@@ -303,15 +348,19 @@ export interface RunAgentParams {
   model: string
   apiBase: string
   provider: string
-  braveSearchKey?: string
+  searchConfig?: SearchConfig
   signal: AbortSignal
+  maxIterations?: number
 }
 
-const MAX_ITERATIONS = 30
+const MAX_ITERATIONS = 50
+const WARN_ITERATIONS = 40
 const COMPRESS_THRESHOLD = 40
 
 export async function runAgentLoop(params: RunAgentParams): Promise<void> {
-  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, braveSearchKey, signal } = params
+  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, searchConfig, signal } = params
+  const maxIter = params.maxIterations ?? MAX_ITERATIONS
+  const warnIter = Math.max(1, maxIter - 10)
   const store = useAppStore.getState
 
   const emit = {
@@ -327,10 +376,24 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
       const step: AgentStep = { kind: 'tool_result', callId, output, isError }
       useAppStore.getState().updateStep(taskId, messageId, step)
     },
-    strikeEscalation: (tool: string, attempts: string[]) => {
-      const step: AgentStep = { kind: 'strike_escalation', tool, attempts }
-      useAppStore.getState().addStep(taskId, messageId, step)
-    },
+      strikeEscalation: (tool: string, attempts: string[]) => {
+        const step: AgentStep = { kind: 'strike_escalation', tool, attempts }
+        useAppStore.getState().addStep(taskId, messageId, step)
+      },
+      searchStatus: (callId: string, evt: Parameters<SearchStatusCallback>[0]) => {
+        const step: AgentStep = {
+          kind: 'search_status',
+          callId,
+          query: evt.query,
+          phase: evt.phase,
+          provider: evt.provider,
+          message: evt.message,
+          resultCount: evt.resultCount,
+          durationMs: evt.durationMs,
+        }
+        // Update the most recent search_status step for this callId, or add a new one
+        useAppStore.getState().updateSearchStatus(taskId, messageId, step)
+      },
     chunk: (delta: string) => {
       useAppStore.getState().appendChunk(taskId, messageId, delta)
     },
@@ -359,18 +422,15 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
     return
   }
 
-  // ── Auto-title on first message ─────────────────────────────────────────────
+  // ── Auto-title on first message (fire-and-forget, non-blocking) ─────────────
   const isFirstMessage = userMessages.length === 1
   if (isFirstMessage) {
     const firstContent =
       typeof userMessages[0].content === 'string' ? userMessages[0].content : ''
     if (firstContent) {
-      // Fire-and-forget
       autoTitle(apiBase, apiKey, provider, model, firstContent, taskId).catch(() => {})
     }
   }
-
-  emit.thinking('Initializing…')
 
   // ── Build message history ───────────────────────────────────────────────────
   const messages: LlmMessage[] = [
@@ -381,15 +441,31 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
   const errorTracker = new ErrorTracker()
   let searchBrowseCount = 0
 
-  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+  for (let iteration = 0; iteration < maxIter; iteration++) {
     if (signal.aborted) {
       emit.done()
       return
     }
 
-    emit.iterationTick(iteration + 1)
+      emit.iterationTick(iteration + 1)
 
-    if (messages.length > COMPRESS_THRESHOLD) {
+      // ── Soft warning near max ─────────────────────────────────────────────────
+      if (iteration === warnIter) {
+        messages.push({
+          role: 'system',
+          content: `[Warning] You are at iteration ${iteration + 1}/${maxIter}. Prioritize completing remaining phases and delivering results to the user now.`,
+        })
+      }
+
+      // ── Attention refresh every 5 iterations ─────────────────────────────────
+      if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
+        messages.push({
+          role: 'system',
+          content: `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`,
+        })
+      }
+
+      if (messages.length > COMPRESS_THRESHOLD) {
       compressContext(messages, taskId, messageId)
     }
 
@@ -463,18 +539,23 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
 
       emit.toolCall(fnName, args, callId)
 
-      if (fnName === 'search_web' || fnName === 'http_fetch') {
-        searchBrowseCount++
-        if (searchBrowseCount % 2 === 0) {
-          messages.push({
-            role: 'system',
-            content:
-              '[2-Action Rule]: You have performed 2 search/fetch operations. You MUST now save key findings to findings.md before continuing.',
-          })
+          if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file') {
+          searchBrowseCount++
+          // Nudge to save findings every 3 research ops (only for longer tasks)
+          if (searchBrowseCount > 0 && searchBrowseCount % 3 === 0) {
+            messages.push({
+              role: 'system',
+              content: `[Research checkpoint — ${searchBrowseCount} operations]: If this is a complex task, consider saving key findings to findings.md before continuing.`,
+            })
+          }
         }
-      }
 
-        const { output: rawOutput, isError } = await executeTool(taskId, fnName, args, braveSearchKey)
+          const { output: rawOutput, isError } = await executeTool(
+          taskId, fnName, args, searchConfig,
+          fnName === 'search_web'
+            ? (evt) => emit.searchStatus(callId, evt)
+            : undefined,
+        )
 
       let output: string
       if (isError) {
@@ -523,5 +604,5 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
   }
 
   // Max iterations hit
-  emit.error('Maximum iterations reached. The agent stopped to prevent runaway usage.')
+  emit.error(`Maximum iterations (${maxIter}) reached. The agent stopped to prevent runaway usage.`)
 }

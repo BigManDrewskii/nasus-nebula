@@ -11,10 +11,16 @@ interface AppState {
   apiKey: string
   model: string
   workspacePath: string
+  recentWorkspacePaths: string[]
   apiBase: string
   provider: string
   dynamicModels: string[]
   braveSearchKey: string
+  googleCseKey: string
+  googleCseId: string
+  // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
+  searchProvider: string
+  maxIterations: number
 
   setActiveTaskId: (id: string | null) => void
   setDynamicModels: (models: string[]) => void
@@ -22,6 +28,8 @@ interface AppState {
   deleteTask: (id: string) => void
   updateTaskTitle: (id: string, title: string) => void
   updateTaskStatus: (id: string, status: Task['status']) => void
+  toggleTaskPin: (id: string) => void
+  duplicateTask: (id: string) => void
   getMessages: (taskId: string) => Message[]
   getRawHistory: (taskId: string) => LlmMessage[]
   addMessage: (taskId: string, message: Message) => void
@@ -30,13 +38,19 @@ interface AppState {
   setError: (taskId: string, messageId: string, error: string) => void
   addStep: (taskId: string, messageId: string, step: AgentStep) => void
   updateStep: (taskId: string, messageId: string, step: AgentStep) => void
+  updateSearchStatus: (taskId: string, messageId: string, step: AgentStep) => void
   appendRawHistory: (taskId: string, msgs: LlmMessage[]) => void
   setApiKey: (key: string) => void
   setModel: (model: string) => void
   setWorkspacePath: (path: string) => void
+  addRecentWorkspacePath: (path: string) => void
   setApiBase: (base: string) => void
   setProvider: (provider: string) => void
   setBraveSearchKey: (key: string) => void
+  setGoogleCseKey: (key: string) => void
+  setGoogleCseId: (id: string) => void
+  setSearchProvider: (provider: string) => void
+  setMaxIterations: (n: number) => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -68,10 +82,15 @@ export const useAppStore = create<AppState>()(
           apiKey: '',
           model: 'anthropic/claude-3.5-sonnet',
           workspacePath: '',
+          recentWorkspacePaths: [],
           apiBase: 'https://openrouter.ai/api/v1',
           provider: 'openrouter',
           dynamicModels: [],
           braveSearchKey: '',
+          googleCseKey: '',
+          googleCseId: '',
+          searchProvider: 'auto',
+          maxIterations: 50,
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
         setDynamicModels: (models) => set({ dynamicModels: models }),
@@ -118,10 +137,34 @@ export const useAppStore = create<AppState>()(
           tasks: state.tasks.map((t) => (t.id === id ? { ...t, title } : t)),
         })),
 
-      updateTaskStatus: (id, status) =>
-        set((state) => ({
-          tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
-        })),
+        updateTaskStatus: (id, status) =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
+          })),
+
+        toggleTaskPin: (id) =>
+          set((state) => ({
+            tasks: state.tasks.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)),
+          })),
+
+        duplicateTask: (id) =>
+          set((state) => {
+            const source = state.tasks.find((t) => t.id === id)
+            if (!source) return {}
+            const newId = crypto.randomUUID()
+            const newTask: Task = {
+              ...source,
+              id: newId,
+              title: `${source.title} (copy)`,
+              status: 'pending',
+              createdAt: new Date(),
+              pinned: false,
+            }
+            const tasks = [newTask, ...state.tasks].slice(0, MAX_TASKS)
+            const messages = { ...state.messages, [newId]: [WELCOME_MESSAGE] }
+            const rawHistory = { ...state.rawHistory, [newId]: [] }
+            return { tasks, messages, rawHistory, activeTaskId: newId }
+          }),
 
       getMessages: (taskId) => get().messages[taskId] ?? [WELCOME_MESSAGE],
       getRawHistory: (taskId) => get().rawHistory[taskId] ?? [],
@@ -216,20 +259,61 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
-      appendRawHistory: (taskId, msgs) =>
-        set((state) => ({
-          rawHistory: {
-            ...state.rawHistory,
-            [taskId]: [...(state.rawHistory[taskId] ?? []), ...msgs],
-          },
-        })),
+        // Upsert a search_status step: replace the most recent search_status for the
+        // same callId, or append a new one. This way the UI chip updates in-place
+        // as the phase progresses (searching → complete / fallback / all_failed).
+        updateSearchStatus: (taskId, messageId, step) =>
+          set((state) => ({
+            messages: {
+              ...state.messages,
+              [taskId]: (state.messages[taskId] ?? []).map((m) => {
+                if (m.id !== messageId) return m
+                if (step.kind !== 'search_status') return m
+                const callId = step.callId
+                const steps = m.steps ?? []
+                // Find the last existing search_status for this callId and replace it
+                let existingIdx = -1
+                for (let i = steps.length - 1; i >= 0; i--) {
+                  const s = steps[i]
+                  if (s.kind === 'search_status' && s.callId === callId) { existingIdx = i; break }
+                }
+                if (existingIdx !== -1) {
+                  const next = [...steps]
+                  next[existingIdx] = step
+                  return { ...m, steps: next }
+                }
+                // No existing entry — append
+                return { ...m, steps: [...steps, step] }
+              }),
+            },
+          })),
+
+        appendRawHistory: (taskId, msgs) =>
+          set((state) => ({
+            rawHistory: {
+              ...state.rawHistory,
+              [taskId]: [...(state.rawHistory[taskId] ?? []), ...msgs],
+            },
+          })),
 
           setApiKey: (key) => set({ apiKey: key }),
           setModel: (model) => set({ model }),
           setWorkspacePath: (path) => set({ workspacePath: path }),
+          addRecentWorkspacePath: (path) =>
+            set((state) => {
+              if (!path.trim()) return {}
+              const existing = state.recentWorkspacePaths.filter((p) => p !== path)
+              return {
+                recentWorkspacePaths: [path, ...existing].slice(0, 5),
+              }
+            }),
           setApiBase: (base) => set({ apiBase: base }),
           setProvider: (provider) => set({ provider }),
           setBraveSearchKey: (key) => set({ braveSearchKey: key }),
+          setGoogleCseKey: (key) => set({ googleCseKey: key }),
+          setGoogleCseId: (id) => set({ googleCseId: id }),
+          setSearchProvider: (provider) => set({ searchProvider: provider }),
+          setMaxIterations: (n) => set({ maxIterations: n }),
     }),
     {
       name: 'nasus-store-v2',
@@ -260,12 +344,17 @@ export const useAppStore = create<AppState>()(
           rawHistory: state.rawHistory,
           apiKey: state.apiKey,
           model: state.model,
-          workspacePath: state.workspacePath,
-          apiBase: state.apiBase,
+            workspacePath: state.workspacePath,
+            recentWorkspacePaths: state.recentWorkspacePaths,
+            apiBase: state.apiBase,
           provider: state.provider,
           activeTaskId: state.activeTaskId,
-          braveSearchKey: state.braveSearchKey,
-        }
+            braveSearchKey: state.braveSearchKey,
+            googleCseKey: state.googleCseKey,
+            googleCseId: state.googleCseId,
+            searchProvider: state.searchProvider,
+            maxIterations: state.maxIterations,
+          }
       },
       // On rehydration, clear any streaming:true flags left by a previous crashed session
       onRehydrateStorage: () => (state) => {

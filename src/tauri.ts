@@ -16,7 +16,7 @@ interface RunAgentArgs {
   workspacePath?: string
   apiBase: string
   provider: string
-  braveSearchKey?: string
+  searchConfig?: import('./agent/tools').SearchConfig
 }
 
 async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Promise<void> {
@@ -32,13 +32,12 @@ async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Prom
       model: a.model,
       apiBase: a.apiBase,
       provider: a.provider,
-      braveSearchKey: a.braveSearchKey,
+      searchConfig: a.searchConfig,
     })
   } else if (cmd === 'stop_agent') {
     const taskId = (args as Record<string, string>).taskId
     stopWebAgent(taskId)
   }
-  // All other commands (get_config, etc.) are silently ignored in browser mode.
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

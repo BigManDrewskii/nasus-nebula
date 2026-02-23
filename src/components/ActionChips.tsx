@@ -5,6 +5,7 @@ interface ActionChip {
   prompt: string
   icon: string
   description: string
+  autoSend?: boolean  // true = complete prompt, fire immediately; false = prefill textarea
 }
 
 const chips: ActionChip[] = [
@@ -13,51 +14,58 @@ const chips: ActionChip[] = [
     prompt: 'Build me a polished HTML/CSS/JS website with a modern design. Include responsive layout, clean typography, and subtle animations. Save all files to /workspace.',
     icon: 'globe',
     description: 'HTML, CSS, JS',
+    autoSend: true,
   },
   {
     label: 'Write a script',
     prompt: 'Write a Python script that ',
     icon: 'code',
     description: 'Python, Bash, JS',
+    autoSend: false,
   },
   {
     label: 'Research a topic',
     prompt: 'Research the following topic thoroughly, saving findings to findings.md as you go: ',
     icon: 'search',
     description: 'Web search',
+    autoSend: false,
   },
   {
     label: 'Analyze data',
     prompt: 'Analyze the following data and produce a detailed summary with insights and charts where applicable: ',
     icon: 'chart-line',
     description: 'Stats, charts',
+    autoSend: false,
   },
   {
     label: 'Write a document',
     prompt: 'Write a comprehensive, well-structured document about: ',
     icon: 'pen-nib',
     description: 'Markdown',
+    autoSend: false,
   },
   {
     label: 'Automate a task',
     prompt: 'Automate the following task using a script or tool: ',
     icon: 'bolt',
     description: 'Scripts, APIs',
+    autoSend: false,
   },
 ]
 
 interface ActionChipsProps {
-  onSelect: (prompt: string) => void
+  onSend: (prompt: string) => void
+  onPrefill: (prompt: string) => void
   centered?: boolean
 }
 
-export function ActionChips({ onSelect, centered }: ActionChipsProps) {
+export function ActionChips({ onSend, onPrefill, centered }: ActionChipsProps) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: centered ? 'center' : 'flex-start' }}>
       {chips.map((chip) => (
         <button
           key={chip.label}
-          onClick={() => onSelect(chip.prompt)}
+          onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
           style={{
             display: 'flex',
             alignItems: 'center',

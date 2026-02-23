@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { tauriInvoke, tauriListen } from '../tauri'
-import { stopWebAgent } from '../agent/index'
+import { runWebAgent, stopWebAgent } from '../agent/index'
 import type { Task, Message, AgentStep, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
-import { UserInputArea } from './UserInputArea'
+import { UserInputArea, type UserInputAreaHandle } from './UserInputArea'
 import { ActionChips } from './ActionChips'
 import { MemoryViewer } from './MemoryViewer'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
+import { useAttachments } from '../hooks/useAttachments'
+import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
+import { getWorkspace } from '../agent/tools'
+import { WorkspacePicker } from './WorkspacePicker'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -72,11 +76,16 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     apiBase,
     provider,
     braveSearchKey,
+    googleCseKey,
+    googleCseId,
+    searchProvider,
+    maxIterations,
     setWorkspacePath,
     setApiKey,
     setModel,
     setApiBase,
     setProvider,
+    addRecentWorkspacePath,
   } = useAppStore()
 
   function estimateCost(m: string, tokens: number): string {
@@ -98,14 +107,36 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     return `$${cost.toFixed(3)}`
   }
 
-  const [iteration, setIteration] = useState(0)
-  const [tokenCount, setTokenCount] = useState(0)
-  const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
-  const [showMemory, setShowMemory] = useState(false)
+    const [iteration, setIteration] = useState(0)
+    const [tokenCount, setTokenCount] = useState(0)
+    const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
+    const [showMemory, setShowMemory] = useState(false)
+    const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
+    // Track whether the agent is actively running (used for correct isActive state)
+    const [agentRunning, setAgentRunning] = useState(false)
+    // Scroll-lock: false = auto-scroll, true = user has scrolled up
+    const [scrollLocked, setScrollLocked] = useState(false)
+    const [showNewMsgPill, setShowNewMsgPill] = useState(false)
+    const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
+    const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
+    const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey })
+    // Attachments
+    const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
+    const { isDragOver, handlers: dragHandlers } = useDragDrop(addFiles)
+
+  function showPill() {
+    setShowNewMsgPill(true)
+    requestAnimationFrame(() => setPillVisible(true))
+  }
+  function hidePill() {
+    setPillVisible(false)
+    setTimeout(() => setShowNewMsgPill(false), 200)
+  }
+
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations })
   useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey }
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations }
   })
 
   useEffect(() => {
@@ -121,52 +152,86 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const messages = task ? getMessages(task.id) : []
-  const lastMsg = messages[messages.length - 1]
-  const isThinking = task != null && lastMsg?.author === 'user'
-  const isStreaming = task != null && lastMsg?.author === 'agent' && lastMsg?.streaming === true
-  const isActive = isThinking || isStreaming
+  // isActive is driven by agentRunning state (set when we kick off, cleared on done/error)
+  const isActive = agentRunning
 
+  const messageListRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const runningRef = useRef<boolean>(false)
+  const queuedMsgRef = useRef<string | null>(null)
+  const inputRef = useRef<UserInputAreaHandle>(null)
 
+  // ── Scroll-lock detection ───────────────────────────────────────────────────
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    const el = messageListRef.current
+    if (!el) return
+    function onScroll() {
+      if (!el) return
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      // Within 80px of bottom = auto-scroll territory
+      if (distFromBottom < 80) {
+          setScrollLocked(false)
+          hidePill()
+        } else {
+        setScrollLocked(true)
+      }
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [task?.id])
+
+  // ── Auto-scroll: only follow if not locked ──────────────────────────────────
+  useEffect(() => {
+    if (scrollLocked && agentRunning) {
+        // New message arrived while user scrolled up — show pill
+        showPill()
+      } else if (!scrollLocked) {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+        hidePill()
+      }
+  }, [messages]) // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
       setIteration(0)
       setTokenCount(0)
       setSandboxStatus('idle')
-    }, [task?.id])
-
-    // ── Web-agent custom events (browser mode only) ────────────────────────────
-    useEffect(() => {
-      if (isTauri || !task) return
-      const taskId = task.id
-
-      function onIteration(e: Event) {
-        const { taskId: tid, iteration: iter } = (e as CustomEvent).detail
-        if (tid === taskId) setIteration(iter)
-      }
-      function onTokens(e: Event) {
-        const { taskId: tid, total_tokens } = (e as CustomEvent).detail
-        if (tid === taskId) setTokenCount(total_tokens)
-      }
-
-      window.addEventListener('nasus:iteration', onIteration)
-      window.addEventListener('nasus:tokens', onTokens)
-      return () => {
-        window.removeEventListener('nasus:iteration', onIteration)
-        window.removeEventListener('nasus:tokens', onTokens)
-      }
+      setAgentRunning(false)
+      setScrollLocked(false)
+      setPillVisible(false)
+      setShowNewMsgPill(false)
+      queuedMsgRef.current = null
+      setQueuedMsg(null)
+      clearAttachments()
     }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-      if (!task) return
-      let active = true
-      const cleanups: Array<() => void> = []
+  // ── Web-agent custom events (browser mode only) ────────────────────────────
+  useEffect(() => {
+    if (isTauri || !task) return
+    const taskId = task.id
 
-      tauriListen<AgentEventPayload>('agent-event', (payload) => {
+    function onIteration(e: Event) {
+      const { taskId: tid, iteration: iter } = (e as CustomEvent).detail
+      if (tid === taskId) setIteration(iter)
+    }
+    function onTokens(e: Event) {
+      const { taskId: tid, total_tokens } = (e as CustomEvent).detail
+      if (tid === taskId) setTokenCount(total_tokens)
+    }
+
+    window.addEventListener('nasus:iteration', onIteration)
+    window.addEventListener('nasus:tokens', onTokens)
+    return () => {
+      window.removeEventListener('nasus:iteration', onIteration)
+      window.removeEventListener('nasus:tokens', onTokens)
+    }
+  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!task) return
+    let active = true
+    const cleanups: Array<() => void> = []
+
+    tauriListen<AgentEventPayload>('agent-event', (payload) => {
       if (!active || payload.task_id !== task.id) return
 
       switch (payload.kind) {
@@ -208,11 +273,13 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           if (payload.done) {
             setStreaming(task.id, payload.message_id, false)
             runningRef.current = false
+            setAgentRunning(false)
           }
           break
         }
         case 'done': {
           runningRef.current = false
+          setAgentRunning(false)
           updateTaskStatus(task.id, 'completed')
           setStreaming(task.id, payload.message_id, false)
           setSandboxStatus('stopped')
@@ -220,6 +287,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         }
         case 'error': {
           runningRef.current = false
+          setAgentRunning(false)
           setError(task.id, payload.message_id, payload.error ?? 'Unknown error')
           updateTaskStatus(task.id, 'failed')
           break
@@ -266,7 +334,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       active = false
       cleanups.forEach((fn) => fn())
     }
-  }, [task?.id])
+  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const runAgent = useCallback(async (
     taskId: string,
@@ -278,7 +346,8 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       ? `${cfg.workspacePath}/${taskId}`
       : `/tmp/nasus-workspace/${taskId}`
     try {
-      await tauriInvoke('run_agent', {
+      if (isTauri) {
+        await tauriInvoke('run_agent', {
           taskId,
           messageId: agentMsgId,
           userMessages: history,
@@ -287,56 +356,148 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           workspacePath: taskWorkspace,
           apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
           provider: cfg.provider || 'openrouter',
-          braveSearchKey: cfg.braveSearchKey || '',
+          searchConfig: {
+            provider: cfg.searchProvider || 'auto',
+            braveKey: cfg.braveSearchKey || undefined,
+            googleCseKey: cfg.googleCseKey || undefined,
+            googleCseId: cfg.googleCseId || undefined,
+          },
         })
+      } else {
+        // Web mode — runWebAgent already manages its own AbortController per taskId
+        // and cancels any previous run for the same task on start
+        await runWebAgent({
+          taskId,
+          messageId: agentMsgId,
+          userMessages: history,
+          apiKey: cfg.apiKey || '',
+          model: cfg.model || 'anthropic/claude-3.5-sonnet',
+          apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+          provider: cfg.provider || 'openrouter',
+          searchConfig: {
+            provider: cfg.searchProvider || 'auto',
+            braveKey: cfg.braveSearchKey || undefined,
+            googleCseKey: cfg.googleCseKey || undefined,
+            googleCseId: cfg.googleCseId || undefined,
+          },
+          maxIterations: cfg.maxIterations ?? 50,
+        })
+      }
     } catch (err) {
-      // Catch both sync throws and unhandled promise rejections from the agent loop
       const msg = err instanceof Error ? err.message : String(err)
       if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
         setError(taskId, agentMsgId, `Agent error: ${msg}`)
       } else {
-        // User-cancelled — mark as failed/stopped cleanly
-        useAppStore.getState().updateTaskStatus(taskId, 'failed')
+        useAppStore.getState().updateTaskStatus(taskId, 'stopped')
         useAppStore.getState().setStreaming(taskId, agentMsgId, false)
       }
       runningRef.current = false
+      setAgentRunning(false)
     }
-  }, [setError])
-
-  async function handleSend(content: string) {
-    if (!task || runningRef.current) return
-    if (messages.length === 1) updateTaskTitle(task.id, content.slice(0, 60))
-
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      author: 'user',
-      content,
-      timestamp: new Date(),
+    // Drain queued message if one arrived while running
+    const queued = queuedMsgRef.current
+    if (queued) {
+      queuedMsgRef.current = null
+      setQueuedMsg(null)
+      handleSend(queued)
     }
-    addMessage(task.id, userMsg)
+  }, [setError]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    const existingRaw = getRawHistory(task.id)
-    const newUserMsg: LlmMessage = { role: 'user', content }
-    const history = [...existingRaw, newUserMsg]
-    appendRawHistory(task.id, [newUserMsg])
+    async function handleSend(content: string) {
+      if (!task) return
+      if (runningRef.current) {
+        queuedMsgRef.current = content
+        setQueuedMsg(content)
+        return
+      }
+      if (messages.length <= 1) updateTaskTitle(task.id, content.slice(0, 60))
 
-    const agentMsgId = crypto.randomUUID()
-    const agentMsg: Message = {
-      id: agentMsgId,
-      author: 'agent',
-      content: '',
-      timestamp: new Date(),
-      steps: [],
-      streaming: true,
+      // Snapshot and clear attachments before any async work
+      const pendingAttachments = [...attachments]
+      clearAttachments()
+
+      // Build MessageAttachment array for display (strip File object, keep display fields)
+      const msgAttachments = pendingAttachments.length > 0
+        ? pendingAttachments.map((a) => ({
+            id: a.id,
+            name: a.name,
+            size: a.size,
+            mimeType: a.mimeType,
+            category: a.category,
+            previewUrl: a.previewUrl,
+            base64: a.base64,
+          }))
+        : undefined
+
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        author: 'user',
+        content,
+        timestamp: new Date(),
+        attachments: msgAttachments,
+      }
+      addMessage(task.id, userMsg)
+
+      // ── Inject files into workspace so agent can read them with file tools ────
+      if (pendingAttachments.length > 0) {
+        const ws = getWorkspace(task.id)
+        for (const att of pendingAttachments) {
+          if (att.textContent !== null) {
+            ws.set(`uploads/${att.name}`, att.textContent)
+          } else if (att.base64 !== null) {
+            // Store base64 image data with a data URL header so agent can reference it
+            ws.set(`uploads/${att.name}`, `data:${att.mimeType};base64,${att.base64}`)
+          }
+        }
+      }
+
+      // ── Build LLM message — augment text with file context ────────────────────
+      let llmContent: string = content
+
+      if (pendingAttachments.length > 0) {
+        const fileList = pendingAttachments.map((a) => `- uploads/${a.name} (${a.category}, ${(a.size / 1024).toFixed(0)} KB)`).join('\n')
+        const textFiles = pendingAttachments.filter((a) => a.textContent !== null)
+
+        let augmented = content || `Please analyze the attached file(s).`
+        augmented += `\n\n[User attached ${pendingAttachments.length} file(s):\n${fileList}\nFiles have been saved to the uploads/ directory in your workspace. Use read_file("uploads/<filename>") to access them.]`
+
+        // Inline small text files (under 8 KB) directly into the message for immediate context
+        for (const att of textFiles) {
+          if (att.textContent && att.size < 8 * 1024) {
+            augmented += `\n\n--- File: ${att.name} ---\n${att.textContent}\n--- End of ${att.name} ---`
+          }
+        }
+
+        llmContent = augmented
+      }
+
+      const existingRaw = getRawHistory(task.id)
+      const newUserMsg: LlmMessage = { role: 'user', content: llmContent }
+      const history = [...existingRaw, newUserMsg]
+      appendRawHistory(task.id, [newUserMsg])
+
+      const agentMsgId = crypto.randomUUID()
+      const agentMsg: Message = {
+        id: agentMsgId,
+        author: 'agent',
+        content: '',
+        timestamp: new Date(),
+        steps: [],
+        streaming: true,
+      }
+      addMessage(task.id, agentMsg)
+      runningRef.current = true
+      setAgentRunning(true)
+      setIteration(0)
+      setTokenCount(0)
+      setSandboxStatus(isTauri ? 'starting' : 'idle')
+      updateTaskStatus(task.id, 'in_progress')
+        // Unlock scroll and jump to bottom when a new exchange starts
+        setScrollLocked(false)
+        hidePill()
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+      await runAgent(task.id, agentMsgId, history)
     }
-    addMessage(task.id, agentMsg)
-    runningRef.current = true
-    setIteration(0)
-    setTokenCount(0)
-    setSandboxStatus(isTauri ? 'starting' : 'idle')
-    updateTaskStatus(task.id, 'in_progress')
-    await runAgent(task.id, agentMsgId, history)
-  }
 
   async function handleRetry(failedMsgId: string) {
     if (!task || runningRef.current) return
@@ -345,6 +506,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setError(task.id, failedMsgId, '')
     setStreaming(task.id, failedMsgId, true)
     runningRef.current = true
+    setAgentRunning(true)
     setIteration(0)
     setTokenCount(0)
     setSandboxStatus(isTauri ? 'starting' : 'idle')
@@ -354,13 +516,16 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
 
   async function handleStop() {
     if (!task) return
+    queuedMsgRef.current = null
+    setQueuedMsg(null)
     if (isTauri) {
       try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
     } else {
       stopWebAgent(task.id)
     }
     runningRef.current = false
-    updateTaskStatus(task.id, 'failed')
+    setAgentRunning(false)
+    updateTaskStatus(task.id, 'stopped')
   }
 
   function handleResume(progressContent: string) {
@@ -374,14 +539,15 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'n') { e.preventDefault(); onNewTask() }
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
-      // Don't fire stop if a modal (settings, memory) is currently open
       if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStop() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, showMemory, onNewTask, onOpenSettings])
+  }, [isActive, showMemory, onNewTask, onOpenSettings]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isFirstMessage = messages.length === 1
+  // Slice from index 1 to skip the persisted welcome message (shown only in empty state)
+  const visibleMessages = messages.slice(1)
+  const isFirstMessage = messages.length <= 1
   const showEmptyState = isFirstMessage && !isActive
 
   // ── No task selected ──────────────────────────────────────────────────────
@@ -390,7 +556,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       <div className="flex flex-col h-full items-center justify-center" style={{ background: '#0d0d0d' }}>
         <div className="flex flex-col items-center gap-3 text-center px-8 max-w-xs">
           <NasusLogo size={32} fill="rgba(255,255,255,0.1)" />
-          {/* #ababab on #0d0d0d ≈ 7.9:1 */}
           <p style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
             Select a task or create a new one
           </p>
@@ -399,8 +564,13 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     )
   }
 
-  return (
-    <div className="flex flex-col h-full" style={{ background: '#0d0d0d' }}>
+    return (
+      <div
+        className="flex flex-col h-full"
+        style={{ background: '#0d0d0d', position: 'relative' }}
+        {...dragHandlers}
+      >
+        <DropZoneOverlay isDragOver={isDragOver} />
       {showMemory && (
         <MemoryViewer
           taskId={task.id}
@@ -410,21 +580,18 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         />
       )}
 
-      {/* Header — 20px h-pad, 12px v-pad */}
+      {/* Header */}
       <header
         className="flex-shrink-0 flex items-center justify-between px-5 py-3"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0d0d0d' }}
       >
-        {/* Left: title + live counters */}
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          {/* Task title: #e2e2e2 on #0d0d0d ≈ 14.6:1 */}
           <h2 className="font-medium truncate" style={{ fontSize: 13, color: 'var(--tx-primary)' }}>
             {task.title}
           </h2>
           {isActive && iteration > 0 && (
             <span className="flex items-center gap-1.5 flex-shrink-0">
-              <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)' }} />
-              {/* #757575 on #0d0d0d ≈ 4.6:1 */}
+              <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)', animation: 'spin 1s linear infinite' }} />
               <span className="font-mono" style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{iteration}</span>
             </span>
           )}
@@ -435,13 +602,11 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           )}
         </div>
 
-        {/* Right: sandbox pill + memory + stop/status */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
             <SandboxPill status={sandboxStatus} />
           )}
 
-          {/* Memory button — #757575 at rest */}
           <button
             onClick={() => setShowMemory(true)}
             title="View agent memory files"
@@ -472,9 +637,11 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
                 e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
                 e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
               }}
+              title="Stop agent (Esc)"
             >
               <Pxi name="times-circle" size={11} />
               Stop
+              <span style={{ fontSize: 10, opacity: 0.55, marginLeft: 2 }}>Esc</span>
             </button>
           )}
 
@@ -489,28 +656,140 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             <div className="flex flex-col items-center gap-4 text-center">
               <NasusLogo size={38} fill="var(--amber)" />
               <div>
-                {/* #e2e2e2 heading */}
                 <h3 className="font-semibold" style={{ fontSize: 16, color: 'var(--tx-primary)' }}>
                   What would you like to accomplish?
                 </h3>
-                {/* #ababab subtext ≈ 7.9:1 */}
                 <p className="mt-2 max-w-sm leading-relaxed" style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
                   Autonomous agent with a real sandbox — browses the web, writes &amp; runs code, manages files.
                 </p>
               </div>
             </div>
-            <ActionChips onSelect={handleSend} centered />
-            <div className="w-full">
-              <UserInputArea onSend={handleSend} disabled={false} autoFocus />
-            </div>
+              <ActionChips onSend={handleSend} onPrefill={(p) => inputRef.current?.prefill(p)} centered />
+
+              {/* Workspace indicator */}
+              <div className="w-full">
+                {showWorkspacePicker ? (
+                  <div
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 12,
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.11em', color: 'var(--tx-tertiary)' }}>
+                        <Pxi name="folder-open" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+                        Workspace
+                      </label>
+                      <button
+                        onClick={() => setShowWorkspacePicker(false)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 2 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+                      >
+                        <Pxi name="times" size={10} />
+                      </button>
+                    </div>
+                    <WorkspacePicker
+                      value={localWorkspace}
+                      onChange={setLocalWorkspace}
+                    />
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => setShowWorkspacePicker(false)}
+                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 7, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--tx-tertiary)' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          const p = localWorkspace.trim()
+                          setWorkspacePath(p)
+                          if (p) addRecentWorkspacePath(p)
+                          setShowWorkspacePicker(false)
+                        }}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: '4px 12px',
+                          borderRadius: 7,
+                          border: 'none',
+                          background: 'var(--amber)',
+                          color: '#000',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Set workspace
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => { setLocalWorkspace(workspacePath); setShowWorkspacePicker(true) }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      padding: '7px 12px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.06)',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      transition: 'background 0.12s, border-color 0.12s',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}
+                  >
+                    <Pxi name="folder" size={10} style={{ color: workspacePath ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }} />
+                    <span
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
+                        fontFamily: 'var(--font-mono)',
+                        color: workspacePath ? 'var(--tx-secondary)' : 'var(--tx-tertiary)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {workspacePath || '/tmp/nasus-workspace (default)'}
+                    </span>
+                    <Pxi name="pen" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+                  </button>
+                )}
+              </div>
+
+                <div className="w-full">
+                  <UserInputArea
+                    ref={inputRef}
+                    onSend={handleSend}
+                    disabled={false}
+                    autoFocus
+                    attachments={attachments}
+                    onAddFiles={addFiles}
+                    onRemoveAttachment={removeAttachment}
+                    isOverLimit={isOverLimit}
+                    totalAttachmentSize={totalSize}
+                  />
+                </div>
           </div>
         </div>
       ) : (
         <>
-          {/* Message list — 20px h-pad, 24px v-pad, 24px gap between messages */}
-          <div className="flex-1 overflow-y-auto" id="message-list">
+          {/* Message list */}
+          <div
+            ref={messageListRef}
+            className="flex-1 overflow-y-auto"
+            id="message-list"
+          >
             <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-6">
-              {messages.slice(1).map((msg, i) => (
+              {visibleMessages.map((msg, i) => (
                 <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                   <ChatMessage
                     message={msg}
@@ -522,12 +801,68 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             </div>
           </div>
 
-          {/* Input — 20px h-pad, 20px bottom-pad, 4px top-pad */}
-          <div className="flex-shrink-0 px-5 pb-5 pt-1">
-            <div className="max-w-[780px] mx-auto">
-              <UserInputArea onSend={handleSend} disabled={isActive} />
+          {/* New messages pill — shown when scrolled up during active run */}
+          {showNewMsgPill && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 90,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 10,
+                opacity: pillVisible ? 1 : 0,
+                transition: 'opacity 0.2s ease',
+                pointerEvents: pillVisible ? 'auto' : 'none',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setScrollLocked(false)
+                  hidePill()
+                  bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 14px',
+                  borderRadius: 20,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  background: 'rgba(234,179,8,0.12)',
+                  border: '1px solid rgba(234,179,8,0.3)',
+                  color: 'var(--amber)',
+                  cursor: 'pointer',
+                  backdropFilter: 'blur(8px)',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.2)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.12)' }}
+              >
+                <Pxi name="arrow-down" size={10} />
+                New messages
+              </button>
             </div>
-          </div>
+          )}
+
+            {/* Input */}
+            <div className="flex-shrink-0 px-5 pb-5 pt-1">
+              <div className="max-w-[780px] mx-auto">
+                <UserInputArea
+                  ref={inputRef}
+                  onSend={handleSend}
+                  onStop={handleStop}
+                  isRunning={isActive}
+                  queuedMsg={queuedMsg}
+                  attachments={attachments}
+                  onAddFiles={addFiles}
+                  onRemoveAttachment={removeAttachment}
+                  isOverLimit={isOverLimit}
+                  totalAttachmentSize={totalSize}
+                />
+              </div>
+            </div>
         </>
       )}
     </div>
@@ -542,7 +877,6 @@ function StatusDot({ status }: { status: Task['status'] }) {
     return (
       <div className="flex items-center gap-1.5">
         <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
-        {/* #ababab label ≈ 7.9:1 */}
         <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Done</span>
       </div>
     )
@@ -551,6 +885,14 @@ function StatusDot({ status }: { status: Task['status'] }) {
     return (
       <div className="flex items-center gap-1.5">
         <Pxi name="times-circle" size={11} style={{ color: '#f87171' }} />
+        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Failed</span>
+      </div>
+    )
+  }
+  if (status === 'stopped') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Pxi name="stop-circle" size={11} style={{ color: 'var(--tx-tertiary)' }} />
         <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Stopped</span>
       </div>
     )
@@ -577,7 +919,6 @@ function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stop
   const cfg = {
     starting: { icon: 'circle-notch', label: 'Starting',      color: 'var(--amber)' },
     ready:    { icon: 'check-circle', label: 'Sandbox ready', color: '#34d399' },
-    /* stopped label: use tx-secondary for legibility */
     stopped:  { icon: 'times-circle', label: 'Stopped',       color: 'var(--tx-secondary)' },
   }[status]
 

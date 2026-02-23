@@ -1,7 +1,59 @@
-import type { Message } from '../types'
+import { useState } from 'react'
+import type { Message, MessageAttachment, AttachmentCategory } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
+import { formatBytes } from '../hooks/useAttachments'
+
+// ─── Copy button ──────────────────────────────────────────────────────────────
+
+function CopyButton({ text, style }: { text: string; style?: React.CSSProperties }) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }).catch(() => {})
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? 'Copied!' : 'Copy'}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 7px',
+        borderRadius: 6,
+        fontSize: 10,
+        border: '1px solid rgba(255,255,255,0.08)',
+        background: copied ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)',
+        color: copied ? '#34d399' : 'var(--tx-tertiary)',
+        cursor: 'pointer',
+        transition: 'background 0.12s, color 0.12s',
+        whiteSpace: 'nowrap',
+        ...style,
+      }}
+      onMouseEnter={(e) => {
+        if (!copied) {
+          e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+          e.currentTarget.style.color = 'var(--tx-secondary)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!copied) {
+          e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+          e.currentTarget.style.color = 'var(--tx-tertiary)'
+        }
+      }}
+    >
+      <Pxi name={copied ? 'check' : 'copy'} size={9} />
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  )
+}
 
 // ─── Error banner ─────────────────────────────────────────────────────────────
 
@@ -121,15 +173,17 @@ function renderMarkdown(text: string): React.ReactNode {
       const code = nlIdx !== -1 ? rest.slice(nlIdx + 1).replace(/```$/, '').trimEnd() : rest.replace(/```$/, '').trimEnd()
       nodes.push(
         <div key={k()} style={{ margin: '14px 0', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: '#0a0a0a' }}>
-          {lang && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Pxi name="code-block" size={11} style={{ color: 'var(--tx-tertiary)' }} />
-              {/* Lang label: #757575 on #0a0a0a ≈ 4.6:1 */}
-              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                {lang}
-              </span>
+              {lang && (
+                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  {lang}
+                </span>
+              )}
             </div>
-          )}
+            <CopyButton text={code} />
+          </div>
           {/* Code body: #c8c8c8 on #0a0a0a ≈ 10.4:1 */}
           <pre style={{ overflow: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#c8c8c8', padding: '14px 16px', lineHeight: 1.65, margin: 0 }}>
             <code>{code}</code>
@@ -238,6 +292,88 @@ function renderMarkdown(text: string): React.ReactNode {
   return <>{nodes}</>
 }
 
+// ─── Sent attachment grid ─────────────────────────────────────────────────────
+
+function attachmentIcon(cat: AttachmentCategory): { icon: string; color: string } {
+  switch (cat) {
+    case 'image':       return { icon: 'image',        color: '#60a5fa' }
+    case 'document':    return { icon: 'file-alt',     color: '#a78bfa' }
+    case 'spreadsheet': return { icon: 'table',        color: '#34d399' }
+    case 'code':        return { icon: 'code',         color: 'var(--amber-soft)' }
+    case 'archive':     return { icon: 'file-archive', color: '#fb923c' }
+    default:            return { icon: 'file',         color: 'var(--tx-tertiary)' }
+  }
+}
+
+function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
+  const images = attachments.filter((a) => a.category === 'image')
+  const files  = attachments.filter((a) => a.category !== 'image')
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* Image thumbnails */}
+      {images.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {images.map((att) => (
+            <div
+              key={att.id}
+              style={{
+                width: 80,
+                height: 80,
+                borderRadius: 8,
+                overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.04)',
+                flexShrink: 0,
+              }}
+            >
+              {att.previewUrl ? (
+                <img
+                  src={att.previewUrl}
+                  alt={att.name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Pxi name="image" size={24} style={{ color: '#60a5fa', opacity: 0.5 }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* File chips */}
+      {files.map((att) => {
+        const { icon, color } = attachmentIcon(att.category)
+        return (
+          <div
+            key={att.id}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '5px 10px',
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              maxWidth: 260,
+            }}
+          >
+            <Pxi name={icon} size={12} style={{ color, flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {att.name}
+              </p>
+              <p style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{formatBytes(att.size)}</p>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function NasusAvatar() {
@@ -281,7 +417,7 @@ function TypingDots() {
 
 // ─── User bubble ──────────────────────────────────────────────────────────────
 
-function UserBubble({ content }: { content: string }) {
+function UserBubble({ content, attachments }: { content: string; attachments?: MessageAttachment[] }) {
   const isSimple = !content.includes('\n') && !/^[#>`\-*]/.test(content.trim())
 
   return (
@@ -303,6 +439,9 @@ function UserBubble({ content }: { content: string }) {
             ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
             : <div style={{ whiteSpace: 'pre-wrap' }}>{renderMarkdown(content)}</div>
           }
+          {attachments && attachments.length > 0 && (
+            <AttachmentGrid attachments={attachments} />
+          )}
         </div>
       </div>
     </div>
@@ -312,6 +451,7 @@ function UserBubble({ content }: { content: string }) {
 // ─── Agent message ────────────────────────────────────────────────────────────
 
 function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+  const [hovered, setHovered] = useState(false)
   const hasSteps   = (message.steps?.length ?? 0) > 0
   const hasContent = message.content.trim().length > 0
   const isStreaming = message.streaming
@@ -319,7 +459,11 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
   const isWaiting  = !hasContent && !hasSteps && isStreaming && !hasError
 
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+    <div
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div style={{ marginTop: 1, flexShrink: 0 }}>
         <NasusAvatar />
       </div>
@@ -353,6 +497,12 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
         {hasError && (
           <ErrorBanner error={message.error!} onRetry={onRetry} />
         )}
+        {/* Copy message action — hover reveal, only when content exists and not streaming */}
+        {hasContent && !isStreaming && !hasError && hovered && (
+          <div style={{ marginTop: 8 }}>
+            <CopyButton text={message.content} />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -361,6 +511,6 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export function ChatMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
-  if (message.author === 'user') return <UserBubble content={message.content} />
+  if (message.author === 'user') return <UserBubble content={message.content} attachments={message.attachments} />
   return <AgentMessage message={message} onRetry={onRetry} />
 }

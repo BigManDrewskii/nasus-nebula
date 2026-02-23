@@ -7,6 +7,7 @@
 
 import type { LlmMessage } from '../types'
 import { runAgentLoop } from './loop'
+import type { SearchConfig } from './tools'
 
 // AbortControllers keyed by taskId
 const controllers: Map<string, AbortController> = new Map()
@@ -19,7 +20,8 @@ export interface RunWebAgentParams {
   model: string
   apiBase: string
   provider: string
-  braveSearchKey?: string
+  searchConfig?: SearchConfig
+  maxIterations?: number
 }
 
 export async function runWebAgent(params: RunWebAgentParams): Promise<void> {

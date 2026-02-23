@@ -1,9 +1,12 @@
 export interface Task {
   id: string
   title: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed'
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'stopped'
   createdAt: Date
   sandboxId?: string
+  pinned?: boolean
+  /** Inferred task type used for the sidebar icon */
+  taskType?: 'research' | 'code' | 'document' | 'web' | 'data' | 'general'
 }
 
 export interface Message {
@@ -14,6 +17,7 @@ export interface Message {
   steps?: AgentStep[]
   streaming?: boolean
   error?: string
+  attachments?: MessageAttachment[]
 }
 
 // Raw LLM message — stored per-task so multi-turn follow-ups include full tool history
@@ -35,10 +39,38 @@ export type AgentStep =
   | { kind: 'tool_result'; callId: string; output: string; isError: boolean }
   | { kind: 'strike_escalation'; tool: string; attempts: string[] }
   | { kind: 'context_compressed'; removedCount: number }
+  | { kind: 'search_status'; callId: string; query: string; phase: 'searching' | 'fallback' | 'complete' | 'no_results' | 'all_failed'; provider: string; message: string; resultCount?: number; durationMs?: number }
 
 export interface MemoryFiles {
   task_plan: string
   findings: string
   progress: string
-  task_id: string | null
+}
+
+// ── File attachments ──────────────────────────────────────────────────────────
+
+export type AttachmentCategory = 'image' | 'document' | 'spreadsheet' | 'code' | 'archive' | 'other'
+
+export interface Attachment {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  category: AttachmentCategory
+  status: 'ready' | 'error'
+  previewUrl: string | null    // Object URL for image previews
+  base64: string | null        // For images sent to multimodal LLM
+  textContent: string | null   // For text/code/document files
+  error: string | null
+}
+
+// Extend Message to carry attachments
+export interface MessageAttachment {
+  id: string
+  name: string
+  size: number
+  mimeType: string
+  category: AttachmentCategory
+  previewUrl: string | null
+  base64: string | null
 }

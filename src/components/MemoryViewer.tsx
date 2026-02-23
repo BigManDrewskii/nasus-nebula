@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import JSZip from 'jszip'
 import { tauriInvoke } from '../tauri'
 import { getWorkspace } from '../agent/tools'
 import type { MemoryFiles } from '../types'
@@ -21,25 +22,58 @@ const TABS: { id: Tab; label: string; icon: string; key: keyof MemoryFiles }[] =
   { id: 'progress', label: 'Progress',  icon: 'chart-line',  key: 'progress'  },
 ]
 
+// ── Download helpers ──────────────────────────────────────────────────────────
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function downloadAllFiles(taskId: string, taskTitle?: string) {
+  const ws = getWorkspace(taskId)
+  if (ws.size === 0) return
+
+  const zip = new JSZip()
+  for (const [path, content] of ws.entries()) {
+    zip.file(path, content)
+  }
+  const blob = await zip.generateAsync({ type: 'blob' })
+  const name = taskTitle ? taskTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase() : `nasus-${taskId.slice(0, 8)}`
+  triggerDownload(blob, `${name}-workspace.zip`)
+}
+
+function downloadSingleFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  triggerDownload(blob, filename)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props) {
   const [files, setFiles] = useState<MemoryFiles | null>(null)
+  const [allFiles, setAllFiles] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('plan')
   const [error, setError] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
 
-  useEffect(() => {
-    setLoading(true)
-    setError(null)
-
+  const loadFiles = useCallback(() => {
     if (isTauri) {
-      // Desktop: read from real filesystem via Tauri
+      setLoading(true)
+      setError(null)
       tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
         .then((data) => { setFiles(data); setLoading(false) })
         .catch((e) => { setError(String(e)); setLoading(false) })
     } else {
-      // Browser: read from in-memory workspace store
       try {
         const ws = getWorkspace(taskId)
+        setAllFiles(new Map(ws))
         const data: MemoryFiles = {
           task_plan: ws.get('task_plan.md') ?? '',
           findings: ws.get('findings.md') ?? '',
@@ -54,9 +88,38 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
     }
   }, [taskId, workspacePath])
 
+  // Initial load
+  useEffect(() => {
+    loadFiles()
+  }, [loadFiles])
+
+  // Auto-refresh: listen for workspace writes (browser mode)
+  useEffect(() => {
+    if (isTauri) return
+    function onWorkspaceChange(e: Event) {
+      const { taskId: tid } = (e as CustomEvent).detail
+      if (tid === taskId) loadFiles()
+    }
+    window.addEventListener('nasus:workspace', onWorkspaceChange)
+    return () => window.removeEventListener('nasus:workspace', onWorkspaceChange)
+  }, [taskId, loadFiles])
+
   const currentTab = TABS.find((t) => t.id === activeTab)!
   const currentContent = files ? (files[currentTab.key] as string) : ''
   const isEmpty = !currentContent || !currentContent.trim()
+  const hasFiles = allFiles.size > 0
+
+  async function handleDownloadAll() {
+    if (downloading) return
+    setDownloading(true)
+    try {
+      await downloadAllFiles(taskId)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const currentFilename = activeTab === 'plan' ? 'task_plan.md' : activeTab === 'findings' ? 'findings.md' : 'progress.md'
 
   return (
     <div
@@ -78,6 +141,49 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* Refresh button */}
+            <button
+              onClick={loadFiles}
+              title="Refresh"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28,
+                borderRadius: 8, padding: 0, border: 'none', cursor: 'pointer',
+                background: 'transparent',
+                color: 'var(--tx-tertiary)',
+                transition: 'color 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+            >
+              <Pxi name="refresh" size={12} />
+            </button>
+
+            {/* Download All */}
+            {!isTauri && hasFiles && (
+              <button
+                onClick={handleDownloadAll}
+                disabled={downloading}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 11, fontWeight: 500,
+                  padding: '6px 12px',
+                  borderRadius: 8,
+                  cursor: downloading ? 'default' : 'pointer',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--tx-secondary)',
+                  transition: 'background 0.12s',
+                  opacity: downloading ? 0.5 : 1,
+                }}
+                onMouseEnter={(e) => { if (!downloading) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+                onMouseLeave={(e) => { if (!downloading) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+              >
+                <Pxi name={downloading ? 'spinner-third' : 'download'} size={10} />
+                {downloading ? 'Zipping…' : `Download all (${allFiles.size})`}
+              </button>
+            )}
+
             {files?.progress && (
               <button
                 onClick={() => onResume(files.progress)}
@@ -121,7 +227,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
           style={{ display: 'flex', flexShrink: 0, padding: '8px 12px 0', gap: 2, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
         >
           {TABS.map((tab) => {
-            const isActive = activeTab === tab.id
+            const isActiveTab = activeTab === tab.id
             return (
               <button
                 key={tab.id}
@@ -134,14 +240,14 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
                   borderRadius: '8px 8px 0 0',
                   border: 'none',
                   cursor: 'pointer',
-                  background: isActive ? 'oklch(64% 0.214 40.1 / 0.07)' : 'transparent',
-                  color: isActive ? 'var(--amber-soft)' : 'var(--tx-secondary)',
-                  borderBottom: isActive ? '2px solid oklch(64% 0.214 40.1 / 0.6)' : '2px solid transparent',
+                  background: isActiveTab ? 'oklch(64% 0.214 40.1 / 0.07)' : 'transparent',
+                  color: isActiveTab ? 'var(--amber-soft)' : 'var(--tx-secondary)',
+                  borderBottom: isActiveTab ? '2px solid oklch(64% 0.214 40.1 / 0.6)' : '2px solid transparent',
                   marginBottom: -1,
                   transition: 'color 0.12s, background 0.12s',
                 }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--tx-primary)' }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--tx-secondary)' }}
+                onMouseEnter={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-primary)' }}
+                onMouseLeave={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-secondary)' }}
               >
                 <Pxi name={tab.icon} size={10} />
                 {tab.label}
@@ -175,11 +281,31 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '8px 20px 10px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ padding: '8px 20px 10px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx-tertiary)', margin: 0 }}>
             <Pxi name="folder-open" size={9} />
             <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{isTauri ? workspacePath : '/workspace (in-memory)'}</code>
           </p>
+          {/* Individual file download — only in browser mode when content exists */}
+          {!isTauri && !isEmpty && currentContent && (
+            <button
+              onClick={() => downloadSingleFile(currentFilename, currentContent)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 10,
+                padding: '3px 8px',
+                borderRadius: 6, border: 'none', cursor: 'pointer',
+                background: 'transparent',
+                color: 'var(--tx-tertiary)',
+                transition: 'color 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+            >
+              <Pxi name="download" size={9} />
+              Download {currentFilename}
+            </button>
+          )}
         </div>
       </div>
     </div>

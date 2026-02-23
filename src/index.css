@@ -180,3 +180,22 @@ html, body, #root {
   to   { opacity: 1; max-height: 800px; }
 }
 .expand-down { animation: expandDown 0.2s ease-out; overflow: hidden; }
+
+/* Spin — used for active iteration refresh icon */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin { animation: spin 1s linear infinite; }
+
+/* Ping — used by in-progress status dot */
+@keyframes ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* Sidebar task item slide-in */
+@keyframes taskItemIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.task-item-in { animation: taskItemIn 0.16s cubic-bezier(0.22,1,0.36,1) both; }
