@@ -171,7 +171,7 @@ function ToolPairRow({ pair }: { pair: ToolPair }) {
         <Pxi
           name={open ? 'chevron-up' : 'chevron-down'}
           size={10}
-          style={{ color: '#2e2e2e', flexShrink: 0 }}
+          style={{ color: '#444', flexShrink: 0 }}
         />
       </button>
 

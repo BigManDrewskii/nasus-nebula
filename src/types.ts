@@ -13,6 +13,19 @@ export interface Message {
   timestamp: Date
   steps?: AgentStep[]
   streaming?: boolean
+  error?: string
+}
+
+// Raw LLM message — stored per-task so multi-turn follow-ups include full tool history
+export interface LlmMessage {
+  role: string
+  content: string | null
+  tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: string
+    function: { name: string; arguments: string }
+  }>
 }
 
 // One iteration of the Plan → Act → Observe loop

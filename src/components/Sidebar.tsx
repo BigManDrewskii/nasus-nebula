@@ -99,7 +99,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
             <div key={label} className="mb-3">
               <p
                 className="text-[10px] uppercase tracking-[0.12em] font-medium px-3 pb-1.5 pt-2"
-                style={{ color: '#2e2e2e' }}
+                  style={{ color: '#444' }}
               >
                 {label}
               </p>
@@ -123,14 +123,17 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
         className="px-3 py-3 flex items-center justify-between"
         style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
       >
-        <span className="text-[10px]" style={{ color: '#252525' }}>v0.1.0</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px]" style={{ color: '#404040' }}>v0.1.0</span>
+            <span className="text-[9px]" style={{ color: '#3a3a3a' }}>⌘N new · ⌘, settings</span>
+        </div>
         <button
           onClick={onOpenSettings}
           className="p-1.5 rounded-lg transition-colors flex items-center justify-center"
-          style={{ color: '#2e2e2e' }}
-          title="Settings"
+          style={{ color: '#404040' }}
+          title="Settings (⌘,)"
           onMouseEnter={(e) => { e.currentTarget.style.color = '#777' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = '#2e2e2e' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = '#404040' }}
         >
           <Pxi name="cog" size={14} />
         </button>

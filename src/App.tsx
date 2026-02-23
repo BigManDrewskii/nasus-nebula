@@ -7,11 +7,15 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { OnboardingScreen } from './components/OnboardingScreen'
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, apiKey } = useAppStore()
+  const { tasks, activeTaskId, setActiveTaskId, addTask, apiBase } = useAppStore()
   const [showSettings, setShowSettings] = useState(false)
   const activeTask = tasks.find((t) => t.id === activeTaskId) ?? null
 
-  if (!apiKey) {
+  // Show onboarding if no provider has been configured yet.
+  // LiteLLM/custom users may have a blank apiKey (auth disabled proxy) —
+  // so we gate on apiBase being set, not apiKey.
+  const isConfigured = apiBase.length > 0
+  if (!isConfigured) {
     return <OnboardingScreen />
   }
 
@@ -35,9 +39,13 @@ function App() {
         onNewTask={handleNewTask}
         onOpenSettings={() => setShowSettings(true)}
       />
-      <main className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0d0d0d' }}>
-        <ChatView task={activeTask} />
-      </main>
+        <main className="flex-1 overflow-hidden flex flex-col" style={{ background: '#0d0d0d' }}>
+          <ChatView
+            task={activeTask}
+            onNewTask={handleNewTask}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        </main>
       {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
     </div>
   )

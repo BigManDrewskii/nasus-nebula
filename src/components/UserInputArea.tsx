@@ -9,7 +9,7 @@ interface UserInputAreaProps {
   autoFocus?: boolean
 }
 
-const MODELS = [
+const STATIC_MODELS = [
   { value: 'anthropic/claude-3.5-sonnet',        label: 'Claude 3.5 Sonnet' },
   { value: 'anthropic/claude-3-haiku',            label: 'Claude 3 Haiku' },
   { value: 'anthropic/claude-3.7-sonnet',         label: 'Claude 3.7 Sonnet' },
@@ -21,8 +21,23 @@ const MODELS = [
   { value: 'deepseek/deepseek-r1',                label: 'DeepSeek R1' },
 ]
 
+function shortLabel(modelId: string): string {
+  // Strip provider prefix for display: "anthropic/claude-3.5-sonnet" → "claude-3.5-sonnet"
+  const slash = modelId.indexOf('/')
+  return slash >= 0 ? modelId.slice(slash + 1) : modelId
+}
+
 export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInputAreaProps) {
-  const { model, setModel } = useAppStore()
+  const { model, setModel, dynamicModels } = useAppStore()
+
+  // Use dynamic models if available (fetched in SettingsPanel), else fall back to static list
+  const models: Array<{ value: string; label: string }> = dynamicModels.length > 0
+    ? dynamicModels.map((id) => {
+        const staticEntry = STATIC_MODELS.find((m) => m.value === id)
+        return { value: id, label: staticEntry?.label ?? shortLabel(id) }
+      })
+    : STATIC_MODELS
+
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleSend() {
@@ -78,31 +93,31 @@ export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInput
 
         {/* Model selector */}
         <div className="flex items-center gap-1.5 min-w-0">
-          <Pxi name="sparkles" size={11} className="flex-shrink-0" style={{ color: '#3a3a3a' }} />
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            className="text-[11px] bg-transparent focus:outline-none cursor-pointer appearance-none truncate max-w-[130px]"
-            style={{ color: '#3a3a3a' }}
-            title="Select model"
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#777' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#3a3a3a' }}
-          >
-            {MODELS.map((m) => (
-              <option key={m.value} value={m.value} style={{ background: '#1a1a1a', color: '#ccc' }}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <Pxi name="angle-down" size={10} style={{ color: '#2a2a2a' }} />
+            <Pxi name="sparkles" size={11} className="flex-shrink-0" style={{ color: '#555' }} />
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              className="text-[11px] bg-transparent focus:outline-none cursor-pointer appearance-none truncate max-w-[130px]"
+              style={{ color: '#555' }}
+              title="Select model"
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#888' }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#555' }}
+            >
+              {models.map((m) => (
+                <option key={m.value} value={m.value} style={{ background: '#1a1a1a', color: '#ccc' }}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <Pxi name="angle-down" size={10} style={{ color: '#444' }} />
         </div>
 
         {/* Right side: hint + send/stop */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {!disabled && (
-            <span className="text-[10px] select-none hidden sm:block" style={{ color: '#2a2a2a' }}>
-              ↵ send · ⇧↵ newline
-            </span>
+              <span className="text-[10px] select-none hidden sm:block" style={{ color: '#444' }}>
+                ↵ send · ⇧↵ newline
+              </span>
           )}
 
           {disabled && onStop ? (

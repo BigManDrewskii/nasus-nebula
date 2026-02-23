@@ -2,6 +2,46 @@ import type { Message } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { Pxi } from './Pxi'
 
+// ─── Error banner ─────────────────────────────────────────────────────────────
+
+function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }) {
+  return (
+    <div
+      className="flex items-start gap-2.5 mt-2 px-3 py-2.5 rounded-xl"
+      style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)' }}
+    >
+      <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
+      <div className="flex-1 min-w-0">
+        <p className="text-[12px] leading-relaxed" style={{ color: '#fca5a5' }}>
+          {error}
+        </p>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="flex items-center gap-1.5 mt-2 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-all"
+            style={{
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              color: '#f87171',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.18)'
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(239,68,68,0.1)'
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
+            }}
+          >
+            <Pxi name="refresh" size={10} />
+            Retry
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Inline markdown ──────────────────────────────────────────────────────────
 
 function inlineMarkdown(text: string, keyPrefix: string): React.ReactNode {
@@ -222,11 +262,12 @@ function UserBubble({ content }: { content: string }) {
 
 // ─── Agent message ────────────────────────────────────────────────────────────
 
-function AgentMessage({ message }: { message: Message }) {
+function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   const hasSteps = (message.steps?.length ?? 0) > 0
   const hasContent = message.content.trim().length > 0
   const isStreaming = message.streaming
-  const isWaiting = !hasContent && !hasSteps && isStreaming
+  const hasError = !!message.error
+  const isWaiting = !hasContent && !hasSteps && isStreaming && !hasError
 
   return (
     <div className="flex items-start gap-2.5">
@@ -247,10 +288,13 @@ function AgentMessage({ message }: { message: Message }) {
             )}
           </div>
         )}
-        {hasSteps && !hasContent && isStreaming && (
+        {hasSteps && !hasContent && isStreaming && !hasError && (
           <div className="mt-2">
             <TypingDots />
           </div>
+        )}
+        {hasError && (
+          <ErrorBanner error={message.error!} onRetry={onRetry} />
         )}
       </div>
     </div>
@@ -259,7 +303,7 @@ function AgentMessage({ message }: { message: Message }) {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   if (message.author === 'user') return <UserBubble content={message.content} />
-  return <AgentMessage message={message} />
+  return <AgentMessage message={message} onRetry={onRetry} />
 }

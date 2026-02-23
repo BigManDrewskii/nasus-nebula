@@ -13,7 +13,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 // ─── Global cancellation flags ────────────────────────────────────────────────
-// Maps task_id → cancelled flag. `run_agent` checks this each iteration.
 
 type CancelMap = Arc<Mutex<HashMap<String, bool>>>;
 
@@ -44,6 +43,11 @@ pub struct AppConfig {
     pub api_key: String,
     pub model: String,
     pub workspace_path: String,
+    /// The base URL for the LLM API, e.g. "https://openrouter.ai/api/v1"
+    /// or "http://localhost:4000/v1" for a LiteLLM proxy.
+    pub api_base: String,
+    /// Human-readable provider label: "openrouter" | "litellm" | "openai" | "custom"
+    pub provider: String,
 }
 
 #[tauri::command]
@@ -65,10 +69,20 @@ fn get_config(app: AppHandle) -> Result<AppConfig, String> {
                 .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
                 .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
         });
+    let api_base = store
+        .get("api_base")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string());
+    let provider = store
+        .get("provider")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "openrouter".to_string());
     Ok(AppConfig {
         api_key,
         model,
         workspace_path,
+        api_base,
+        provider,
     })
 }
 
@@ -78,15 +92,55 @@ fn save_config(
     api_key: String,
     model: String,
     workspace_path: String,
+    api_base: String,
+    provider: String,
 ) -> Result<(), String> {
     let store = app.store("config.json").map_err(|e| e.to_string())?;
     store.set("api_key", serde_json::Value::String(api_key));
     store.set("model", serde_json::Value::String(model));
     store.set("workspace_path", serde_json::Value::String(workspace_path));
+    store.set("api_base", serde_json::Value::String(api_base));
+    store.set("provider", serde_json::Value::String(provider));
     store
         .save()
         .map_err(|e: tauri_plugin_store::Error| e.to_string())?;
     Ok(())
+}
+
+/// Fetch available models from any OpenAI-compatible /models endpoint.
+/// Works with OpenRouter, LiteLLM proxy, and OpenAI direct.
+#[tauri::command]
+async fn fetch_models(api_base: String, api_key: String) -> Result<Vec<String>, String> {
+    let url = format!("{}/models", api_base.trim_end_matches('/'));
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let models: Vec<String> = json["data"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+        .collect();
+
+    Ok(models)
+}
+
+/// Check whether a filesystem path exists and is a directory
+#[tauri::command]
+fn validate_path(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
 }
 
 // ─── Agent events ─────────────────────────────────────────────────────────────
@@ -128,32 +182,39 @@ pub enum AgentEvent {
         message_id: String,
         error: String,
     },
-    /// Emitted when the agent hits a 3-strike failure so the UI can surface it
     StrikeEscalation {
         task_id: String,
         message_id: String,
         tool: String,
-        attempts: Vec<String>, // summaries of each attempt
+        attempts: Vec<String>,
     },
-    /// Emitted when context is compressed mid-task
     ContextCompressed {
         task_id: String,
         message_id: String,
         removed_count: usize,
     },
-    /// Emitted at the start of each agent iteration so the UI can show a counter
     IterationTick {
         task_id: String,
         message_id: String,
         iteration: usize,
     },
-    /// Emitted after each LLM response with token usage counts
     TokenUsage {
         task_id: String,
         message_id: String,
         prompt_tokens: u64,
         completion_tokens: u64,
         total_tokens: u64,
+    },
+    /// Fired after the first user message is processed with a short LLM-generated title
+    AutoTitle {
+        task_id: String,
+        title: String,
+    },
+    /// Fired after each agent turn — carries the assistant message + tool results
+    /// so the frontend can append them to rawHistory for multi-turn context.
+    RawMessages {
+        task_id: String,
+        messages: Vec<serde_json::Value>,
     },
 }
 
@@ -187,7 +248,6 @@ pub struct FunctionCall {
 
 #[derive(Debug, Default)]
 struct ErrorTracker {
-    /// Per-tool strike counts: tool_name → (strike_count, attempt_summaries)
     strikes: std::collections::HashMap<String, (usize, Vec<String>)>,
 }
 
@@ -502,7 +562,6 @@ async fn ensure_sandbox(
 ) -> Result<String, String> {
     let name = format!("nasus-sandbox-{}", &task_id[..task_id.len().min(8)]);
 
-    // Check if already running
     if let Ok(info) = docker.inspect_container(&name, None).await {
         if info.state.and_then(|s| s.running).unwrap_or(false) {
             return Ok(name);
@@ -553,7 +612,6 @@ async fn ensure_sandbox(
         .await
         .map_err(|e| format!("Start container: {e}"))?;
 
-    // Bootstrap common tools in the background so we don't block the first LLM call
     let docker_bg = docker.clone();
     let name_bg = name.clone();
     tokio::spawn(async move {
@@ -617,7 +675,6 @@ async fn exec_in_sandbox(
         .await;
     }
 
-    // Cap output to prevent context overflow
     if output.len() > 8000 {
         let tail = &output[output.len() - 7500..];
         output = format!("[...truncated to last 7500 chars...]\n{}", tail);
@@ -635,7 +692,6 @@ async fn execute_tool(
     args: &serde_json::Value,
     http_client: &reqwest::Client,
 ) -> (String, bool) {
-    // Helper: run a command in the sandbox; returns error string if sandbox unavailable
     macro_rules! sandbox {
         ($cmd:expr, $timeout:expr) => {
             match (docker, container) {
@@ -671,22 +727,21 @@ async fn execute_tool(
             }
         }
 
-          "write_file" => {
-              let path = args["path"].as_str().unwrap_or("/workspace/output.txt");
-              let content = args["content"].as_str().unwrap_or("");
-              // Base64-encode the content so no quoting issues regardless of what the agent writes
-              let encoded = base64_encode(content);
-              let cmd = format!(
-                  "echo '{encoded}' | base64 -d > /tmp/_nasus_write_tmp && \
-                   mkdir -p \"$(dirname '{path}')\" && \
-                   mv /tmp/_nasus_write_tmp '{path}' && \
-                   echo 'written: {path}'"
-              );
-              match sandbox!(&cmd, 15) {
-                  Ok(out) => (out, false),
-                  Err(e) => (format!("write error: {e}"), true),
-              }
-          }
+        "write_file" => {
+            let path = args["path"].as_str().unwrap_or("/workspace/output.txt");
+            let content = args["content"].as_str().unwrap_or("");
+            let encoded = base64_encode(content);
+            let cmd = format!(
+                "echo '{encoded}' | base64 -d > /tmp/_nasus_write_tmp && \
+                 mkdir -p \"$(dirname '{path}')\" && \
+                 mv /tmp/_nasus_write_tmp '{path}' && \
+                 echo 'written: {path}'"
+            );
+            match sandbox!(&cmd, 15) {
+                Ok(out) => (out, false),
+                Err(e) => (format!("write error: {e}"), true),
+            }
+        }
 
         "list_files" => {
             let path = args["path"].as_str().unwrap_or("/workspace");
@@ -730,35 +785,28 @@ async fn execute_tool(
                 Ok(resp) => {
                     let status = resp.status().as_u16();
                     let text = resp.text().await.unwrap_or_default();
-                    let preview = if text.len() > 6000 {
-                        &text[..6000]
-                    } else {
-                        &text
-                    };
+                    let preview = if text.len() > 6000 { &text[..6000] } else { &text };
                     (format!("HTTP {status}\n{preview}"), false)
                 }
                 Err(e) => (format!("fetch error: {e}"), true),
             }
         }
 
-          "search_web" => {
-              let query = match args["query"].as_str() {
-                  Some(q) => q.to_string(),
-                  None => return ("Missing query".to_string(), true),
-              };
-              let num = args["num_results"].as_u64().unwrap_or(5).min(10);
-              let encoded = urlencoding_simple(&query);
-              // Use the sandbox to run a real web search via curl + Python HTML parsing
-              // DuckDuckGo HTML endpoint returns real search results without an API key
-              let cmd = format!(
-                  r#"curl -sL --max-time 15 -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64)" \
-                  "https://html.duckduckgo.com/html/?q={encoded}" | \
-                  python3 -c "
+        "search_web" => {
+            let query = match args["query"].as_str() {
+                Some(q) => q.to_string(),
+                None => return ("Missing query".to_string(), true),
+            };
+            let num = args["num_results"].as_u64().unwrap_or(5).min(10);
+            let encoded = urlencoding_simple(&query);
+            let cmd = format!(
+                r#"curl -sL --max-time 15 -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64)" \
+                "https://html.duckduckgo.com/html/?q={encoded}" | \
+                python3 -c "
 import sys, re
 html = sys.stdin.read()
 results = re.findall(r'class=\"result__title\".*?href=\"([^\"]+)\".*?>(.*?)</a>.*?class=\"result__snippet\">(.*?)</span>', html, re.DOTALL)
 if not results:
-    # fallback: grab any links with snippets
     titles = re.findall(r'<a class=\"result__a\" href=\"([^\"]+)\">(.*?)</a>', html, re.DOTALL)
     snippets = re.findall(r'<a class=\"result__snippet\".*?>(.*?)</a>', html, re.DOTALL)
     results = [(t[0], t[1], snippets[i] if i < len(snippets) else '') for i, t in enumerate(titles)]
@@ -777,34 +825,34 @@ for url, title, snippet in results:
 if count == 0:
     print('No results found. Try a different query or use http_fetch with a specific URL.')
 ""#,
-                  encoded = encoded,
-                  num = num,
-              );
+                encoded = encoded,
+                num = num,
+            );
 
-              if let Ok(out) = sandbox!(&cmd, 20) {
-                  (if out.trim().is_empty() { "No results found.".to_string() } else { out }, false)
-              } else {
-                  // Fallback: hit DuckDuckGo from host process when sandbox unavailable
-                  let url = format!("https://api.duckduckgo.com/?q={encoded}&format=json&no_redirect=1&no_html=1&skip_disambig=1");
-                  match http_client.get(&url)
-                      .header("User-Agent", "Mozilla/5.0 (compatible; Nasus/1.0)")
-                      .timeout(std::time::Duration::from_secs(10))
-                      .send().await
-                  {
-                      Ok(resp) => {
-                          let text = resp.text().await.unwrap_or_default();
-                          (format!("[Sandbox unavailable — limited results]\n{}", &text[..text.len().min(1000)]), false)
-                      }
-                      Err(e) => (format!("search error: {e}"), true),
-                  }
-              }
-          }
+            if let Ok(out) = sandbox!(&cmd, 20) {
+                (if out.trim().is_empty() { "No results found.".to_string() } else { out }, false)
+            } else {
+                let url = format!("https://api.duckduckgo.com/?q={encoded}&format=json&no_redirect=1&no_html=1&skip_disambig=1");
+                match http_client
+                    .get(&url)
+                    .header("User-Agent", "Mozilla/5.0 (compatible; Nasus/1.0)")
+                    .timeout(std::time::Duration::from_secs(10))
+                    .send()
+                    .await
+                {
+                    Ok(resp) => {
+                        let text = resp.text().await.unwrap_or_default();
+                        (format!("[Sandbox unavailable — limited results]\n{}", &text[..text.len().min(1000)]), false)
+                    }
+                    Err(e) => (format!("search error: {e}"), true),
+                }
+            }
+        }
 
         unknown => (format!("Unknown tool: {unknown}"), true),
     }
 }
 
-/// Minimal URL encoding (percent-encode spaces and common special chars)
 fn urlencoding_simple(s: &str) -> String {
     s.chars()
         .map(|c| match c {
@@ -820,7 +868,6 @@ fn urlencoding_simple(s: &str) -> String {
         .collect()
 }
 
-/// Safe base64 encoding for passing arbitrary content through shell heredocs
 fn base64_encode(s: &str) -> String {
     use std::fmt::Write as FmtWrite;
     let bytes = s.as_bytes();
@@ -838,60 +885,228 @@ fn base64_encode(s: &str) -> String {
     out
 }
 
-// ─── LLM call ─────────────────────────────────────────────────────────────────
+// ─── LLM call (real SSE streaming) ───────────────────────────────────────────
+//
+// Streams the LLM response token-by-token via Server-Sent Events.
+// Emits StreamChunk events in real-time and returns the fully assembled
+// response JSON once the stream is complete (for tool call extraction).
 
-async fn llm_chat(
+async fn llm_stream(
     client: &reqwest::Client,
+    app: &AppHandle,
     api_key: &str,
+    api_base: &str,
+    provider: &str,
     model: &str,
     messages: &[LlmMessage],
     tools: &serde_json::Value,
+    task_id: &str,
+    message_id: &str,
 ) -> Result<serde_json::Value, String> {
     let body = serde_json::json!({
         "model": model,
         "messages": messages,
         "tools": tools,
         "tool_choice": "auto",
+        "stream": true,
+        "stream_options": { "include_usage": true },
     });
 
-    let resp = client
-        .post("https://openrouter.ai/api/v1/chat/completions")
+    let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
+    let mut req = client
+        .post(&url)
         .header("Authorization", format!("Bearer {api_key}"))
         .header("Content-Type", "application/json")
-        .header("HTTP-Referer", "https://nasus.app")
-        .header("X-Title", "Nasus")
-        .timeout(std::time::Duration::from_secs(120))
+        .timeout(std::time::Duration::from_secs(180));
+
+    // OpenRouter-specific headers — omit for other providers
+    if provider == "openrouter" {
+        req = req
+            .header("HTTP-Referer", "https://nasus.app")
+            .header("X-Title", "Nasus");
+    }
+
+    let resp = req
         .json(&body)
         .send()
         .await
         .map_err(|e| e.to_string())?;
 
     let status = resp.status();
-    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-
     if !status.is_success() {
+        // Non-streaming error — read body and return
+        let err_body: serde_json::Value = resp.json().await.unwrap_or_default();
         return Err(format!(
             "LLM error {status}: {}",
-            json["error"]["message"]
+            err_body["error"]["message"]
                 .as_str()
-                .unwrap_or(&json.to_string())
+                .unwrap_or(&err_body.to_string())
         ));
     }
 
-    Ok(json)
+    // Accumulate streaming state
+    let mut full_content = String::new();
+    let mut finish_reason = String::new();
+    // tool_calls indexed by their position in the array
+    let mut tool_call_map: std::collections::HashMap<usize, serde_json::Value> =
+        std::collections::HashMap::new();
+    let mut usage_obj: Option<serde_json::Value> = None;
+    // Whether we have emitted at least one non-empty content chunk (= final answer mode)
+    let mut is_final_answer = false;
+
+    let mut stream = resp.bytes_stream();
+    let mut buf = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        let bytes = chunk.map_err(|e| e.to_string())?;
+        buf.push_str(&String::from_utf8_lossy(&bytes));
+
+        // Process all complete SSE lines in the buffer
+        while let Some(nl) = buf.find('\n') {
+            let line = buf[..nl].trim().to_string();
+            buf = buf[nl + 1..].to_string();
+
+            if line.is_empty() || line == "data: [DONE]" {
+                continue;
+            }
+
+            let data = if let Some(d) = line.strip_prefix("data: ") {
+                d
+            } else {
+                continue;
+            };
+
+            let chunk_json: serde_json::Value = match serde_json::from_str(data) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+
+            // Capture usage if present (sent in the final chunk)
+            if let Some(usage) = chunk_json.get("usage") {
+                usage_obj = Some(usage.clone());
+            }
+
+            let choice = &chunk_json["choices"][0];
+            let delta = &choice["delta"];
+
+            if let Some(fr) = choice["finish_reason"].as_str() {
+                if !fr.is_empty() {
+                    finish_reason = fr.to_string();
+                }
+            }
+
+            // Accumulate content delta → emit StreamChunk
+            if let Some(text) = delta["content"].as_str() {
+                if !text.is_empty() {
+                    is_final_answer = true;
+                    full_content.push_str(text);
+                    let _ = app.emit(
+                        "agent-event",
+                        AgentEvent::StreamChunk {
+                            task_id: task_id.to_string(),
+                            message_id: message_id.to_string(),
+                            delta: text.to_string(),
+                            done: false,
+                        },
+                    );
+                }
+            }
+
+            // Accumulate tool_call deltas
+            if let Some(tcs) = delta["tool_calls"].as_array() {
+                for tc_delta in tcs {
+                    let idx = tc_delta["index"].as_u64().unwrap_or(0) as usize;
+                    let entry = tool_call_map.entry(idx).or_insert_with(|| {
+                        serde_json::json!({
+                            "id": "",
+                            "type": "function",
+                            "function": { "name": "", "arguments": "" }
+                        })
+                    });
+
+                    if let Some(id) = tc_delta["id"].as_str() {
+                        entry["id"] = serde_json::Value::String(id.to_string());
+                    }
+                    if let Some(name) = tc_delta["function"]["name"].as_str() {
+                        let existing = entry["function"]["name"].as_str().unwrap_or("").to_string();
+                        entry["function"]["name"] =
+                            serde_json::Value::String(format!("{existing}{name}"));
+                    }
+                    if let Some(args) = tc_delta["function"]["arguments"].as_str() {
+                        let existing = entry["function"]["arguments"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string();
+                        entry["function"]["arguments"] =
+                            serde_json::Value::String(format!("{existing}{args}"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Emit usage if we got it
+    if let Some(usage) = &usage_obj {
+        let _ = app.emit(
+            "agent-event",
+            AgentEvent::TokenUsage {
+                task_id: task_id.to_string(),
+                message_id: message_id.to_string(),
+                prompt_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
+                completion_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
+                total_tokens: usage["total_tokens"].as_u64().unwrap_or(0),
+            },
+        );
+    }
+
+    // If this was a final answer, close the stream
+    if is_final_answer {
+        let _ = app.emit(
+            "agent-event",
+            AgentEvent::StreamChunk {
+                task_id: task_id.to_string(),
+                message_id: message_id.to_string(),
+                delta: String::new(),
+                done: true,
+            },
+        );
+    }
+
+    // Reconstruct a response-shaped JSON that the agent loop can process identically
+    let mut tool_calls_arr: Vec<serde_json::Value> = tool_call_map
+        .into_iter()
+        .collect::<std::collections::BTreeMap<_, _>>()
+        .into_values()
+        .collect();
+
+    // Sort is implicit from BTreeMap — but filter out any empty-id entries
+    tool_calls_arr.retain(|tc| !tc["id"].as_str().unwrap_or("").is_empty());
+
+    let reconstructed = serde_json::json!({
+        "choices": [{
+            "finish_reason": finish_reason,
+            "message": {
+                "role": "assistant",
+                "content": if full_content.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(full_content) },
+                "tool_calls": if tool_calls_arr.is_empty() { serde_json::Value::Null } else { serde_json::Value::Array(tool_calls_arr) },
+            }
+        }],
+        "usage": usage_obj.unwrap_or(serde_json::Value::Null),
+    });
+
+    Ok(reconstructed)
 }
 
 // ─── Context compression ──────────────────────────────────────────────────────
+//
+// Threshold lowered to 40 messages (was 80) to avoid hitting context limits.
 
-/// When message history grows large, trim old tool results (keep first 2 + last 4 tool pairs)
-/// while preserving the system prompt and all non-tool messages.
 fn compress_context(
     messages: &mut Vec<LlmMessage>,
     task_id: &str,
     message_id: &str,
     app: &AppHandle,
 ) -> usize {
-    // Collect indices of all `tool` result messages
     let tool_result_indices: Vec<usize> = messages
         .iter()
         .enumerate()
@@ -902,28 +1117,22 @@ fn compress_context(
         return 0;
     }
 
-    // The middle tool results to remove (keep first 2 + last 4)
     let middle_results: std::collections::HashSet<usize> =
         tool_result_indices[2..tool_result_indices.len() - 4]
             .iter()
             .copied()
             .collect();
 
-    // Find assistant messages whose *entire* tool_calls set was consumed by removed results.
-    // Strategy: an assistant message at index i is removable if ALL tool result messages
-    // that follow it (before the next assistant/user message) are in middle_results.
     let mut all_remove = middle_results.clone();
     let mut i = 0;
     while i < messages.len() {
         if messages[i].role == "assistant" && messages[i].tool_calls.is_some() {
-            // Collect the tool result indices immediately following this assistant message
             let mut j = i + 1;
             let mut result_indices = vec![];
             while j < messages.len() && messages[j].role == "tool" {
                 result_indices.push(j);
                 j += 1;
             }
-            // Only remove the assistant message if ALL its results are being removed
             if !result_indices.is_empty()
                 && result_indices.iter().all(|idx| middle_results.contains(idx))
             {
@@ -941,7 +1150,6 @@ fn compress_context(
         .map(|(_, m)| m.clone())
         .collect();
 
-    // Insert a compression notice after the system message
     if new_messages.len() > 1 {
         new_messages.insert(
             1,
@@ -985,7 +1193,6 @@ async fn init_memory_files(
     let findings = findings_template();
     let progress = progress_template();
 
-    // Use base64 to write each file safely — no quoting issues regardless of content
     let write_b64 = |path: &str, content: &str| -> String {
         let enc = base64_encode(content);
         format!("echo '{enc}' | base64 -d > '{path}'")
@@ -1007,7 +1214,74 @@ async fn init_memory_files(
     let _ = exec_in_sandbox(docker, container, &cmd, 15).await;
 }
 
-// ─── Read memory files command (for frontend Resume feature) ──────────────────
+// ─── Auto-title: generate a short task title from first user message ──────────
+//
+// Fires a tiny, cheap LLM call (max_tokens=10) in the background and emits
+// AutoTitle so the frontend can update the sidebar without blocking the agent.
+
+async fn auto_title_task(
+    client: &reqwest::Client,
+    api_key: &str,
+    api_base: &str,
+    provider: &str,
+    model: &str,
+    user_message: &str,
+    task_id: &str,
+    app: &AppHandle,
+) {
+    let prompt = format!(
+        "Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n{user_message}"
+    );
+
+    // Use a cheap/fast model for titling — on OpenRouter use claude-3-haiku;
+    // on all other providers (LiteLLM, OpenAI, custom) use whatever model the
+    // user has configured, since we can't assume any specific model is available.
+    let title_model = if provider == "openrouter" {
+        "anthropic/claude-3-haiku".to_string()
+    } else {
+        model.to_string()
+    };
+
+    let body = serde_json::json!({
+        "model": title_model,
+        "messages": [{ "role": "user", "content": prompt }],
+        "max_tokens": 20,
+    });
+
+    let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
+    let mut req = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .header("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(15));
+
+    if provider == "openrouter" {
+        req = req
+            .header("HTTP-Referer", "https://nasus.app")
+            .header("X-Title", "Nasus");
+    }
+
+    let result = req.json(&body).send().await;
+
+    if let Ok(resp) = result {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(title) = json["choices"][0]["message"]["content"].as_str() {
+                let clean = title.trim().trim_matches('"').trim_matches('\'').to_string();
+                if !clean.is_empty() {
+                    let _ = app.emit(
+                        "agent-event",
+                        AgentEvent::AutoTitle {
+                            task_id: task_id.to_string(),
+                            title: clean,
+                        },
+                    );
+                }
+            }
+        }
+    }
+}
+
+// ─── Read memory files command ────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 pub struct MemoryFiles {
@@ -1022,7 +1296,6 @@ async fn read_memory_files(
     _task_id: String,
     workspace_path: String,
 ) -> Result<MemoryFiles, String> {
-    // Read directly from the host-mounted workspace (not via Docker)
     let base = std::path::PathBuf::from(&workspace_path);
 
     let read = |name: &str| -> String {
@@ -1059,6 +1332,8 @@ async fn run_agent(
     api_key: String,
     model: String,
     workspace_path: String,
+    api_base: Option<String>,
+    provider: Option<String>,
 ) -> Result<(), String> {
     let effective_model = if model.is_empty() {
         "anthropic/claude-3.5-sonnet".to_string()
@@ -1066,12 +1341,42 @@ async fn run_agent(
         model.clone()
     };
 
+    let effective_api_base = api_base
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string());
+    let effective_provider = provider
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "openrouter".to_string());
+
     let http = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
         .unwrap_or_default();
 
     let tools = tool_definitions();
+
+    // ── Auto-title on first message ────────────────────────────────────────────
+    let is_first_message = user_messages.len() == 1;
+    if is_first_message {
+        let first_content = user_messages
+            .first()
+            .and_then(|m| m["content"].as_str())
+            .unwrap_or("")
+            .to_string();
+
+        if !first_content.is_empty() {
+            let http_clone = http.clone();
+            let key_clone = api_key.clone();
+            let base_clone = effective_api_base.clone();
+            let provider_clone = effective_provider.clone();
+            let model_clone = effective_model.clone();
+            let tid_clone = task_id.clone();
+            let app_clone = app.clone();
+            tokio::spawn(async move {
+                auto_title_task(&http_clone, &key_clone, &base_clone, &provider_clone, &model_clone, &first_content, &tid_clone, &app_clone).await;
+            });
+        }
+    }
 
     // ── Connect to Docker & start sandbox ──────────────────────────────────────
     let docker_result = get_or_connect_docker().await;
@@ -1117,8 +1422,7 @@ async fn run_agent(
         }
     };
 
-    // ── Initialize memory files (only on first message in this task) ───────────
-    let is_first_message = user_messages.len() == 1;
+    // ── Initialize memory files ────────────────────────────────────────────────
     if is_first_message {
         if let (Some(docker), Some(container)) = (&docker_opt, &container_opt) {
             let first_msg = user_messages
@@ -1148,25 +1452,27 @@ async fn run_agent(
     }];
 
     for m in &user_messages {
-        messages.push(LlmMessage {
+        // Deserialize fully so tool_call_id / tool_calls are preserved for multi-turn context
+        let msg: LlmMessage = serde_json::from_value(m.clone()).unwrap_or_else(|_| LlmMessage {
             role: m["role"].as_str().unwrap_or("user").to_string(),
             content: m["content"].clone(),
             tool_call_id: None,
             tool_calls: None,
         });
+        messages.push(msg);
     }
 
     // ── Agent state ────────────────────────────────────────────────────────────
     let mut error_tracker = ErrorTracker::default();
-    let mut search_browse_count: usize = 0; // tracks 2-action rule
+    let mut search_browse_count: usize = 0;
 
     const MAX_ITERATIONS: usize = 30;
+    // Compression threshold lowered from 80 → 40 to avoid context limit hits
+    const COMPRESS_THRESHOLD: usize = 40;
 
-    // Clear any previous cancel flag for this task
     set_cancelled(&app, &task_id, false);
 
     for iteration in 0..MAX_ITERATIONS {
-        // Check cancellation at the top of every iteration
         if is_cancelled(&app, &task_id) {
             let _ = app.emit(
                 "agent-event",
@@ -1178,7 +1484,6 @@ async fn run_agent(
             return Ok(());
         }
 
-        // Emit iteration tick so the UI can display a counter
         let _ = app.emit(
             "agent-event",
             AgentEvent::IterationTick {
@@ -1188,12 +1493,27 @@ async fn run_agent(
             },
         );
 
-        // Context compression: if history is getting large, trim old tool results
-        if messages.len() > 80 {
+        if messages.len() > COMPRESS_THRESHOLD {
             compress_context(&mut messages, &task_id, &message_id, &app);
         }
 
-        let response = match llm_chat(&http, &api_key, &effective_model, &messages, &tools).await {
+        // Emit reasoning if model supports extended thinking
+        // (handled inside llm_stream via delta["reasoning"])
+
+        let response = match llm_stream(
+            &http,
+            &app,
+            &api_key,
+            &effective_api_base,
+            &effective_provider,
+            &effective_model,
+            &messages,
+            &tools,
+            &task_id,
+            &message_id,
+        )
+        .await
+        {
             Ok(r) => r,
             Err(e) => {
                 let _ = app.emit(
@@ -1212,65 +1532,29 @@ async fn run_agent(
         let finish_reason = choice["finish_reason"].as_str().unwrap_or("");
         let msg = &choice["message"];
 
-        // Emit token usage so the UI can track cost/context
-        if let Some(usage) = response.get("usage") {
-            let _ = app.emit(
-                "agent-event",
-                AgentEvent::TokenUsage {
-                    task_id: task_id.clone(),
-                    message_id: message_id.clone(),
-                    prompt_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0),
-                    completion_tokens: usage["completion_tokens"].as_u64().unwrap_or(0),
-                    total_tokens: usage["total_tokens"].as_u64().unwrap_or(0),
-                },
-            );
-        }
-
-        // Emit reasoning/thinking tokens if present (extended thinking models)
-        if let Some(thinking) = msg.get("reasoning").and_then(|r| r.as_str()) {
-            if !thinking.is_empty() {
-                let _ = app.emit(
-                    "agent-event",
-                    AgentEvent::Thinking {
-                        task_id: task_id.clone(),
-                        message_id: message_id.clone(),
-                        content: thinking.to_string(),
-                    },
-                );
-            }
-        }
+        // Token usage is now emitted inside llm_stream
 
         let tool_calls = msg["tool_calls"].as_array().cloned();
         let no_tools = tool_calls.is_none()
             || tool_calls.as_ref().map(|v| v.is_empty()).unwrap_or(true);
 
         if finish_reason == "stop" || no_tools {
-            // ── Final answer ─────────────────────────────────────────────────
-            let final_text = msg["content"].as_str().unwrap_or("").to_string();
-
-            // Stream word-by-word for natural feel
-            for word in final_text.split_inclusive(' ') {
-                let _ = app.emit(
-                    "agent-event",
-                    AgentEvent::StreamChunk {
-                        task_id: task_id.clone(),
-                        message_id: message_id.clone(),
-                        delta: word.to_string(),
-                        done: false,
-                    },
-                );
-                tokio::time::sleep(tokio::time::Duration::from_millis(6)).await;
+            // Emit the assistant's final message to rawHistory so multi-turn works
+            if let Some(content) = msg["content"].as_str() {
+                if !content.is_empty() {
+                    let _ = app.emit(
+                        "agent-event",
+                        AgentEvent::RawMessages {
+                            task_id: task_id.clone(),
+                            messages: vec![serde_json::json!({
+                                "role": "assistant",
+                                "content": content
+                            })],
+                        },
+                    );
+                }
             }
-
-            let _ = app.emit(
-                "agent-event",
-                AgentEvent::StreamChunk {
-                    task_id: task_id.clone(),
-                    message_id: message_id.clone(),
-                    delta: String::new(),
-                    done: true,
-                },
-            );
+            // Final answer was streamed live — just emit Done
             let _ = app.emit(
                 "agent-event",
                 AgentEvent::Done {
@@ -1281,10 +1565,9 @@ async fn run_agent(
             return Ok(());
         }
 
-        // ── Tool calls ───────────────────────────────────────────────────────
+        // ── Tool calls ─────────────────────────────────────────────────────────
         let calls = tool_calls.unwrap();
 
-        // Add assistant message (with tool_calls) to history
         messages.push(LlmMessage {
             role: "assistant".to_string(),
             content: msg["content"].clone(),
@@ -1304,7 +1587,6 @@ async fn run_agent(
             let args: serde_json::Value =
                 serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
 
-            // Emit tool call event
             let _ = app.emit(
                 "agent-event",
                 AgentEvent::ToolCall {
@@ -1316,11 +1598,9 @@ async fn run_agent(
                 },
             );
 
-            // Track search/browse for 2-action rule
             if matches!(fn_name.as_str(), "search_web" | "http_fetch") {
                 search_browse_count += 1;
                 if search_browse_count % 2 == 0 {
-                    // Inject a reminder so the model saves findings
                     messages.push(LlmMessage {
                         role: "system".to_string(),
                         content: serde_json::Value::String(
@@ -1332,17 +1612,15 @@ async fn run_agent(
                 }
             }
 
-            // Execute the tool — always pass Option refs so search_web can handle no-sandbox fallback
-            let (raw_output, is_error) =
-                execute_tool(
-                    docker_opt.as_ref().map(|d| d as &Docker),
-                    container_opt.as_deref(),
-                    &fn_name,
-                    &args,
-                    &http,
-                ).await;
+            let (raw_output, is_error) = execute_tool(
+                docker_opt.as_ref().map(|d| d as &Docker),
+                container_opt.as_deref(),
+                &fn_name,
+                &args,
+                &http,
+            )
+            .await;
 
-            // ── 3-Strike protocol ─────────────────────────────────────────
             let output = if is_error {
                 let strike = error_tracker.record_error(&fn_name, &raw_output);
                 match strike {
@@ -1368,20 +1646,15 @@ async fn run_agent(
                             attempts.join("\n---\n")
                         )
                     }
-                    _ => {
-                        // Beyond 3 strikes — force stop on this tool
-                        format!(
-                            "[BLOCKED] `{fn_name}` has failed {strike} times. Do not call this tool again. Report failure to user."
-                        )
-                    }
+                    _ => format!(
+                        "[BLOCKED] `{fn_name}` has failed {strike} times. Do not call this tool again. Report failure to user."
+                    ),
                 }
             } else {
-                // Success — reset strike counter for this tool
                 error_tracker.reset(&fn_name);
                 raw_output
             };
 
-            // Emit tool result
             let _ = app.emit(
                 "agent-event",
                 AgentEvent::ToolResult {
@@ -1393,7 +1666,6 @@ async fn run_agent(
                 },
             );
 
-            // Add tool result to message history
             messages.push(LlmMessage {
                 role: "tool".to_string(),
                 content: serde_json::Value::String(output),
@@ -1401,9 +1673,40 @@ async fn run_agent(
                 tool_calls: None,
             });
         }
+
+        // Emit assistant + tool messages to frontend so rawHistory stays in sync
+        // for multi-turn context. We re-serialize the slice added this iteration.
+        // The assistant message is the last messages entry before the tool results;
+        // find it by looking backwards from current end.
+        {
+            // Collect the assistant message and all its tool results that were just pushed.
+            // They are the last (1 + calls.len()) entries (excluding any system injections).
+            let mut raw_batch: Vec<serde_json::Value> = Vec::new();
+            for m in messages.iter().rev() {
+                match m.role.as_str() {
+                    "tool" => {
+                        raw_batch.push(serde_json::to_value(m).unwrap_or_default());
+                    }
+                    "assistant" if m.tool_calls.is_some() => {
+                        raw_batch.push(serde_json::to_value(m).unwrap_or_default());
+                        break;
+                    }
+                    _ => break,
+                }
+            }
+            raw_batch.reverse();
+            if !raw_batch.is_empty() {
+                let _ = app.emit(
+                    "agent-event",
+                    AgentEvent::RawMessages {
+                        task_id: task_id.clone(),
+                        messages: raw_batch,
+                    },
+                );
+            }
+        }
     }
 
-    // Max iterations hit
     let _ = app.emit(
         "agent-event",
         AgentEvent::Error {
@@ -1502,6 +1805,8 @@ pub fn run() {
             stop_agent,
             get_config,
             save_config,
+            validate_path,
+            fetch_models,
             get_agent_status,
             stop_sandbox,
             read_memory_files,
