@@ -19,6 +19,7 @@ export interface RunWebAgentParams {
   model: string
   apiBase: string
   provider: string
+  braveSearchKey?: string
 }
 
 export async function runWebAgent(params: RunWebAgentParams): Promise<void> {

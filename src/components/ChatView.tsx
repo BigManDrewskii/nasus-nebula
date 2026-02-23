@@ -71,6 +71,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     workspacePath,
     apiBase,
     provider,
+    braveSearchKey,
     setWorkspacePath,
     setApiKey,
     setModel,
@@ -102,9 +103,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
   const [showMemory, setShowMemory] = useState(false)
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider })
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey })
   useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider }
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey }
   })
 
   useEffect(() => {
@@ -278,17 +279,26 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       : `/tmp/nasus-workspace/${taskId}`
     try {
       await tauriInvoke('run_agent', {
-        taskId,
-        messageId: agentMsgId,
-        userMessages: history,
-        apiKey: cfg.apiKey || '',
-        model: cfg.model || 'anthropic/claude-3.5-sonnet',
-        workspacePath: taskWorkspace,
-        apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-        provider: cfg.provider || 'openrouter',
-      })
+          taskId,
+          messageId: agentMsgId,
+          userMessages: history,
+          apiKey: cfg.apiKey || '',
+          model: cfg.model || 'anthropic/claude-3.5-sonnet',
+          workspacePath: taskWorkspace,
+          apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+          provider: cfg.provider || 'openrouter',
+          braveSearchKey: cfg.braveSearchKey || '',
+        })
     } catch (err) {
-      setError(taskId, agentMsgId, `Failed to start agent: ${err}`)
+      // Catch both sync throws and unhandled promise rejections from the agent loop
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
+        setError(taskId, agentMsgId, `Agent error: ${msg}`)
+      } else {
+        // User-cancelled — mark as failed/stopped cleanly
+        useAppStore.getState().updateTaskStatus(taskId, 'failed')
+        useAppStore.getState().setStreaming(taskId, agentMsgId, false)
+      }
       runningRef.current = false
     }
   }, [setError])
@@ -364,11 +374,12 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'n') { e.preventDefault(); onNewTask() }
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
-      if (e.key === 'Escape' && isActive) { e.preventDefault(); handleStop() }
+      // Don't fire stop if a modal (settings, memory) is currently open
+      if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStop() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, onNewTask, onOpenSettings])
+  }, [isActive, showMemory, onNewTask, onOpenSettings])
 
   const isFirstMessage = messages.length === 1
   const showEmptyState = isFirstMessage && !isActive

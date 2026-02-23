@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { tauriInvoke } from '../tauri'
+import { fetchModels as fetchModelsFromLlm } from '../agent/llm'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 // ─── Provider definitions ──────────────────────────────────────────────────────
 
@@ -66,6 +69,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     apiKey, model, workspacePath, apiBase, provider,
     setApiKey, setModel, setWorkspacePath, setApiBase, setProvider, setDynamicModels,
+    braveSearchKey, setBraveSearchKey,
   } = useAppStore()
 
   const [localKey, setLocalKey] = useState(apiKey)
@@ -73,6 +77,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localProvider, setLocalProvider] = useState<ProviderId>((provider as ProviderId) || 'openrouter')
   const [localBase, setLocalBase] = useState(apiBase || 'https://openrouter.ai/api/v1')
+  const [localBraveKey, setLocalBraveKey] = useState(braveSearchKey || '')
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -107,21 +112,23 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  async function handleFetchModels() {
-    setFetchingModels(true)
-    setFetchModelsError(null)
-    try {
-      const models = await tauriInvoke<string[]>('fetch_models', { apiBase: localBase, apiKey: localKey })
-      const sorted = models.sort()
-      setFetchedModels(sorted)
-      setDynamicModels(sorted)
-      if (models.length > 0 && !models.includes(localModel)) setLocalModel(models[0])
-    } catch (e) {
-      setFetchModelsError(String(e))
-    } finally {
-      setFetchingModels(false)
+    async function handleFetchModels() {
+      setFetchingModels(true)
+      setFetchModelsError(null)
+      try {
+        const models = isTauri
+          ? await tauriInvoke<string[]>('fetch_models', { apiBase: localBase, apiKey: localKey })
+          : await fetchModelsFromLlm(localBase, localKey)
+        const sorted = models.sort()
+        setFetchedModels(sorted)
+        setDynamicModels(sorted)
+        if (models.length > 0 && !models.includes(localModel)) setLocalModel(models[0])
+      } catch (e) {
+        setFetchModelsError(String(e))
+      } finally {
+        setFetchingModels(false)
+      }
     }
-  }
 
   const modelList: { value: string; label: string; tag?: string | null }[] =
     fetchedModels
@@ -164,14 +171,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       } catch { /* command not registered yet, skip */ }
       setPathChecking(false)
     }
-    setSaving(true)
-    const trimBase = localBase.trim().replace(/\/$/, '')
-    setApiKey(localKey.trim())
-    setModel(localModel)
-    setWorkspacePath(localWorkspace.trim())
-    setApiBase(trimBase)
-    setProvider(localProvider)
-    await tauriInvoke('save_config', {
+      setSaving(true)
+      const trimBase = localBase.trim().replace(/\/$/, '')
+      setApiKey(localKey.trim())
+      setModel(localModel)
+      setWorkspacePath(localWorkspace.trim())
+      setApiBase(trimBase)
+      setProvider(localProvider)
+      setBraveSearchKey(localBraveKey.trim())
+      await tauriInvoke('save_config', {
       apiKey: localKey.trim(),
       model: localModel,
       workspacePath: localWorkspace.trim(),
@@ -407,30 +415,54 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           </Field>
 
-          {/* ── Workspace Path ── */}
-          <Field
-            label="Workspace Path"
-            icon="folder-open"
-            hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
-            error={errors.workspacePath}
-          >
-            <input
-              type="text"
-              value={localWorkspace}
-              onChange={(e) => { setLocalWorkspace(e.target.value); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
-              placeholder="/Users/you/nasus-workspace"
-              style={{
-                width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                color: 'var(--tx-primary)',
-                background: '#0d0d0d',
-                border: `1px solid ${errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                transition: 'border-color 0.12s',
-              }}
-              className="placeholder-[var(--tx-muted)]"
-              onFocus={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
-            />
-          </Field>
+            {/* ── Workspace Path ── */}
+            <Field
+              label="Workspace Path"
+              icon="folder-open"
+              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
+              error={errors.workspacePath}
+            >
+              <input
+                type="text"
+                value={localWorkspace}
+                onChange={(e) => { setLocalWorkspace(e.target.value); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
+                placeholder="/Users/you/nasus-workspace"
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                  color: 'var(--tx-primary)',
+                  background: '#0d0d0d',
+                  border: `1px solid ${errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  transition: 'border-color 0.12s',
+                }}
+                className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
+              />
+            </Field>
+
+            {/* ── Brave Search API Key ── */}
+            <Field
+              label="Brave Search API Key"
+              icon="search"
+              hint={<>Optional but recommended — enables real web search results. Get a free key at <a href="https://brave.com/search/api/" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>brave.com/search/api</a></>}
+            >
+              <input
+                type="password"
+                value={localBraveKey}
+                onChange={(e) => setLocalBraveKey(e.target.value)}
+                placeholder="BSA…"
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                  color: 'var(--tx-primary)',
+                  background: '#0d0d0d',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  transition: 'border-color 0.12s',
+                }}
+                className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+              />
+            </Field>
         </div>
 
         {/* Actions — 24px top margin */}

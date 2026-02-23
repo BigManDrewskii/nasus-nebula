@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { tauriInvoke } from '../tauri'
+import { getWorkspace } from '../agent/tools'
 import type { MemoryFiles } from '../types'
 import { Pxi } from './Pxi'
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 interface Props {
   taskId: string
@@ -27,9 +30,28 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
   useEffect(() => {
     setLoading(true)
     setError(null)
-    tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
-      .then((data) => { setFiles(data); setLoading(false) })
-      .catch((e) => { setError(String(e)); setLoading(false) })
+
+    if (isTauri) {
+      // Desktop: read from real filesystem via Tauri
+      tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
+        .then((data) => { setFiles(data); setLoading(false) })
+        .catch((e) => { setError(String(e)); setLoading(false) })
+    } else {
+      // Browser: read from in-memory workspace store
+      try {
+        const ws = getWorkspace(taskId)
+        const data: MemoryFiles = {
+          task_plan: ws.get('task_plan.md') ?? '',
+          findings: ws.get('findings.md') ?? '',
+          progress: ws.get('progress.md') ?? '',
+        }
+        setFiles(data)
+      } catch (e) {
+        setError(String(e))
+      } finally {
+        setLoading(false)
+      }
+    }
   }, [taskId, workspacePath])
 
   const currentTab = TABS.find((t) => t.id === activeTab)!
@@ -51,9 +73,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Pxi name="bookmark" size={13} style={{ color: 'var(--tx-tertiary)' }} />
             <div>
-              {/* Heading: primary #e2e2e2 ≈ 14.6:1 */}
               <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)', margin: 0 }}>Agent Memory</h2>
-              {/* Subheading: tertiary #757575 ≈ 4.6:1 */}
               <p style={{ fontSize: 11, marginTop: 1, color: 'var(--tx-tertiary)', margin: 0 }}>Persistent files in /workspace</p>
             </div>
           </div>
@@ -115,7 +135,6 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
                   border: 'none',
                   cursor: 'pointer',
                   background: isActive ? 'oklch(64% 0.214 40.1 / 0.07)' : 'transparent',
-                  /* Active: amber-soft. Inactive: secondary #ababab ≈ 7.9:1 */
                   color: isActive ? 'var(--amber-soft)' : 'var(--tx-secondary)',
                   borderBottom: isActive ? '2px solid oklch(64% 0.214 40.1 / 0.6)' : '2px solid transparent',
                   marginBottom: -1,
@@ -144,13 +163,11 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               {error}
             </div>
           ) : isEmpty ? (
-            /* Empty state: secondary #ababab ≈ 7.9:1 */
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 128, gap: 8, color: 'var(--tx-secondary)' }}>
               <Pxi name={currentTab.icon} size={20} />
               <span style={{ fontSize: 12, fontStyle: 'italic' }}>No content yet — the agent will populate this file as it works.</span>
             </div>
           ) : (
-            /* Content: secondary ≈ 7.9:1 */
             <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-words', color: 'var(--tx-secondary)', margin: 0 }}>
               {currentContent}
             </pre>
@@ -159,10 +176,9 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
 
         {/* Footer */}
         <div style={{ padding: '8px 20px 10px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          {/* Path: tertiary #757575 ≈ 4.6:1 */}
           <p style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx-tertiary)', margin: 0 }}>
             <Pxi name="folder-open" size={9} />
-            <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{workspacePath}</code>
+            <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{isTauri ? workspacePath : '/workspace (in-memory)'}</code>
           </p>
         </div>
       </div>

@@ -3,7 +3,7 @@
  *
  * In the browser we cannot run Docker / bash. Instead:
  * - http_fetch  → native fetch (same-origin CORS limitations apply)
- * - search_web  → DuckDuckGo Instant Answer JSON API (no sandbox needed)
+ * - search_web  → Brave Search API (if key configured) or DuckDuckGo fallback
  * - bash / read_file / write_file / list_files → in-memory workspace shim
  *
  * The in-memory workspace gives the agent a real key-value store so it can
@@ -28,12 +28,89 @@ function normPath(p: string): string {
   return p.replace(/^\/workspace\/?/, '').replace(/^\.\//, '') || 'output.txt'
 }
 
+// ── Search backends ───────────────────────────────────────────────────────────
+
+async function searchBrave(query: string, numResults: number, apiKey: string): Promise<string> {
+  const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${numResults}&text_decorations=0&result_filter=web`
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'Accept-Encoding': 'gzip',
+      'X-Subscription-Token': apiKey,
+    },
+  })
+  if (!res.ok) throw new Error(`Brave Search HTTP ${res.status}`)
+  const json = await res.json()
+
+  const results: string[] = []
+  const webResults: Array<{ title?: string; url?: string; description?: string }> =
+    json?.web?.results ?? []
+
+  for (let i = 0; i < Math.min(webResults.length, numResults); i++) {
+    const r = webResults[i]
+    results.push(`[${i + 1}] ${r.title ?? '(no title)'}`)
+    if (r.url) results.push(`    URL: ${r.url}`)
+    if (r.description) results.push(`    ${r.description}`)
+    results.push('')
+  }
+
+  if (results.length === 0) {
+    return `No results found for "${query}".`
+  }
+  return results.join('\n')
+}
+
+async function searchDuckDuckGo(query: string, numResults: number): Promise<string> {
+  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
+  const res = await fetch(url, { headers: { Accept: 'application/json' } })
+  const json = await res.json()
+
+  const results: string[] = []
+
+  if (json.AbstractText) {
+    results.push(`[Abstract] ${json.AbstractText}`)
+    if (json.AbstractURL) results.push(`  URL: ${json.AbstractURL}`)
+    results.push('')
+  }
+
+  const topics: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }> = json.RelatedTopics ?? []
+  let count = 0
+  for (const t of topics) {
+    if (count >= numResults) break
+    if (t.Text && t.FirstURL) {
+      results.push(`[${count + 1}] ${t.Text}`)
+      results.push(`    URL: ${t.FirstURL}`)
+      results.push('')
+      count++
+    } else if (t.Topics) {
+      for (const sub of t.Topics as Array<{ Text?: string; FirstURL?: string }>) {
+        if (count >= numResults) break
+        if (sub.Text && sub.FirstURL) {
+          results.push(`[${count + 1}] ${sub.Text}`)
+          results.push(`    URL: ${sub.FirstURL}`)
+          results.push('')
+          count++
+        }
+      }
+    }
+  }
+
+  if (results.length === 0) {
+    return (
+      `No instant results for "${query}". ` +
+      `Try http_fetch with a specific URL, or refine your query.`
+    )
+  }
+  return results.slice(0, numResults * 3).join('\n')
+}
+
 // ── Tool executor ─────────────────────────────────────────────────────────────
 
 export async function executeTool(
   taskId: string,
   toolName: string,
   args: Record<string, unknown>,
+  braveSearchKey?: string,
 ): Promise<{ output: string; isError: boolean }> {
   const ws = getWorkspace(taskId)
 
@@ -115,7 +192,6 @@ export async function executeTool(
       const recursive = Boolean(args.recursive)
       const lines = files.map((f) => `/workspace/${f}`)
       if (!recursive) {
-        // top-level only
         const top = [...new Set(lines.map((l) => l.split('/').slice(0, 3).join('/')))]
         return { output: top.join('\n'), isError: false }
       }
@@ -144,7 +220,6 @@ export async function executeTool(
         return { output: `HTTP ${res.status}\n${preview}`, isError: false }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
-        // CORS errors are very common in browser — give a useful hint
         if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
           return {
             output:
@@ -163,56 +238,23 @@ export async function executeTool(
       const num = Math.min(Number(args.num_results ?? 5), 10)
 
       try {
-        // DuckDuckGo Instant Answer API — has CORS headers, works from browser
-        const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
-        const res = await fetch(url, {
-          headers: { Accept: 'application/json' },
-        })
-        const json = await res.json()
-
-        const results: string[] = []
-
-        // Abstract (top answer)
-        if (json.AbstractText) {
-          results.push(`[Abstract] ${json.AbstractText}`)
-          if (json.AbstractURL) results.push(`  URL: ${json.AbstractURL}`)
-          results.push('')
+        if (braveSearchKey) {
+          // Preferred: Brave Search API — real web results
+          const output = await searchBrave(query, num, braveSearchKey)
+          return { output, isError: false }
+        } else {
+          // Fallback: DuckDuckGo Instant Answer (no key needed, limited results)
+          const output = await searchDuckDuckGo(query, num)
+          return { output, isError: false }
         }
-
-        // Related topics
-        const topics: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }> = json.RelatedTopics ?? []
-        let count = 0
-        for (const t of topics) {
-          if (count >= num) break
-          if (t.Text && t.FirstURL) {
-            results.push(`[${count + 1}] ${t.Text}`)
-            results.push(`    URL: ${t.FirstURL}`)
-            results.push('')
-            count++
-          } else if (t.Topics) {
-            for (const sub of t.Topics as Array<{ Text?: string; FirstURL?: string }>) {
-              if (count >= num) break
-              if (sub.Text && sub.FirstURL) {
-                results.push(`[${count + 1}] ${sub.Text}`)
-                results.push(`    URL: ${sub.FirstURL}`)
-                results.push('')
-                count++
-              }
-            }
-          }
-        }
-
-        if (results.length === 0) {
-          return {
-            output:
-              `No instant results for "${query}". ` +
-              `Try http_fetch with a specific URL, or refine your query.`,
-            isError: false,
-          }
-        }
-
-        return { output: results.slice(0, num * 3).join('\n'), isError: false }
       } catch (err) {
+        // If Brave fails (e.g. CORS in some environments), fall back to DDG
+        if (braveSearchKey) {
+          try {
+            const output = await searchDuckDuckGo(query, num)
+            return { output: `[Brave Search unavailable, using DuckDuckGo fallback]\n${output}`, isError: false }
+          } catch { /* ignore secondary failure */ }
+        }
         return { output: `search error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
       }
     }

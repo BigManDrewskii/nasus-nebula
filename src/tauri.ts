@@ -16,6 +16,7 @@ interface RunAgentArgs {
   workspacePath?: string
   apiBase: string
   provider: string
+  braveSearchKey?: string
 }
 
 async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Promise<void> {
@@ -31,6 +32,7 @@ async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Prom
       model: a.model,
       apiBase: a.apiBase,
       provider: a.provider,
+      braveSearchKey: a.braveSearchKey,
     })
   } else if (cmd === 'stop_agent') {
     const taskId = (args as Record<string, string>).taskId

@@ -120,7 +120,7 @@ IMPORTANT: You are running in browser mode. The sandbox environment has limitati
 - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available
 - read_file / write_file: use these directly for all file operations — they work reliably
 - http_fetch: external requests may be blocked by CORS — JSON APIs with CORS headers work best
-- search_web: uses DuckDuckGo Instant Answer API — always available
+- search_web: uses Brave Search API (or DuckDuckGo fallback) — always available for real web results
 
 ═══════════════════════════════════════════════════════
 MEMORY PROTOCOL (MANDATORY - follow exactly)
@@ -303,6 +303,7 @@ export interface RunAgentParams {
   model: string
   apiBase: string
   provider: string
+  braveSearchKey?: string
   signal: AbortSignal
 }
 
@@ -310,7 +311,7 @@ const MAX_ITERATIONS = 30
 const COMPRESS_THRESHOLD = 40
 
 export async function runAgentLoop(params: RunAgentParams): Promise<void> {
-  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, signal } = params
+  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, braveSearchKey, signal } = params
   const store = useAppStore.getState
 
   const emit = {
@@ -473,7 +474,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
         }
       }
 
-      const { output: rawOutput, isError } = await executeTool(taskId, fnName, args)
+        const { output: rawOutput, isError } = await executeTool(taskId, fnName, args, braveSearchKey)
 
       let output: string
       if (isError) {

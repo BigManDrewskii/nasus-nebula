@@ -14,6 +14,7 @@ interface AppState {
   apiBase: string
   provider: string
   dynamicModels: string[]
+  braveSearchKey: string
 
   setActiveTaskId: (id: string | null) => void
   setDynamicModels: (models: string[]) => void
@@ -35,7 +36,12 @@ interface AppState {
   setWorkspacePath: (path: string) => void
   setApiBase: (base: string) => void
   setProvider: (provider: string) => void
+  setBraveSearchKey: (key: string) => void
 }
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const MAX_TASKS = 20
+const MAX_TOOL_RESULT_CHARS = 2000  // Truncate large tool outputs before persisting
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
@@ -59,22 +65,38 @@ export const useAppStore = create<AppState>()(
       activeTaskId: 'initial',
       messages: { initial: [WELCOME_MESSAGE] },
       rawHistory: {},
-        apiKey: '',
-        model: 'anthropic/claude-3.5-sonnet',
-        workspacePath: '',
-        apiBase: 'https://openrouter.ai/api/v1',
-        provider: 'openrouter',
-        dynamicModels: [],
+          apiKey: '',
+          model: 'anthropic/claude-3.5-sonnet',
+          workspacePath: '',
+          apiBase: 'https://openrouter.ai/api/v1',
+          provider: 'openrouter',
+          dynamicModels: [],
+          braveSearchKey: '',
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
         setDynamicModels: (models) => set({ dynamicModels: models }),
 
-      addTask: (task) =>
-        set((state) => ({
-          tasks: [task, ...state.tasks],
-          messages: { ...state.messages, [task.id]: [WELCOME_MESSAGE] },
-          rawHistory: { ...state.rawHistory, [task.id]: [] },
-        })),
+        addTask: (task) =>
+          set((state) => {
+            const tasks = [task, ...state.tasks]
+            const messages = { ...state.messages, [task.id]: [WELCOME_MESSAGE] }
+            const rawHistory = { ...state.rawHistory, [task.id]: [] }
+
+            // Prune oldest tasks (beyond MAX_TASKS) to keep localStorage lean
+            if (tasks.length > MAX_TASKS) {
+              const pruned = tasks.slice(MAX_TASKS)
+              for (const t of pruned) {
+                delete messages[t.id]
+                delete rawHistory[t.id]
+              }
+            }
+
+            return {
+              tasks: tasks.slice(0, MAX_TASKS),
+              messages,
+              rawHistory,
+            }
+          }),
 
       deleteTask: (id) =>
         set((state) => {
@@ -202,25 +224,49 @@ export const useAppStore = create<AppState>()(
           },
         })),
 
-        setApiKey: (key) => set({ apiKey: key }),
-        setModel: (model) => set({ model }),
-        setWorkspacePath: (path) => set({ workspacePath: path }),
-        setApiBase: (base) => set({ apiBase: base }),
-        setProvider: (provider) => set({ provider }),
+          setApiKey: (key) => set({ apiKey: key }),
+          setModel: (model) => set({ model }),
+          setWorkspacePath: (path) => set({ workspacePath: path }),
+          setApiBase: (base) => set({ apiBase: base }),
+          setProvider: (provider) => set({ provider }),
+          setBraveSearchKey: (key) => set({ braveSearchKey: key }),
     }),
     {
       name: 'nasus-store-v2',
-      partialize: (state) => ({
-        tasks: state.tasks,
-        messages: state.messages,
-        rawHistory: state.rawHistory,
-        apiKey: state.apiKey,
-        model: state.model,
-        workspacePath: state.workspacePath,
-        apiBase: state.apiBase,
-        provider: state.provider,
-        activeTaskId: state.activeTaskId,
-      }),
+      partialize: (state) => {
+        // Trim large tool result outputs in steps before persisting to avoid bloating localStorage
+        const trimmedMessages: Record<string, Message[]> = {}
+        for (const [tid, msgs] of Object.entries(state.messages)) {
+          trimmedMessages[tid] = msgs.map((m) => {
+            if (!m.steps || m.steps.length === 0) return m
+            return {
+              ...m,
+              steps: m.steps.map((s) => {
+                if (s.kind === 'tool_call' && s.result && typeof s.result.output === 'string' && s.result.output.length > MAX_TOOL_RESULT_CHARS) {
+                  return { ...s, result: { ...s.result, output: s.result.output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n[…truncated for storage]' } }
+                }
+                if (s.kind === 'tool_result' && typeof s.output === 'string' && s.output.length > MAX_TOOL_RESULT_CHARS) {
+                  return { ...s, output: s.output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n[…truncated for storage]' }
+                }
+                return s
+              }),
+            }
+          })
+        }
+
+        return {
+          tasks: state.tasks,
+          messages: trimmedMessages,
+          rawHistory: state.rawHistory,
+          apiKey: state.apiKey,
+          model: state.model,
+          workspacePath: state.workspacePath,
+          apiBase: state.apiBase,
+          provider: state.provider,
+          activeTaskId: state.activeTaskId,
+          braveSearchKey: state.braveSearchKey,
+        }
+      },
       // On rehydration, clear any streaming:true flags left by a previous crashed session
       onRehydrateStorage: () => (state) => {
         if (!state) return
