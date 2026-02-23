@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
+import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
 
 const PROVIDERS = [
@@ -56,9 +57,7 @@ export function OnboardingScreen() {
 
   const isLiteLLMOrCustom = selectedProvider.id === 'litellm' || selectedProvider.id === 'custom'
   const effectiveBase = isLiteLLMOrCustom ? customBase.trim() : selectedProvider.apiBase
-  const canContinue = isLiteLLMOrCustom
-    ? effectiveBase.length > 0
-    : apiKey.trim().length > 0
+  const canContinue = isLiteLLMOrCustom ? effectiveBase.length > 0 : apiKey.trim().length > 0
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -85,86 +84,94 @@ export function OnboardingScreen() {
 
   return (
     <div
-      className="flex h-screen w-screen items-center justify-center overflow-hidden"
-      style={{ background: '#080808' }}
+      style={{ display: 'flex', height: '100vh', width: '100vw', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', background: '#080808' }}
     >
-      {/* Subtle radial glow */}
+      {/* Amber radial glow */}
       <div
-        className="pointer-events-none absolute inset-0"
         style={{
-          background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,130,246,0.07) 0%, transparent 100%)',
+          pointerEvents: 'none',
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(ellipse 55% 35% at 50% 0%, oklch(64% 0.214 40.1 / 0.08) 0%, transparent 100%)',
         }}
       />
 
-      <div className="relative z-10 w-full max-w-sm px-6 flex flex-col gap-8">
+      <div style={{ position: 'relative', zIndex: 10, width: '100%', maxWidth: 360, padding: '0 24px', display: 'flex', flexDirection: 'column', gap: 32 }}>
+
         {/* Logo + title */}
-        <div className="flex flex-col items-center gap-5 text-center">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20, textAlign: 'center' }}>
           <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-2xl"
             style={{
-              background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              boxShadow: '0 0 40px rgba(37,99,235,0.3), 0 8px 32px rgba(0,0,0,0.4)',
+              width: 64, height: 64, borderRadius: 20,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: '#0f0f0f',
+              border: '1px solid oklch(64% 0.214 40.1 / 0.28)',
+              boxShadow: '0 0 40px oklch(64% 0.214 40.1 / 0.15), 0 8px 32px rgba(0,0,0,0.5)',
             }}
           >
-            <span className="text-white font-bold text-xl tracking-tight">N</span>
+            <NasusLogo size={36} fill="var(--amber)" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight" style={{ color: '#f0f0f0' }}>
-              Nasus
+            <h1
+              className="font-display font-semibold"
+              style={{ fontSize: 22, color: 'var(--amber-light)', letterSpacing: '-0.03em', margin: 0 }}
+            >
+              NASUS
             </h1>
-            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: '#555' }}>
+            {/* Subtitle: secondary #ababab on #080808 ≈ 7.4:1 */}
+            <p style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6, color: 'var(--tx-secondary)' }}>
               Autonomous AI agent with a real sandbox.<br />
               Browses, codes, ships.
             </p>
           </div>
         </div>
 
-        <div className="h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+        <div style={{ height: 1, background: 'oklch(64% 0.214 40.1 / 0.1)' }} />
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
           {/* Provider selector */}
-          <div className="flex flex-col gap-2">
-            <label
-              className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest"
-              style={{ color: '#555' }}
-            >
-              <Pxi name="plug" size={10} style={{ color: '#444' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--tx-secondary)' }}>
+              <Pxi name="plug" size={10} style={{ color: 'var(--tx-tertiary)' }} />
               Provider
             </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedProvider(p)
-                    setApiKeyLocal('')
-                    setCustomBase('')
-                    setError('')
-                  }}
-                  className="px-3 py-2 rounded-xl text-[12px] font-medium transition-all text-left"
-                  style={{
-                    background: selectedProvider.id === p.id ? 'rgba(37,99,235,0.15)' : '#111',
-                    border: selectedProvider.id === p.id
-                      ? '1px solid rgba(59,130,246,0.4)'
-                      : '1px solid rgba(255,255,255,0.07)',
-                    color: selectedProvider.id === p.id ? '#93c5fd' : '#555',
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              {PROVIDERS.map((p) => {
+                const isSelected = selectedProvider.id === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setSelectedProvider(p); setApiKeyLocal(''); setCustomBase(''); setError('') }}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      textAlign: 'left',
+                      border: isSelected
+                        ? '1px solid oklch(64% 0.214 40.1 / 0.45)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      background: isSelected ? 'oklch(64% 0.214 40.1 / 0.12)' : '#111',
+                      cursor: 'pointer',
+                      transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+                      /* Selected: amber-soft. Inactive: secondary #ababab ≈ 7.9:1 */
+                      color: isSelected ? 'var(--amber-soft)' : 'var(--tx-secondary)',
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
-          {/* API Base URL — for LiteLLM / Custom */}
+          {/* API Base URL — LiteLLM / Custom */}
           {isLiteLLMOrCustom && (
-            <div className="flex flex-col gap-2">
-              <label
-                className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest"
-                style={{ color: '#555' }}
-              >
-                <Pxi name="link" size={10} style={{ color: '#444' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--tx-secondary)' }}>
+                <Pxi name="link" size={10} style={{ color: 'var(--tx-tertiary)' }} />
                 API Base URL
               </label>
               <input
@@ -173,24 +180,25 @@ export function OnboardingScreen() {
                 onChange={(e) => setCustomBase(e.target.value)}
                 placeholder={selectedProvider.placeholder}
                 autoFocus
-                className="w-full px-4 py-3 rounded-xl text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none transition-all"
                 style={{
+                  width: '100%', padding: '12px 16px', borderRadius: 12, fontSize: 13, outline: 'none',
+                  color: 'var(--tx-primary)',
                   background: '#111',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.09)',
+                  transition: 'border-color 0.12s',
+                  fontFamily: 'inherit',
                 }}
-                onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)' }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
               />
             </div>
           )}
 
           {/* API Key */}
-          <div className="flex flex-col gap-2">
-            <label
-              className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-widest"
-              style={{ color: '#555' }}
-            >
-              <Pxi name="lock" size={10} style={{ color: '#444' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.12em', color: 'var(--tx-secondary)' }}>
+              <Pxi name="lock" size={10} style={{ color: 'var(--tx-tertiary)' }} />
               {isLiteLLMOrCustom ? 'API Key (optional)' : 'API Key'}
             </label>
             <input
@@ -199,59 +207,77 @@ export function OnboardingScreen() {
               onChange={(e) => setApiKeyLocal(e.target.value)}
               placeholder={isLiteLLMOrCustom ? 'Leave blank if auth is disabled' : selectedProvider.placeholder}
               autoFocus={!isLiteLLMOrCustom}
-              className="w-full px-4 py-3 rounded-xl text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none transition-all"
               style={{
+                width: '100%', padding: '12px 16px', borderRadius: 12, fontSize: 13, outline: 'none',
+                color: 'var(--tx-primary)',
                 background: '#111',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.09)',
+                transition: 'border-color 0.12s',
+                fontFamily: 'inherit',
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+              className="placeholder-[var(--tx-muted)]"
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
             />
-            {error && <p className="text-[12px] text-red-400">{error}</p>}
+            {error && <p style={{ fontSize: 12, color: '#f87171', margin: 0 }}>{error}</p>}
           </div>
 
+          {/* CTA */}
           <button
             type="submit"
             disabled={!canContinue || saving}
-            className="w-full py-3 rounded-xl text-[13px] font-medium text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            className="font-display"
             style={{
-              background: saving || !canContinue
-                ? '#1e3a8a'
-                : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-              boxShadow: canContinue && !saving ? '0 4px 20px rgba(37,99,235,0.25)' : 'none',
+              width: '100%',
+              padding: '12px 0',
+              borderRadius: 12,
+              fontSize: 12,
+              fontWeight: 600,
+              border: 'none',
+              cursor: (canContinue && !saving) ? 'pointer' : 'not-allowed',
+              letterSpacing: '-0.01em',
+              background: (canContinue && !saving)
+                ? 'linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%)'
+                : 'rgba(255,255,255,0.06)',
+              /* Black text on amber — high contrast. Secondary on disabled bg. */
+              color: (canContinue && !saving) ? '#000' : 'var(--tx-secondary)',
+              boxShadow: (canContinue && !saving) ? '0 4px 24px oklch(64% 0.214 40.1 / 0.3)' : 'none',
+              opacity: (!canContinue || saving) ? 0.5 : 1,
+              transition: 'background 0.15s, box-shadow 0.15s, opacity 0.15s',
             }}
           >
             {saving ? (
-              <span className="flex items-center justify-center gap-2">
-                <Pxi name="spinner-third" size={13} style={{ color: 'white' }} />
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Pxi name="spinner-third" size={13} style={{ color: '#000' }} />
                 Saving…
               </span>
             ) : (
-              <span className="flex items-center justify-center gap-2">
-                Continue
-                <Pxi name="arrow-right" size={13} style={{ color: 'white' }} />
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                CONTINUE
+                <Pxi name="arrow-right" size={13} style={{ color: (canContinue && !saving) ? '#000' : 'var(--tx-secondary)' }} />
               </span>
             )}
           </button>
 
-          {/* Help link */}
+          {/* Help link — tertiary #757575 ≈ 4.6:1 */}
           {selectedProvider.helpUrl ? (
-            <p className="text-center text-[11px]" style={{ color: '#555' }}>
-                {selectedProvider.helpText}{' '}
-                <a
-                  href={selectedProvider.helpUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 transition-colors hover:text-neutral-400"
-                  style={{ color: '#666' }}
-                >
-                  {selectedProvider.helpLabel}
-                </a>
-              </p>
-            ) : (
-              <p className="text-center text-[11px]" style={{ color: '#555' }}>
-                {selectedProvider.helpText}
-              </p>
+            <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--tx-tertiary)', margin: 0 }}>
+              {selectedProvider.helpText}{' '}
+              <a
+                href={selectedProvider.helpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2, transition: 'color 0.12s' }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
+              >
+                {selectedProvider.helpLabel}
+              </a>
+            </p>
+          ) : (
+            <p style={{ textAlign: 'center', fontSize: 11, color: 'var(--tx-tertiary)', margin: 0 }}>
+              {selectedProvider.helpText}
+            </p>
           )}
         </form>
       </div>

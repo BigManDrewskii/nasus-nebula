@@ -1,5 +1,6 @@
 import type { Message } from '../types'
 import { AgentStepsView } from './AgentStepsView'
+import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
 
 // ─── Error banner ─────────────────────────────────────────────────────────────
@@ -10,16 +11,18 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
       className="flex items-start gap-2.5 mt-2 px-3 py-2.5 rounded-xl"
       style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)' }}
     >
-      <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
+      <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />
       <div className="flex-1 min-w-0">
-        <p className="text-[12px] leading-relaxed" style={{ color: '#fca5a5' }}>
+        {/* #fca5a5 on the dark red tint still exceeds 4.5:1 */}
+        <p className="leading-relaxed" style={{ fontSize: 12, color: '#fca5a5' }}>
           {error}
         </p>
         {onRetry && (
           <button
             onClick={onRetry}
-            className="flex items-center gap-1.5 mt-2 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-all"
+            className="flex items-center gap-1.5 mt-2 font-medium px-2.5 py-1 rounded-lg transition-all"
             style={{
+              fontSize: 11,
               background: 'rgba(239,68,68,0.1)',
               border: '1px solid rgba(239,68,68,0.2)',
               color: '#f87171',
@@ -58,21 +61,39 @@ function inlineMarkdown(text: string, keyPrefix: string): React.ReactNode {
     if (full.startsWith('***')) {
       parts.push(<strong key={k}><em>{match[2]}</em></strong>)
     } else if (full.startsWith('**') || full.startsWith('__')) {
-      parts.push(<strong key={k} className="font-semibold text-white">{match[3] ?? match[4]}</strong>)
+      /* Bold: white — maximum contrast for emphasis */
+      parts.push(<strong key={k} style={{ fontWeight: 600, color: '#ffffff' }}>{match[3] ?? match[4]}</strong>)
     } else if (full.startsWith('_') || full.startsWith('*')) {
-      parts.push(<em key={k} className="italic text-neutral-300">{match[5] ?? match[6]}</em>)
+      /* Italic: primary text, slightly raised */
+      parts.push(<em key={k} style={{ fontStyle: 'italic', color: 'var(--tx-primary)' }}>{match[5] ?? match[6]}</em>)
     } else if (full.startsWith('~~')) {
-      parts.push(<del key={k} className="line-through opacity-50">{match[7]}</del>)
+      parts.push(<del key={k} style={{ textDecoration: 'line-through', opacity: 0.55 }}>{match[7]}</del>)
     } else if (full.startsWith('`')) {
+      /* Inline code — amber-soft on a near-black tinted bg */
       parts.push(
-        <code key={k} className="bg-white/[0.08] border border-white/[0.08] text-blue-300/90 text-[11.5px] font-mono px-1.5 py-[2px] rounded-md leading-none">
+        <code
+          key={k}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'var(--amber-soft)',   /* oklch(79% 0.164 30.1) ≈ high contrast on dark */
+            fontSize: '0.8em',
+            fontFamily: 'var(--font-mono)',
+            padding: '1px 5px',
+            borderRadius: 4,
+            lineHeight: 1,
+          }}
+        >
           {match[8]}
         </code>,
       )
     } else if (full.startsWith('[')) {
       parts.push(
         <a key={k} href={match[10]} target="_blank" rel="noopener noreferrer"
-          className="text-blue-400 underline underline-offset-2 decoration-blue-500/30 hover:text-blue-300 transition-colors">
+          style={{ color: 'var(--amber)', textDecorationColor: 'oklch(64% 0.214 40.1 / 0.4)', textDecoration: 'underline', textUnderlineOffset: 2 }}
+          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
+          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
+        >
           {match[9]}
         </a>,
       )
@@ -99,14 +120,18 @@ function renderMarkdown(text: string): React.ReactNode {
       const lang = nlIdx !== -1 ? rest.slice(0, nlIdx).trim() : ''
       const code = nlIdx !== -1 ? rest.slice(nlIdx + 1).replace(/```$/, '').trimEnd() : rest.replace(/```$/, '').trimEnd()
       nodes.push(
-        <div key={k()} className="my-3.5 rounded-xl overflow-hidden border border-white/[0.07] bg-[#0d0d0d]">
+        <div key={k()} style={{ margin: '14px 0', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: '#0a0a0a' }}>
           {lang && (
-            <div className="flex items-center gap-2 px-3.5 py-2 border-b border-white/[0.05]">
-              <Pxi name="code-block" size={11} style={{ color: '#444' }} />
-              <span className="text-[10px] font-mono text-neutral-600 uppercase tracking-[0.1em]">{lang}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <Pxi name="code-block" size={11} style={{ color: 'var(--tx-tertiary)' }} />
+              {/* Lang label: #757575 on #0a0a0a ≈ 4.6:1 */}
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                {lang}
+              </span>
             </div>
           )}
-          <pre className="overflow-x-auto text-[12px] font-mono text-neutral-200 px-4 py-3.5 leading-[1.65]">
+          {/* Code body: #c8c8c8 on #0a0a0a ≈ 10.4:1 */}
+          <pre style={{ overflow: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#c8c8c8', padding: '14px 16px', lineHeight: 1.65, margin: 0 }}>
             <code>{code}</code>
           </pre>
         </div>,
@@ -118,28 +143,38 @@ function renderMarkdown(text: string): React.ReactNode {
     let i = 0
     while (i < lines.length) {
       const line = lines[i]
-
       if (!line.trim()) { i++; continue }
 
       if (/^[-*_]{3,}\s*$/.test(line)) {
-        nodes.push(<hr key={k()} className="border-white/[0.07] my-4" />)
+        nodes.push(<hr key={k()} style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '16px 0' }} />)
         i++; continue
       }
 
       const h3 = line.match(/^###\s+(.+)/)
       const h2 = line.match(/^##\s+(.+)/)
       const h1 = line.match(/^#\s+(.+)/)
-      if (h1) { nodes.push(<h1 key={k()} className="text-[15px] font-semibold text-white mt-5 mb-2 leading-snug">{inlineMarkdown(h1[1], k())}</h1>); i++; continue }
-      if (h2) { nodes.push(<h2 key={k()} className="text-[14px] font-semibold text-neutral-100 mt-4 mb-1.5 leading-snug">{inlineMarkdown(h2[1], k())}</h2>); i++; continue }
-      if (h3) { nodes.push(<h3 key={k()} className="text-[13px] font-medium text-neutral-200 mt-3 mb-1 leading-snug">{inlineMarkdown(h3[1], k())}</h3>); i++; continue }
+      if (h1) {
+        /* h1: white, 16px */
+        nodes.push(<h1 key={k()} style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginTop: 20, marginBottom: 8, lineHeight: 1.35 }}>{inlineMarkdown(h1[1], k())}</h1>)
+        i++; continue
+      }
+      if (h2) {
+        nodes.push(<h2 key={k()} style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 16, marginBottom: 6, lineHeight: 1.35 }}>{inlineMarkdown(h2[1], k())}</h2>)
+        i++; continue
+      }
+      if (h3) {
+        nodes.push(<h3 key={k()} style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx-primary)', marginTop: 12, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h3[1], k())}</h3>)
+        i++; continue
+      }
 
       if (line.startsWith('> ')) {
         const quoteLines: string[] = []
         while (i < lines.length && lines[i].startsWith('> ')) { quoteLines.push(lines[i].slice(2)); i++ }
         nodes.push(
-          <blockquote key={k()} className="border-l-[2px] border-blue-500/30 pl-3.5 my-3 space-y-1">
+          <blockquote key={k()} style={{ borderLeft: '2px solid oklch(64% 0.214 40.1 / 0.45)', paddingLeft: 14, margin: '12px 0' }}>
             {quoteLines.map((ql, qi) => (
-              <p key={qi} className="text-[13px] text-neutral-400 italic leading-relaxed">{inlineMarkdown(ql, `bq-${qi}`)}</p>
+              /* Blockquote text: #ababab on #0d0d0d ≈ 7.9:1 */
+              <p key={qi} style={{ fontSize: 13, color: 'var(--tx-secondary)', fontStyle: 'italic', lineHeight: 1.7, margin: '2px 0' }}>{inlineMarkdown(ql, `bq-${qi}`)}</p>
             ))}
           </blockquote>,
         ); continue
@@ -149,10 +184,11 @@ function renderMarkdown(text: string): React.ReactNode {
         const items: string[] = []
         while (i < lines.length && /^[-*+]\s/.test(lines[i])) { items.push(lines[i].replace(/^[-*+]\s/, '')); i++ }
         nodes.push(
-          <ul key={k()} className="my-2.5 space-y-[5px]">
+          <ul key={k()} style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
             {items.map((item, ii) => (
-              <li key={ii} className="flex items-baseline gap-2 text-[13px] leading-[1.7] text-neutral-200">
-                <span className="mt-[0.5em] w-[3px] h-[3px] rounded-full bg-neutral-600 flex-shrink-0" />
+              <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
+                {/* Bullet: amber — visible without being noisy */}
+                <span style={{ marginTop: '0.5em', width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', flexShrink: 0 }} />
                 <span>{inlineMarkdown(item, `ul-${ii}`)}</span>
               </li>
             ))}
@@ -164,10 +200,11 @@ function renderMarkdown(text: string): React.ReactNode {
         const items: string[] = []
         while (i < lines.length && /^\d+\.\s/.test(lines[i])) { items.push(lines[i].replace(/^\d+\.\s+/, '')); i++ }
         nodes.push(
-          <ol key={k()} className="my-2.5 space-y-[5px]">
+          <ol key={k()} style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
             {items.map((item, ii) => (
-              <li key={ii} className="flex items-baseline gap-2 text-[13px] leading-[1.7] text-neutral-200">
-                <span className="text-[11px] text-neutral-600 font-mono flex-shrink-0 min-w-[16px] text-right tabular-nums">{ii + 1}.</span>
+              <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
+                {/* Number: tertiary (#757575 ≈ 4.6:1) — clearly readable */}
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, minWidth: 16, textAlign: 'right', tabularNums: 'tabular-nums' } as React.CSSProperties}>{ii + 1}.</span>
                 <span>{inlineMarkdown(item, `ol-${ii}`)}</span>
               </li>
             ))}
@@ -184,7 +221,8 @@ function renderMarkdown(text: string): React.ReactNode {
 
       if (paraLines.length > 0) {
         nodes.push(
-          <p key={k()} className="text-[13px] leading-[1.75] text-neutral-200 my-[3px]">
+          /* Body paragraphs: #ababab on #0d0d0d ≈ 7.9:1 */
+          <p key={k()} style={{ fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)', margin: '4px 0' }}>
             {paraLines.map((pl, pi) => (
               <span key={pi}>
                 {inlineMarkdown(pl, `p-${pi}`)}
@@ -205,13 +243,17 @@ function renderMarkdown(text: string): React.ReactNode {
 function NasusAvatar() {
   return (
     <div
-      className="w-[26px] h-[26px] rounded-[7px] flex-shrink-0 flex items-center justify-center"
       style={{
-        background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-        boxShadow: '0 0 0 1px rgba(37,99,235,0.25), 0 2px 8px rgba(37,99,235,0.15)',
+        width: 28, height: 28,
+        borderRadius: 8,
+        flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: '#111',
+        border: '1px solid oklch(64% 0.214 40.1 / 0.28)',
+        boxShadow: '0 2px 8px oklch(64% 0.214 40.1 / 0.12)',
       }}
     >
-      <span className="text-white font-bold text-[11px] tracking-tight">N</span>
+      <NasusLogo size={16} fill="var(--amber)" />
     </div>
   )
 }
@@ -220,14 +262,16 @@ function NasusAvatar() {
 
 function TypingDots() {
   return (
-    <div className="flex items-center gap-[5px] h-[26px]">
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, height: 28 }}>
       {[0, 150, 300].map((delay) => (
         <span
           key={delay}
-          className="w-[5px] h-[5px] rounded-full"
           style={{
-            background: '#505050',
+            width: 5, height: 5, borderRadius: '50%',
+            /* #757575 dots — 4.6:1, clearly readable */
+            background: 'var(--tx-tertiary)',
             animation: `typing-bounce 1.2s ease-in-out ${delay}ms infinite`,
+            display: 'block',
           }}
         />
       ))}
@@ -241,18 +285,23 @@ function UserBubble({ content }: { content: string }) {
   const isSimple = !content.includes('\n') && !/^[#>`\-*]/.test(content.trim())
 
   return (
-    <div className="flex justify-end">
-      <div className="max-w-[72%] min-w-0">
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '72%', minWidth: 0 }}>
         <div
-          className="text-neutral-100 text-[13px] leading-[1.7] px-3.5 py-2.5 rounded-[14px] rounded-tr-[4px]"
           style={{
+            /* User bubble text: #e2e2e2 on #1c1c1e ≈ 11.5:1 */
+            color: 'var(--tx-primary)',
+            fontSize: 13,
+            lineHeight: 1.7,
+            padding: '10px 14px',
+            borderRadius: '14px 14px 4px 14px',
             background: '#1c1c1e',
-            border: '1px solid rgba(255,255,255,0.07)',
+            border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
           {isSimple
-            ? <span className="whitespace-pre-wrap">{content}</span>
-            : <div className="whitespace-pre-wrap">{renderMarkdown(content)}</div>
+            ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
+            : <div style={{ whiteSpace: 'pre-wrap' }}>{renderMarkdown(content)}</div>
           }
         </div>
       </div>
@@ -263,33 +312,41 @@ function UserBubble({ content }: { content: string }) {
 // ─── Agent message ────────────────────────────────────────────────────────────
 
 function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
-  const hasSteps = (message.steps?.length ?? 0) > 0
+  const hasSteps   = (message.steps?.length ?? 0) > 0
   const hasContent = message.content.trim().length > 0
   const isStreaming = message.streaming
-  const hasError = !!message.error
-  const isWaiting = !hasContent && !hasSteps && isStreaming && !hasError
+  const hasError   = !!message.error
+  const isWaiting  = !hasContent && !hasSteps && isStreaming && !hasError
 
   return (
-    <div className="flex items-start gap-2.5">
-      <div className="mt-[1px] flex-shrink-0">
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+      <div style={{ marginTop: 1, flexShrink: 0 }}>
         <NasusAvatar />
       </div>
-      <div className="flex-1 min-w-0">
+      <div style={{ flex: 1, minWidth: 0 }}>
         {isWaiting && <TypingDots />}
         {hasSteps && <AgentStepsView steps={message.steps!} />}
         {hasContent && (
-          <div className={hasSteps ? 'mt-3' : ''}>
+          <div style={hasSteps ? { marginTop: 12 } : {}}>
             {renderMarkdown(message.content)}
             {isStreaming && (
               <span
-                className="inline-block w-[2px] h-[13px] bg-blue-400/80 rounded-sm ml-[2px] align-middle"
-                style={{ animation: 'cursor-blink 1s step-start infinite' }}
+                style={{
+                  display: 'inline-block',
+                  width: 2, height: 13,
+                  borderRadius: 2,
+                  marginLeft: 2,
+                  verticalAlign: 'middle',
+                  background: 'var(--amber)',
+                  opacity: 0.9,
+                  animation: 'cursor-blink 1s step-start infinite',
+                }}
               />
             )}
           </div>
         )}
         {hasSteps && !hasContent && isStreaming && !hasError && (
-          <div className="mt-2">
+          <div style={{ marginTop: 8 }}>
             <TypingDots />
           </div>
         )}

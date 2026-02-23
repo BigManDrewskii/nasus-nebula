@@ -3,7 +3,7 @@ import { Pxi } from './Pxi'
 interface ActionChip {
   label: string
   prompt: string
-  icon: string  // pixel icon name
+  icon: string
   description: string
 }
 
@@ -53,26 +53,34 @@ interface ActionChipsProps {
 
 export function ActionChips({ onSelect, centered }: ActionChipsProps) {
   return (
-    <div className={`flex flex-wrap gap-1.5 ${centered ? 'justify-center' : ''}`}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: centered ? 'center' : 'flex-start' }}>
       {chips.map((chip) => (
         <button
           key={chip.label}
           onClick={() => onSelect(chip.prompt)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] transition-all"
           style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 12px',
+            borderRadius: 8,
+            fontSize: 12,
+            border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.035)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            color: '#666',
+            cursor: 'pointer',
+            /* Chips at rest: secondary #ababab ≈ 7.9:1 */
+            color: 'var(--tx-secondary)',
+            transition: 'background 0.12s, color 0.12s, border-color 0.12s',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
-            e.currentTarget.style.color = '#aaa'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.11)'
+            e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.1)'
+            e.currentTarget.style.color = 'var(--amber-soft)'
+            e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.28)'
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = 'rgba(255,255,255,0.035)'
-            e.currentTarget.style.color = '#666'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
+            e.currentTarget.style.color = 'var(--tx-secondary)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
           }}
         >
           <Pxi name={chip.icon} size={12} />

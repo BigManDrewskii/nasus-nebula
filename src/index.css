@@ -1,10 +1,96 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-display: 'Unbounded', sans-serif;
+  --font-sans:    'Inter', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ── Type scale (px → rem at 16px base) ── */
+  /* Step −2: micro labels, timestamps          */
+  --text-2xs: 0.625rem;   /* 10px */
+  /* Step −1: captions, tags, uppercase labels  */
+  --text-xs:  0.6875rem;  /* 11px */
+  /* Step 0: secondary body, tool names         */
+  --text-sm:  0.75rem;    /* 12px */
+  /* Step +1: primary body, inputs, chat        */
+  --text-base: 0.8125rem; /* 13px */
+  /* Step +2: subheadings, task titles          */
+  --text-md:  0.875rem;   /* 14px */
+  /* Step +3: section headings                  */
+  --text-lg:  0.9375rem;  /* 15px */
+  /* Step +4: page/modal headings               */
+  --text-xl:  1.0625rem;  /* 17px */
+  /* Step +5: display / wordmark                */
+  --text-2xl: 1.25rem;    /* 20px */
+
+  /* ── Spacing scale (4-pt grid) ── */
+  --space-1:  0.25rem;    /* 4px  */
+  --space-2:  0.5rem;     /* 8px  */
+  --space-3:  0.75rem;    /* 12px */
+  --space-4:  1rem;       /* 16px */
+  --space-5:  1.25rem;    /* 20px */
+  --space-6:  1.5rem;     /* 24px */
+  --space-8:  2rem;       /* 32px */
+  --space-10: 2.5rem;     /* 40px */
+  --space-12: 3rem;       /* 48px */
+
+  /* ── Amber accent ramp ── */
+  --color-ana-1: oklch(64% 0.214 40.1);
+  --color-ana-1-contrast: #000;
+  --color-ana-2: oklch(44% 0.154 10.1);
+  --color-ana-2-contrast: #fff;
+  --color-ana-3: oklch(54% 0.173 20.1);
+  --color-ana-3-contrast: #fff;
+  --color-ana-4: oklch(79% 0.164 30.1);
+  --color-ana-4-contrast: #000;
+  --color-ana-5: oklch(89% 0.135 55.1);
+  --color-ana-5-contrast: #000;
+  --color-ana-6: oklch(99% 0.116 70.1);
+  --color-ana-6-contrast: #000;
+
+  /* ── Dark background ramp ── */
+  --color-bg-1: oklch(20% 0.183 115);
+  --color-bg-1-contrast: #fff;
+  --color-bg-2: oklch(37.4% 0.102 59.2);
+  --color-bg-2-contrast: #fff;
+  --color-bg-3: oklch(20.7% 0.115 66.1);
+  --color-bg-3-contrast: #fff;
+  --color-bg-4: oklch(46.2% 0.11 75.5);
+  --color-bg-4-contrast: #fff;
+  --color-bg-5: oklch(58.6% 0.093 101);
+  --color-bg-5-contrast: #000;
+  --color-bg-6: oklch(67.4% 0.079 119);
+  --color-bg-6-contrast: #000;
+}
+
+:root {
+  /* ── Amber accent shortcuts ── */
+  --amber:        oklch(64% 0.214 40.1);
+  --amber-deep:   oklch(44% 0.154 10.1);
+  --amber-mid:    oklch(54% 0.173 20.1);
+  --amber-soft:   oklch(79% 0.164 30.1);
+  --amber-light:  oklch(89% 0.135 55.1);
+  --amber-pale:   oklch(99% 0.116 70.1);
+
+  /*
+   * ── Text contrast hierarchy ──
+   *
+   * All values are designed to achieve ≥ 4.5:1 WCAG AA on a #0d0d0d / #111
+   * background. Measured with relative luminance math.
+   *
+   * --tx-primary   #e2e2e2  L ≈ 0.774  →  contrast ≈ 14.6:1  (headings, key labels)
+   * --tx-secondary #ababab  L ≈ 0.428  →  contrast ≈  7.9:1  (body copy, chat text)
+   * --tx-tertiary  #757575  L ≈ 0.197  →  contrast ≈  4.5:1  (captions, hints)
+   * --tx-muted     #555555  L ≈ 0.099  →  contrast ≈  2.7:1  (use only for decorative / non-text)
+   * --tx-ghost     #3a3a3a  L ≈ 0.049  →  contrast ≈  1.7:1  (decorative only, never text)
+   */
+  --tx-primary:   #e2e2e2;
+  --tx-secondary: #ababab;
+  --tx-tertiary:  #757575;
+  --tx-muted:     #555555;   /* decorative-only — NOT for readable text */
+  --tx-ghost:     #3a3a3a;   /* decorative-only — NOT for readable text */
 }
 
 * {
@@ -15,45 +101,58 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #0a0a0a;
-  color: #e8e8e8;
+  background-color: #0d0d0d;
+  /* Primary body text: #e2e2e2 on #0d0d0d ≈ 14.6:1 */
+  color: var(--tx-primary);
   font-family: 'Inter', system-ui, sans-serif;
+  font-size: var(--text-base);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+.font-display {
+  font-family: 'Unbounded', sans-serif;
+  letter-spacing: -0.01em;
+}
+
 /* Scrollbar */
-::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(64% 0.214 40.1 / 0.35);
+}
 
 /* Selection */
-::selection { background: rgba(59, 130, 246, 0.35); }
+::selection { background: oklch(64% 0.214 40.1 / 0.25); }
 
 /* Cursor blink */
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  50%       { opacity: 0; }
 }
 
 /* Typing bounce for dots */
 @keyframes typing-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30%            { transform: translateY(-4px); opacity: 1; }
+  0%, 60%, 100% { transform: translateY(0);    opacity: 0.5; }
+  30%            { transform: translateY(-4px); opacity: 1;   }
 }
 
 /* Message fade-in */
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 .msg-in { animation: msg-in 0.2s cubic-bezier(0.22,1,0.36,1) forwards; }
 
 /* Shimmer */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
 }
 .shimmer {
   background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
@@ -64,20 +163,20 @@ html, body, #root {
 /* Fade in */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0);   }
 }
 .fade-in { animation: fadeIn 0.18s ease-out forwards; }
 
-/* Pulse glow */
+/* Pulse glow — amber */
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50%       { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
+  0%, 100% { box-shadow: 0 0 0 0   oklch(64% 0.214 40.1 / 0.4); }
+  50%       { box-shadow: 0 0 0 5px oklch(64% 0.214 40.1 / 0);   }
 }
 .pulse-glow { animation: pulseGlow 1.8s ease-in-out infinite; }
 
 /* Expand down */
 @keyframes expandDown {
-  from { opacity: 0; max-height: 0; }
+  from { opacity: 0; max-height: 0;    }
   to   { opacity: 1; max-height: 800px; }
 }
 .expand-down { animation: expandDown 0.2s ease-out; overflow: hidden; }

@@ -11,7 +11,7 @@ export function AgentStepsView({ steps }: Props) {
   const rows = buildRows(steps)
 
   return (
-    <div className="mb-1 space-y-px">
+    <div style={{ marginBottom: 4 }}>
       {rows.map((row, i) => (
         <Row key={i} row={row} />
       ))}
@@ -70,15 +70,16 @@ function Row({ row }: { row: AnyRow }) {
   if (row.kind === 'strike_escalation') return <StrikeRow step={row.step} />
   if (row.kind === 'context_compressed') {
     return (
-      <div className="flex items-center gap-2 py-2 px-1">
-        <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
-        <div className="flex items-center gap-1.5">
-          <Pxi name="refresh" size={10} style={{ color: '#333' }} />
-          <span className="text-[10px] font-mono" style={{ color: '#333' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px' }}>
+        <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Pxi name="refresh" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+          {/* #757575 on #0d0d0d ≈ 4.6:1 */}
+          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>
             context compressed · {row.step.removedCount} pairs trimmed
           </span>
         </div>
-        <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
+        <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.06)' }} />
       </div>
     )
   }
@@ -95,20 +96,33 @@ function ThinkingRow({ content }: { content: string }) {
   return (
     <button
       onClick={() => isLong && setOpen((o) => !o)}
-      className={`w-full text-left flex items-start gap-2 px-1.5 py-1.5 rounded-lg transition-colors ${isLong ? 'cursor-pointer' : 'cursor-default'}`}
-      style={{ background: 'transparent' }}
+      style={{
+        width: '100%',
+        textAlign: 'left',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 8,
+        padding: '6px',
+        borderRadius: 8,
+        background: 'transparent',
+        border: 'none',
+        cursor: isLong ? 'pointer' : 'default',
+        transition: 'background 0.12s',
+      }}
       onMouseEnter={(e) => { if (isLong) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
     >
-      <Pxi name="face-thinking" size={12} style={{ color: '#3a3a3a', marginTop: 2, flexShrink: 0 }} />
-      <span className="text-[12px] italic leading-relaxed flex-1 min-w-0" style={{ color: '#444' }}>
+      {/* Thinking icon: tertiary #757575 ≈ 4.6:1 */}
+      <Pxi name="face-thinking" size={12} style={{ color: 'var(--tx-tertiary)', marginTop: 2, flexShrink: 0 }} />
+      {/* Thinking text: secondary #ababab ≈ 7.9:1 */}
+      <span style={{ fontSize: 12, fontStyle: 'italic', lineHeight: 1.6, flex: 1, minWidth: 0, color: 'var(--tx-secondary)' }}>
         {open ? content : preview}
         {isLong && !open && '…'}
         {isLong && (
           <Pxi
             name={open ? 'chevron-up' : 'chevron-down'}
             size={10}
-            style={{ color: '#333', marginLeft: 4, display: 'inline-block', verticalAlign: 'middle' }}
+            style={{ color: 'var(--tx-tertiary)', marginLeft: 4, display: 'inline-block', verticalAlign: 'middle' }}
           />
         )}
       </span>
@@ -126,39 +140,46 @@ function ToolPairRow({ pair }: { pair: ToolPair }) {
   const label = formatToolLabel(call.tool, call.input)
 
   return (
-    <div className="rounded-xl overflow-hidden fade-in">
+    <div style={{ borderRadius: 12, overflow: 'hidden' }}>
       {/* Header */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full text-left flex items-center gap-2 px-2.5 py-2 rounded-xl transition-colors"
-        style={{ background: open ? 'rgba(255,255,255,0.04)' : 'transparent' }}
-        onMouseEnter={(e) => {
-          if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 10px',
+          borderRadius: 12,
+          border: 'none',
+          background: open ? 'rgba(255,255,255,0.04)' : 'transparent',
+          cursor: 'pointer',
+          transition: 'background 0.12s',
         }}
-        onMouseLeave={(e) => {
-          if (!open) e.currentTarget.style.background = 'transparent'
-        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
       >
-        {/* Tool pixel icon */}
-        <Pxi name={toolIcon(call.tool)} size={12} style={{ color: '#444', flexShrink: 0 }} />
+        {/* Tool icon: tertiary */}
+        <Pxi name={toolIcon(call.tool)} size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
 
-        {/* Tool name */}
-        <span className="text-[11px] font-mono font-medium flex-shrink-0" style={{ color: '#555' }}>
+        {/* Tool name: secondary #ababab ≈ 7.9:1 */}
+        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 500, flexShrink: 0, color: 'var(--tx-secondary)' }}>
           {call.tool}
         </span>
 
-        {/* Command preview */}
-        <span className="text-[11.5px] font-mono truncate flex-1 text-left" style={{ color: '#333' }}>
+        {/* Command preview: tertiary #757575 ≈ 4.6:1 — readable context */}
+        <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--tx-tertiary)' }}>
           {label}
         </span>
 
-        {/* Status */}
-        <span className="flex-shrink-0 flex items-center gap-1.5 ml-1">
+        {/* Status indicator */}
+        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4 }}>
           {isPending ? (
-            <span className="flex gap-[3px]">
-              <span className="w-1 h-1 rounded-full bg-blue-500/70" style={{ animation: 'typing-bounce 1.2s ease-in-out 0ms infinite' }} />
-              <span className="w-1 h-1 rounded-full bg-blue-500/70" style={{ animation: 'typing-bounce 1.2s ease-in-out 120ms infinite' }} />
-              <span className="w-1 h-1 rounded-full bg-blue-500/70" style={{ animation: 'typing-bounce 1.2s ease-in-out 240ms infinite' }} />
+            <span style={{ display: 'flex', gap: 3 }}>
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 0ms infinite', display: 'block' }} />
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 120ms infinite', display: 'block' }} />
+              <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 240ms infinite', display: 'block' }} />
             </span>
           ) : isError ? (
             <Pxi name="times-circle" size={11} style={{ color: '#f87171' }} />
@@ -167,56 +188,86 @@ function ToolPairRow({ pair }: { pair: ToolPair }) {
           )}
         </span>
 
-        {/* Expand chevron */}
-        <Pxi
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={10}
-          style={{ color: '#444', flexShrink: 0 }}
-        />
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
       </button>
 
       {/* Expanded detail */}
       {open && (
         <div
-          className="expand-down border border-t-0 rounded-b-xl"
-          style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.05)' }}
+          className="expand-down"
+          style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderTop: 'none', borderRadius: '0 0 12px 12px' }}
         >
           {/* Input */}
-          <div className="px-3 py-2.5">
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Pxi name="arrow-right" size={9} style={{ color: '#333' }} />
-              <p className="text-[10px] uppercase tracking-[0.1em] font-medium" style={{ color: '#333' }}>Input</p>
+          <div style={{ padding: '10px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Pxi name="arrow-right" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+              {/* Section header: tertiary ≈ 4.6:1 */}
+              <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500, color: 'var(--tx-tertiary)', margin: 0 }}>Input</p>
             </div>
-            <pre className="text-[11.5px] rounded-lg p-2.5 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all max-h-48 overflow-y-auto"
-              style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.04)', color: '#888' }}>
+            <pre style={{
+              fontSize: 11,
+              borderRadius: 8,
+              padding: 10,
+              overflowX: 'auto',
+              fontFamily: 'var(--font-mono)',
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              maxHeight: 192,
+              overflowY: 'auto',
+              background: 'rgba(0,0,0,0.35)',
+              border: '1px solid rgba(255,255,255,0.05)',
+              /* Output code: #ababab ≈ 7.9:1 */
+              color: 'var(--tx-secondary)',
+              margin: 0,
+            }}>
               {JSON.stringify(call.input, null, 2)}
             </pre>
           </div>
 
           {/* Output */}
           {result && (
-            <div
-              className="px-3 py-2.5 border-t"
-              style={{ borderColor: isError ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.04)' }}
-            >
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <Pxi
-                  name={isError ? 'times' : 'check'}
-                  size={9}
-                  style={{ color: isError ? '#f87171' : '#34d399' }}
-                />
-                <p className="text-[10px] uppercase tracking-[0.1em] font-medium"
-                  style={{ color: isError ? '#f87171' : '#333' }}>
+            <div style={{
+              padding: '10px 12px',
+              borderTop: isError ? '1px solid rgba(239,68,68,0.18)' : '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <Pxi name={isError ? 'times' : 'check'} size={9} style={{ color: isError ? '#f87171' : '#34d399' }} />
+                <p style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500, color: isError ? '#f87171' : 'var(--tx-tertiary)', margin: 0 }}>
                   {isError ? 'Error' : 'Output'}
                 </p>
               </div>
-              <pre
-                className="text-[11.5px] rounded-lg p-2.5 overflow-x-auto font-mono leading-relaxed whitespace-pre-wrap break-all max-h-56 overflow-y-auto"
-                style={isError
-                  ? { background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.15)', color: '#fca5a5' }
-                  : { background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.04)', color: '#888' }
-                }
-              >
+              <pre style={isError ? {
+                fontSize: 11,
+                borderRadius: 8,
+                padding: 10,
+                overflowX: 'auto',
+                fontFamily: 'var(--font-mono)',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                maxHeight: 224,
+                overflowY: 'auto',
+                background: 'rgba(239,68,68,0.05)',
+                border: '1px solid rgba(239,68,68,0.15)',
+                color: '#fca5a5',
+                margin: 0,
+              } : {
+                fontSize: 11,
+                borderRadius: 8,
+                padding: 10,
+                overflowX: 'auto',
+                fontFamily: 'var(--font-mono)',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-all',
+                maxHeight: 224,
+                overflowY: 'auto',
+                background: 'rgba(0,0,0,0.35)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                color: 'var(--tx-secondary)',
+                margin: 0,
+              }}>
                 {result.output || '(no output)'}
               </pre>
             </div>
@@ -232,22 +283,27 @@ function ToolPairRow({ pair }: { pair: ToolPair }) {
 function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalation' }> }) {
   return (
     <div
-      className="flex items-start gap-2.5 rounded-xl px-3 py-2.5 my-1"
       style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        borderRadius: 12,
+        padding: '10px 12px',
+        margin: '4px 0',
         background: 'rgba(239,68,68,0.05)',
         border: '1px solid rgba(239,68,68,0.15)',
       }}
     >
       <Pxi name="exclamation-triangle" size={13} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium" style={{ color: '#f87171' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 12, fontWeight: 500, color: '#f87171', margin: 0 }}>
           Strike escalation on{' '}
-          <code className="font-mono text-[11px] px-1 rounded" style={{ background: 'rgba(239,68,68,0.15)' }}>
+          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, padding: '0 4px', borderRadius: 4, background: 'rgba(239,68,68,0.15)' }}>
             {step.tool}
           </code>
         </p>
         {step.attempts.map((a, i) => (
-          <p key={i} className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'rgba(248,113,113,0.5)' }}>
+          <p key={i} style={{ fontSize: 11, marginTop: 2, lineHeight: 1.5, color: 'rgba(248,113,113,0.65)' }}>
             Strike {i + 1}: {a.slice(0, 140)}{a.length > 140 ? '…' : ''}
           </p>
         ))}

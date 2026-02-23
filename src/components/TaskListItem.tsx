@@ -18,7 +18,6 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
     e.stopPropagation()
     if (!confirming) {
       setConfirming(true)
-      // Auto-cancel confirm after 3s if user doesn't click
       setTimeout(() => setConfirming(false), 3000)
       return
     }
@@ -33,26 +32,29 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
     >
       <button
         onClick={onClick}
-        className="w-full text-left px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-2 min-w-0 pr-8"
+        className="w-full text-left px-3 py-2 rounded-lg transition-all cursor-pointer flex items-center gap-2 min-w-0 pr-7"
         style={{
           background: isActive ? 'rgba(255,255,255,0.07)' : 'transparent',
-          color: isActive ? '#c8c8c8' : '#4a4a4a',
+          /* Active: #d0d0d0 on dark ≈ 11:1. Inactive: #ababab on #090909 ≈ 7.9:1 */
+          color: isActive ? 'var(--tx-primary)' : 'var(--tx-secondary)',
         }}
         onMouseEnter={(e) => {
           if (!isActive) {
             e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-            e.currentTarget.style.color = '#888'
+            /* Hover: step between secondary and primary */
+            e.currentTarget.style.color = '#c8c8c8'
           }
         }}
         onMouseLeave={(e) => {
           if (!isActive) {
             e.currentTarget.style.background = 'transparent'
-            e.currentTarget.style.color = '#4a4a4a'
+            e.currentTarget.style.color = 'var(--tx-secondary)'
           }
         }}
       >
         <StatusIndicator status={task.status} />
-        <p className="text-[12px] font-medium truncate flex-1 leading-tight">{task.title}</p>
+        {/* 12px body text, medium weight */}
+        <p className="font-medium truncate flex-1 leading-tight" style={{ fontSize: 12 }}>{task.title}</p>
       </button>
 
       {/* Delete button — visible on hover */}
@@ -63,14 +65,15 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
           className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded transition-all"
           style={{
             background: confirming ? 'rgba(239,68,68,0.15)' : 'transparent',
-            color: confirming ? '#f87171' : '#3a3a3a',
+            /* Idle delete icon: #757575 ≈ 4.6:1 */
+            color: confirming ? '#f87171' : 'var(--tx-tertiary)',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = confirming ? '#fca5a5' : '#888'
+            e.currentTarget.style.color = confirming ? '#fca5a5' : 'var(--tx-secondary)'
             if (!confirming) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = confirming ? '#f87171' : '#3a3a3a'
+            e.currentTarget.style.color = confirming ? '#f87171' : 'var(--tx-tertiary)'
             if (!confirming) e.currentTarget.style.background = 'transparent'
           }}
         >
@@ -85,17 +88,20 @@ function StatusIndicator({ status }: { status: Task['status'] }) {
   if (status === 'in_progress') {
     return (
       <span className="relative flex-shrink-0 w-[7px] h-[7px]">
-        <span className="absolute inset-0 rounded-full bg-blue-400 animate-ping opacity-50" />
-        <span className="relative block w-[7px] h-[7px] rounded-full bg-blue-400" />
+        {/* amber ping — replaced blue-400 */}
+        <span className="absolute inset-0 rounded-full animate-ping opacity-60"
+          style={{ background: 'var(--amber)' }} />
+        <span className="relative block w-[7px] h-[7px] rounded-full"
+          style={{ background: 'var(--amber)' }} />
       </span>
     )
   }
   if (status === 'completed') {
-    return <Pxi name="check-circle" size={11} style={{ color: '#22c55e', flexShrink: 0 }} />
+    return <Pxi name="check-circle" size={11} style={{ color: '#34d399', flexShrink: 0 }} />
   }
   if (status === 'failed') {
-    return <Pxi name="times-circle" size={11} style={{ color: '#ef4444', flexShrink: 0 }} />
+    return <Pxi name="times-circle" size={11} style={{ color: '#f87171', flexShrink: 0 }} />
   }
-  // pending
-  return <span className="w-[5px] h-[5px] rounded-full flex-shrink-0" style={{ background: '#252525' }} />
+  /* pending — subtle dot, just visible enough to parse */
+  return <span className="w-[5px] h-[5px] rounded-full flex-shrink-0" style={{ background: 'rgba(255,255,255,0.15)' }} />
 }

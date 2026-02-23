@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { tauriInvoke, tauriListen } from '../tauri'
+import { stopWebAgent } from '../agent/index'
 import type { Task, Message, AgentStep, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
 import { UserInputArea } from './UserInputArea'
 import { ActionChips } from './ActionChips'
 import { MemoryViewer } from './MemoryViewer'
+import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 interface ChatViewProps {
   task: Task | null
@@ -74,9 +78,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setProvider,
   } = useAppStore()
 
-  // ── Cost estimation ──────────────────────────────────────────────────────────
-  // Approximate blended (prompt+completion) $/token for common OpenRouter models.
-  // Uses total_tokens as a proxy — good enough for a "this task cost ~$X" indicator.
   function estimateCost(m: string, tokens: number): string {
     const ratesPerMillion: Record<string, number> = {
       'anthropic/claude-3.5-sonnet': 9,
@@ -101,7 +102,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
   const [showMemory, setShowMemory] = useState(false)
 
-  // Keep a ref to the latest config values so runAgent never captures a stale closure.
   const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider })
   useEffect(() => {
     configRef.current = { apiKey, model, workspacePath, apiBase, provider }
@@ -110,8 +110,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
       .then((cfg) => {
-        // Always sync from the persisted config — overrides stale Zustand state
-        // (handles the case where the user edited config.json outside the app).
         if (cfg.workspace_path) setWorkspacePath(cfg.workspace_path)
         if (cfg.api_key) setApiKey(cfg.api_key)
         if (cfg.model) setModel(cfg.model)
@@ -134,18 +132,40 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  useEffect(() => {
-    setIteration(0)
-    setTokenCount(0)
-    setSandboxStatus('idle')
-  }, [task?.id])
+    useEffect(() => {
+      setIteration(0)
+      setTokenCount(0)
+      setSandboxStatus('idle')
+    }, [task?.id])
 
-  useEffect(() => {
-    if (!task) return
-    let active = true
-    const cleanups: Array<() => void> = []
+    // ── Web-agent custom events (browser mode only) ────────────────────────────
+    useEffect(() => {
+      if (isTauri || !task) return
+      const taskId = task.id
 
-    tauriListen<AgentEventPayload>('agent-event', (payload) => {
+      function onIteration(e: Event) {
+        const { taskId: tid, iteration: iter } = (e as CustomEvent).detail
+        if (tid === taskId) setIteration(iter)
+      }
+      function onTokens(e: Event) {
+        const { taskId: tid, total_tokens } = (e as CustomEvent).detail
+        if (tid === taskId) setTokenCount(total_tokens)
+      }
+
+      window.addEventListener('nasus:iteration', onIteration)
+      window.addEventListener('nasus:tokens', onTokens)
+      return () => {
+        window.removeEventListener('nasus:iteration', onIteration)
+        window.removeEventListener('nasus:tokens', onTokens)
+      }
+    }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+      if (!task) return
+      let active = true
+      const cleanups: Array<() => void> = []
+
+      tauriListen<AgentEventPayload>('agent-event', (payload) => {
       if (!active || payload.task_id !== task.id) return
 
       switch (payload.kind) {
@@ -228,20 +248,17 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           setTokenCount(payload.total_tokens ?? 0)
           break
         }
-          case 'auto_title': {
-            if (payload.title) {
-              updateTaskTitle(task.id, payload.title)
-            }
-            break
-          }
-          case 'raw_messages': {
-            // Append assistant + tool messages to rawHistory so multi-turn context is preserved
-            if (payload.messages && payload.messages.length > 0) {
-              appendRawHistory(task.id, payload.messages)
-            }
-            break
-          }
+        case 'auto_title': {
+          if (payload.title) updateTaskTitle(task.id, payload.title)
+          break
         }
+        case 'raw_messages': {
+          if (payload.messages && payload.messages.length > 0) {
+            appendRawHistory(task.id, payload.messages)
+          }
+          break
+        }
+      }
     }).then((fn) => cleanups.push(fn))
 
     return () => {
@@ -250,9 +267,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     }
   }, [task?.id])
 
-  // ── Core send logic ─────────────────────────────────────────────────────────
-  // Use configRef so we always read the latest values even if get_config resolves
-  // after the first render (avoiding the workspace-path race / stale-closure bug).
   const runAgent = useCallback(async (
     taskId: string,
     agentMsgId: string,
@@ -264,27 +278,24 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       : `/tmp/nasus-workspace/${taskId}`
     try {
       await tauriInvoke('run_agent', {
-          taskId,
-          messageId: agentMsgId,
-          userMessages: history,
-          apiKey: cfg.apiKey || '',
-          model: cfg.model || 'anthropic/claude-3.5-sonnet',
-          workspacePath: taskWorkspace,
-          apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-          provider: cfg.provider || 'openrouter',
-        })
-      } catch (err) {
-        setError(taskId, agentMsgId, `Failed to start agent: ${err}`)
-        runningRef.current = false
-      }
-    }, [setError]) // configRef is stable — no need to list individual config values
+        taskId,
+        messageId: agentMsgId,
+        userMessages: history,
+        apiKey: cfg.apiKey || '',
+        model: cfg.model || 'anthropic/claude-3.5-sonnet',
+        workspacePath: taskWorkspace,
+        apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+        provider: cfg.provider || 'openrouter',
+      })
+    } catch (err) {
+      setError(taskId, agentMsgId, `Failed to start agent: ${err}`)
+      runningRef.current = false
+    }
+  }, [setError])
 
   async function handleSend(content: string) {
     if (!task || runningRef.current) return
-
-    if (messages.length === 1) {
-      updateTaskTitle(task.id, content.slice(0, 60))
-    }
+    if (messages.length === 1) updateTaskTitle(task.id, content.slice(0, 60))
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -294,7 +305,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     }
     addMessage(task.id, userMsg)
 
-    // Build on top of the persisted raw history (includes all past tool calls/results)
     const existingRaw = getRawHistory(task.id)
     const newUserMsg: LlmMessage = { role: 'user', content }
     const history = [...existingRaw, newUserMsg]
@@ -313,35 +323,32 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     runningRef.current = true
     setIteration(0)
     setTokenCount(0)
-    setSandboxStatus('starting')
+    setSandboxStatus(isTauri ? 'starting' : 'idle')
     updateTaskStatus(task.id, 'in_progress')
-
     await runAgent(task.id, agentMsgId, history)
   }
 
-  // Retry: re-run the last failed agent message using same history
   async function handleRetry(failedMsgId: string) {
     if (!task || runningRef.current) return
     const history = getRawHistory(task.id)
     if (history.length === 0) return
-
-    // Clear the error state on the failed message and re-enable streaming
     setError(task.id, failedMsgId, '')
     setStreaming(task.id, failedMsgId, true)
     runningRef.current = true
     setIteration(0)
     setTokenCount(0)
-    setSandboxStatus('starting')
+    setSandboxStatus(isTauri ? 'starting' : 'idle')
     updateTaskStatus(task.id, 'in_progress')
-
     await runAgent(task.id, failedMsgId, history)
   }
 
   async function handleStop() {
     if (!task) return
-    try {
-      await tauriInvoke('stop_agent', { taskId: task.id })
-    } catch { /* best-effort */ }
+    if (isTauri) {
+      try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
+    } else {
+      stopWebAgent(task.id)
+    }
     runningRef.current = false
     updateTaskStatus(task.id, 'failed')
   }
@@ -352,7 +359,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     handleSend(resumePrompt)
   }
 
-  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
@@ -367,21 +373,14 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   const isFirstMessage = messages.length === 1
   const showEmptyState = isFirstMessage && !isActive
 
-  // ── No task selected ─────────────────────────────────────────────────────────
+  // ── No task selected ──────────────────────────────────────────────────────
   if (!task) {
     return (
       <div className="flex flex-col h-full items-center justify-center" style={{ background: '#0d0d0d' }}>
         <div className="flex flex-col items-center gap-3 text-center px-8 max-w-xs">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              boxShadow: '0 0 0 1px rgba(37,99,235,0.25), 0 4px 16px rgba(37,99,235,0.15)',
-            }}
-          >
-            <span className="text-white font-bold text-base">N</span>
-          </div>
-          <p className="text-[13px] leading-relaxed" style={{ color: '#444' }}>
+          <NasusLogo size={32} fill="rgba(255,255,255,0.1)" />
+          {/* #ababab on #0d0d0d ≈ 7.9:1 */}
+          <p style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
             Select a task or create a new one
           </p>
         </div>
@@ -391,7 +390,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
 
   return (
     <div className="flex flex-col h-full" style={{ background: '#0d0d0d' }}>
-      {/* Memory viewer */}
       {showMemory && (
         <MemoryViewer
           taskId={task.id}
@@ -401,54 +399,56 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         />
       )}
 
-      {/* Header */}
+      {/* Header — 20px h-pad, 12px v-pad */}
       <header
         className="flex-shrink-0 flex items-center justify-between px-5 py-3"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0d0d0d' }}
       >
         {/* Left: title + live counters */}
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <h2 className="text-[13px] font-medium truncate" style={{ color: '#c0c0c0' }}>
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          {/* Task title: #e2e2e2 on #0d0d0d ≈ 14.6:1 */}
+          <h2 className="font-medium truncate" style={{ fontSize: 13, color: 'var(--tx-primary)' }}>
             {task.title}
           </h2>
           {isActive && iteration > 0 && (
-            <span className="flex items-center gap-1 flex-shrink-0">
-              <Pxi name="refresh" size={9} style={{ color: '#555' }} />
-              <span className="text-[10px] font-mono" style={{ color: '#555' }}>{iteration}</span>
+            <span className="flex items-center gap-1.5 flex-shrink-0">
+              <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+              {/* #757575 on #0d0d0d ≈ 4.6:1 */}
+              <span className="font-mono" style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{iteration}</span>
             </span>
           )}
           {tokenCount > 0 && (
-            <span className="text-[10px] font-mono flex-shrink-0" style={{ color: '#555' }}>
+            <span className="font-mono flex-shrink-0" style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
               {(tokenCount / 1000).toFixed(1)}k · {estimateCost(model, tokenCount)}
             </span>
           )}
         </div>
 
         {/* Right: sandbox pill + memory + stop/status */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
             <SandboxPill status={sandboxStatus} />
           )}
 
-          {/* Memory button */}
+          {/* Memory button — #757575 at rest */}
           <button
             onClick={() => setShowMemory(true)}
             title="View agent memory files"
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors"
-            style={{ color: '#555' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#999' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#555' }}
+            style={{ color: 'var(--tx-tertiary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
             <Pxi name="bookmark" size={11} />
-            <span className="text-[11px]">memory</span>
+            <span style={{ fontSize: 11 }}>memory</span>
           </button>
 
-          {/* Stop — only when running */}
           {isActive && (
             <button
               onClick={handleStop}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-all"
               style={{
+                fontSize: 11,
                 background: 'rgba(239,68,68,0.08)',
                 border: '1px solid rgba(239,68,68,0.2)',
                 color: '#f87171',
@@ -467,22 +467,23 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             </button>
           )}
 
-          {/* Status — only when idle */}
           {!isActive && <StatusDot status={task.status} />}
         </div>
       </header>
 
-      {/* Empty state — centred hero when no messages yet */}
+      {/* Empty state */}
       {showEmptyState ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="w-full max-w-lg flex flex-col items-center gap-7">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-xl shadow-blue-500/25">
-                <span className="text-white font-bold text-base">N</span>
-              </div>
+          <div className="w-full max-w-lg flex flex-col items-center gap-8">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <NasusLogo size={38} fill="var(--amber)" />
               <div>
-                <h3 className="text-[15px] font-semibold text-neutral-200">What would you like to accomplish?</h3>
-                <p className="text-[13px] text-neutral-600 mt-1 max-w-sm leading-relaxed">
+                {/* #e2e2e2 heading */}
+                <h3 className="font-semibold" style={{ fontSize: 16, color: 'var(--tx-primary)' }}>
+                  What would you like to accomplish?
+                </h3>
+                {/* #ababab subtext ≈ 7.9:1 */}
+                <p className="mt-2 max-w-sm leading-relaxed" style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
                   Autonomous agent with a real sandbox — browses the web, writes &amp; runs code, manages files.
                 </p>
               </div>
@@ -495,9 +496,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         </div>
       ) : (
         <>
-          {/* Message list */}
+          {/* Message list — 20px h-pad, 24px v-pad, 24px gap between messages */}
           <div className="flex-1 overflow-y-auto" id="message-list">
-            <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-5">
+            <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-6">
               {messages.slice(1).map((msg, i) => (
                 <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                   <ChatMessage
@@ -510,7 +511,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             </div>
           </div>
 
-          {/* Input area */}
+          {/* Input — 20px h-pad, 20px bottom-pad, 4px top-pad */}
           <div className="flex-shrink-0 px-5 pb-5 pt-1">
             <div className="max-w-[780px] mx-auto">
               <UserInputArea onSend={handleSend} disabled={isActive} />
@@ -522,7 +523,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   )
 }
 
-// ─── Status dot (header) ──────────────────────────────────────────────────────
+// ─── Status dot ───────────────────────────────────────────────────────────────
 
 function StatusDot({ status }: { status: Task['status'] }) {
   if (status === 'pending') return null
@@ -530,7 +531,8 @@ function StatusDot({ status }: { status: Task['status'] }) {
     return (
       <div className="flex items-center gap-1.5">
         <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
-        <span className="text-[11px]" style={{ color: '#555' }}>Done</span>
+        {/* #ababab label ≈ 7.9:1 */}
+        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Done</span>
       </div>
     )
   }
@@ -538,15 +540,18 @@ function StatusDot({ status }: { status: Task['status'] }) {
     return (
       <div className="flex items-center gap-1.5">
         <Pxi name="times-circle" size={11} style={{ color: '#f87171' }} />
-        <span className="text-[11px]" style={{ color: '#555' }}>Stopped</span>
+        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Stopped</span>
       </div>
     )
   }
   if (status === 'in_progress') {
     return (
       <div className="flex items-center gap-1.5">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-        <span className="text-[11px]" style={{ color: '#555' }}>Running</span>
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: 'var(--amber)', animation: 'pulseGlow 1.6s ease-in-out infinite' }}
+        />
+        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Running</span>
       </div>
     )
   }
@@ -559,9 +564,10 @@ function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stop
   if (status === 'idle') return null
 
   const cfg = {
-    starting: { icon: 'circle-notch', label: 'Starting', color: '#b45309' },
-    ready:    { icon: 'check-circle', label: 'Sandbox ready', color: '#059669' },
-    stopped:  { icon: 'times-circle', label: 'Stopped', color: '#555' },
+    starting: { icon: 'circle-notch', label: 'Starting',      color: 'var(--amber)' },
+    ready:    { icon: 'check-circle', label: 'Sandbox ready', color: '#34d399' },
+    /* stopped label: use tx-secondary for legibility */
+    stopped:  { icon: 'times-circle', label: 'Stopped',       color: 'var(--tx-secondary)' },
   }[status]
 
   if (!cfg) return null
@@ -569,10 +575,10 @@ function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stop
   return (
     <div
       className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
     >
       <Pxi name={cfg.icon} size={10} style={{ color: cfg.color }} />
-      <span className="text-[10px]" style={{ color: cfg.color }}>{cfg.label}</span>
+      <span style={{ fontSize: 10, color: cfg.color }}>{cfg.label}</span>
     </div>
   )
 }

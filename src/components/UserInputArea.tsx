@@ -22,7 +22,6 @@ const STATIC_MODELS = [
 ]
 
 function shortLabel(modelId: string): string {
-  // Strip provider prefix for display: "anthropic/claude-3.5-sonnet" → "claude-3.5-sonnet"
   const slash = modelId.indexOf('/')
   return slash >= 0 ? modelId.slice(slash + 1) : modelId
 }
@@ -30,7 +29,6 @@ function shortLabel(modelId: string): string {
 export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInputAreaProps) {
   const { model, setModel, dynamicModels } = useAppStore()
 
-  // Use dynamic models if available (fetched in SettingsPanel), else fall back to static list
   const models: Array<{ value: string; label: string }> = dynamicModels.length > 0
     ? dynamicModels.map((id) => {
         const staticEntry = STATIC_MODELS.find((m) => m.value === id)
@@ -69,14 +67,15 @@ export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInput
 
   return (
     <div
-      className="rounded-2xl border transition-colors duration-150"
       style={{
+        borderRadius: 16,
+        border: `1px solid ${disabled ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.09)'}`,
         background: '#131313',
-        borderColor: disabled ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)',
+        transition: 'border-color 0.15s',
       }}
     >
       {/* Textarea */}
-      <div className="px-4 pt-3.5 pb-1">
+      <div style={{ padding: '14px 16px 4px' }}>
         <textarea
           ref={textareaRef}
           onChange={handleInput}
@@ -84,50 +83,85 @@ export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInput
           placeholder={disabled ? 'Agent is running…' : 'Message Nasus…'}
           rows={1}
           disabled={disabled}
-          className="w-full resize-none bg-transparent text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none min-h-[26px] max-h-[220px] leading-relaxed disabled:cursor-not-allowed"
+          style={{
+            width: '100%',
+            resize: 'none',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            fontSize: 13,
+            /* Body text: primary #e2e2e2 ≈ 14.6:1 */
+            color: 'var(--tx-primary)',
+            lineHeight: 1.65,
+            minHeight: 26,
+            maxHeight: 220,
+            fontFamily: 'inherit',
+            cursor: disabled ? 'not-allowed' : 'text',
+          }}
+          className="placeholder-[var(--tx-muted)] disabled:opacity-60"
         />
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 pb-3 pt-1 gap-2">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 12px', gap: 8 }}>
 
-        {/* Model selector */}
-        <div className="flex items-center gap-1.5 min-w-0">
-            <Pxi name="sparkles" size={11} className="flex-shrink-0" style={{ color: '#555' }} />
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="text-[11px] bg-transparent focus:outline-none cursor-pointer appearance-none truncate max-w-[130px]"
-              style={{ color: '#555' }}
-              title="Select model"
-              onMouseEnter={(e) => { e.currentTarget.style.color = '#888' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = '#555' }}
-            >
-              {models.map((m) => (
-                <option key={m.value} value={m.value} style={{ background: '#1a1a1a', color: '#ccc' }}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <Pxi name="angle-down" size={10} style={{ color: '#444' }} />
+        {/* Model selector — #ababab at rest ≈ 7.9:1 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <Pxi name="sparkles" size={11} style={{ flexShrink: 0, color: 'var(--tx-secondary)' }} />
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            style={{
+              fontSize: 11,
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              cursor: 'pointer',
+              appearance: 'none',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: 130,
+              /* secondary contrast: #ababab ≈ 7.9:1 */
+              color: 'var(--tx-secondary)',
+              fontFamily: 'inherit',
+              transition: 'color 0.12s',
+            }}
+            title="Select model"
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+          >
+            {models.map((m) => (
+              <option key={m.value} value={m.value} style={{ background: '#1a1a1a', color: '#ccc' }}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <Pxi name="angle-down" size={10} style={{ color: 'var(--tx-tertiary)' }} />
         </div>
 
-        {/* Right side: hint + send/stop */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Right side: keyboard hint + send/stop */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {!disabled && (
-              <span className="text-[10px] select-none hidden sm:block" style={{ color: '#444' }}>
-                ↵ send · ⇧↵ newline
-              </span>
+            /* Keyboard hint: tertiary #757575 ≈ 4.6:1 — informational, passes AA */
+            <span style={{ fontSize: 10, userSelect: 'none', color: 'var(--tx-tertiary)' }} className="hidden sm:block">
+              ↵ send · ⇧↵ newline
+            </span>
           )}
 
           {disabled && onStop ? (
             <button
               onClick={onStop}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all"
               style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 10px',
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 500,
                 background: 'rgba(239,68,68,0.08)',
                 border: '1px solid rgba(239,68,68,0.2)',
                 color: '#f87171',
+                cursor: 'pointer',
+                transition: 'background 0.12s, border-color 0.12s',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(239,68,68,0.14)'
@@ -145,15 +179,21 @@ export function UserInputArea({ onSend, onStop, disabled, autoFocus }: UserInput
             <button
               onClick={handleSend}
               disabled={disabled}
-              className="flex items-center justify-center w-7 h-7 rounded-lg transition-all disabled:opacity-20 disabled:cursor-not-allowed"
               style={{
-                background: disabled ? '#1a1a1a' : '#2563eb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28,
+                borderRadius: 8,
+                border: 'none',
+                cursor: disabled ? 'not-allowed' : 'pointer',
+                background: disabled ? '#1a1a1a' : 'var(--amber)',
+                opacity: disabled ? 0.25 : 1,
+                transition: 'background 0.12s',
               }}
-              onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = '#3b82f6' }}
-              onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.background = '#2563eb' }}
+              onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--amber-soft)' }}
+              onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--amber)' }}
               title="Send (Enter)"
             >
-              <Pxi name="arrow-up" size={12} style={{ color: 'white' }} />
+              <Pxi name="arrow-up" size={12} style={{ color: disabled ? 'var(--tx-muted)' : '#000' }} />
             </button>
           )}
         </div>

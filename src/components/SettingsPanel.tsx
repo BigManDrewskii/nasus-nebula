@@ -10,7 +10,7 @@ const PROVIDERS = [
     id: 'openrouter',
     label: 'OpenRouter',
     base: 'https://openrouter.ai/api/v1',
-    keyHint: <>Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-blue-300 transition-colors" style={{ color: '#3b82f6' }}>openrouter.ai/keys</a></>,
+    keyHint: <>Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>openrouter.ai/keys</a></>,
     keyPrefix: 'sk-or-',
     keyPlaceholder: 'sk-or-v1-…',
   },
@@ -26,7 +26,7 @@ const PROVIDERS = [
     id: 'openai',
     label: 'OpenAI',
     base: 'https://api.openai.com/v1',
-    keyHint: <>Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-blue-300 transition-colors" style={{ color: '#3b82f6' }}>platform.openai.com</a></>,
+    keyHint: <>Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>platform.openai.com</a></>,
     keyPrefix: 'sk-',
     keyPlaceholder: 'sk-…',
   },
@@ -79,34 +79,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [errors, setErrors] = useState<ValidationErrors>({})
   const [pathChecking, setPathChecking] = useState(false)
 
-  // Model dropdown
   const [modelOpen, setModelOpen] = useState(false)
   const modelRef = useRef<HTMLDivElement>(null)
 
-    // Dynamic model list (from fetch) — local to this panel for display;
-    // also written to the store so UserInputArea stays in sync.
-    const [fetchedModels, setFetchedModels] = useState<string[] | null>(null)
-    const [fetchingModels, setFetchingModels] = useState(false)
-    const [fetchModelsError, setFetchModelsError] = useState<string | null>(null)
+  const [fetchedModels, setFetchedModels] = useState<string[] | null>(null)
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [fetchModelsError, setFetchModelsError] = useState<string | null>(null)
 
-  // Provider dropdown
   const [providerOpen, setProviderOpen] = useState(false)
   const providerRef = useRef<HTMLDivElement>(null)
 
   const providerDef = PROVIDERS.find((p) => p.id === localProvider) ?? PROVIDERS[0]
 
-  // When provider changes, auto-fill the base URL (unless custom)
   useEffect(() => {
-    if (localProvider !== 'custom' && providerDef.base) {
-      setLocalBase(providerDef.base)
-    }
-    // Reset dynamic models when switching providers
-      setFetchedModels(null)
-      setDynamicModels([])
-      setFetchModelsError(null)
+    if (localProvider !== 'custom' && providerDef.base) setLocalBase(providerDef.base)
+    setFetchedModels(null)
+    setDynamicModels([])
+    setFetchModelsError(null)
   }, [localProvider]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close dropdowns on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelOpen(false)
@@ -120,16 +111,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setFetchingModels(true)
     setFetchModelsError(null)
     try {
-      const models = await tauriInvoke<string[]>('fetch_models', {
-        apiBase: localBase,
-        apiKey: localKey,
-      })
+      const models = await tauriInvoke<string[]>('fetch_models', { apiBase: localBase, apiKey: localKey })
       const sorted = models.sort()
       setFetchedModels(sorted)
-      setDynamicModels(sorted) // sync to store so UserInputArea sees them
-      if (models.length > 0 && !models.includes(localModel)) {
-        setLocalModel(models[0])
-      }
+      setDynamicModels(sorted)
+      if (models.length > 0 && !models.includes(localModel)) setLocalModel(models[0])
     } catch (e) {
       setFetchModelsError(String(e))
     } finally {
@@ -137,16 +123,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     }
   }
 
-    // The model list shown in the dropdown.
-    // For OpenRouter: always show the curated list (with fetched list overriding it).
-    // For other providers: only show fetched models; if none fetched yet, show an empty
-    // list with a placeholder row so the user knows to click "Fetch models".
-    const modelList: { value: string; label: string; tag?: string | null }[] =
-      fetchedModels
-        ? fetchedModels.map((v) => ({ value: v, label: v, tag: null }))
-        : localProvider === 'openrouter'
-        ? OPENROUTER_MODELS
-        : []
+  const modelList: { value: string; label: string; tag?: string | null }[] =
+    fetchedModels
+      ? fetchedModels.map((v) => ({ value: v, label: v, tag: null }))
+      : localProvider === 'openrouter'
+      ? OPENROUTER_MODELS
+      : []
 
   const selectedModel = modelList.find((m) => m.value === localModel) ?? { value: localModel, label: localModel, tag: null }
 
@@ -174,20 +156,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setErrors({})
-
     if (localWorkspace.trim()) {
       setPathChecking(true)
       try {
         const ok = await tauriInvoke<boolean>('validate_path', { path: localWorkspace.trim() })
-        if (!ok) {
-          setErrors({ workspacePath: 'Path does not exist on disk' })
-          setPathChecking(false)
-          return
-        }
+        if (!ok) { setErrors({ workspacePath: 'Path does not exist on disk' }); setPathChecking(false); return }
       } catch { /* command not registered yet, skip */ }
       setPathChecking(false)
     }
-
     setSaving(true)
     const trimBase = localBase.trim().replace(/\/$/, '')
     setApiKey(localKey.trim())
@@ -211,54 +187,52 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: 'rgba(0,0,0,0.75)' }}
+      style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div
-        className="w-full max-w-md rounded-2xl shadow-2xl p-6 fade-in"
-        style={{ background: '#111', border: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ width: '100%', maxWidth: 448, borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.6)', padding: 24, background: '#111', border: '1px solid rgba(255,255,255,0.08)' }}
+        className="fade-in"
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
-            <Pxi name="cog" size={13} style={{ color: '#555' }} />
-            <h2 className="text-[14px] font-semibold" style={{ color: '#d0d0d0' }}>Settings</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Pxi name="cog" size={13} style={{ color: 'var(--tx-tertiary)' }} />
+            {/* Heading: primary #e2e2e2 ≈ 14.6:1 */}
+            <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', margin: 0 }}>Settings</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ color: '#444' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#999' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#444' }}
+            style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', transition: 'color 0.12s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
             <Pxi name="times" size={13} />
           </button>
         </div>
 
-        <div className="space-y-5">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           {/* ── Provider ── */}
           <Field label="Provider" icon="server">
-            <div className="relative" ref={providerRef}>
+            <div style={{ position: 'relative' }} ref={providerRef}>
               <button
                 type="button"
                 onClick={() => setProviderOpen((o) => !o)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] text-neutral-200 focus:outline-none"
                 style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
                   background: '#0d0d0d',
-                  border: `1px solid ${providerOpen ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.07)'}`,
+                  border: `1px solid ${providerOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  color: 'var(--tx-primary)',
+                  transition: 'border-color 0.12s',
                 }}
               >
                 <span>{providerDef.label}</span>
-                <Pxi name={providerOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: '#555' }} />
+                <Pxi name={providerOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
               </button>
-
               {providerOpen && (
-                <div
-                  className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-2xl"
-                  style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)' }}
-                >
+                <div style={{ position: 'absolute', zIndex: 10, width: '100%', marginTop: 4, borderRadius: 12, overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.5)', background: '#161616', border: '1px solid rgba(255,255,255,0.08)' }}>
                   {PROVIDERS.map((p) => {
                     const isSel = p.id === localProvider
                     return (
@@ -266,16 +240,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         key={p.id}
                         type="button"
                         onClick={() => { setLocalProvider(p.id); setProviderOpen(false) }}
-                        className="w-full flex items-center justify-between px-3 py-2 text-left text-[13px] transition-colors"
                         style={{
-                          color: isSel ? '#e0e0e0' : '#888',
-                          background: isSel ? 'rgba(37,99,235,0.12)' : 'transparent',
+                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '8px 12px', textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
+                          /* Selected: primary. Inactive: secondary #ababab ≈ 7.9:1 */
+                          color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                          background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                          transition: 'background 0.1s',
                         }}
-                        onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                        onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
                         onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
                       >
                         <span>{p.label}</span>
-                        {isSel && <Pxi name="check" size={10} style={{ color: '#3b82f6' }} />}
+                        {isSel && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
                       </button>
                     )
                   })}
@@ -300,118 +277,126 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               value={localBase}
               onChange={(e) => { setLocalBase(e.target.value); setErrors((p) => ({ ...p, apiBase: undefined })) }}
               placeholder="https://…/v1"
-              className="w-full px-3 py-2 rounded-lg text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none font-mono"
               style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--tx-primary)',
                 background: '#0d0d0d',
-                border: `1px solid ${errors.apiBase ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                border: `1px solid ${errors.apiBase ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                transition: 'border-color 0.12s',
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiBase ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiBase ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)' }}
+              className="placeholder-[var(--tx-muted)]"
+              onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiBase ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiBase ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
             />
           </Field>
 
           {/* ── API Key ── */}
-          <Field
-            label="API Key"
-            icon="lock"
-            hint={providerDef.keyHint}
-            error={errors.apiKey}
-          >
+          <Field label="API Key" icon="lock" hint={providerDef.keyHint} error={errors.apiKey}>
             <input
               type="password"
               value={localKey}
               onChange={(e) => { setLocalKey(e.target.value); setErrors((p) => ({ ...p, apiKey: undefined })) }}
               placeholder={providerDef.keyPlaceholder}
-              className="w-full px-3 py-2 rounded-lg text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none transition-colors"
               style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                color: 'var(--tx-primary)',
                 background: '#0d0d0d',
-                border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                transition: 'border-color 0.12s',
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)' }}
+              className="placeholder-[var(--tx-muted)]"
+              onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
             />
           </Field>
 
           {/* ── Model ── */}
           <Field label="Model" icon="sparkles">
-            <div className="space-y-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* Fetch models row */}
-              <div className="flex items-center gap-2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button
                   type="button"
                   onClick={handleFetchModels}
                   disabled={fetchingModels || !localBase.trim()}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-lg transition-colors disabled:opacity-40"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: '#777' }}
-                  onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = '#bbb' }}
-                  onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = '#777' }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 10px',
+                    borderRadius: 8,
+                    fontSize: 11,
+                    background: 'rgba(255,255,255,0.07)',
+                    border: 'none',
+                    cursor: fetchingModels ? 'default' : 'pointer',
+                    /* secondary contrast: #ababab ≈ 7.9:1 */
+                    color: 'var(--tx-secondary)',
+                    transition: 'color 0.12s',
+                    opacity: (fetchingModels || !localBase.trim()) ? 0.45 : 1,
+                  }}
+                  onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
+                  onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
                   title="Fetch available models from the configured endpoint"
                 >
                   <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={9} />
                   {fetchingModels ? 'Fetching…' : 'Fetch models'}
                 </button>
                 {fetchModelsError && (
-                  <span className="text-[11px]" style={{ color: '#f87171' }}>
-                    {fetchModelsError}
-                  </span>
+                  <span style={{ fontSize: 11, color: '#f87171' }}>{fetchModelsError}</span>
                 )}
-                  {fetchedModels && !fetchModelsError && (
-                    <span className="text-[11px]" style={{ color: '#555' }}>
-                      {fetchedModels.length} models
-                    </span>
-                  )}
+                {fetchedModels && !fetchModelsError && (
+                  /* tertiary: #757575 ≈ 4.6:1 — supplemental count */
+                  <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>{fetchedModels.length} models</span>
+                )}
               </div>
 
               {/* Model dropdown */}
-              <div className="relative" ref={modelRef}>
+              <div style={{ position: 'relative' }} ref={modelRef}>
                 <button
                   type="button"
                   onClick={() => setModelOpen((o) => !o)}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] text-neutral-200 focus:outline-none transition-colors"
                   style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
                     background: '#0d0d0d',
-                    border: `1px solid ${modelOpen ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.07)'}`,
+                    border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                    color: 'var(--tx-primary)',
+                    transition: 'border-color 0.12s',
                   }}
                 >
-                  <span className="truncate">{selectedModel.label}</span>
-                  <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: '#555' }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedModel.label}</span>
+                  <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
                 </button>
-
-                  {modelOpen && (
-                    <div
-                      className="absolute z-10 w-full mt-1 rounded-xl overflow-hidden shadow-2xl max-h-52 overflow-y-auto"
-                      style={{ background: '#161616', border: '1px solid rgba(255,255,255,0.08)' }}
-                    >
-                      {modelList.length === 0 ? (
-                        <div className="px-3 py-2.5 text-[12px]" style={{ color: '#555' }}>
-                          Click "Fetch models" above to load available models
-                        </div>
-                      ) : modelList.map((m) => {
+                {modelOpen && (
+                  <div style={{ position: 'absolute', zIndex: 10, width: '100%', marginTop: 4, borderRadius: 12, overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.5)', background: '#161616', border: '1px solid rgba(255,255,255,0.08)', maxHeight: 208, overflowY: 'auto' }}>
+                    {modelList.length === 0 ? (
+                      <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--tx-tertiary)' }}>
+                        Click "Fetch models" above to load available models
+                      </div>
+                    ) : modelList.map((m) => {
                       const isSelected = m.value === localModel
                       return (
                         <button
                           key={m.value}
                           type="button"
                           onClick={() => { setLocalModel(m.value); setModelOpen(false) }}
-                          className="w-full flex items-center justify-between px-3 py-2 text-left text-[13px] transition-colors"
                           style={{
-                            color: isSelected ? '#e0e0e0' : '#888',
-                            background: isSelected ? 'rgba(37,99,235,0.12)' : 'transparent',
+                            width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '8px 12px', textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
+                            color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                            background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                            transition: 'background 0.1s',
                           }}
-                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
+                          onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
                           onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                         >
-                          <span className="truncate">{m.label}</span>
-                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.label}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
                             {m.tag && (
-                              <span
-                                className="text-[10px] px-1.5 py-[2px] rounded-md font-medium"
-                                style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa' }}
-                              >
+                              <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, fontWeight: 500, background: 'oklch(64% 0.214 40.1 / 0.12)', color: 'var(--amber-soft)' }}>
                                 {m.tag}
                               </span>
                             )}
-                            {isSelected && <Pxi name="check" size={10} style={{ color: '#3b82f6' }} />}
+                            {isSelected && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
                           </div>
                         </button>
                       )
@@ -426,7 +411,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <Field
             label="Workspace Path"
             icon="folder-open"
-            hint={<>Host directory mounted into the sandbox at <code className="font-mono text-[11px]" style={{ color: '#777' }}>/workspace</code></>}
+            hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
             error={errors.workspacePath}
           >
             <input
@@ -434,42 +419,55 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               value={localWorkspace}
               onChange={(e) => { setLocalWorkspace(e.target.value); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
               placeholder="/Users/you/nasus-workspace"
-              className="w-full px-3 py-2 rounded-lg text-[13px] text-neutral-200 placeholder-neutral-700 focus:outline-none transition-colors"
               style={{
+                width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                color: 'var(--tx-primary)',
                 background: '#0d0d0d',
-                border: `1px solid ${errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)'}`,
+                border: `1px solid ${errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                transition: 'border-color 0.12s',
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.6)' : 'rgba(59,130,246,0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.07)' }}
+              className="placeholder-[var(--tx-muted)]"
+              onFocus={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = errors.workspacePath ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
             />
           </Field>
         </div>
 
-        {/* Actions */}
-        <div className="mt-6 flex justify-end gap-2">
+        {/* Actions — 24px top margin */}
+        <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-[12px] rounded-lg transition-colors"
-            style={{ color: '#555' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#999' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#555' }}
+            style={{
+              padding: '8px 16px', fontSize: 12, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer',
+              /* Cancel: secondary #ababab ≈ 7.9:1 */
+              color: 'var(--tx-secondary)',
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
           >
             Cancel
           </button>
           <button
             onClick={checkAndSave}
             disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium rounded-lg transition-all disabled:opacity-40"
-            style={{ background: '#2563eb', color: 'white' }}
-            onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = '#3b82f6' }}
-            onMouseLeave={(e) => { if (!busy) e.currentTarget.style.background = '#2563eb' }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+              background: 'var(--amber)',
+              color: '#000',
+              opacity: busy ? 0.45 : 1,
+              transition: 'background 0.12s',
+            }}
+            onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = 'var(--amber-soft)' }}
+            onMouseLeave={(e) => { if (!busy) e.currentTarget.style.background = 'var(--amber)' }}
           >
             {saved ? (
-              <><Pxi name="check" size={11} style={{ color: 'white' }} /> Saved</>
+              <><Pxi name="check" size={11} style={{ color: '#000' }} /> Saved</>
             ) : pathChecking ? (
-              <><Pxi name="spinner-third" size={11} style={{ color: 'white' }} /> Checking…</>
+              <><Pxi name="spinner-third" size={11} style={{ color: '#000' }} /> Checking…</>
             ) : saving ? (
-              <><Pxi name="spinner-third" size={11} style={{ color: 'white' }} /> Saving…</>
+              <><Pxi name="spinner-third" size={11} style={{ color: '#000' }} /> Saving…</>
             ) : (
               'Save settings'
             )}
@@ -483,11 +481,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 // ─── Field wrapper ─────────────────────────────────────────────────────────────
 
 function Field({
-  label,
-  icon,
-  hint,
-  error,
-  children,
+  label, icon, hint, error, children,
 }: {
   label: string
   icon: string
@@ -498,20 +492,25 @@ function Field({
   return (
     <div>
       <label
-        className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.1em] mb-1.5"
-        style={{ color: '#555' }}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6,
+          fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.1em',
+          /* Label: secondary #ababab ≈ 7.9:1 */
+          color: 'var(--tx-secondary)',
+        }}
       >
-        <Pxi name={icon} size={10} style={{ color: '#444' }} />
+        <Pxi name={icon} size={10} style={{ color: 'var(--tx-tertiary)' }} />
         {label}
       </label>
       {children}
       {error ? (
-        <p className="mt-1 text-[11px] flex items-center gap-1 leading-relaxed" style={{ color: '#f87171' }}>
+        <p style={{ marginTop: 4, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.5, color: '#f87171' }}>
           <Pxi name="exclamation-triangle" size={9} />
           {error}
         </p>
       ) : hint ? (
-        <p className="mt-1 text-[11px] leading-relaxed" style={{ color: '#444' }}>{hint}</p>
+        /* Hint: tertiary #757575 ≈ 4.6:1 — clearly legible supplemental text */
+        <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.55, color: 'var(--tx-tertiary)' }}>{hint}</p>
       ) : null}
     </div>
   )
