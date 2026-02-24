@@ -228,6 +228,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     return errs
   }
 
+  function handleReset() {
+    if (!confirm('Reset all settings to defaults? This will clear your API keys and preferences.')) return
+    setLocalProvider('openrouter')
+    setLocalBase('https://openrouter.ai/api/v1')
+    setLocalKey('')
+    setLocalModel('anthropic/claude-3.7-sonnet')
+    setLocalWorkspace('')
+    setLocalBraveKey('')
+    setLocalGoogleCseKey('')
+    setLocalGoogleCseId('')
+    setLocalSearchProvider('auto')
+    setLocalMaxIterations('50')
+    setLocalE2bKey('')
+    setLocalDaytonaKey('')
+    setLocalDaytonaUrl('')
+    setLocalExecutionMode('auto')
+    setFetchedModels(null)
+    setErrors({})
+  }
+
   async function checkAndSave() {
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
@@ -553,10 +573,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           </div>{/* end scrollable */}
 
-          {/* Actions */}
-          <div style={{ padding: '12px 24px 20px', flexShrink: 0, display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <button
-              onClick={onClose}
+            {/* Actions */}
+            <div style={{ padding: '12px 24px 20px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              {/* Reset */}
+              <button
+                onClick={handleReset}
+                style={{
+                  padding: '8px 14px', fontSize: 11, borderRadius: 8, background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
+                  color: 'var(--tx-tertiary)', transition: 'color 0.12s, border-color 0.12s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.3)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                title="Reset all settings to defaults"
+              >
+                Reset to defaults
+              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={onClose}
               style={{
                 padding: '8px 16px', fontSize: 12, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer',
                 color: 'var(--tx-secondary)',
@@ -588,12 +623,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               ) : (
                 'Save settings'
               )}
-            </button>
+              </button>
+              </div>{/* end Cancel+Save group */}
+            </div>
           </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
 // ─── SearchSection ────────────────────────────────────────────────────────────
 

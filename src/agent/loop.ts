@@ -490,7 +490,16 @@ async function autoTitle(
   userMessage: string,
   taskId: string,
 ) {
-  const titleModel = provider === 'openrouter' ? 'anthropic/claude-3-haiku' : model
+  // Always use the cheapest available model for auto-title to avoid burning expensive tokens.
+  // Priority: known cheap model for the provider → fall back to current model.
+  const CHEAP_MODELS: Record<string, string> = {
+    openrouter: 'anthropic/claude-3-haiku',
+    anthropic: 'claude-3-haiku-20240307',
+    openai: 'gpt-4o-mini',
+    google: 'gemini-2.0-flash-001',
+    ollama: model, // local — no cost concern
+  }
+  const titleModel = CHEAP_MODELS[provider] ?? model
   const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
   const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 20)
   if (title) {
@@ -740,7 +749,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
           }
         }
 
-          const { output: rawOutput, isError } = await executeTool(
+        const { output: rawOutput, isError } = await executeTool(
           taskId, fnName, args, searchConfig,
           fnName === 'search_web'
             ? (evt) => emit.searchStatus(callId, evt)
@@ -748,8 +757,12 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
           executionConfig,
         )
 
-      let output: string
-      if (isError) {
+        let output: string
+        // For successful screenshot results, store a sentinel so we can inject
+        // a vision message below (the base64 data URL is in rawOutput)
+        const isScreenshot = fnName === 'browser_screenshot' && !isError && rawOutput.startsWith('data:image/')
+
+        if (isError) {
         const strike = errorTracker.record(fnName, rawOutput)
         if (strike === 1) {
           output = `[Strike 1/3] Error: ${rawOutput}\nDiagnose and apply a targeted fix.`
@@ -767,13 +780,33 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
         output = rawOutput
       }
 
-      emit.toolResult(callId, output, isError)
+        emit.toolResult(callId, output, isError)
 
-      messages.push({
-        role: 'tool',
-        content: output,
-        tool_call_id: callId,
-      })
+        // For screenshots, inject the image as a vision-capable user message
+        // so models with vision support can actually see the screenshot.
+        if (isScreenshot) {
+          // Strip the data URL prefix to get pure base64
+          const base64 = rawOutput.replace(/^data:image\/[^;]+;base64,/, '')
+          const mediaType = rawOutput.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+          messages.push({
+            role: 'tool',
+            // @ts-expect-error — multimodal tool results use content array
+            content: [
+              { type: 'text', text: '[Screenshot captured. See image below.]' },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${mediaType};base64,${base64}`, detail: 'auto' },
+              },
+            ],
+            tool_call_id: callId,
+          })
+        } else {
+          messages.push({
+            role: 'tool',
+            content: output,
+            tool_call_id: callId,
+          })
+        }
     }
 
     // Sync rawHistory so multi-turn follow-ups work

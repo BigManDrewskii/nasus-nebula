@@ -2,6 +2,49 @@ import { useState, useRef, memo, useCallback } from 'react'
 import type { Task } from '../types'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
+import { getWorkspace } from '../agent/tools'
+
+// ── Export helper ─────────────────────────────────────────────────────────────
+
+function exportTask(task: Task) {
+  const store = useAppStore.getState()
+  const messages = store.getMessages(task.id)
+  const lines: string[] = [
+    `# ${task.title}`,
+    ``,
+    `**Exported:** ${new Date().toLocaleString()}`,
+    `**Status:** ${task.status}`,
+    ``,
+    `---`,
+    ``,
+  ]
+
+  for (const msg of messages) {
+    if (msg.id === 'welcome') continue
+    const role = msg.author === 'user' ? '**You**' : '**Nasus**'
+    lines.push(`### ${role}`)
+    if (msg.content) lines.push(msg.content)
+    if (msg.error) lines.push(`\n> ⚠️ Error: ${msg.error}`)
+    lines.push('')
+  }
+
+  // Append workspace files
+  const ws = getWorkspace(task.id)
+  if (ws.size > 0) {
+    lines.push('---', '', '## Workspace files', '')
+    for (const [path, content] of ws.entries()) {
+      lines.push(`### \`${path}\``, '', '```', content.slice(0, 4000), '```', '')
+    }
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${task.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-export.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 interface TaskListItemProps {
   task: Task
@@ -10,57 +53,62 @@ interface TaskListItemProps {
 }
 
 export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
-  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
-  const [hovered,    setHovered]    = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const [editing,    setEditing]    = useState(false)
-  const [editValue,  setEditValue]  = useState(task.title)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
+    const [hovered,    setHovered]    = useState(false)
+    const [confirming, setConfirming] = useState(false)
+    const [editing,    setEditing]    = useState(false)
+    const [editValue,  setEditValue]  = useState(task.title)
+    const inputRef = useRef<HTMLInputElement>(null)
+    const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const startEdit = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    setEditValue(task.title)
-    setEditing(true)
-    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
-  }, [task.title])
+    const startEdit = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation()
+      setEditValue(task.title)
+      setEditing(true)
+      setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
+    }, [task.title])
 
-  const commitEdit = useCallback(() => {
-    const trimmed = editValue.trim()
-    if (trimmed && trimmed !== task.title) updateTaskTitle(task.id, trimmed)
-    setEditing(false)
-  }, [editValue, task.title, task.id, updateTaskTitle])
+    const commitEdit = useCallback(() => {
+      const trimmed = editValue.trim()
+      if (trimmed && trimmed !== task.title) updateTaskTitle(task.id, trimmed)
+      setEditing(false)
+    }, [editValue, task.title, task.id, updateTaskTitle])
 
-  const cancelEdit = useCallback(() => {
-    setEditValue(task.title)
-    setEditing(false)
-  }, [task.title])
+    const cancelEdit = useCallback(() => {
+      setEditValue(task.title)
+      setEditing(false)
+    }, [task.title])
 
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!confirming) {
-      setConfirming(true)
-      confirmTimer.current = setTimeout(() => setConfirming(false), 2500)
-      return
-    }
-    if (confirmTimer.current) clearTimeout(confirmTimer.current)
-    deleteTask(task.id)
-  }, [confirming, deleteTask, task.id])
+    const handleDelete = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!confirming) {
+        setConfirming(true)
+        confirmTimer.current = setTimeout(() => setConfirming(false), 2500)
+        return
+      }
+      if (confirmTimer.current) clearTimeout(confirmTimer.current)
+      deleteTask(task.id)
+    }, [confirming, deleteTask, task.id])
 
-  const handlePin = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    toggleTaskPin(task.id)
-  }, [toggleTaskPin, task.id])
+    const handlePin = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation()
+      toggleTaskPin(task.id)
+    }, [toggleTaskPin, task.id])
 
-  const handleDuplicate = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    duplicateTask(task.id)
-  }, [duplicateTask, task.id])
+    const handleDuplicate = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation()
+      duplicateTask(task.id)
+    }, [duplicateTask, task.id])
 
-  const icon = taskTypeIcon(task.taskType)
+    const handleExport = useCallback((e: React.MouseEvent) => {
+      e.stopPropagation()
+      exportTask(task)
+    }, [task])
 
-  // How much space the action buttons take — drives the mask stop
-  const ACTIONS_WIDTH = 72 // 3 × 22px + 2 × 2px gap
+    const icon = taskTypeIcon(task.taskType)
+
+    // How much space the action buttons take — drives the mask stop
+    const ACTIONS_WIDTH = 96 // 4 × 22px + 3 × 2px gap
 
   return (
     <div
@@ -216,6 +264,9 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             onClick={handlePin}
           >
             <Pxi name="thumbtack" size={9} />
+          </MicroBtn>
+          <MicroBtn title="Export as Markdown" onClick={handleExport}>
+            <Pxi name="download" size={9} />
           </MicroBtn>
           <MicroBtn title="Duplicate" onClick={handleDuplicate}>
             <Pxi name="copy" size={9} />

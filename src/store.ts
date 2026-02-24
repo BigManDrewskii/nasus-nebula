@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Task, Message, AgentStep, LlmMessage } from './types'
+import { clearWorkspace } from './agent/tools'
 
 interface AppState {
   tasks: Task[]
@@ -67,7 +68,7 @@ interface AppState {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const MAX_TASKS = 20
+const MAX_TASKS = 50
 const MAX_TOOL_RESULT_CHARS = 2000  // Truncate large tool outputs before persisting
 
 const WELCOME_MESSAGE: Message = {
@@ -92,8 +93,8 @@ export const useAppStore = create<AppState>()(
       activeTaskId: 'initial',
       messages: { initial: [WELCOME_MESSAGE] },
       rawHistory: {},
-          apiKey: '',
-          model: 'anthropic/claude-3.5-sonnet',
+            apiKey: '',
+            model: 'anthropic/claude-3.7-sonnet',
           workspacePath: '',
           recentWorkspacePaths: [],
           apiBase: 'https://openrouter.ai/api/v1',
@@ -119,14 +120,19 @@ export const useAppStore = create<AppState>()(
             const messages = { ...state.messages, [task.id]: [WELCOME_MESSAGE] }
             const rawHistory = { ...state.rawHistory, [task.id]: [] }
 
-            // Prune oldest tasks (beyond MAX_TASKS) to keep localStorage lean
-            if (tasks.length > MAX_TASKS) {
-              const pruned = tasks.slice(MAX_TASKS)
-              for (const t of pruned) {
-                delete messages[t.id]
-                delete rawHistory[t.id]
+              // Prune oldest tasks (beyond MAX_TASKS) to keep localStorage lean
+              if (tasks.length > MAX_TASKS) {
+                const pruned = tasks.slice(MAX_TASKS)
+                for (const t of pruned) {
+                  delete messages[t.id]
+                  delete rawHistory[t.id]
+                  clearWorkspace(t.id)
+                }
+                // Notify UI that old tasks were pruned
+                window.dispatchEvent(new CustomEvent('nasus:tasks-pruned', {
+                  detail: { count: pruned.length },
+                }))
               }
-            }
 
             return {
               tasks: tasks.slice(0, MAX_TASKS),
@@ -142,6 +148,8 @@ export const useAppStore = create<AppState>()(
           const rawHistory = { ...state.rawHistory }
           delete messages[id]
           delete rawHistory[id]
+          // Also clean up persisted workspace files for this task
+          clearWorkspace(id)
           // If we deleted the active task, select the next one
           const activeTaskId =
             state.activeTaskId === id

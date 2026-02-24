@@ -12,7 +12,7 @@ const PROVIDERS = [
     description: 'Access 200+ models with one key',
     placeholder: 'sk-or-v1-…',
     apiBase: 'https://openrouter.ai/api/v1',
-    defaultModel: 'anthropic/claude-3.5-sonnet',
+      defaultModel: 'anthropic/claude-3.7-sonnet',
     helpUrl: 'https://openrouter.ai/keys',
     helpLabel: 'openrouter.ai/keys',
     requiresKey: true,

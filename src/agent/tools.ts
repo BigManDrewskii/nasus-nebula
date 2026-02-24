@@ -36,8 +36,39 @@ const workspaceStore: Map<string, Map<string, string>> = new Map()
 // Version counter per task — incremented on every write so React can subscribe
 const workspaceVersions: Map<string, number> = new Map()
 
+// ── Workspace localStorage persistence ───────────────────────────────────────
+const WS_STORAGE_PREFIX = 'nasus-ws-'
+// Max size per file stored in localStorage (32 KB) — prevents quota exhaustion
+const WS_MAX_FILE_BYTES = 32 * 1024
+
+function loadWorkspaceFromStorage(taskId: string): Map<string, string> {
+  try {
+    const raw = localStorage.getItem(`${WS_STORAGE_PREFIX}${taskId}`)
+    if (!raw) return new Map()
+    const obj = JSON.parse(raw) as Record<string, string>
+    return new Map(Object.entries(obj))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveWorkspaceToStorage(taskId: string, ws: Map<string, string>) {
+  try {
+    const obj: Record<string, string> = {}
+    for (const [k, v] of ws.entries()) {
+      // Skip oversized binary blobs (e.g. screenshots stored as data URLs)
+      if (v.length <= WS_MAX_FILE_BYTES) obj[k] = v
+    }
+    localStorage.setItem(`${WS_STORAGE_PREFIX}${taskId}`, JSON.stringify(obj))
+  } catch {
+    // localStorage quota exceeded — best effort, ignore
+  }
+}
+
 export function getWorkspace(taskId: string): Map<string, string> {
-  if (!workspaceStore.has(taskId)) workspaceStore.set(taskId, new Map())
+  if (!workspaceStore.has(taskId)) {
+    workspaceStore.set(taskId, loadWorkspaceFromStorage(taskId))
+  }
   return workspaceStore.get(taskId)!
 }
 
@@ -47,12 +78,16 @@ export function getWorkspaceVersion(taskId: string): number {
 
 function bumpVersion(taskId: string) {
   workspaceVersions.set(taskId, (workspaceVersions.get(taskId) ?? 0) + 1)
+  // Persist to localStorage on every write
+  const ws = workspaceStore.get(taskId)
+  if (ws) saveWorkspaceToStorage(taskId, ws)
   window.dispatchEvent(new CustomEvent('nasus:workspace', { detail: { taskId } }))
 }
 
 export function clearWorkspace(taskId: string) {
   workspaceStore.delete(taskId)
   workspaceVersions.delete(taskId)
+  try { localStorage.removeItem(`${WS_STORAGE_PREFIX}${taskId}`) } catch { /* ignore */ }
 }
 
 function normPath(p: string): string {

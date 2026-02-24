@@ -131,7 +131,8 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     const [scrollLocked, setScrollLocked] = useState(false)
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
-    const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
+    const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
     const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
     const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
 
@@ -184,6 +185,8 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   const runningRef = useRef<boolean>(false)
   const queuedMsgRef = useRef<string | null>(null)
   const inputRef = useRef<UserInputAreaHandle>(null)
+  // Rate limiting: track recent send timestamps (max 10 sends per 60s)
+  const sendTimestamps = useRef<number[]>([])
 
   // ── Scroll-lock detection ───────────────────────────────────────────────────
   useEffect(() => {
@@ -381,7 +384,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           messageId: agentMsgId,
           userMessages: history,
           apiKey: cfg.apiKey || '',
-          model: cfg.model || 'anthropic/claude-3.5-sonnet',
+          model: cfg.model || 'anthropic/claude-3.7-sonnet',
           workspacePath: taskWorkspace,
           apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
           provider: cfg.provider || 'openrouter',
@@ -400,7 +403,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             messageId: agentMsgId,
             userMessages: history,
             apiKey: cfg.apiKey || '',
-            model: cfg.model || 'anthropic/claude-3.5-sonnet',
+            model: cfg.model || 'anthropic/claude-3.7-sonnet',
             apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
             provider: cfg.provider || 'openrouter',
             searchConfig: {
@@ -445,6 +448,18 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         setQueuedMsg(content)
         return
       }
+
+      // Rate limit: max 10 new agent runs per 60 seconds
+      const now = Date.now()
+      sendTimestamps.current = sendTimestamps.current.filter((t) => now - t < 60_000)
+      if (sendTimestamps.current.length >= 10) {
+        const oldest = sendTimestamps.current[0]
+        const waitSecs = Math.ceil((oldest + 60_000 - now) / 1000)
+        setRateLimitWarning(`Too many requests. Please wait ${waitSecs}s before sending again.`)
+        setTimeout(() => setRateLimitWarning(null), 4000)
+        return
+      }
+      sendTimestamps.current.push(now)
       if (messages.length <= 1) updateTaskTitle(task.id, content.slice(0, 60))
 
       // Snapshot and clear attachments before any async work
@@ -606,6 +621,36 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         {...dragHandlers}
       >
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
+
+        {/* Rate limit toast */}
+        {rateLimitWarning && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 60,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 14px',
+              borderRadius: 12,
+              background: 'rgba(13,13,13,0.95)',
+              border: '1px solid rgba(239,68,68,0.35)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(8px)',
+              animation: 'fadeIn 0.18s ease',
+              pointerEvents: 'none',
+              maxWidth: 'calc(100% - 48px)',
+            }}
+          >
+            <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>
+              {rateLimitWarning}
+            </span>
+          </div>
+        )}
 
         {/* Folder-drop confirmation toast */}
         {folderDropConfirm && (
@@ -830,19 +875,42 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
                 )}
               </div>
 
-                <div className="w-full">
-                  <UserInputArea
-                    ref={inputRef}
-                    onSend={handleSend}
-                    disabled={false}
-                    autoFocus
-                    attachments={attachments}
-                    onAddFiles={addFiles}
-                    onRemoveAttachment={removeAttachment}
-                    isOverLimit={isOverLimit}
-                    totalAttachmentSize={totalSize}
-                  />
-                </div>
+                  <div className="w-full">
+                    <UserInputArea
+                      ref={inputRef}
+                      onSend={handleSend}
+                      disabled={false}
+                      autoFocus
+                      attachments={attachments}
+                      onAddFiles={addFiles}
+                      onRemoveAttachment={removeAttachment}
+                      isOverLimit={isOverLimit}
+                      totalAttachmentSize={totalSize}
+                    />
+                  </div>
+
+                  {/* Keyboard shortcut legend */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[
+                      { key: '⌘N', label: 'New task' },
+                      { key: '⌘K', label: 'Search tasks' },
+                      { key: '⌘,', label: 'Settings' },
+                      { key: 'Esc', label: 'Stop agent' },
+                    ].map(({ key, label }) => (
+                      <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <kbd style={{
+                          fontSize: 9.5,
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--tx-muted)',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: 4,
+                          padding: '1px 5px',
+                        }}>{key}</kbd>
+                        <span style={{ fontSize: 10.5, color: 'var(--tx-muted)' }}>{label}</span>
+                      </span>
+                    ))}
+                  </div>
           </div>
         </div>
       ) : (
