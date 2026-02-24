@@ -8,8 +8,10 @@
 
 import { streamCompletion, chatOnce, type LlmMessage, type ToolDefinition } from './llm'
 import { executeTool, type SearchConfig, type SearchStatusCallback } from './tools'
+import type { ExecutionConfig } from './sandboxRuntime'
 import { useAppStore } from '../store'
 import type { AgentStep } from '../types'
+
 
 // ── Tool schema ───────────────────────────────────────────────────────────────
 
@@ -133,6 +135,42 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'python_execute',
+        description:
+          'Execute Python code in a sandbox. When a cloud sandbox (E2B or Daytona) is configured this runs in a full Linux environment with all packages available — use pip install via bash_execute first if needed. Otherwise falls back to Pyodide (WebAssembly) in the browser. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.',
+        parameters: {
+          type: 'object',
+          properties: {
+            code: {
+              type: 'string',
+              description: 'Python source code to execute. Use print() to produce output.',
+            },
+          },
+          required: ['code'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'bash_execute',
+        description:
+          'Execute a shell command in a cloud sandbox (E2B or Daytona). Requires an E2B or Daytona API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: {
+              type: 'string',
+              description: 'Shell command to run (bash). Examples: "pip install pandas", "python script.py", "ls /workspace".',
+            },
+          },
+          required: ['command'],
+        },
+      },
+    },
   ]
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -141,10 +179,12 @@ const SYSTEM_PROMPT = `You are Nasus, an autonomous AI agent.
 Your job: take the user's goal and independently plan and execute a multi-step solution until fully complete.
 
 IMPORTANT: You are running in browser mode. The sandbox environment has limitations:
-  - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available
-  - read_file / write_file: use these directly for all file operations — they work reliably
-  - http_fetch: external requests may be blocked by CORS — JSON APIs with CORS headers work best
+  - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available — use bash_execute if you have a cloud sandbox configured
+  - read_file / write_file / patch_file: use these directly for all file operations — they work reliably
+  - http_fetch: fetches URLs and returns readable text (HTML pages are extracted to clean text automatically); external requests may be blocked by CORS
   - search_web: multi-backend search (Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
+  - python_execute: run Python. If E2B or Daytona is configured, this runs in a full cloud Linux sandbox with all packages. Otherwise falls back to Pyodide (WebAssembly) in the browser (install packages with: import micropip; await micropip.install("pkg"))
+  - bash_execute: run shell commands in a cloud sandbox (E2B/Daytona). Requires API key in Settings → Code Execution. Use for pip install, apt-get, running scripts, etc.
 
 ═══════════════════════════════════════════════════════
 TASK COMPLEXITY JUDGEMENT (decide FIRST)
@@ -207,6 +247,29 @@ For complex tasks, use THREE persistent files in /workspace:
 
 **3. progress.md** — Action log (optional for very long tasks)
    Append a row after each tool call if the task spans many iterations.
+
+═══════════════════════════════════════════════════════
+PYTHON / BASH EXECUTION GUIDELINES
+═══════════════════════════════════════════════════════
+
+**When to use python_execute:**
+- Math, statistics, data analysis
+- Parsing structured data (CSV, JSON, XML)
+- Text transformation, regex, encoding
+- Algorithmic tasks better expressed in Python
+
+**When to use bash_execute (cloud sandbox only):**
+- Installing packages: "pip install pandas seaborn" or "apt-get install -y ffmpeg"
+- Running shell scripts, compiling, CLI tools
+- File inspection: ls, cat, find, grep inside the sandbox
+- bash_execute and python_execute share the same persistent sandbox — install once, use many times
+
+**Best practices:**
+- Use print() to emit output — that is what you see in the result
+- For heavy numerical work in cloud mode, all packages are available via pip
+- In Pyodide (browser) mode: numpy/scipy/pandas are pre-bundled; use micropip for others
+- Combine with write_file: write outputs (CSV, text) to /workspace for the user
+- Keep each cell focused; chain multiple python_execute calls if needed
 
 ═══════════════════════════════════════════════════════
 3-STRIKE ERROR PROTOCOL
@@ -349,18 +412,49 @@ export interface RunAgentParams {
   apiBase: string
   provider: string
   searchConfig?: SearchConfig
+  executionConfig?: ExecutionConfig
   signal: AbortSignal
   maxIterations?: number
 }
 
 const MAX_ITERATIONS = 50
 const WARN_ITERATIONS = 40
-const COMPRESS_THRESHOLD = 40
+
+// Context windows (tokens) per model family — used to set compression threshold.
+// Compression removes old tool call pairs once the message count suggests we
+// might be approaching the limit.  We use a conservative message-count heuristic
+// rather than counting tokens precisely (no tokenizer in browser).
+const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
+  [/claude-3[.-]5|claude-3[.-]7|claude-sonnet-4/, 200_000],
+  [/claude-3-haiku/,                                200_000],
+  [/gpt-4\.1/,                                      1_000_000],
+  [/gpt-4o/,                                        128_000],
+  [/o1|o3/,                                         200_000],
+  [/gemini-2\.5/,                                   1_000_000],
+  [/gemini-2\.0/,                                   1_000_000],
+  [/gemini-1\.5/,                                   1_000_000],
+  [/deepseek-r1/,                                   128_000],
+  [/deepseek/,                                      64_000],
+  [/llama-3\.3/,                                    128_000],
+  [/mistral-large/,                                 128_000],
+]
+
+/** Return approximate message-count compression threshold for a model. */
+function compressThreshold(model: string): number {
+  for (const [re, ctx] of CONTEXT_WINDOWS) {
+    if (re.test(model)) {
+      // Rough heuristic: 1 msg ≈ 500 tokens; start compressing at 60% of ctx
+      return Math.max(20, Math.floor((ctx * 0.6) / 500))
+    }
+  }
+  return 40 // conservative default
+}
 
 export async function runAgentLoop(params: RunAgentParams): Promise<void> {
-  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, searchConfig, signal } = params
+  const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, searchConfig, executionConfig, signal } = params
   const maxIter = params.maxIterations ?? MAX_ITERATIONS
   const warnIter = Math.max(1, maxIter - 10)
+  const compressAt = compressThreshold(model)
   const emit = {
     thinking: (content: string) => {
       const step: AgentStep = { kind: 'thinking', content }
@@ -463,7 +557,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
         })
       }
 
-      if (messages.length > COMPRESS_THRESHOLD) {
+      if (messages.length > compressAt) {
       compressContext(messages, taskId, messageId)
     }
 
@@ -553,6 +647,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
           fnName === 'search_web'
             ? (evt) => emit.searchStatus(callId, evt)
             : undefined,
+          executionConfig,
         )
 
       let output: string

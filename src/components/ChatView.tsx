@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { tauriInvoke, tauriListen } from '../tauri'
 import { runWebAgent, stopWebAgent } from '../agent/index'
+import { disposeSandbox } from '../agent/sandboxRuntime'
 import type { Task, Message, AgentStep, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
@@ -92,6 +93,10 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setApiBase,
     setProvider,
     addRecentWorkspacePath,
+    e2bApiKey,
+    daytonaApiKey,
+    daytonaApiUrl,
+    executionMode,
   } = useAppStore()
 
   function estimateCost(m: string, tokens: number): string {
@@ -126,10 +131,21 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
     const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
     const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
+    const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
 
     // Attachments
-    const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
-    const { isDragOver, handlers: dragHandlers } = useDragDrop(addFiles)
+  const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
+
+  // When a folder is dropped, set it as the workspace path
+  const handleFolderDropped = useCallback((path: string) => {
+    setWorkspacePath(path)
+    addRecentWorkspacePath(path)
+    setLocalWorkspace(path)
+    setFolderDropConfirm(path)
+    setTimeout(() => setFolderDropConfirm(null), 3000)
+  }, [setWorkspacePath, addRecentWorkspacePath]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const { isDragOver, dragMode, handlers: dragHandlers } = useDragDrop(addFiles, handleFolderDropped)
 
   function showPill() {
     setShowNewMsgPill(true)
@@ -140,10 +156,10 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations })
-  useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations }
-  })
+    const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode })
+    useEffect(() => {
+      configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode }
+    })
 
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
@@ -197,18 +213,25 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       }
   }, [messages]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => {
-      setIteration(0)
-      setTokenCount(0)
-      setSandboxStatus('idle')
-      setAgentRunning(false)
-      setScrollLocked(false)
-      setPillVisible(false)
-      setShowNewMsgPill(false)
-      queuedMsgRef.current = null
-      setQueuedMsg(null)
-      clearAttachments()
-    }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    const prevTaskIdRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    // Stop any running agent for the previous task when switching tasks
+    if (prevTaskIdRef.current && prevTaskIdRef.current !== task?.id && !isTauri) {
+      stopWebAgent(prevTaskIdRef.current)
+      disposeSandbox().catch(() => {})
+    }
+    prevTaskIdRef.current = task?.id
+    setIteration(0)
+    setTokenCount(0)
+    setSandboxStatus('idle')
+    setAgentRunning(false)
+    setScrollLocked(false)
+    setPillVisible(false)
+    setShowNewMsgPill(false)
+    queuedMsgRef.current = null
+    setQueuedMsg(null)
+    clearAttachments()
+  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Web-agent custom events (browser mode only) ────────────────────────────
   useEffect(() => {
@@ -370,22 +393,28 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       } else {
         // Web mode — runWebAgent already manages its own AbortController per taskId
         // and cancels any previous run for the same task on start
-        await runWebAgent({
-          taskId,
-          messageId: agentMsgId,
-          userMessages: history,
-          apiKey: cfg.apiKey || '',
-          model: cfg.model || 'anthropic/claude-3.5-sonnet',
-          apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-          provider: cfg.provider || 'openrouter',
-          searchConfig: {
-            provider: cfg.searchProvider || 'auto',
-            braveKey: cfg.braveSearchKey || undefined,
-            googleCseKey: cfg.googleCseKey || undefined,
-            googleCseId: cfg.googleCseId || undefined,
-          },
-          maxIterations: cfg.maxIterations ?? 50,
-        })
+          await runWebAgent({
+            taskId,
+            messageId: agentMsgId,
+            userMessages: history,
+            apiKey: cfg.apiKey || '',
+            model: cfg.model || 'anthropic/claude-3.5-sonnet',
+            apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+            provider: cfg.provider || 'openrouter',
+            searchConfig: {
+              provider: cfg.searchProvider || 'auto',
+              braveKey: cfg.braveSearchKey || undefined,
+              googleCseKey: cfg.googleCseKey || undefined,
+              googleCseId: cfg.googleCseId || undefined,
+            },
+            executionConfig: {
+              executionMode: (cfg.executionMode || 'auto') as 'auto' | 'e2b' | 'daytona' | 'pyodide' | 'disabled',
+              e2bApiKey: cfg.e2bApiKey || undefined,
+              daytonaApiKey: cfg.daytonaApiKey || undefined,
+              daytonaApiUrl: cfg.daytonaApiUrl || undefined,
+            },
+            maxIterations: cfg.maxIterations ?? 50,
+          })
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -574,7 +603,37 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         style={{ background: '#0d0d0d', position: 'relative' }}
         {...dragHandlers}
       >
-        <DropZoneOverlay isDragOver={isDragOver} />
+          <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
+
+        {/* Folder-drop confirmation toast */}
+        {folderDropConfirm && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 60,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 14px',
+              borderRadius: 12,
+              background: 'rgba(13,13,13,0.95)',
+              border: '1px solid rgba(52,211,153,0.35)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(8px)',
+              animation: 'fadeIn 0.18s ease',
+              pointerEvents: 'none',
+              maxWidth: 'calc(100% - 48px)',
+            }}
+          >
+            <Pxi name="check-circle" size={11} style={{ color: '#34d399', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: 'var(--tx-primary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Workspace set to {folderDropConfirm}
+            </span>
+          </div>
+        )}
       {showMemory && (
         <MemoryViewer
           taskId={task.id}

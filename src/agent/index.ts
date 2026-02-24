@@ -8,6 +8,8 @@
 import type { LlmMessage } from '../types'
 import { runAgentLoop } from './loop'
 import type { SearchConfig } from './tools'
+import type { ExecutionConfig } from './sandboxRuntime'
+import { disposeSandbox } from './sandboxRuntime'
 
 // AbortControllers keyed by taskId
 const controllers: Map<string, AbortController> = new Map()
@@ -21,6 +23,7 @@ export interface RunWebAgentParams {
   apiBase: string
   provider: string
   searchConfig?: SearchConfig
+  executionConfig?: ExecutionConfig
   maxIterations?: number
 }
 
@@ -47,6 +50,8 @@ export function stopWebAgent(taskId: string) {
     ctrl.abort()
     controllers.delete(taskId)
   }
+  // Best-effort sandbox cleanup on stop
+  disposeSandbox().catch(() => {})
 }
 
 export function isWebAgentRunning(taskId: string): boolean {

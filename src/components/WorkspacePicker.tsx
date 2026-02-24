@@ -18,6 +18,8 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
   const [valid, setValid] = useState<boolean | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Hidden file input for browser-mode folder picking
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Close recent dropdown on outside click
   useEffect(() => {
@@ -38,7 +40,6 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
 
     if (!isTauri) {
       // In browser mode: validate_path is unavailable — use a simple heuristic
-      // (absolute path, non-empty) and skip the Tauri call
       setValid(trimmed.length > 1)
       return
     }
@@ -57,6 +58,27 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     return () => { if (checkTimer.current) clearTimeout(checkTimer.current) }
   }, [value])
 
+  /** Open the folder picker — uses hidden file input in all environments */
+  function handleBrowse() {
+    fileInputRef.current?.click()
+  }
+
+  /** Handle browser-mode folder selection via the hidden file input */
+  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    // webkitRelativePath: "FolderName/subdir/file.txt" — extract top folder name
+    const first = files[0]
+    const rel = first.webkitRelativePath
+    if (rel) {
+      const folderName = rel.split('/')[0]
+      // In browser mode we can't get absolute path — use the folder name as identifier
+      onChange(`/${folderName}`)
+    }
+    // Reset so the same folder can be re-selected
+    e.target.value = ''
+  }
+
   const borderColor = error
     ? 'rgba(239,68,68,0.4)'
     : valid === true
@@ -67,6 +89,19 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
 
   return (
     <div style={{ position: 'relative' }} ref={containerRef}>
+      {/* Hidden folder input for browser-mode picking */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        // @ts-expect-error webkitdirectory is not in standard typings
+        webkitdirectory=""
+        multiple
+        style={{ display: 'none' }}
+        onChange={handleFileInputChange}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+
       <div
         style={{
           display: 'flex',
@@ -77,16 +112,45 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
           transition: 'border-color 0.12s',
           overflow: 'hidden',
         }}
-        onFocus={() => {}} // prevent event bubbling
       >
+        {/* Browse button */}
+        <button
+          type="button"
+          onClick={handleBrowse}
+          title="Browse for folder"
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            padding: '0 10px',
+            height: 36,
+            background: 'transparent',
+            border: 'none',
+            borderRight: '1px solid rgba(255,255,255,0.07)',
+            cursor: 'pointer',
+            color: 'var(--amber)',
+            fontSize: 11,
+            fontWeight: 500,
+            transition: 'color 0.12s, background 0.12s',
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <Pxi name="folder-open" size={10} style={{ color: 'var(--amber)' }} />
+          Browse
+        </button>
+
         <input
           type="text"
           value={value}
           onChange={(e) => { onChange(e.target.value); setValid(null) }}
-          placeholder="/Users/you/nasus-workspace"
+          placeholder="/Users/you/my-project"
           style={{
             flex: 1,
-            padding: '8px 12px',
+            padding: '8px 10px',
             fontSize: 13,
             outline: 'none',
             background: 'transparent',
@@ -100,7 +164,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
           onBlur={(e) => { e.currentTarget.parentElement!.style.borderColor = borderColor }}
         />
 
-        {/* Status indicator */}
+        {/* Status indicator + recent dropdown trigger */}
         <div style={{ paddingRight: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
           {checking && (
             <Pxi name="spinner-third" size={11} style={{ color: 'var(--tx-tertiary)' }} />
@@ -112,7 +176,6 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171' }} />
           )}
 
-          {/* Recent paths dropdown trigger */}
           {hasRecent && (
             <button
               type="button"

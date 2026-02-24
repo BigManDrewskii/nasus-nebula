@@ -1,3 +1,7 @@
+import { extractReadableContent } from './htmlExtractor'
+import { executePython, executeBash } from './sandboxRuntime'
+import type { ExecutionConfig } from './sandboxRuntime'
+
 /**
  * Browser-safe tool execution for the web agent.
  *
@@ -97,14 +101,14 @@ async function searchBrave(query: string, num: number, apiKey: string): Promise<
 
   if (webResults.length === 0) return `No results for "${query}".`
 
-  return webResults
-    .slice(0, num)
-    .map((r, i) => [
-      `[${i + 1}] ${r.title ?? '(no title)'}`,
-      r.url ? `    URL: ${r.url}` : '',
-      r.description ? `    ${r.description}` : '',
-    ].filter(Boolean).join('\n'))
-    .join('\n\n')
+    return webResults
+      .slice(0, num)
+      .map((r, i) => [
+        `[${i + 1}] ${r.title ?? '(no title)'}`,
+        r.url ? `    URL: ${r.url}` : '',
+        r.description ? `    ${r.description.slice(0, 150)}` : '',
+      ].filter(Boolean).join('\n'))
+      .join('\n\n')
 }
 
 async function searchGoogleCSE(query: string, num: number, apiKey: string, cseId: string): Promise<string> {
@@ -119,14 +123,14 @@ async function searchGoogleCSE(query: string, num: number, apiKey: string, cseId
 
   if (items.length === 0) return `No results for "${query}".`
 
-  return items
-    .slice(0, num)
-    .map((r, i) => [
-      `[${i + 1}] ${r.title ?? '(no title)'}`,
-      r.link ? `    URL: ${r.link}` : '',
-      r.snippet ? `    ${r.snippet}` : '',
-    ].filter(Boolean).join('\n'))
-    .join('\n\n')
+    return items
+      .slice(0, num)
+      .map((r, i) => [
+        `[${i + 1}] ${r.title ?? '(no title)'}`,
+        r.link ? `    URL: ${r.link}` : '',
+        r.snippet ? `    ${r.snippet.slice(0, 150)}` : '',
+      ].filter(Boolean).join('\n'))
+      .join('\n\n')
 }
 
 async function searchSearXNG(query: string, num: number): Promise<string> {
@@ -152,7 +156,7 @@ async function searchSearXNG(query: string, num: number): Promise<string> {
         .map((r, i) => [
           `[${i + 1}] ${r.title ?? '(no title)'}`,
           r.url ? `    URL: ${r.url}` : '',
-          r.content ? `    ${r.content.slice(0, 200)}` : '',
+          r.content ? `    ${r.content.slice(0, 150)}` : '',
         ].filter(Boolean).join('\n'))
         .join('\n\n')
     } catch (e) {
@@ -210,7 +214,7 @@ async function searchWikipedia(query: string): Promise<string> {
   return '[Wikipedia]\n' + hits
     .map((h) => {
       const title = h.title ?? ''
-      const snippet = (h.snippet ?? '').replace(/<[^>]+>/g, '').slice(0, 180)
+      const snippet = (h.snippet ?? '').replace(/<[^>]+>/g, '').slice(0, 150)
       const link = title ? `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}` : ''
       return `  • ${title}${link ? `\n    URL: ${link}` : ''}${snippet ? `\n    ${snippet}` : ''}`
     })
@@ -337,6 +341,7 @@ export async function executeTool(
   args: Record<string, unknown>,
   searchConfig?: SearchConfig,
   onSearchStatus?: SearchStatusCallback,
+  executionConfig?: ExecutionConfig,
 ): Promise<{ output: string; isError: boolean }> {
   const ws = getWorkspace(taskId)
 
@@ -414,35 +419,60 @@ export async function executeTool(
       return { output: lines.join('\n'), isError: false }
     }
 
-    case 'http_fetch': {
-      const url = String(args.url ?? '')
-      if (!url) return { output: 'Missing url', isError: true }
-      const method = String(args.method ?? 'GET').toUpperCase()
-      const headersArg = (args.headers ?? {}) as Record<string, string>
-      const body = args.body ? String(args.body) : undefined
+      case 'http_fetch': {
+        const url = String(args.url ?? '')
+        if (!url) return { output: 'Missing url', isError: true }
+        const method = String(args.method ?? 'GET').toUpperCase()
+        const headersArg = (args.headers ?? {}) as Record<string, string>
+        const body = args.body ? String(args.body) : undefined
+        const rawMode = args.raw === true  // Opt-in to skip HTML extraction
 
-      try {
-        const res = await fetch(url, {
-          method,
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Nasus/1.0)', ...headersArg },
-          body: method === 'POST' ? body : undefined,
-        })
-        const text = await res.text()
-        const preview = text.length > 6000 ? text.slice(0, 6000) + '\n[...truncated]' : text
-        return { output: `HTTP ${res.status}\n${preview}`, isError: false }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
-          return {
-            output:
-              `CORS error fetching ${url}. Direct page fetching is blocked by cross-origin policy.\n` +
-              `Try search_web to find information instead, or fetch a JSON API that has CORS headers.`,
-            isError: true,
+        try {
+          const res = await fetch(url, {
+            method,
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Nasus/1.0)', ...headersArg },
+            body: method === 'POST' ? body : undefined,
+          })
+          const text = await res.text()
+
+          // Detect content type: only extract HTML pages, pass JSON/text as-is
+          const ct = res.headers.get('content-type') ?? ''
+          const isHtml = ct.includes('text/html') || (ct === '' && text.trimStart().startsWith('<'))
+          const isJson = ct.includes('application/json') || ct.includes('text/json')
+
+          if (!rawMode && isHtml) {
+            const extracted = extractReadableContent(text, url)
+            let output = `HTTP ${res.status} — ${url}\n`
+            if (extracted.title) output += `Title: ${extracted.title}\n`
+            if (extracted.description) output += `Description: ${extracted.description}\n`
+            output += `\n${extracted.content}`
+            return { output, isError: false }
           }
+
+          if (isJson) {
+            // Pretty-print JSON, truncate if huge
+            let pretty = text
+            try { pretty = JSON.stringify(JSON.parse(text), null, 2) } catch { /* keep raw */ }
+            const preview = pretty.length > 8000 ? pretty.slice(0, 8000) + '\n[...truncated]' : pretty
+            return { output: `HTTP ${res.status}\n${preview}`, isError: false }
+          }
+
+          // Plain text / CSV / other — return as-is with truncation
+          const preview = text.length > 8000 ? text.slice(0, 8000) + '\n[...truncated]' : text
+          return { output: `HTTP ${res.status}\n${preview}`, isError: false }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+            return {
+              output:
+                `CORS error fetching ${url}. Direct page fetching is blocked by cross-origin policy.\n` +
+                `Try search_web to find information instead, or fetch a JSON API that has CORS headers.`,
+              isError: true,
+            }
+          }
+          return { output: `fetch error: ${msg}`, isError: true }
         }
-        return { output: `fetch error: ${msg}`, isError: true }
       }
-    }
 
       case 'search_web': {
         const query = String(args.query ?? '')
@@ -469,6 +499,20 @@ export async function executeTool(
         ws.set(path, content.replace(oldStr, newStr))
         bumpVersion(taskId)
         return { output: `Patched: ${args.path}`, isError: false }
+      }
+
+      case 'python_execute': {
+        const code = String(args.code ?? '')
+        if (!code.trim()) return { output: 'Missing code', isError: true }
+        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'auto' }
+        return await executePython(code, cfg)
+      }
+
+      case 'bash_execute': {
+        const command = String(args.command ?? '')
+        if (!command.trim()) return { output: 'Missing command', isError: true }
+        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'auto' }
+        return await executeBash(command, cfg)
       }
 
       default:

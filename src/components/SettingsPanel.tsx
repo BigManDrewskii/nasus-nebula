@@ -49,15 +49,57 @@ type ProviderId = (typeof PROVIDERS)[number]['id']
 // ─── Default OpenRouter model list ────────────────────────────────────────────
 
 const OPENROUTER_MODELS = [
-  { value: 'anthropic/claude-3.5-sonnet',     label: 'Claude 3.5 Sonnet',  tag: 'Recommended' },
-  { value: 'anthropic/claude-3.7-sonnet',     label: 'Claude 3.7 Sonnet',  tag: 'Latest' },
-  { value: 'anthropic/claude-3-haiku',        label: 'Claude 3 Haiku',     tag: 'Fast' },
-  { value: 'openai/gpt-4o',                   label: 'GPT-4o',             tag: null },
-  { value: 'openai/gpt-4o-mini',              label: 'GPT-4o Mini',        tag: 'Fast' },
-  { value: 'google/gemini-2.0-flash-001',     label: 'Gemini 2.0 Flash',   tag: 'Fast' },
-  { value: 'google/gemini-2.5-pro-exp-03-25', label: 'Gemini 2.5 Pro',     tag: null },
-  { value: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B',   tag: null },
-  { value: 'deepseek/deepseek-r1',            label: 'DeepSeek R1',        tag: null },
+  // Anthropic
+  { value: 'anthropic/claude-sonnet-4',              label: 'Claude Sonnet 4',              tag: 'Newest' },
+  { value: 'anthropic/claude-3.7-sonnet',            label: 'Claude 3.7 Sonnet',            tag: 'Recommended' },
+  { value: 'anthropic/claude-3.7-sonnet:thinking',   label: 'Claude 3.7 Sonnet (Thinking)', tag: 'Extended thinking' },
+  { value: 'anthropic/claude-3.5-sonnet',            label: 'Claude 3.5 Sonnet',            tag: null },
+  { value: 'anthropic/claude-3-haiku',               label: 'Claude 3 Haiku',               tag: 'Fast & cheap' },
+  // OpenAI
+  { value: 'openai/gpt-4.1',                         label: 'GPT-4.1',                      tag: 'Newest' },
+  { value: 'openai/gpt-4.1-mini',                    label: 'GPT-4.1 Mini',                 tag: 'Fast & cheap' },
+  { value: 'openai/gpt-4o',                          label: 'GPT-4o',                       tag: null },
+  { value: 'openai/gpt-4o-mini',                     label: 'GPT-4o Mini',                  tag: 'Fast & cheap' },
+  { value: 'openai/o3-mini',                         label: 'o3-mini',                      tag: 'Reasoning' },
+  { value: 'openai/o1',                              label: 'o1',                           tag: 'Reasoning' },
+  // Google
+  { value: 'google/gemini-2.5-pro-preview',          label: 'Gemini 2.5 Pro',               tag: 'Newest' },
+  { value: 'google/gemini-2.0-flash-001',            label: 'Gemini 2.0 Flash',             tag: 'Fast' },
+  { value: 'google/gemini-2.0-flash-thinking-exp',   label: 'Gemini 2.0 Flash (Thinking)',  tag: 'Experimental' },
+  { value: 'google/gemini-1.5-pro',                  label: 'Gemini 1.5 Pro',               tag: null },
+  // DeepSeek
+  { value: 'deepseek/deepseek-chat',                 label: 'DeepSeek V3',                  tag: 'Budget' },
+  { value: 'deepseek/deepseek-r1',                   label: 'DeepSeek R1',                  tag: 'Reasoning' },
+  // Mistral
+  { value: 'mistralai/mistral-large',                label: 'Mistral Large',                tag: null },
+  { value: 'mistralai/mistral-small',                label: 'Mistral Small',                tag: 'Fast' },
+  // Cohere
+  { value: 'cohere/command-r-plus',                  label: 'Command R+',                   tag: null },
+  { value: 'cohere/command-r',                       label: 'Command R',                    tag: 'Fast' },
+  // Meta
+  { value: 'meta-llama/llama-3.3-70b-instruct',      label: 'Llama 3.3 70B',               tag: 'Open source' },
+  // Qwen
+  { value: 'qwen/qwen-2.5-72b-instruct',             label: 'Qwen 2.5 72B',                tag: 'Open source' },
+]
+
+// ─── Default models per provider ──────────────────────────────────────────────
+
+const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
+  openrouter: 'anthropic/claude-3.7-sonnet',
+  openai:     'gpt-4o',
+  litellm:    'gpt-4o',
+  custom:     'gpt-4o',
+}
+
+// ─── Default model lists for non-OpenRouter providers ─────────────────────────
+
+const OPENAI_MODELS = [
+  { value: 'gpt-4.1',      label: 'GPT-4.1',      tag: 'Newest' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', tag: 'Fast & cheap' },
+  { value: 'gpt-4o',       label: 'GPT-4o',       tag: 'Recommended' },
+  { value: 'gpt-4o-mini',  label: 'GPT-4o Mini',  tag: 'Fast & cheap' },
+  { value: 'o3-mini',      label: 'o3-mini',      tag: 'Reasoning' },
+  { value: 'o1',           label: 'o1',           tag: 'Reasoning' },
 ]
 
 interface SettingsPanelProps {
@@ -87,7 +129,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localGoogleCseKey, setLocalGoogleCseKey] = useState(googleCseKey || '')
   const [localGoogleCseId, setLocalGoogleCseId] = useState(googleCseId || '')
   const [localSearchProvider, setLocalSearchProvider] = useState(searchProvider || 'auto')
-  const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
+    const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
+
+    // Code execution state
+    const {
+      e2bApiKey, setE2bApiKey,
+      daytonaApiKey, setDaytonaApiKey,
+      daytonaApiUrl, setDaytonaApiUrl,
+      executionMode, setExecutionMode,
+    } = useAppStore()
+    const [localE2bKey, setLocalE2bKey] = useState(e2bApiKey || '')
+    const [localDaytonaKey, setLocalDaytonaKey] = useState(daytonaApiKey || '')
+    const [localDaytonaUrl, setLocalDaytonaUrl] = useState(daytonaApiUrl || '')
+    const [localExecutionMode, setLocalExecutionMode] = useState(executionMode || 'auto')
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -105,12 +159,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const providerDef = PROVIDERS.find((p) => p.id === localProvider) ?? PROVIDERS[0]
 
-  useEffect(() => {
-    if (localProvider !== 'custom' && providerDef.base) setLocalBase(providerDef.base)
-    setFetchedModels(null)
-    setDynamicModels([])
-    setFetchModelsError(null)
-  }, [localProvider]) // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+      if (localProvider !== 'custom' && providerDef.base) setLocalBase(providerDef.base)
+      setFetchedModels(null)
+      setDynamicModels([])
+      setFetchModelsError(null)
+      // Set a sensible default model when switching providers
+      const defaultModel = PROVIDER_DEFAULT_MODELS[localProvider]
+      if (defaultModel) setLocalModel(defaultModel)
+    }, [localProvider]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -139,12 +196,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       }
     }
 
-  const modelList: { value: string; label: string; tag?: string | null }[] =
-    fetchedModels
-      ? fetchedModels.map((v) => ({ value: v, label: v, tag: null }))
-      : localProvider === 'openrouter'
-      ? OPENROUTER_MODELS
-      : []
+    const modelList: { value: string; label: string; tag?: string | null }[] =
+      fetchedModels
+        ? fetchedModels.map((v) => ({ value: v, label: v, tag: null }))
+        : localProvider === 'openrouter'
+        ? OPENROUTER_MODELS
+        : localProvider === 'openai'
+        ? OPENAI_MODELS
+        : []
 
   const selectedModel = modelList.find((m) => m.value === localModel) ?? { value: localModel, label: localModel, tag: null }
 
@@ -183,9 +242,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setBraveSearchKey(localBraveKey.trim())
       setGoogleCseKey(localGoogleCseKey.trim())
       setGoogleCseId(localGoogleCseId.trim())
-      setSearchProvider(localSearchProvider)
-      const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
-      setMaxIterations(parsedIter)
+        setSearchProvider(localSearchProvider)
+        const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
+        setMaxIterations(parsedIter)
+        setE2bApiKey(localE2bKey.trim())
+        setDaytonaApiKey(localDaytonaKey.trim())
+        setDaytonaApiUrl(localDaytonaUrl.trim())
+        setExecutionMode(localExecutionMode)
       await tauriInvoke('save_config', {
       apiKey: localKey.trim(),
       model: localModel,
@@ -450,6 +513,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 onGoogleCseIdChange={setLocalGoogleCseId}
               />
 
+              {/* ── Code Execution ── */}
+              <ExecutionSection
+                executionMode={localExecutionMode}
+                onExecutionModeChange={setLocalExecutionMode}
+                e2bKey={localE2bKey}
+                onE2bKeyChange={setLocalE2bKey}
+                daytonaKey={localDaytonaKey}
+                onDaytonaKeyChange={setLocalDaytonaKey}
+                daytonaUrl={localDaytonaUrl}
+                onDaytonaUrlChange={setLocalDaytonaUrl}
+              />
+
               {/* ── Max Iterations ── */}
               <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
                 <input
@@ -653,6 +728,150 @@ function SearchSection({
               onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
             />
           </Field>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ─── ExecutionSection ─────────────────────────────────────────────────────────
+
+const EXECUTION_MODES = [
+  { id: 'auto',     label: 'Auto',           desc: 'E2B → Daytona → Pyodide (best available)' },
+  { id: 'e2b',      label: 'E2B',            desc: 'Cloud sandbox — full Linux + all packages' },
+  { id: 'daytona',  label: 'Daytona',        desc: 'Cloud sandbox — full Linux + all packages' },
+  { id: 'pyodide',  label: 'Pyodide',        desc: 'Browser WebAssembly — no keys required, Python only' },
+  { id: 'disabled', label: 'Disabled',       desc: 'Code execution is turned off' },
+] as const
+
+type ExecutionModeId = (typeof EXECUTION_MODES)[number]['id']
+
+function ExecutionSection({
+  executionMode, onExecutionModeChange,
+  e2bKey, onE2bKeyChange,
+  daytonaKey, onDaytonaKeyChange,
+  daytonaUrl, onDaytonaUrlChange,
+}: {
+  executionMode: string
+  onExecutionModeChange: (v: string) => void
+  e2bKey: string
+  onE2bKeyChange: (v: string) => void
+  daytonaKey: string
+  onDaytonaKeyChange: (v: string) => void
+  daytonaUrl: string
+  onDaytonaUrlChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = EXECUTION_MODES.find((m) => m.id === executionMode) ?? EXECUTION_MODES[0]
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+    color: 'var(--tx-primary)', background: '#0d0d0d',
+    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
+  }
+
+  const showE2b = executionMode === 'e2b' || executionMode === 'auto'
+  const showDaytona = executionMode === 'daytona' || executionMode === 'auto'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Field label="Code Execution" icon="terminal"
+        hint={<span style={{ color: 'var(--tx-tertiary)' }}>{selected.desc}</span>}
+      >
+        <div style={{ position: 'relative' }} ref={ref}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
+              background: '#0d0d0d',
+              border: `1px solid ${open ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+              color: 'var(--tx-primary)', transition: 'border-color 0.12s',
+            }}
+          >
+            <span>{selected.label}</span>
+            <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
+          </button>
+          {open && (
+            <div style={{
+              position: 'absolute', zIndex: 10, width: '100%', marginTop: 4, borderRadius: 12,
+              overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+              background: '#161616', border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              {EXECUTION_MODES.map((m) => {
+                const isSel = m.id === (executionMode as ExecutionModeId)
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => { onExecutionModeChange(m.id); setOpen(false) }}
+                    style={{
+                      width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                      padding: '8px 12px', textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
+                      color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                      background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                      transition: 'background 0.1s', gap: 2,
+                    }}
+                    onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                    onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                      <span>{m.label}</span>
+                      {isSel && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
+                    </div>
+                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{m.desc}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Field>
+
+      {showE2b && (
+        <Field label="E2B API Key" icon="key"
+          hint={<>Free $100 credit · No credit card · <a href="https://e2b.dev" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>e2b.dev</a>{executionMode === 'auto' ? ' (optional — used first in Auto mode)' : ''}</>}
+        >
+          <input type="password" value={e2bKey} onChange={(e) => onE2bKeyChange(e.target.value)}
+            placeholder="e2b_…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+          />
+        </Field>
+      )}
+
+      {showDaytona && (
+        <>
+          <Field label="Daytona API Key" icon="key"
+            hint={<>Free $200 credit · No credit card · <a href="https://app.daytona.io" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>app.daytona.io</a>{executionMode === 'auto' ? ' (optional — used as fallback)' : ''}</>}
+          >
+            <input type="password" value={daytonaKey} onChange={(e) => onDaytonaKeyChange(e.target.value)}
+              placeholder="dtn_…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+            />
+          </Field>
+          {executionMode === 'daytona' && (
+            <Field label="Daytona API URL" icon="link"
+              hint="Leave blank to use the default: https://app.daytona.io/api"
+            >
+              <input type="text" value={daytonaUrl} onChange={(e) => onDaytonaUrlChange(e.target.value)}
+                placeholder="https://app.daytona.io/api" style={inputStyle} className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+              />
+            </Field>
+          )}
         </>
       )}
     </div>

@@ -15,14 +15,20 @@ interface AppState {
     apiBase: string
     provider: string
     dynamicModels: string[]
-    braveSearchKey: string
-    googleCseKey: string
-    googleCseId: string
-    // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
-    searchProvider: string
-    maxIterations: number
-    /** Set to true after the user completes onboarding */
-    onboardingComplete: boolean
+      braveSearchKey: string
+      googleCseKey: string
+      googleCseId: string
+      // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
+      searchProvider: string
+      maxIterations: number
+      /** Set to true after the user completes onboarding */
+      onboardingComplete: boolean
+      // Code execution (BYOK sandboxes)
+      e2bApiKey: string
+      daytonaApiKey: string
+      daytonaApiUrl: string
+      /** 'auto' | 'e2b' | 'daytona' | 'pyodide' | 'disabled' */
+      executionMode: string
 
   setActiveTaskId: (id: string | null) => void
   setDynamicModels: (models: string[]) => void
@@ -51,9 +57,13 @@ interface AppState {
   setBraveSearchKey: (key: string) => void
   setGoogleCseKey: (key: string) => void
   setGoogleCseId: (id: string) => void
-    setSearchProvider: (provider: string) => void
-    setMaxIterations: (n: number) => void
-    setOnboardingComplete: () => void
+      setSearchProvider: (provider: string) => void
+      setMaxIterations: (n: number) => void
+      setOnboardingComplete: () => void
+      setE2bApiKey: (key: string) => void
+      setDaytonaApiKey: (key: string) => void
+      setDaytonaApiUrl: (url: string) => void
+      setExecutionMode: (mode: string) => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -92,9 +102,13 @@ export const useAppStore = create<AppState>()(
           braveSearchKey: '',
           googleCseKey: '',
           googleCseId: '',
-            searchProvider: 'auto',
-            maxIterations: 50,
-            onboardingComplete: false,
+              searchProvider: 'auto',
+              maxIterations: 50,
+              onboardingComplete: false,
+              e2bApiKey: '',
+              daytonaApiKey: '',
+              daytonaApiUrl: '',
+              executionMode: 'auto',
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
         setDynamicModels: (models) => set({ dynamicModels: models }),
@@ -304,25 +318,29 @@ export const useAppStore = create<AppState>()(
             },
           })),
 
-          setApiKey: (key) => set({ apiKey: key }),
-          setModel: (model) => set({ model }),
-          setWorkspacePath: (path) => set({ workspacePath: path }),
-          addRecentWorkspacePath: (path) =>
-            set((state) => {
-              if (!path.trim()) return {}
-              const existing = state.recentWorkspacePaths.filter((p) => p !== path)
-              return {
-                recentWorkspacePaths: [path, ...existing].slice(0, 5),
-              }
-            }),
-          setApiBase: (base) => set({ apiBase: base }),
-          setProvider: (provider) => set({ provider }),
-          setBraveSearchKey: (key) => set({ braveSearchKey: key }),
-          setGoogleCseKey: (key) => set({ googleCseKey: key }),
-          setGoogleCseId: (id) => set({ googleCseId: id }),
-            setSearchProvider: (provider) => set({ searchProvider: provider }),
-            setMaxIterations: (n) => set({ maxIterations: n }),
-            setOnboardingComplete: () => set({ onboardingComplete: true }),
+            setApiKey: (key) => set({ apiKey: key }),
+            setModel: (model) => set({ model }),
+            setWorkspacePath: (path) => set({ workspacePath: path }),
+            addRecentWorkspacePath: (path) =>
+              set((state) => {
+                if (!path.trim()) return {}
+                const existing = state.recentWorkspacePaths.filter((p) => p !== path)
+                return {
+                  recentWorkspacePaths: [path, ...existing].slice(0, 5),
+                }
+              }),
+            setApiBase: (base) => set({ apiBase: base }),
+            setProvider: (provider) => set({ provider }),
+            setBraveSearchKey: (key) => set({ braveSearchKey: key }),
+            setGoogleCseKey: (key) => set({ googleCseKey: key }),
+            setGoogleCseId: (id) => set({ googleCseId: id }),
+              setSearchProvider: (provider) => set({ searchProvider: provider }),
+              setMaxIterations: (n) => set({ maxIterations: n }),
+              setOnboardingComplete: () => set({ onboardingComplete: true }),
+              setE2bApiKey: (key) => set({ e2bApiKey: key }),
+              setDaytonaApiKey: (key) => set({ daytonaApiKey: key }),
+              setDaytonaApiUrl: (url) => set({ daytonaApiUrl: url }),
+              setExecutionMode: (mode) => set({ executionMode: mode }),
     }),
     {
       name: 'nasus-store-v2',
@@ -364,9 +382,13 @@ export const useAppStore = create<AppState>()(
             braveSearchKey: state.braveSearchKey,
             googleCseKey: state.googleCseKey,
             googleCseId: state.googleCseId,
-            searchProvider: state.searchProvider,
-              maxIterations: state.maxIterations,
-              onboardingComplete: state.onboardingComplete,
+              searchProvider: state.searchProvider,
+                maxIterations: state.maxIterations,
+                onboardingComplete: state.onboardingComplete,
+                e2bApiKey: state.e2bApiKey,
+                daytonaApiKey: state.daytonaApiKey,
+                daytonaApiUrl: state.daytonaApiUrl,
+                executionMode: state.executionMode,
             }
       },
       // On rehydration, clear any streaming:true flags left by a previous crashed session

@@ -3,6 +3,7 @@ import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
+import { WorkspacePicker } from './WorkspacePicker'
 
 const PROVIDERS = [
   {
@@ -506,30 +507,23 @@ export function OnboardingScreen() {
               </div>
 
               {/* Path input */}
-              <div>
-                <label style={labelStyle}>
-                  <Pxi name="folder" size={9} style={{ color: 'var(--tx-tertiary)' }} />
-                  Workspace path
-                </label>
-                <input
-                  type="text"
-                  value={workspacePath}
-                  onChange={(e) => { setWorkspacePathLocal(e.target.value); setWorkspaceError('') }}
-                  placeholder="/Users/you/nasus-workspace"
-                  autoFocus
-                  style={inputStyle}
-                  className="placeholder-[var(--tx-muted)]"
-                  onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !saving) handleFinish() }}
-                />
-                {workspaceError && (
-                  <p style={{ fontSize: 11, color: '#f87171', margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Pxi name="exclamation-triangle" size={9} />
-                    {workspaceError}
-                  </p>
-                )}
-              </div>
+                <div>
+                  <label style={labelStyle}>
+                    <Pxi name="folder" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+                    Workspace path
+                  </label>
+                  <WorkspacePicker
+                    value={workspacePath}
+                    onChange={(v) => { setWorkspacePathLocal(v); setWorkspaceError('') }}
+                    error={workspaceError || undefined}
+                  />
+                  {workspaceError && (
+                    <p style={{ fontSize: 11, color: '#f87171', margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Pxi name="exclamation-triangle" size={9} />
+                      {workspaceError}
+                    </p>
+                  )}
+                </div>
 
               <p style={{ fontSize: 11, color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.55, textAlign: 'center' }}>
                 Leave blank to use <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)', fontSize: 10.5 }}>/tmp/nasus-workspace</code>
