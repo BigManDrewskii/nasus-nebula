@@ -147,7 +147,10 @@ html, body, #root {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
-.msg-in { animation: msg-in 0.2s cubic-bezier(0.22,1,0.36,1) forwards; }
+.msg-in {
+  animation: msg-in 0.2s cubic-bezier(0.22,1,0.36,1) forwards;
+  will-change: transform, opacity;
+}
 
 /* Shimmer */
 @keyframes shimmer {
@@ -165,28 +168,41 @@ html, body, #root {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
-.fade-in { animation: fadeIn 0.18s ease-out forwards; }
+.fade-in {
+  animation: fadeIn 0.18s ease-out forwards;
+  will-change: transform, opacity;
+}
 
 /* Pulse glow — amber */
 @keyframes pulseGlow {
   0%, 100% { box-shadow: 0 0 0 0   oklch(64% 0.214 40.1 / 0.4); }
   50%       { box-shadow: 0 0 0 5px oklch(64% 0.214 40.1 / 0);   }
 }
-.pulse-glow { animation: pulseGlow 1.8s ease-in-out infinite; }
+.pulse-glow {
+  animation: pulseGlow 1.8s ease-in-out infinite;
+  will-change: box-shadow;
+}
 
 /* Expand down */
 @keyframes expandDown {
   from { opacity: 0; max-height: 0;    }
   to   { opacity: 1; max-height: 800px; }
 }
-.expand-down { animation: expandDown 0.2s ease-out; overflow: hidden; }
+.expand-down {
+  animation: expandDown 0.2s ease-out;
+  overflow: hidden;
+  will-change: opacity, max-height;
+}
 
 /* Spin — used for active iteration refresh icon */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
-.spin { animation: spin 1s linear infinite; }
+.spin {
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
 
 /* Ping — used by in-progress status dot */
 @keyframes ping {
@@ -198,4 +214,7 @@ html, body, #root {
   from { opacity: 0; transform: translateX(-4px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-.task-item-in { animation: taskItemIn 0.16s cubic-bezier(0.22,1,0.36,1) both; }
+.task-item-in {
+  animation: taskItemIn 0.16s cubic-bezier(0.22,1,0.36,1) both;
+  will-change: transform, opacity;
+}

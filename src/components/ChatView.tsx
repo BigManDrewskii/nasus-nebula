@@ -23,6 +23,27 @@ function resolveTaskWorkspace(basePath: string, taskId: string): string {
   return base ? `${base}/${taskId}` : `/tmp/nasus-workspace/${taskId}`
 }
 
+// ── Cost estimation (static — no need to recreate each render) ────────────────
+const RATES_PER_MILLION: Record<string, number> = {
+  'anthropic/claude-3.5-sonnet': 9,
+  'anthropic/claude-3.7-sonnet': 9,
+  'anthropic/claude-3-haiku': 1.25,
+  'openai/gpt-4o': 7.5,
+  'openai/gpt-4o-mini': 0.3,
+  'google/gemini-2.0-flash-001': 0.2,
+  'google/gemini-2.5-pro-exp-03-25': 7,
+  'meta-llama/llama-3.3-70b-instruct': 0.6,
+  'deepseek/deepseek-r1': 2,
+}
+
+function estimateCost(m: string, tokens: number): string {
+  const rate = RATES_PER_MILLION[m] ?? 5
+  const cost = (tokens / 1_000_000) * rate
+  if (cost < 0.001) return '<$0.001'
+  if (cost < 0.01) return `$${cost.toFixed(4)}`
+  return `$${cost.toFixed(3)}`
+}
+
 interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
@@ -99,25 +120,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     executionMode,
   } = useAppStore()
 
-  function estimateCost(m: string, tokens: number): string {
-    const ratesPerMillion: Record<string, number> = {
-      'anthropic/claude-3.5-sonnet': 9,
-      'anthropic/claude-3.7-sonnet': 9,
-      'anthropic/claude-3-haiku': 1.25,
-      'openai/gpt-4o': 7.5,
-      'openai/gpt-4o-mini': 0.3,
-      'google/gemini-2.0-flash-001': 0.2,
-      'google/gemini-2.5-pro-exp-03-25': 7,
-      'meta-llama/llama-3.3-70b-instruct': 0.6,
-      'deepseek/deepseek-r1': 2,
-    }
-    const rate = ratesPerMillion[m] ?? 5
-    const cost = (tokens / 1_000_000) * rate
-    if (cost < 0.001) return '<$0.001'
-    if (cost < 0.01) return `$${cost.toFixed(4)}`
-    return `$${cost.toFixed(3)}`
-  }
-
     const [iteration, setIteration] = useState(0)
     const [tokenCount, setTokenCount] = useState(0)
     const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
@@ -159,7 +161,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode })
     useEffect(() => {
       configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode }
-    })
+    }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode])
 
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')

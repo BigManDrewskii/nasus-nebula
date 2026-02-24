@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, memo, useMemo } from 'react'
 import type { AgentStep } from '../types'
 import { Pxi } from './Pxi'
 
@@ -6,9 +6,9 @@ interface Props {
   steps: AgentStep[]
 }
 
-export function AgentStepsView({ steps }: Props) {
+export const AgentStepsView = memo(function AgentStepsView({ steps }: Props) {
   if (!steps || steps.length === 0) return null
-  const rows = buildRows(steps)
+  const rows = useMemo(() => buildRows(steps), [steps])
 
   return (
     <div style={{ marginBottom: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -17,7 +17,7 @@ export function AgentStepsView({ steps }: Props) {
       ))}
     </div>
   )
-}
+})
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ function Row({ row }: { row: AnyRow }) {
 
 // ─── Thinking row ─────────────────────────────────────────────────────────────
 
-function ThinkingRow({ content }: { content: string }) {
+const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) {
   const [open, setOpen] = useState(false)
   const preview = content.split('\n')[0].slice(0, 90)
   const isLong = content.length > 90 || content.includes('\n')
@@ -140,11 +140,11 @@ function ThinkingRow({ content }: { content: string }) {
       </span>
     </button>
   )
-}
+})
 
 // ─── Tool pair row ────────────────────────────────────────────────────────────
 
-function ToolPairRow({ pair }: { pair: ToolPair }) {
+const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
   const [open, setOpen] = useState(false)
   const { call, result } = pair
   const isPending = result === null
@@ -230,7 +230,7 @@ function ToolPairRow({ pair }: { pair: ToolPair }) {
       )}
     </div>
   )
-}
+})
 
 // ─── Expanded detail ──────────────────────────────────────────────────────────
 

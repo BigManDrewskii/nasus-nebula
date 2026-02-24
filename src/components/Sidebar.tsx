@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
 import { useAppStore } from '../store'
@@ -50,18 +50,19 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings }: SidebarProps) {
-  const { model }                       = useAppStore()
+  const model = useAppStore((s) => s.model)
   const [search, setSearch]             = useState('')
   const [searchOpen, setSearchOpen]     = useState(false)
   const [collapsed, setCollapsed]       = useState<Set<string>>(new Set())
   const searchRef                       = useRef<HTMLInputElement>(null)
 
-  const pinnedTasks = tasks.filter((t) => t.pinned)
-  const groups      = groupTasks(tasks)
+  const pinnedTasks = useMemo(() => tasks.filter((t) => t.pinned), [tasks])
+  const groups      = useMemo(() => groupTasks(tasks), [tasks])
 
   const q      = search.trim().toLowerCase()
-  const filter = (items: Task[]) =>
-    q ? items.filter((t) => t.title.toLowerCase().includes(q)) : items
+  const filter = useCallback((items: Task[]) =>
+    q ? items.filter((t) => t.title.toLowerCase().includes(q)) : items,
+  [q])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -545,6 +546,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
           overflow: 'hidden',
           transition: height === 'auto' ? 'none' : 'height 0.2s cubic-bezier(0.4,0,0.2,1)',
           visibility: collapsed && height === 0 ? 'hidden' : 'visible',
+          willChange: height !== 'auto' ? 'height' : 'auto',
         }}
         aria-hidden={collapsed}
       >
@@ -579,7 +581,7 @@ function SidebarFooter({ model, fullModel, onSettings }: {
   fullModel: string
   onSettings: () => void
 }) {
-  const { provider }            = useAppStore()
+  const provider = useAppStore((s) => s.provider)
   const [modelHov, setModelHov] = useState(false)
   const [gearHov,  setGearHov]  = useState(false)
   const meta = PROVIDER_META[provider] ?? { label: provider, color: 'var(--tx-muted)' }

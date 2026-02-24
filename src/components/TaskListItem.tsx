@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, memo, useCallback } from 'react'
 import type { Task } from '../types'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
@@ -9,7 +9,7 @@ interface TaskListItemProps {
   onClick: () => void
 }
 
-export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
+export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
   const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
   const [hovered,    setHovered]    = useState(false)
   const [confirming, setConfirming] = useState(false)
@@ -18,25 +18,25 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  function startEdit(e: React.MouseEvent) {
+  const startEdit = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     setEditValue(task.title)
     setEditing(true)
     setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
-  }
+  }, [task.title])
 
-  function commitEdit() {
+  const commitEdit = useCallback(() => {
     const trimmed = editValue.trim()
     if (trimmed && trimmed !== task.title) updateTaskTitle(task.id, trimmed)
     setEditing(false)
-  }
+  }, [editValue, task.title, task.id, updateTaskTitle])
 
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     setEditValue(task.title)
     setEditing(false)
-  }
+  }, [task.title])
 
-  function handleDelete(e: React.MouseEvent) {
+  const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     if (!confirming) {
       setConfirming(true)
@@ -45,17 +45,17 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
     }
     if (confirmTimer.current) clearTimeout(confirmTimer.current)
     deleteTask(task.id)
-  }
+  }, [confirming, deleteTask, task.id])
 
-  function handlePin(e: React.MouseEvent) {
+  const handlePin = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     toggleTaskPin(task.id)
-  }
+  }, [toggleTaskPin, task.id])
 
-  function handleDuplicate(e: React.MouseEvent) {
+  const handleDuplicate = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     duplicateTask(task.id)
-  }
+  }, [duplicateTask, task.id])
 
   const icon = taskTypeIcon(task.taskType)
 
@@ -232,7 +232,7 @@ export function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
       )}
     </div>
   )
-}
+})
 
 // ── Micro action button ───────────────────────────────────────────────────────
 

@@ -8,11 +8,12 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    nodePolyfills({
-      // Polyfill globals (Buffer, process, etc.) needed by e2b and @daytonaio/sdk
-      globals: { Buffer: true, process: true, global: true },
-      protocolImports: true,
-    }),
+      nodePolyfills({
+        // Polyfill globals (Buffer, process, etc.) needed by e2b and @daytonaio/sdk
+        globals: { Buffer: true, process: true, global: true },
+        protocolImports: true,
+        exclude: ['fs'],
+      }),
   ],
   clearScreen: false,
   server: {

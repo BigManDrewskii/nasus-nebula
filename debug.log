@@ -68,3 +68,5 @@ data: {"id"... [truncated]
 2026-02-24T08:29:00.379Z [console][error] Module "stream" has been externalized for browser compatibility. Cannot access "stream.Readable" in client code. See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
 2026-02-24T08:29:00.379Z [console][error] Module "stream" has been externalized for browser compatibility. Cannot access "stream.Writable" in client code. See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.
 2026-02-24T08:29:00.382Z [console][error] Uncaught ReferenceError: Buffer is not defined
+2026-02-24T08:59:55.681Z [console][log] [vite] connected.
+2026-02-24T08:59:55.681Z [console][log] [vite] connected.

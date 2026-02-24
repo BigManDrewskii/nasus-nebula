@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, memo, useMemo } from 'react'
 import type { Message, MessageAttachment, AttachmentCategory } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
@@ -450,13 +450,18 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
 
 // ─── Agent message ────────────────────────────────────────────────────────────
 
-function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   const [hovered, setHovered] = useState(false)
   const hasSteps   = (message.steps?.length ?? 0) > 0
   const hasContent = message.content.trim().length > 0
   const isStreaming = message.streaming
   const hasError   = !!message.error
   const isWaiting  = !hasContent && !hasSteps && isStreaming && !hasError
+
+  const renderedContent = useMemo(
+    () => hasContent ? renderMarkdown(message.content) : null,
+    [message.content, hasContent],
+  )
 
   return (
     <div
@@ -471,8 +476,8 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
         {isWaiting && <TypingDots />}
         {hasSteps && <AgentStepsView steps={message.steps!} />}
         {hasContent && (
-          <div style={hasSteps ? { marginTop: 12 } : {}}>
-            {renderMarkdown(message.content)}
+            <div style={hasSteps ? { marginTop: 12 } : {}}>
+              {renderedContent}
             {isStreaming && (
               <span
                 style={{
@@ -498,7 +503,7 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
           <ErrorBanner error={message.error!} onRetry={onRetry} />
         )}
         {/* Copy message action — hover reveal, only when content exists and not streaming */}
-        {hasContent && !isStreaming && !hasError && hovered && (
+          {hasContent && !isStreaming && !hasError && hovered && (
           <div style={{ marginTop: 8 }}>
             <CopyButton text={message.content} />
           </div>
@@ -506,11 +511,11 @@ function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => 
       </div>
     </div>
   )
-}
+})
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-export function ChatMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
+export const ChatMessage = memo(function ChatMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   if (message.author === 'user') return <UserBubble content={message.content} attachments={message.attachments} />
   return <AgentMessage message={message} onRetry={onRetry} />
-}
+})
