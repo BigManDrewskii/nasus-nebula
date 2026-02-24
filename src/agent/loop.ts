@@ -153,25 +153,122 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
       },
     },
-    {
-      type: 'function',
-      function: {
-        name: 'bash_execute',
-        description:
-          'Execute a shell command in a cloud sandbox (E2B or Daytona). Requires an E2B or Daytona API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
-        parameters: {
-          type: 'object',
-          properties: {
-            command: {
-              type: 'string',
-              description: 'Shell command to run (bash). Examples: "pip install pandas", "python script.py", "ls /workspace".',
+      {
+        type: 'function',
+        function: {
+          name: 'bash_execute',
+          description:
+            'Execute a shell command in a cloud sandbox (E2B or Daytona). Requires an E2B or Daytona API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
+          parameters: {
+            type: 'object',
+            properties: {
+              command: {
+                type: 'string',
+                description: 'Shell command to run (bash). Examples: "pip install pandas", "python script.py", "ls /workspace".',
+              },
             },
+            required: ['command'],
           },
-          required: ['command'],
         },
       },
-    },
-  ]
+      {
+        type: 'function',
+        function: {
+          name: 'browser_navigate',
+          description:
+            'Navigate the user\'s real browser to a URL. Requires the Nasus Browser Bridge extension. Use to open websites, web apps, or any URL in the user\'s actual browser session (with their real cookies/logins). Returns the page title and final URL.',
+          parameters: {
+            type: 'object',
+            properties: {
+              url: { type: 'string', description: 'Full URL to navigate to (include https://).' },
+              new_tab: { type: 'boolean', description: 'Open in a new tab (default false).', default: false },
+            },
+            required: ['url'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'browser_click',
+          description:
+            'Click an element in the user\'s browser tab. Use a CSS selector (preferred) or x,y pixel coordinates. Returns success info or an error if the element was not found.',
+          parameters: {
+            type: 'object',
+            properties: {
+              selector: { type: 'string', description: 'CSS selector of the element to click (e.g. "button.submit", "#login-btn").' },
+              x: { type: 'number', description: 'X pixel coordinate (use if no selector).' },
+              y: { type: 'number', description: 'Y pixel coordinate (use if no selector).' },
+              tab_id: { type: 'number', description: 'Target tab ID (omit to use the current Nasus-controlled tab).' },
+            },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'browser_type',
+          description:
+            'Type text into the focused element or a specific input in the user\'s browser. Use browser_click to focus an input first, then browser_type to enter text.',
+          parameters: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'Text to type.' },
+              selector: { type: 'string', description: 'CSS selector of input to focus before typing.' },
+              clear_first: { type: 'boolean', description: 'Clear the field before typing (default false).' },
+              tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+            },
+            required: ['text'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'browser_extract',
+          description:
+            'Extract the readable text content of the current browser page (or a specific element) as Markdown. Use this to read page content, scrape data, or verify the state of a page after navigation or interaction.',
+          parameters: {
+            type: 'object',
+            properties: {
+              selector: { type: 'string', description: 'CSS selector to extract from (default: full page body).' },
+              tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+            },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'browser_screenshot',
+          description:
+            'Take a screenshot of the current browser tab and return it as a base64 image. Use to visually verify a page state, capture a result, or inspect a UI element.',
+          parameters: {
+            type: 'object',
+            properties: {
+              full_page: { type: 'boolean', description: 'Capture the full scrollable page (default false = viewport only).' },
+              tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+            },
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'browser_scroll',
+          description: 'Scroll the current browser tab up or down.',
+          parameters: {
+            type: 'object',
+            properties: {
+              direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction.' },
+              amount: { type: 'number', description: 'Pixels to scroll (default 400).' },
+              tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+            },
+            required: ['direction'],
+          },
+        },
+      },
+    ]
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -185,6 +282,7 @@ IMPORTANT: You are running in browser mode. The sandbox environment has limitati
   - search_web: multi-backend search (Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
   - python_execute: run Python. If E2B or Daytona is configured, this runs in a full cloud Linux sandbox with all packages. Otherwise falls back to Pyodide (WebAssembly) in the browser (install packages with: import micropip; await micropip.install("pkg"))
   - bash_execute: run shell commands in a cloud sandbox (E2B/Daytona). Requires API key in Settings → Code Execution. Use for pip install, apt-get, running scripts, etc.
+  - browser_navigate / browser_click / browser_type / browser_extract / browser_screenshot / browser_scroll: control the user's real Chrome browser via the Nasus Browser Bridge extension. These use the user's actual session (real cookies, logins, saved data). Only available if the extension is installed and enabled in Settings → Browser Access. If a browser tool returns an extension error, inform the user and stop using browser tools.
 
 ═══════════════════════════════════════════════════════
 TASK COMPLEXITY JUDGEMENT (decide FIRST)

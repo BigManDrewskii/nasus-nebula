@@ -40,6 +40,7 @@ export type AgentStep =
   | { kind: 'strike_escalation'; tool: string; attempts: string[] }
   | { kind: 'context_compressed'; removedCount: number }
   | { kind: 'search_status'; callId: string; query: string; phase: 'searching' | 'fallback' | 'complete' | 'no_results' | 'all_failed'; provider: string; message: string; resultCount?: number; durationMs?: number }
+  | { kind: 'browser_action'; action: string; url?: string; selector?: string; tabId?: number; phase: 'start' | 'done' | 'error'; detail?: string }
 
 export interface MemoryFiles {
   task_plan: string

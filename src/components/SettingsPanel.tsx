@@ -4,6 +4,7 @@ import { fetchModels as fetchModelsFromLlm } from '../agent/llm'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
+import { getExtensionId, setExtensionId, pingExtension } from '../agent/browserBridge'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -525,6 +526,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 onDaytonaUrlChange={setLocalDaytonaUrl}
               />
 
+              {/* ── Browser Access ── */}
+              <BrowserAccessSection />
+
               {/* ── Max Iterations ── */}
               <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
                 <input
@@ -874,6 +878,91 @@ function ExecutionSection({
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// ─── BrowserAccessSection ─────────────────────────────────────────────────────
+
+function BrowserAccessSection() {
+  const [extId, setExtId] = useState(() => getExtensionId())
+  const [status, setStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
+  const [localId, setLocalId] = useState(extId)
+
+  async function handleTest() {
+    setStatus('checking')
+    setExtensionId(localId)
+    setExtId(localId)
+    const ok = await pingExtension()
+    setStatus(ok ? 'connected' : 'error')
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 12, outline: 'none',
+    color: 'var(--tx-primary)', background: '#0d0d0d', fontFamily: 'var(--font-mono)',
+    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
+  }
+
+  const statusColor = status === 'connected' ? '#22c55e' : status === 'error' ? '#f87171' : 'var(--tx-tertiary)'
+  const statusLabel = status === 'connected' ? 'Connected' : status === 'error' ? 'Not reachable' : status === 'checking' ? 'Checking…' : extId ? 'Not tested' : 'Not configured'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Field label="Browser Access" icon="browser"
+        hint="Let Nasus control your real Chrome browser. Requires the Nasus Browser Bridge extension installed in Chrome."
+      >
+        {/* Status pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: statusColor }}>{statusLabel}</span>
+        </div>
+
+        {/* Extension ID input */}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            value={localId}
+            onChange={(e) => { setLocalId(e.target.value); setStatus('idle') }}
+            placeholder="Extension ID (e.g. abcdefghijklmnopqrstuvwxyzabcdef)"
+            style={{ ...inputStyle, flex: 1 }}
+            className="placeholder-[var(--tx-muted)]"
+            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+          />
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={!localId.trim() || status === 'checking'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '8px 12px',
+              borderRadius: 8, fontSize: 12, border: 'none', cursor: (!localId.trim() || status === 'checking') ? 'not-allowed' : 'pointer',
+              background: 'rgba(255,255,255,0.07)', color: 'var(--tx-secondary)',
+              opacity: (!localId.trim() || status === 'checking') ? 0.45 : 1,
+              transition: 'color 0.12s', flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+          >
+            <Pxi name={status === 'checking' ? 'spinner-third' : 'plug'} size={10} />
+            Test
+          </button>
+        </div>
+      </Field>
+
+      {/* Install instructions */}
+      <div style={{
+        padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+        border: '1px solid rgba(255,255,255,0.06)',
+        fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
+        display: 'flex', flexDirection: 'column', gap: 4,
+      }}>
+        <div style={{ color: 'var(--tx-secondary)', fontWeight: 500, marginBottom: 2 }}>How to install:</div>
+        <div>1. Open Chrome → <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>chrome://extensions</code></div>
+        <div>2. Enable <strong style={{ color: 'var(--tx-secondary)' }}>Developer mode</strong> (top right toggle)</div>
+        <div>3. Click <strong style={{ color: 'var(--tx-secondary)' }}>Load unpacked</strong> → select the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>browser-extension/</code> folder in the Nasus project</div>
+        <div>4. Copy the Extension ID shown on the card and paste it above</div>
+        <div>5. Click <strong style={{ color: 'var(--tx-secondary)' }}>Test</strong> to verify the connection</div>
+      </div>
     </div>
   )
 }

@@ -33,6 +33,7 @@ type AnyRow =
   | { kind: 'strike_escalation'; step: Extract<AgentStep, { kind: 'strike_escalation' }> }
   | { kind: 'context_compressed'; step: Extract<AgentStep, { kind: 'context_compressed' }> }
   | { kind: 'search_status'; step: Extract<AgentStep, { kind: 'search_status' }> }
+  | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
 
 function buildRows(steps: AgentStep[]): AnyRow[] {
   const rows: AnyRow[] = []
@@ -71,6 +72,8 @@ function buildRows(steps: AgentStep[]): AnyRow[] {
       } else {
         rows.push({ kind: 'search_status', step })
       }
+    } else if (step.kind === 'browser_action') {
+      rows.push({ kind: 'browser_action', step })
     }
   }
   return rows
@@ -83,6 +86,7 @@ function Row({ row }: { row: AnyRow }) {
   if (row.kind === 'tool_pair') return <ToolPairRow pair={row} />
   if (row.kind === 'strike_escalation') return <StrikeRow step={row.step} />
   if (row.kind === 'search_status') return <SearchStatusChip step={row.step} />
+  if (row.kind === 'browser_action') return <BrowserActionRow step={row.step} />
   if (row.kind === 'context_compressed') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px' }}>
@@ -545,6 +549,58 @@ function SearchStatusChip({ step }: { step: Extract<AgentStep, { kind: 'search_s
   )
 }
 
+// ─── Browser action row ───────────────────────────────────────────────────────
+
+function BrowserActionRow({ step }: { step: Extract<AgentStep, { kind: 'browser_action' }> }) {
+  const { action, url, selector, phase, detail } = step
+
+  const BROWSER_ACTION_LABELS: Record<string, string> = {
+    browser_navigate: 'Navigate',
+    browser_click: 'Click',
+    browser_type: 'Type',
+    browser_extract: 'Extract page',
+    browser_screenshot: 'Screenshot',
+    browser_scroll: 'Scroll',
+  }
+
+  const label = BROWSER_ACTION_LABELS[action] ?? action
+  const isError = phase === 'error'
+  const isDone = phase === 'done'
+  const dotColor = isError ? '#f87171' : isDone ? '#34d399' : 'var(--amber)'
+  const borderColor = isError ? 'rgba(239,68,68,0.15)' : isDone ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'
+  const bg = isError ? 'rgba(239,68,68,0.03)' : isDone ? 'rgba(52,211,153,0.03)' : 'rgba(255,255,255,0.02)'
+  const subtitle = url ?? selector ?? detail ?? ''
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 7,
+      padding: '5px 10px', borderRadius: 8,
+      background: bg, border: `1px solid ${borderColor}`,
+    }}>
+      <div style={{ width: 6, height: 6, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+      <Pxi name="browser" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <span style={{ fontSize: 11, fontWeight: 500, color: isError ? '#f87171' : isDone ? '#34d399' : 'var(--tx-secondary)', flexShrink: 0 }}>
+        {label}
+      </span>
+      {subtitle && (
+        <span style={{
+          fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
+        }}>
+          {subtitle.length > 60 ? subtitle.slice(0, 60) + '…' : subtitle}
+        </span>
+      )}
+      {phase === 'start' && (
+        <span style={{ display: 'flex', gap: 3, marginLeft: 'auto', flexShrink: 0 }}>
+          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 0ms infinite', display: 'block' }} />
+          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 120ms infinite', display: 'block' }} />
+          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 240ms infinite', display: 'block' }} />
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── Strike escalation ────────────────────────────────────────────────────────
 
 function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalation' }> }) {
@@ -582,14 +638,20 @@ function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalati
 
 function toolIcon(tool: string): string {
   switch (tool) {
-    case 'bash':       return 'bolt'
-    case 'read_file':  return 'eye'
-    case 'write_file': return 'pencil'
-    case 'patch_file': return 'edit'
-    case 'http_fetch': return 'globe'
-    case 'list_files': return 'folder-open'
-    case 'search_web': return 'search'
-    default:           return 'cog'
+    case 'bash':               return 'bolt'
+    case 'read_file':          return 'eye'
+    case 'write_file':         return 'pencil'
+    case 'patch_file':         return 'edit'
+    case 'http_fetch':         return 'globe'
+    case 'list_files':         return 'folder-open'
+    case 'search_web':         return 'search'
+    case 'browser_navigate':   return 'browser'
+    case 'browser_click':      return 'cursor'
+    case 'browser_type':       return 'keyboard'
+    case 'browser_extract':    return 'file-lines'
+    case 'browser_screenshot': return 'camera'
+    case 'browser_scroll':     return 'arrows-up-down'
+    default:                   return 'cog'
   }
 }
 

@@ -1,6 +1,14 @@
 import { extractReadableContent } from './htmlExtractor'
 import { executePython, executeBash } from './sandboxRuntime'
 import type { ExecutionConfig } from './sandboxRuntime'
+import {
+  browserNavigate,
+  browserClick,
+  browserType,
+  browserExtract,
+  browserScreenshot,
+  browserScroll,
+} from './browserBridge'
 
 /**
  * Browser-safe tool execution for the web agent.
@@ -513,6 +521,92 @@ export async function executeTool(
         if (!command.trim()) return { output: 'Missing command', isError: true }
         const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'auto' }
         return await executeBash(command, cfg)
+      }
+
+      case 'browser_navigate': {
+        const url = String(args.url ?? '')
+        if (!url) return { output: 'Missing url', isError: true }
+        try {
+          const result = await browserNavigate(url, Boolean(args.new_tab))
+          return { output: `Navigated to: ${result.url}\nTitle: ${result.title}\nTab ID: ${result.tabId}`, isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
+      }
+
+      case 'browser_click': {
+        try {
+          const result = await browserClick({
+            tabId: args.tab_id as number | undefined,
+            selector: args.selector as string | undefined,
+            x: args.x as number | undefined,
+            y: args.y as number | undefined,
+          })
+          if (result.error) return { output: result.error, isError: true }
+          return { output: `Clicked: ${result.tag ?? ''} ${result.text ? `"${result.text}"` : ''}`.trim(), isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
+      }
+
+      case 'browser_type': {
+        const text = String(args.text ?? '')
+        if (!text) return { output: 'Missing text', isError: true }
+        try {
+          const result = await browserType({
+            tabId: args.tab_id as number | undefined,
+            selector: args.selector as string | undefined,
+            text,
+            clearFirst: Boolean(args.clear_first),
+          })
+          return { output: `Typed ${result.typed}`, isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
+      }
+
+      case 'browser_extract': {
+        try {
+          const result = await browserExtract({
+            tabId: args.tab_id as number | undefined,
+            selector: args.selector as string | undefined,
+          })
+          if (result.error) return { output: result.error, isError: true }
+          const header = `URL: ${result.url}\nTitle: ${result.title}\nLength: ${result.length} chars\n\n`
+          const content = result.content.length > 12000
+            ? result.content.slice(0, 12000) + '\n[...truncated]'
+            : result.content
+          return { output: header + content, isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
+      }
+
+      case 'browser_screenshot': {
+        try {
+          const result = await browserScreenshot({
+            tabId: args.tab_id as number | undefined,
+            fullPage: Boolean(args.full_page),
+          })
+          // Return the data URL — the LLM can reference it; for multimodal models it will be inlined
+          return { output: result.dataUrl, isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
+      }
+
+      case 'browser_scroll': {
+        const direction = String(args.direction ?? 'down') as 'up' | 'down'
+        try {
+          const result = await browserScroll({
+            tabId: args.tab_id as number | undefined,
+            direction,
+            amount: args.amount as number | undefined,
+          })
+          return { output: `Scrolled ${direction} by ${Math.abs(result.scrolled)}px`, isError: false }
+        } catch (err) {
+          return { output: err instanceof Error ? err.message : String(err), isError: true }
+        }
       }
 
       default:
