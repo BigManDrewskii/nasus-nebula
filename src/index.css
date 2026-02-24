@@ -1,5 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
+/* Override the node_modules @font-face to point to our statically-served copy */
+@font-face {
+  font-family: "iconfont";
+  src: url("/iconfont.woff2") format("woff2"),
+       url("/iconfont.woff") format("woff");
+  font-display: block;
+}
+
 @import "tailwindcss";
 
 @theme {

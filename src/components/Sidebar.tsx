@@ -15,12 +15,9 @@ interface SidebarProps {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function todayLabel(): string {
-  return new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; items: Task[] }> {
   const now       = new Date()
+  const todayStr  = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const today     = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today.getTime() - 86_400_000)
   const weekAgo   = new Date(today.getTime() - 7 * 86_400_000)
@@ -42,7 +39,7 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
     .filter(([, items]) => items.length > 0)
     .map(([label, items]) => ({
       label,
-      date: label === 'Today' ? todayLabel() : null,
+      date: label === 'Today' ? todayStr : null,
       items,
     }))
 }

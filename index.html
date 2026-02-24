@@ -4,7 +4,30 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>nasus-temp</title>
+    <meta name="description" content="Nasus — autonomous AI agent. Browse the web, write code, ship projects." />
+    <title>Nasus</title>
+    <!--
+      Content-Security-Policy:
+      - default-src 'self': baseline; all unlisted resource types default to self-only
+      - script-src 'self' 'unsafe-inline' 'unsafe-eval': needed for Vite HMR, Pyodide WebWorkers, and bundled inline scripts
+      - connect-src *: the agent calls arbitrary APIs (LLM providers, search, http_fetch) — must be open
+      - img-src 'self' data: blob: https:*: screenshots (data:), user uploads (blob:), remote images
+      - worker-src 'self' blob:: Pyodide and other Web Workers
+      - style-src 'self' 'unsafe-inline': inline styles used throughout UI
+      - font-src 'self' data:: WOFF2 fonts served locally and data URIs
+    -->
+    <meta http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        connect-src *;
+        img-src 'self' data: blob: https:;
+        worker-src 'self' blob:;
+        style-src 'self' 'unsafe-inline';
+        font-src 'self' data:;
+        frame-src 'none';
+        object-src 'none';
+      " />
   </head>
   <body>
     <div id="root"></div>

@@ -5,9 +5,12 @@
  */
 
 const NASUS_ORIGINS = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://127.0.0.1:5173",
+  "http://localhost",
+  "https://localhost",
+  "http://127.0.0.1",
+  "https://127.0.0.1",
+  "https://nasus.app",
+  "https://www.nasus.app",
 ];
 
 // Track which tabs we have the debugger attached to

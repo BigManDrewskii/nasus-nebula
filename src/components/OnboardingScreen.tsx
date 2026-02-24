@@ -36,8 +36,8 @@ const PROVIDERS = [
     description: 'Local proxy to any model',
     placeholder: 'http://localhost:4000/v1',
     apiBase: '',
-    defaultModel: 'anthropic/claude-3.5-sonnet',
-    helpUrl: 'https://docs.litellm.ai/docs/proxy/quick_start',
+      defaultModel: 'anthropic/claude-3.7-sonnet',
+      helpUrl: 'https://docs.litellm.ai/docs/proxy/quick_start',
     helpLabel: 'docs.litellm.ai',
     requiresKey: false,
     dot: '#60a5fa',
@@ -139,7 +139,7 @@ export function OnboardingScreen() {
       const path = workspacePath.trim()
       await tauriInvoke('save_config', {
         apiKey: key,
-        model: selectedProvider.defaultModel || 'anthropic/claude-3.5-sonnet',
+          model: selectedProvider.defaultModel || 'anthropic/claude-3.7-sonnet',
         workspacePath: path,
         apiBase: effectiveBase,
         provider: selectedProvider.id,

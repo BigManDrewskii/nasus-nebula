@@ -7,10 +7,11 @@
  *
  * BYOK pattern: the user's own Daytona API key is passed from the store.
  * Keys are never sent to any Nasus server.
+ *
+ * NOTE: @daytonaio/sdk is dynamically imported to avoid pulling in
+ * Node.js stream/Buffer polyfills at module evaluation time, which crashes
+ * the browser before any API key is entered.
  */
-
-import { Daytona } from '@daytonaio/sdk'
-import type { Sandbox } from '@daytonaio/sdk'
 
 export interface SandboxExecResult {
   stdout: string
@@ -19,12 +20,21 @@ export interface SandboxExecResult {
 }
 
 // One sandbox instance per session — created lazily, reused across calls
-let activeSandbox: Sandbox | null = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let activeSandbox: any | null = null
 let activeApiKey: string | null = null
 let activeApiUrl: string | null = null
 
+/** Dynamically load the Daytona SDK (avoids Buffer/stream crash at init). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadSdk(): Promise<{ Daytona: any }> {
+  return import('@daytonaio/sdk') as Promise<{ Daytona: any }>
+}
+
 /** Get or create the Daytona sandbox, re-creating if credentials changed. */
-async function getSandbox(apiKey: string, apiUrl: string): Promise<Sandbox> {
+async function getSandbox(apiKey: string, apiUrl: string): Promise<NonNullable<typeof activeSandbox>> {
+  const { Daytona } = await loadSdk()
+
   if (activeSandbox && activeApiKey === apiKey && activeApiUrl === apiUrl) {
     return activeSandbox
   }
@@ -87,6 +97,7 @@ export async function daytonaRunBash(
 /** Delete the active Daytona sandbox (call on task stop / switch). */
 export async function disposeDaytonaSandbox(): Promise<void> {
   if (activeSandbox && activeApiKey && activeApiUrl) {
+    const { Daytona } = await loadSdk()
     const daytona = new Daytona({ apiKey: activeApiKey, apiUrl: activeApiUrl })
     try { await daytona.delete(activeSandbox) } catch { /* best-effort */ }
     activeSandbox = null

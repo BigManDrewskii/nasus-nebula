@@ -67,7 +67,12 @@ function saveWorkspaceToStorage(taskId: string, ws: Map<string, string>) {
 
 export function getWorkspace(taskId: string): Map<string, string> {
   if (!workspaceStore.has(taskId)) {
-    workspaceStore.set(taskId, loadWorkspaceFromStorage(taskId))
+    const loaded = loadWorkspaceFromStorage(taskId)
+    workspaceStore.set(taskId, loaded)
+    // If files exist, set version to 1 so subscribers see a non-zero version
+    if (loaded.size > 0 && !workspaceVersions.has(taskId)) {
+      workspaceVersions.set(taskId, 1)
+    }
   }
   return workspaceStore.get(taskId)!
 }
@@ -88,6 +93,16 @@ export function clearWorkspace(taskId: string) {
   workspaceStore.delete(taskId)
   workspaceVersions.delete(taskId)
   try { localStorage.removeItem(`${WS_STORAGE_PREFIX}${taskId}`) } catch { /* ignore */ }
+}
+
+/** Copy all workspace files from one task to another. */
+export function copyWorkspace(sourceTaskId: string, destTaskId: string) {
+  const source = getWorkspace(sourceTaskId)
+  if (source.size === 0) return
+  const dest = new Map(source)
+  workspaceStore.set(destTaskId, dest)
+  workspaceVersions.set(destTaskId, 1)
+  saveWorkspaceToStorage(destTaskId, dest)
 }
 
 function normPath(p: string): string {

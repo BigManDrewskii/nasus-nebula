@@ -21,6 +21,33 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('[Nasus] Uncaught render error:', error, errorInfo)
   }
 
+  /** Try to delete the active task and reset the boundary without a full reload. */
+  handleDeleteAndRecover() {
+    try {
+      const raw = localStorage.getItem('nasus-store-v2')
+      if (raw) {
+        const data = JSON.parse(raw)
+        const state = data?.state ?? data
+        const activeId: string | null = state.activeTaskId ?? null
+        if (activeId && state.tasks) {
+          state.tasks = (state.tasks as Array<{ id: string }>).filter((t) => t.id !== activeId)
+          if (state.messages) delete state.messages[activeId]
+          if (state.rawHistory) delete state.rawHistory[activeId]
+          state.activeTaskId = state.tasks[0]?.id ?? null
+          if (data?.state !== undefined) {
+            data.state = state
+          } else {
+            Object.assign(data, state)
+          }
+          localStorage.setItem('nasus-store-v2', JSON.stringify(data))
+        }
+      }
+    } catch {
+      /* best-effort — if this fails, fall back to full reload */
+    }
+    this.setState({ error: null, errorInfo: null })
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -85,22 +112,40 @@ export class ErrorBoundary extends Component<Props, State> {
             </pre>
           </details>
 
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '8px 20px',
-              borderRadius: 8,
-              fontSize: 13,
-              fontWeight: 500,
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.7)',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-            }}
-          >
-            Reload app
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => this.handleDeleteAndRecover()}
+              style={{
+                padding: '8px 20px',
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 500,
+                background: 'rgba(239,68,68,0.1)',
+                border: '1px solid rgba(239,68,68,0.25)',
+                color: '#f87171',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Delete broken task &amp; recover
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '8px 20px',
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 500,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                color: 'rgba(255,255,255,0.7)',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              Reload app
+            </button>
+          </div>
         </div>
       )
     }

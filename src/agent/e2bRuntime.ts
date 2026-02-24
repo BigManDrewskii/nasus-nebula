@@ -7,9 +7,11 @@
  *
  * BYOK pattern: the user's own E2B API key is passed directly from the store.
  * Keys are never sent to any Nasus server.
+ *
+ * NOTE: @e2b/code-interpreter is dynamically imported to avoid pulling in
+ * Node.js stream/Buffer polyfills at module evaluation time, which crashes
+ * the browser before any API key is entered.
  */
-
-import { Sandbox } from '@e2b/code-interpreter'
 
 export interface SandboxExecResult {
   stdout: string
@@ -20,11 +22,20 @@ export interface SandboxExecResult {
 }
 
 // One sandbox per session — created lazily, reused across calls
-let activeSandbox: Sandbox | null = null
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let activeSandbox: any | null = null
 let sandboxApiKey: string | null = null
 
+/** Dynamically load the E2B SDK (avoids Buffer/stream crash at init). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadSdk(): Promise<{ Sandbox: any }> {
+  return import('@e2b/code-interpreter') as Promise<{ Sandbox: any }>
+}
+
 /** Get or create the sandbox, re-creating if the key changed. */
-async function getSandbox(apiKey: string): Promise<Sandbox> {
+async function getSandbox(apiKey: string): Promise<NonNullable<typeof activeSandbox>> {
+  const { Sandbox } = await loadSdk()
+
   if (activeSandbox && sandboxApiKey === apiKey) {
     // Ping to verify it's still alive
     const alive = await activeSandbox.isRunning().catch(() => false)

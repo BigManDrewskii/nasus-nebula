@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Task, Message, AgentStep, LlmMessage } from './types'
-import { clearWorkspace } from './agent/tools'
+import { clearWorkspace, copyWorkspace } from './agent/tools'
 
 interface AppState {
   tasks: Task[]
@@ -70,6 +70,7 @@ interface AppState {
 // ── Constants ────────────────────────────────────────────────────────────────
 const MAX_TASKS = 50
 const MAX_TOOL_RESULT_CHARS = 2000  // Truncate large tool outputs before persisting
+const MAX_RAW_HISTORY_LIVE = 120    // In-memory cap — prevents OOM on very long runs
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
@@ -189,6 +190,8 @@ export const useAppStore = create<AppState>()(
             const tasks = [newTask, ...state.tasks].slice(0, MAX_TASKS)
             const messages = { ...state.messages, [newId]: [WELCOME_MESSAGE] }
             const rawHistory = { ...state.rawHistory, [newId]: [] }
+            // Copy workspace files from source to new task
+            copyWorkspace(id, newId)
             return { tasks, messages, rawHistory, activeTaskId: newId }
           }),
 
@@ -319,12 +322,20 @@ export const useAppStore = create<AppState>()(
           })),
 
         appendRawHistory: (taskId, msgs) =>
-          set((state) => ({
-            rawHistory: {
-              ...state.rawHistory,
-              [taskId]: [...(state.rawHistory[taskId] ?? []), ...msgs],
-            },
-          })),
+          set((state) => {
+            const current = state.rawHistory[taskId] ?? []
+            const appended = [...current, ...msgs]
+            // Cap in-memory size to prevent OOM on very long runs
+            const capped = appended.length > MAX_RAW_HISTORY_LIVE
+              ? appended.slice(-MAX_RAW_HISTORY_LIVE)
+              : appended
+            return {
+              rawHistory: {
+                ...state.rawHistory,
+                [taskId]: capped,
+              },
+            }
+          }),
 
             setApiKey: (key) => set({ apiKey: key }),
             setModel: (model) => set({ model }),
@@ -399,18 +410,27 @@ export const useAppStore = create<AppState>()(
                 executionMode: state.executionMode,
             }
       },
-      // On rehydration, clear any streaming:true flags left by a previous crashed session
-      onRehydrateStorage: () => (state) => {
-        if (!state) return
-        const fixedMessages: Record<string, Message[]> = {}
-        for (const [tid, msgs] of Object.entries(state.messages)) {
-          fixedMessages[tid] = msgs.map((m) =>
-            m.streaming ? { ...m, streaming: false } : m,
-          )
-        }
-        // Use setState to update rather than direct mutation (safer with zustand persist)
-        useAppStore.setState({ messages: fixedMessages })
-      },
+        // On rehydration, clear any streaming:true flags left by a previous crashed session
+        onRehydrateStorage: () => (state) => {
+          if (!state) return
+          const fixedMessages: Record<string, Message[]> = {}
+          for (const [tid, msgs] of Object.entries(state.messages)) {
+            fixedMessages[tid] = msgs.map((m) =>
+              m.streaming ? { ...m, streaming: false } : m,
+            )
+          }
+          // Use setState to update rather than direct mutation (safer with zustand persist)
+          useAppStore.setState({ messages: fixedMessages })
+
+          // Seed workspaceVersions for any tasks that have persisted workspace data,
+          // so getWorkspaceVersion() returns > 0 and components re-render correctly.
+          import('./agent/tools').then(({ getWorkspace }) => {
+            for (const task of state.tasks ?? []) {
+              // Calling getWorkspace lazily loads from localStorage and seeds the version
+              getWorkspace(task.id)
+            }
+          }).catch(() => {})
+        },
     },
   ),
 )

@@ -20,17 +20,8 @@ export interface Message {
   attachments?: MessageAttachment[]
 }
 
-// Raw LLM message — stored per-task so multi-turn follow-ups include full tool history
-export interface LlmMessage {
-  role: string
-  content: string | null
-  tool_call_id?: string
-  tool_calls?: Array<{
-    id: string
-    type: string
-    function: { name: string; arguments: string }
-  }>
-}
+// Raw LLM message — re-exported from llm.ts as the single source of truth.
+export type { LlmMessage } from './agent/llm'
 
 // One iteration of the Plan → Act → Observe loop
 export type AgentStep =

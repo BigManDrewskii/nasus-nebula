@@ -244,6 +244,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalDaytonaKey('')
     setLocalDaytonaUrl('')
     setLocalExecutionMode('auto')
+    // Also clear the extension ID from localStorage and local state
+    setExtensionId('')
+    try { localStorage.removeItem('nasus_extension_id') } catch { /* ignore */ }
     setFetchedModels(null)
     setErrors({})
   }
