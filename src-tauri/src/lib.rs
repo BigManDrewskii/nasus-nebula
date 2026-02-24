@@ -60,7 +60,7 @@ fn get_config(app: AppHandle) -> Result<AppConfig, String> {
     let model = store
         .get("model")
         .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "anthropic/claude-3.5-sonnet".to_string());
+        .unwrap_or_else(|| "anthropic/claude-3.7-sonnet".to_string());
     let workspace_path = store
         .get("workspace_path")
         .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
@@ -1336,7 +1336,7 @@ async fn run_agent(
     provider: Option<String>,
 ) -> Result<(), String> {
     let effective_model = if model.is_empty() {
-        "anthropic/claude-3.5-sonnet".to_string()
+        "anthropic/claude-3.7-sonnet".to_string()
     } else {
         model.clone()
     };

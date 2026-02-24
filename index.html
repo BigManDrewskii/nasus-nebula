@@ -13,8 +13,8 @@
       - connect-src *: the agent calls arbitrary APIs (LLM providers, search, http_fetch) — must be open
       - img-src 'self' data: blob: https:*: screenshots (data:), user uploads (blob:), remote images
       - worker-src 'self' blob:: Pyodide and other Web Workers
-      - style-src 'self' 'unsafe-inline': inline styles used throughout UI
-      - font-src 'self' data:: WOFF2 fonts served locally and data URIs
+      - style-src 'self' 'unsafe-inline' fonts.googleapis.com: inline styles + Google Fonts CSS
+      - font-src 'self' data: fonts.gstatic.com: local WOFF2 + Google Fonts binaries
     -->
     <meta http-equiv="Content-Security-Policy"
       content="
@@ -23,8 +23,8 @@
         connect-src *;
         img-src 'self' data: blob: https:;
         worker-src 'self' blob:;
-        style-src 'self' 'unsafe-inline';
-        font-src 'self' data:;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' data: https://fonts.gstatic.com;
         frame-src 'none';
         object-src 'none';
       " />
