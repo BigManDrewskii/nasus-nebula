@@ -511,7 +511,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
       {/* Content column */}
       <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
         {/* Steps (tool calls) */}
-        {hasSteps && <AgentStepsView steps={message.steps!} />}
+        {hasSteps && <AgentStepsView steps={message.steps!} isStreaming={isStreaming} />}
 
         {/* Between-turn typing indicator */}
         {showBetweenDots && (

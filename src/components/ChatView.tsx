@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { tauriInvoke, tauriListen } from '../tauri'
 import { runWebAgent, stopWebAgent } from '../agent/index'
 import { disposeSandbox } from '../agent/sandboxRuntime'
-import type { Task, Message, AgentStep, LlmMessage } from '../types'
+import type { Task, Message, AgentStep, LlmMessage, AgentEventPayload } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
 import { UserInputArea, type UserInputAreaHandle, type InputState } from './UserInputArea'
@@ -14,6 +14,7 @@ import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { getWorkspace } from '../agent/tools'
 import { WorkspacePicker } from './WorkspacePicker'
+import { ChatHeader, ToastOverlay } from './ChatHeader'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -21,46 +22,6 @@ const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 function resolveTaskWorkspace(basePath: string, taskId: string): string {
   const base = basePath.trim()
   return base ? `${base}/${taskId}` : `/tmp/nasus-workspace/${taskId}`
-}
-
-// ── Cost estimation (static — no need to recreate each render) ────────────────
-const RATES_PER_MILLION: Record<string, number> = {
-  // Anthropic
-  'anthropic/claude-3.5-sonnet': 9,
-  'anthropic/claude-3.7-sonnet': 9,
-  'anthropic/claude-3-haiku': 1.25,
-  'anthropic/claude-3-haiku-20240307': 1.25,
-  'anthropic/claude-sonnet-4': 9,
-  'anthropic/claude-opus-4': 30,
-  // OpenAI
-  'openai/gpt-4o': 7.5,
-  'openai/gpt-4o-mini': 0.3,
-  'openai/gpt-4.1': 8,
-  'openai/gpt-4.1-mini': 0.6,
-  'openai/o1': 30,
-  'openai/o3': 20,
-  'openai/o3-mini': 3.5,
-  'openai/o4-mini': 3.5,
-  // Google
-  'google/gemini-2.0-flash-001': 0.2,
-  'google/gemini-2.5-pro-exp-03-25': 7,
-  'google/gemini-2.5-pro-preview': 7,
-  'google/gemini-2.5-flash-preview': 0.5,
-  // Meta
-  'meta-llama/llama-3.3-70b-instruct': 0.6,
-  'meta-llama/llama-4-maverick': 0.9,
-  'meta-llama/llama-4-scout': 0.4,
-  // DeepSeek
-  'deepseek/deepseek-r1': 2,
-  'deepseek/deepseek-v3': 0.5,
-}
-
-function estimateCost(m: string, tokens: number): string {
-  const rate = RATES_PER_MILLION[m] ?? 5
-  const cost = (tokens / 1_000_000) * rate
-  if (cost < 0.001) return '<$0.001'
-  if (cost < 0.01) return `$${cost.toFixed(4)}`
-  return `$${cost.toFixed(3)}`
 }
 
 interface ChatViewProps {
@@ -78,41 +39,6 @@ interface ChatViewProps {
   onToggleLeft?: () => void
   /** Toggle the right output panel */
   onToggleRight?: () => void
-}
-
-interface AgentEventPayload {
-  kind:
-    | 'thinking'
-    | 'tool_call'
-    | 'tool_result'
-    | 'stream_chunk'
-    | 'done'
-    | 'error'
-    | 'strike_escalation'
-    | 'context_compressed'
-    | 'iteration_tick'
-    | 'token_usage'
-    | 'auto_title'
-    | 'raw_messages'
-  task_id: string
-  message_id: string
-  content?: string
-  error?: string
-  call_id?: string
-  tool?: string
-  input?: Record<string, unknown>
-  output?: string
-  is_error?: boolean
-  delta?: string
-  done?: boolean
-  attempts?: string[]
-  removed_count?: number
-  iteration?: number
-  prompt_tokens?: number
-  completion_tokens?: number
-  total_tokens?: number
-  title?: string
-  messages?: LlmMessage[]
 }
 
 export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed: _leftCollapsed = false, rightCollapsed: _rightCollapsed = false, onToggleLeft: _onToggleLeft, onToggleRight: _onToggleRight }: ChatViewProps) {
@@ -306,12 +232,37 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       const { taskId: tid, total_tokens } = (e as CustomEvent).detail
       if (tid === taskId) setTokenCount(total_tokens)
     }
+    function onAgentStarted(e: Event) {
+      const { taskId: tid } = (e as CustomEvent).detail
+      if (tid === taskId) {
+        setAgentRunning(true)
+        setProcessingPhase(true)
+      }
+    }
+    function onAgentDone(e: Event) {
+      const { taskId: tid } = (e as CustomEvent).detail
+      if (tid === taskId) {
+        runningRef.current = false
+        setAgentRunning(false)
+        setProcessingPhase(false)
+      }
+    }
+    function onProcessingEnd(e: Event) {
+      const { taskId: tid } = (e as CustomEvent).detail
+      if (tid === taskId) setProcessingPhase(false)
+    }
 
     window.addEventListener('nasus:iteration', onIteration)
     window.addEventListener('nasus:tokens', onTokens)
+    window.addEventListener('nasus:agent-started', onAgentStarted)
+    window.addEventListener('nasus:agent-done', onAgentDone)
+    window.addEventListener('nasus:processing-end', onProcessingEnd)
     return () => {
       window.removeEventListener('nasus:iteration', onIteration)
       window.removeEventListener('nasus:tokens', onTokens)
+      window.removeEventListener('nasus:agent-started', onAgentStarted)
+      window.removeEventListener('nasus:agent-done', onAgentDone)
+      window.removeEventListener('nasus:processing-end', onProcessingEnd)
     }
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -701,95 +652,11 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       >
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
 
-        {/* Workspace warning toast */}
-        {workspaceWarning && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 16,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 60,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 14px',
-              borderRadius: 12,
-              background: 'rgba(13,13,13,0.95)',
-              border: '1px solid rgba(234,179,8,0.35)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              animation: 'fadeIn 0.18s ease',
-              pointerEvents: 'none',
-              maxWidth: 'calc(100% - 48px)',
-            }}
-          >
-            <Pxi name="exclamation-triangle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>
-              {workspaceWarning}
-            </span>
-          </div>
-        )}
-
-        {/* Rate limit toast */}
-        {rateLimitWarning && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 16,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 60,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 14px',
-              borderRadius: 12,
-              background: 'rgba(13,13,13,0.95)',
-              border: '1px solid rgba(239,68,68,0.35)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              animation: 'fadeIn 0.18s ease',
-              pointerEvents: 'none',
-              maxWidth: 'calc(100% - 48px)',
-            }}
-          >
-            <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>
-              {rateLimitWarning}
-            </span>
-          </div>
-        )}
-
-        {/* Folder-drop confirmation toast */}
-        {folderDropConfirm && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 16,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 60,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 14px',
-              borderRadius: 12,
-              background: 'rgba(13,13,13,0.95)',
-              border: '1px solid rgba(52,211,153,0.35)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              animation: 'fadeIn 0.18s ease',
-              pointerEvents: 'none',
-              maxWidth: 'calc(100% - 48px)',
-            }}
-          >
-            <Pxi name="check-circle" size={11} style={{ color: '#34d399', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: 'var(--tx-primary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Workspace set to {folderDropConfirm}
-            </span>
-          </div>
-        )}
+        <ToastOverlay
+          workspaceWarning={workspaceWarning}
+          rateLimitWarning={rateLimitWarning}
+          folderDropConfirm={folderDropConfirm}
+        />
       {showMemory && (
         <MemoryViewer
           taskId={task.id}
@@ -799,82 +666,19 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         />
       )}
 
-        {/* Header */}
-        <header
-          className="flex-shrink-0 flex items-center justify-between"
-          style={{
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            background: '#0d0d0d',
-            minHeight: 44,
-            padding: '0 12px',
-          }}
-        >
-          {/* Left cluster */}
-          <div className="flex items-center gap-2 min-w-0 flex-1">
-
-            <h2
-              className="font-display font-medium truncate"
-              style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
-            >
-              {task.title}
-            </h2>
-            {isActive && iteration > 0 && (
-              <span className="flex items-center gap-1 flex-shrink-0">
-                <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
-                <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
-              </span>
-            )}
-            {tokenCount > 0 && (
-              <span className="font-mono flex-shrink-0" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>
-                {(tokenCount / 1000).toFixed(1)}k · {estimateCost(model, tokenCount)}
-              </span>
-            )}
-          </div>
-
-          {/* Right cluster */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
-              <SandboxPill status={sandboxStatus} />
-            )}
-
-            {/* Files pill — shown when output panel is hidden but files exist */}
-            {!outputVisible && workspaceFileCount > 0 && onShowOutput && (
-              <button
-                onClick={onShowOutput}
-                title="Show output panel"
-                className="header-action-btn"
-              >
-                <Pxi name="folder" size={11} />
-                <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
-              </button>
-            )}
-
-            {/* Memory */}
-            <button
-              onClick={() => setShowMemory(true)}
-              title="Agent memory"
-              className="header-sidebar-toggle"
-            >
-              <Pxi name="bookmark" size={12} />
-            </button>
-
-            {/* Stop / status */}
-            {isActive ? (
-              <button
-                onClick={handleStop}
-                className="header-stop-btn"
-                title="Stop agent (Esc)"
-              >
-                <Pxi name="times-circle" size={11} />
-                <span>Stop</span>
-              </button>
-            ) : (
-              <StatusDot status={task.status} />
-            )}
-
-
-          </div>
-        </header>
+      <ChatHeader
+          task={task}
+          isActive={isActive}
+          iteration={iteration}
+          tokenCount={tokenCount}
+          model={model}
+          sandboxStatus={sandboxStatus}
+          outputVisible={outputVisible}
+          workspaceFileCount={workspaceFileCount}
+          onShowOutput={onShowOutput}
+          onShowMemory={() => setShowMemory(true)}
+          onStop={handleStop}
+        />
 
       {/* Empty state */}
       {showEmptyState ? (
@@ -1121,51 +925,3 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
   )
 }
 
-// ─── Status dot ───────────────────────────────────────────────────────────────
-
-function StatusDot({ status }: { status: Task['status'] }) {
-  if (status === 'pending') return null
-  if (status === 'completed') {
-    return <Pxi name="check-circle" size={13} style={{ color: '#34d399', flexShrink: 0 }} title="Done" />
-  }
-  if (status === 'failed') {
-    return <Pxi name="times-circle" size={13} style={{ color: '#f87171', flexShrink: 0 }} title="Failed" />
-  }
-  if (status === 'stopped') {
-    return <Pxi name="stop-circle" size={13} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} title="Stopped" />
-  }
-  if (status === 'in_progress') {
-    return (
-      <span
-        className="w-2 h-2 rounded-full flex-shrink-0"
-        style={{ background: 'var(--amber)', animation: 'pulseGlow 1.6s ease-in-out infinite' }}
-        title="Running"
-      />
-    )
-  }
-  return null
-}
-
-// ─── Sandbox pill ─────────────────────────────────────────────────────────────
-
-function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stopped' }) {
-  if (status === 'idle') return null
-
-  const cfg = {
-    starting: { icon: 'circle-notch', label: 'Starting',      color: 'var(--amber)' },
-    ready:    { icon: 'check-circle', label: 'Sandbox ready', color: '#34d399' },
-    stopped:  { icon: 'times-circle', label: 'Stopped',       color: 'var(--tx-secondary)' },
-  }[status]
-
-  if (!cfg) return null
-
-  return (
-    <div
-      className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-    >
-      <Pxi name={cfg.icon} size={10} style={{ color: cfg.color }} />
-      <span style={{ fontSize: 10, color: cfg.color }}>{cfg.label}</span>
-    </div>
-  )
-}

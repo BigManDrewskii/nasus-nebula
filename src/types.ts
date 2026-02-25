@@ -42,6 +42,43 @@ export interface OutputCardFile {
   size: number      // byte length of content
 }
 
+// ── Agent event payload (emitted by Tauri backend) ────────────────────────────
+
+export interface AgentEventPayload {
+  kind:
+    | 'thinking'
+    | 'tool_call'
+    | 'tool_result'
+    | 'stream_chunk'
+    | 'done'
+    | 'error'
+    | 'strike_escalation'
+    | 'context_compressed'
+    | 'iteration_tick'
+    | 'token_usage'
+    | 'auto_title'
+    | 'raw_messages'
+  task_id: string
+  message_id: string
+  content?: string
+  error?: string
+  call_id?: string
+  tool?: string
+  input?: Record<string, unknown>
+  output?: string
+  is_error?: boolean
+  delta?: string
+  done?: boolean
+  attempts?: string[]
+  removed_count?: number
+  iteration?: number
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  title?: string
+  messages?: LlmMessage[]
+}
+
 export interface MemoryFiles {
   task_plan: string
   findings: string

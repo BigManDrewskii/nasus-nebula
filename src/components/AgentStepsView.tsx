@@ -4,17 +4,100 @@ import { Pxi } from './Pxi'
 
 interface Props {
   steps: AgentStep[]
+  isStreaming?: boolean
 }
 
-export const AgentStepsView = memo(function AgentStepsView({ steps }: Props) {
+export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming = false }: Props) {
   if (!steps || steps.length === 0) return null
   const rows = useMemo(() => buildRows(steps), [steps])
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Find the most recently active / pending action for the live header label
+  const liveLabel = useMemo(() => {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const r = rows[i]
+      if (r.kind === 'tool_pair') {
+        const { label } = formatActionLabel(r.call.tool, r.call.input)
+        return label
+      }
+    }
+    return 'Working…'
+  }, [rows])
+
+  const hasOnlyMemoryOps = useMemo(() => rows.every(r =>
+    r.kind === 'tool_pair' && isMemoryPath(String(r.call.input.path ?? ''))
+  ), [rows])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 4 }}>
-      {rows.map((row, i) => (
-        <Row key={i} row={row} />
-      ))}
+    <div style={{ marginBottom: 6 }}>
+      {/* Section header — collapsible, shows live action label */}
+      <button
+        onClick={() => setCollapsed(o => !o)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 0 8px 0',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        {/* Live status indicator */}
+        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {isStreaming && !hasOnlyMemoryOps ? (
+            <SpinnerDot />
+          ) : (
+            <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
+          )}
+        </span>
+
+        {/* Current action label */}
+        <span style={{
+          flex: 1,
+          fontSize: 13,
+          fontWeight: 500,
+          color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          lineHeight: 1.4,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {isStreaming ? liveLabel : `${rows.filter(r => r.kind === 'tool_pair').length} action${rows.filter(r => r.kind === 'tool_pair').length !== 1 ? 's' : ''} completed`}
+        </span>
+
+        {/* Step count badge */}
+        {rows.filter(r => r.kind === 'tool_pair').length > 0 && (
+          <span style={{
+            fontSize: 10,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--tx-tertiary)',
+            background: 'rgba(255,255,255,0.06)',
+            padding: '1px 6px',
+            borderRadius: 4,
+            flexShrink: 0,
+          }}>
+            {rows.filter(r => r.kind === 'tool_pair').length}
+          </span>
+        )}
+
+        <Pxi
+          name={collapsed ? 'chevron-down' : 'chevron-up'}
+          size={9}
+          style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.5 }}
+        />
+      </button>
+
+      {/* Step rows — hidden when collapsed */}
+      {!collapsed && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 22 }}>
+          {rows.map((row, i) => (
+            <Row key={i} row={row} />
+          ))}
+        </div>
+      )}
     </div>
   )
 })
@@ -90,7 +173,7 @@ function Row({ row }: { row: AnyRow }) {
   if (row.kind === 'browser_action') return <BrowserActionRow step={row.step} />
   if (row.kind === 'context_compressed') {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
         <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>
           <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)' }} />
@@ -119,9 +202,9 @@ const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) 
         textAlign: 'left',
         display: 'flex',
         alignItems: 'flex-start',
-        gap: 10,
-        padding: '5px 2px',
-        borderRadius: 8,
+        gap: 8,
+        padding: '4px 2px',
+        borderRadius: 6,
         background: 'transparent',
         border: 'none',
         cursor: isLong ? 'pointer' : 'default',
@@ -129,19 +212,19 @@ const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) 
       onMouseEnter={(e) => { if (isLong) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
     >
-      {/* Left indicator line — amber */}
-      <div style={{ width: 2, borderRadius: 2, flexShrink: 0, alignSelf: 'stretch', minHeight: 16, background: 'oklch(64% 0.214 40.1 / 0.35)', marginTop: 2 }} />
-      <span style={{ fontSize: 12, fontStyle: 'italic', lineHeight: 1.65, flex: 1, minWidth: 0, color: 'var(--tx-tertiary)' }}>
+      {/* Left accent line */}
+      <div style={{ width: 2, borderRadius: 2, flexShrink: 0, alignSelf: 'stretch', minHeight: 14, background: 'oklch(64% 0.214 40.1 / 0.3)', marginTop: 2 }} />
+      <span style={{ fontSize: 11.5, fontStyle: 'italic', lineHeight: 1.6, flex: 1, minWidth: 0, color: 'var(--tx-tertiary)' }}>
         {open ? (
           <span style={{ whiteSpace: 'pre-wrap', display: 'block' }}>{content}</span>
         ) : (
           preview
         )}
         {isLong && !open && (
-          <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 10 }}>show more</span>
+          <span style={{ marginLeft: 6, opacity: 0.45, fontSize: 9.5 }}>show more</span>
         )}
         {isLong && open && (
-          <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 10, display: 'block', marginTop: 3 }}>show less</span>
+          <span style={{ marginLeft: 6, opacity: 0.45, fontSize: 9.5, display: 'block', marginTop: 2 }}>show less</span>
         )}
       </span>
     </button>
@@ -166,11 +249,11 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
   const iconColor = isError
     ? '#f87171'
     : isMemoryFile
-    ? 'rgba(255,255,255,0.2)'
+    ? 'rgba(255,255,255,0.18)'
     : toolIconColor(call.tool)
 
   return (
-    <div style={{ borderRadius: 10, overflow: 'hidden' }}>
+    <div style={{ borderRadius: 8, overflow: 'hidden' }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -178,40 +261,40 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           textAlign: 'left',
           display: 'flex',
           alignItems: 'center',
-          gap: 9,
-          padding: '7px 10px 7px 8px',
-          borderRadius: open ? '10px 10px 0 0' : 10,
+          gap: 8,
+          padding: '5px 8px 5px 6px',
+          borderRadius: open ? '8px 8px 0 0' : 8,
           border: open ? '1px solid rgba(255,255,255,0.07)' : '1px solid transparent',
           borderBottom: open ? '1px solid rgba(255,255,255,0.04)' : '1px solid transparent',
-          background: open ? 'rgba(255,255,255,0.035)' : 'transparent',
+          background: open ? 'rgba(255,255,255,0.03)' : 'transparent',
           cursor: 'pointer',
           transition: 'background 0.1s',
         }}
         onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
       >
-        {/* Status indicator dot/icon */}
-        <span style={{ flexShrink: 0, width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Status dot */}
+        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isPending ? (
             <SpinnerDot />
           ) : isError ? (
-            <Pxi name="times-circle" size={11} style={{ color: '#f87171' }} />
+            <Pxi name="times-circle" size={10} style={{ color: '#f87171' }} />
           ) : (
-            <Pxi name="check-circle" size={11} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.3)' : '#34d399' }} />
+            <Pxi name="check-circle" size={10} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.25)' : '#34d399' }} />
           )}
         </span>
 
         {/* Tool icon */}
         <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-          <Pxi name={icon} size={12} style={{ color: iconColor }} />
+          <Pxi name={icon} size={11} style={{ color: iconColor }} />
         </span>
 
-        {/* Action label + sublabel */}
-        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        {/* Label stack */}
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
           <span style={{
-            fontSize: 12.5,
-            fontWeight: 500,
-            color: isMemoryFile ? 'rgba(255,255,255,0.3)' : isError ? '#f87171' : 'var(--tx-primary)',
+            fontSize: 12,
+            fontWeight: isMemoryFile ? 400 : 500,
+            color: isMemoryFile ? 'rgba(255,255,255,0.28)' : isError ? '#f87171' : 'var(--tx-secondary)',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -221,9 +304,9 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           </span>
           {sublabel && (
             <span style={{
-              fontSize: 10.5,
+              fontSize: 10,
               fontFamily: 'var(--font-mono)',
-              color: isMemoryFile ? 'rgba(255,255,255,0.18)' : 'var(--tx-tertiary)',
+              color: isMemoryFile ? 'rgba(255,255,255,0.14)' : 'var(--tx-tertiary)',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -234,7 +317,7 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           )}
         </span>
 
-        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.5 }} />
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={8} style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.4 }} />
       </button>
 
       {open && (
@@ -266,10 +349,10 @@ function ExpandedDetail({
     <div
       className="expand-down"
       style={{
-        background: 'rgba(0,0,0,0.15)',
+        background: 'rgba(0,0,0,0.12)',
         border: '1px solid rgba(255,255,255,0.07)',
         borderTop: 'none',
-        borderRadius: '0 0 10px 10px',
+        borderRadius: '0 0 8px 8px',
       }}
     >
       {/* write_file */}
@@ -299,13 +382,13 @@ function ExpandedDetail({
       {/* generic tools */}
       {!isWriteFile && !isReadFile && !isPatchFile && (
         <div>
-          <div style={{ padding: '10px 14px' }}>
+          <div style={{ padding: '8px 12px' }}>
             <SectionLabel icon="arrow-right" label="Input" />
             <ScrollableCode content={JSON.stringify(call.input, null, 2)} maxHeight={160} />
           </div>
           {result && (
             <div style={{
-              padding: '10px 14px',
+              padding: '8px 12px',
               borderTop: isError ? '1px solid rgba(239,68,68,0.12)' : '1px solid rgba(255,255,255,0.05)',
             }}>
               <SectionLabel icon={isError ? 'times' : 'check'} label={isError ? 'Error' : 'Output'} isError={isError} />
@@ -326,12 +409,12 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
       display: 'flex',
       alignItems: 'center',
       gap: 7,
-      padding: '8px 14px 7px',
+      padding: '7px 12px 6px',
       borderBottom: '1px solid rgba(255,255,255,0.05)',
     }}>
       <Pxi name={icon} size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
       <span style={{
-        fontSize: 11,
+        fontSize: 10.5,
         fontFamily: 'var(--font-mono)',
         color: 'var(--tx-secondary)',
         flex: 1,
@@ -343,11 +426,11 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
       </span>
       {lang && (
         <span style={{
-          fontSize: 9.5,
+          fontSize: 9,
           fontFamily: 'var(--font-mono)',
           color: 'var(--tx-tertiary)',
           background: 'rgba(255,255,255,0.07)',
-          padding: '1px 6px',
+          padding: '1px 5px',
           borderRadius: 4,
           flexShrink: 0,
         }}>
@@ -355,7 +438,7 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
         </span>
       )}
       {success && (
-        <Pxi name="check-circle" size={10} style={{ color: '#34d399', flexShrink: 0 }} />
+        <Pxi name="check-circle" size={9} style={{ color: '#34d399', flexShrink: 0 }} />
       )}
     </div>
   )
@@ -365,16 +448,16 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
 
 function DiffBlock({ removed, added }: { removed: string; added: string }) {
   return (
-    <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.1)', borderRadius: 7, padding: '7px 10px' }}>
-        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(248,113,113,0.5)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>removed</span>
-        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#fca5a5', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 96, overflowY: 'auto' }}>
+    <div style={{ padding: '7px 12px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.1)', borderRadius: 6, padding: '6px 9px' }}>
+        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(248,113,113,0.5)', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>removed</span>
+        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#fca5a5', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 90, overflowY: 'auto' }}>
           {removed}
         </pre>
       </div>
-      <div style={{ background: 'rgba(52,211,153,0.04)', border: '1px solid rgba(52,211,153,0.1)', borderRadius: 7, padding: '7px 10px' }}>
-        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(52,211,153,0.5)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>added</span>
-        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'rgba(167,243,208,0.85)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 96, overflowY: 'auto' }}>
+      <div style={{ background: 'rgba(52,211,153,0.04)', border: '1px solid rgba(52,211,153,0.1)', borderRadius: 6, padding: '6px 9px' }}>
+        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(52,211,153,0.5)', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>added</span>
+        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'rgba(167,243,208,0.85)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 90, overflowY: 'auto' }}>
           {added}
         </pre>
       </div>
@@ -398,7 +481,7 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
           maxHeight,
           overflowY: 'auto',
           margin: 0,
-          padding: '10px 14px',
+          padding: '9px 12px',
           color: isError ? '#fca5a5' : 'var(--tx-secondary)',
           background: isError ? 'rgba(239,68,68,0.03)' : 'transparent',
         }}
@@ -409,12 +492,12 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
         <div style={{
           position: 'absolute',
           bottom: 0, left: 0, right: 0,
-          height: 28,
+          height: 24,
           background: isError
             ? 'linear-gradient(to bottom, transparent, rgba(20,5,5,0.8))'
             : 'linear-gradient(to bottom, transparent, rgba(10,10,10,0.85))',
           pointerEvents: 'none',
-          borderRadius: '0 0 10px 10px',
+          borderRadius: '0 0 8px 8px',
         }} />
       )}
     </div>
@@ -425,9 +508,9 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
 
 function SectionLabel({ icon, label, isError = false }: { icon: string; label: string; isError?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
       <Pxi name={icon} size={9} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
-      <span style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
+      <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
         {label}
       </span>
     </div>
@@ -444,7 +527,7 @@ function SpinnerDot() {
         height: 8,
         borderRadius: '50%',
         display: 'block',
-        border: '1.5px solid rgba(251,191,36,0.25)',
+        border: '1.5px solid rgba(251,191,36,0.2)',
         borderTopColor: 'var(--amber)',
         animation: 'spin 0.7s linear infinite',
         flexShrink: 0,
@@ -462,50 +545,47 @@ function SearchStatusRow({ step }: { step: Extract<AgentStep, { kind: 'search_st
   const isFailed = phase === 'all_failed' || phase === 'no_results'
   const isDone = phase === 'complete'
 
-  const accentColor = isFailed ? '#f87171' : isDone ? '#34d399' : 'var(--amber)'
-
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 9,
-      padding: '7px 10px',
-      borderRadius: 10,
+      gap: 8,
+      padding: '5px 8px',
+      borderRadius: 8,
       background: 'rgba(255,255,255,0.015)',
       border: `1px solid ${isFailed ? 'rgba(239,68,68,0.12)' : isDone ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)'}`,
     }}>
-      {/* Status icon */}
-      <span style={{ flexShrink: 0, width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {isLive ? (
           <SpinnerDot />
         ) : (
-          <Pxi name={isFailed ? 'times-circle' : 'check-circle'} size={11} style={{ color: accentColor }} />
+          <Pxi name={isFailed ? 'times-circle' : 'check-circle'} size={10} style={{ color: isFailed ? '#f87171' : isDone ? '#34d399' : 'var(--amber)' }} />
         )}
       </span>
 
-      <Pxi name="search" size={11} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <Pxi name="search" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
 
-      <span style={{ fontSize: 12.5, fontWeight: 500, color: 'var(--tx-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {message}
       </span>
 
       {query && (
-        <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           &ldquo;{query}&rdquo;
         </span>
       )}
       {provider && provider !== 'none' && (
-        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.06)', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>
+        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
           {provider}
         </span>
       )}
       {isDone && resultCount != null && (
-        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: '#34d399', flexShrink: 0 }}>
-          {resultCount} result{resultCount !== 1 ? 's' : ''}
+        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: '#34d399', flexShrink: 0 }}>
+          {resultCount}
         </span>
       )}
       {isDone && durationMs != null && (
-        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0 }}>
+        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0 }}>
           {durationMs}ms
         </span>
       )}
@@ -529,32 +609,31 @@ function BrowserActionRow({ step }: { step: Extract<AgentStep, { kind: 'browser_
 
   const label = LABELS[action] ?? action
   const isError = phase === 'error'
-  const isDone = phase === 'done'
   const subtitle = url ?? selector ?? detail ?? ''
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 9,
-      padding: '7px 10px',
-      borderRadius: 10,
+      gap: 8,
+      padding: '5px 8px',
+      borderRadius: 8,
       background: 'rgba(255,255,255,0.015)',
-      border: `1px solid ${isError ? 'rgba(239,68,68,0.12)' : isDone ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)'}`,
+      border: `1px solid ${isError ? 'rgba(239,68,68,0.12)' : phase === 'done' ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)'}`,
     }}>
-      <span style={{ flexShrink: 0, width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {phase === 'start' ? (
           <SpinnerDot />
         ) : (
-          <Pxi name={isError ? 'times-circle' : 'check-circle'} size={11} style={{ color: isError ? '#f87171' : '#34d399' }} />
+          <Pxi name={isError ? 'times-circle' : 'check-circle'} size={10} style={{ color: isError ? '#f87171' : '#34d399' }} />
         )}
       </span>
-      <Pxi name="browser" size={11} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-      <span style={{ fontSize: 12.5, fontWeight: 500, color: isError ? '#f87171' : 'var(--tx-primary)', flexShrink: 0 }}>
+      <Pxi name="browser" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <span style={{ fontSize: 12, fontWeight: 500, color: isError ? '#f87171' : 'var(--tx-secondary)', flexShrink: 0 }}>
         {label}
       </span>
       {subtitle && (
-        <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
           {subtitle.length > 60 ? subtitle.slice(0, 60) + '…' : subtitle}
         </span>
       )}
@@ -569,22 +648,22 @@ function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalati
     <div style={{
       display: 'flex',
       alignItems: 'flex-start',
-      gap: 10,
-      borderRadius: 10,
-      padding: '10px 12px',
+      gap: 9,
+      borderRadius: 8,
+      padding: '9px 11px',
       background: 'rgba(239,68,68,0.04)',
       border: '1px solid rgba(239,68,68,0.12)',
     }}>
-      <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
+      <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 12, fontWeight: 500, color: '#f87171', margin: 0 }}>
           Repeated error on{' '}
-          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, padding: '0 4px', borderRadius: 4, background: 'rgba(239,68,68,0.12)' }}>
+          <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10, padding: '0 4px', borderRadius: 4, background: 'rgba(239,68,68,0.12)' }}>
             {step.tool}
           </code>
         </p>
         {step.attempts.map((a, i) => (
-          <p key={i} style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.5, color: 'rgba(248,113,113,0.55)' }}>
+          <p key={i} style={{ fontSize: 11, marginTop: 3, lineHeight: 1.5, color: 'rgba(248,113,113,0.5)' }}>
             Attempt {i + 1}: {a.slice(0, 140)}{a.length > 140 ? '…' : ''}
           </p>
         ))}
@@ -628,7 +707,6 @@ function formatActionLabel(tool: string, input: Record<string, unknown>): { labe
 
     case 'bash': {
       const cmd = command.trim().slice(0, 60)
-      // Describe common patterns
       if (command.startsWith('mkdir')) return { label: 'Creating directory', sublabel: cmd }
       if (command.startsWith('cat')) return { label: 'Reading file', sublabel: cmd }
       if (command.startsWith('echo')) return { label: 'Writing output', sublabel: cmd }
@@ -702,18 +780,18 @@ function toolIcon(tool: string): string {
 function toolIconColor(tool: string): string {
   switch (tool) {
     case 'write_file':
-    case 'patch_file':         return 'oklch(73% 0.17 55)'   // warm amber-orange
-    case 'read_file':          return 'oklch(72% 0.12 220)'   // muted blue
-    case 'search_web':         return 'oklch(75% 0.14 145)'   // soft green
-    case 'http_fetch':         return 'oklch(72% 0.12 260)'   // soft indigo
+    case 'patch_file':         return 'oklch(73% 0.17 55)'
+    case 'read_file':          return 'oklch(72% 0.12 220)'
+    case 'search_web':         return 'oklch(75% 0.14 145)'
+    case 'http_fetch':         return 'oklch(72% 0.12 260)'
     case 'python_execute':
     case 'bash':
-    case 'bash_execute':       return 'oklch(72% 0.12 185)'   // teal
+    case 'bash_execute':       return 'oklch(72% 0.12 185)'
     case 'browser_navigate':
     case 'browser_click':
     case 'browser_type':
     case 'browser_extract':
-    case 'browser_screenshot': return 'oklch(72% 0.1 300)'    // soft purple
+    case 'browser_screenshot': return 'oklch(72% 0.1 300)'
     default:                   return 'var(--tx-tertiary)'
   }
 }

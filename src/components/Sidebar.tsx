@@ -4,6 +4,7 @@ import { NasusLogo } from './NasusLogo'
 import { useAppStore } from '../store'
 import type { Task } from '../types'
 import { TaskListItem } from './TaskListItem'
+import { STATIC_MODELS, familyMeta } from '../lib/models'
 
 interface SidebarProps {
   tasks: Task[]
@@ -634,25 +635,6 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-// Per-family accent colors derived from model ID prefix
-const FAMILY_META: Record<string, { label: string; color: string }> = {
-  anthropic:    { label: 'Anthropic',  color: '#d4a574' },
-  openai:       { label: 'OpenAI',     color: '#74b9a0' },
-  google:       { label: 'Google',     color: '#7ab4f5' },
-  'meta-llama': { label: 'Meta',       color: '#6b9ef5' },
-  deepseek:     { label: 'DeepSeek',   color: '#7c9ff7' },
-  mistralai:    { label: 'Mistral',    color: '#b08ee0' },
-  'x-ai':       { label: 'xAI',        color: '#a0b8a0' },
-  qwen:         { label: 'Qwen',       color: '#f5a97f' },
-  cohere:       { label: 'Cohere',     color: '#e0a0b0' },
-  ollama:       { label: 'Ollama',     color: '#a0b080' },
-}
-
-function familyMeta(modelId: string) {
-  const prefix = modelId.split('/')[0] ?? ''
-  return FAMILY_META[prefix] ?? { label: prefix || 'Model', color: 'var(--tx-muted)' }
-}
-
 function SidebarFooter({ model, fullModel, onSettings }: {
   model: string
   fullModel: string
@@ -667,26 +649,7 @@ function SidebarFooter({ model, fullModel, onSettings }: {
 
   const meta = familyMeta(fullModel)
 
-  // ── Build model list (same logic as UserInputArea) ──────────────────────────
-  const STATIC_MODELS = [
-    { value: 'anthropic/claude-3.7-sonnet',           label: 'Claude 3.7 Sonnet',           group: 'Anthropic' },
-    { value: 'anthropic/claude-3.7-sonnet:thinking',  label: 'Claude 3.7 Sonnet (Thinking)', group: 'Anthropic' },
-    { value: 'anthropic/claude-3.5-sonnet',           label: 'Claude 3.5 Sonnet',           group: 'Anthropic' },
-    { value: 'anthropic/claude-3.5-haiku',            label: 'Claude 3.5 Haiku',            group: 'Anthropic' },
-    { value: 'openai/gpt-4.1',                        label: 'GPT-4.1',                     group: 'OpenAI' },
-    { value: 'openai/gpt-4o',                         label: 'GPT-4o',                      group: 'OpenAI' },
-    { value: 'openai/gpt-4o-mini',                    label: 'GPT-4o Mini',                 group: 'OpenAI' },
-    { value: 'openai/o3-mini',                        label: 'o3-mini',                     group: 'OpenAI' },
-    { value: 'google/gemini-2.5-pro-preview',         label: 'Gemini 2.5 Pro',              group: 'Google' },
-    { value: 'google/gemini-2.0-flash-001',           label: 'Gemini 2.0 Flash',            group: 'Google' },
-    { value: 'meta-llama/llama-3.3-70b-instruct',    label: 'Llama 3.3 70B',               group: 'Meta' },
-    { value: 'deepseek/deepseek-r1',                  label: 'DeepSeek R1',                 group: 'DeepSeek' },
-    { value: 'deepseek/deepseek-chat',                label: 'DeepSeek V3',                 group: 'DeepSeek' },
-    { value: 'x-ai/grok-3',                          label: 'Grok 3',                      group: 'xAI' },
-    { value: 'mistralai/mistral-large',               label: 'Mistral Large',               group: 'Mistral' },
-    { value: 'qwen/qwq-32b',                         label: 'QwQ 32B',                     group: 'Qwen' },
-  ]
-
+  // ── Build model list ──────────────────────────────────────────────────────
   const isLive = openRouterModels.length > 0
   const allModels = isLive
     ? openRouterModels.map((m) => ({
