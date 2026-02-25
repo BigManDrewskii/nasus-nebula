@@ -129,7 +129,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'python_execute',
       description:
-        'Execute Python code in a sandbox. When a cloud sandbox (E2B or Daytona) is configured this runs in a full Linux environment with all packages available — use pip install via bash_execute first if needed. Otherwise falls back to Pyodide (WebAssembly) in the browser. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.',
+        'Execute Python code in a sandbox. When a cloud sandbox (E2B) is configured this runs in a full Linux environment with all packages available — use pip install via bash_execute first if needed. Otherwise falls back to Pyodide (WebAssembly) in the browser. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.',
       parameters: {
         type: 'object',
         properties: {

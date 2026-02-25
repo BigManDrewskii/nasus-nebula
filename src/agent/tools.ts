@@ -187,7 +187,7 @@ export async function executeTool(
                 'Error: Node.js / npm / npx / node is not available in browser mode — not even for version checks. ' +
                 'Do NOT retry this command. Instead: write the file contents directly with write_file. ' +
                 'For a Next.js page write a .tsx file. For a website write index.html + styles.css. ' +
-                'Use bash_execute only if a cloud sandbox (E2B/Daytona) is configured in Settings.',
+                'Use bash_execute only if a cloud sandbox (E2B) is configured in Settings.',
               isError: true,
             }
           }
@@ -214,7 +214,7 @@ export async function executeTool(
           return {
             output:
               'Error: apt / brew package managers are not available in browser mode. ' +
-              'Use bash_execute if a cloud sandbox (E2B/Daytona) is configured.',
+              'Use bash_execute if a cloud sandbox (E2B) is configured.',
             isError: true,
           }
         }

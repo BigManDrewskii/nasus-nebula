@@ -126,6 +126,17 @@ function App() {
     return () => window.removeEventListener('nasus:tasks-pruned', onPruned)
   }, [])
 
+  // When serve_preview signals a live dev server, auto-switch the Output panel to Preview
+  useEffect(() => {
+    function onPreviewReady() {
+      setRightActiveTab('preview')
+      setRightCollapsed(false)
+      setOutputVisible(true)
+    }
+    window.addEventListener('nasus:preview-ready', onPreviewReady)
+    return () => window.removeEventListener('nasus:preview-ready', onPreviewReady)
+  }, [])
+
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
   useEffect(() => {
     const goOffline = () => setIsOffline(true)
