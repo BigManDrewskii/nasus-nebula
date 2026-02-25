@@ -1,3 +1,6 @@
+import type { LlmMessage } from './agent/llm'
+export type { LlmMessage }
+
 export interface Task {
   id: string
   title: string
@@ -19,9 +22,6 @@ export interface Message {
   error?: string
   attachments?: MessageAttachment[]
 }
-
-// Raw LLM message — re-exported from llm.ts as the single source of truth.
-export type { LlmMessage } from './agent/llm'
 
 // One iteration of the Plan → Act → Observe loop
 export type AgentStep =

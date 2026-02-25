@@ -142,18 +142,41 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
-  {
+    {
     type: 'function',
     function: {
       name: 'bash_execute',
       description:
-        'Execute a shell command in a cloud sandbox (E2B or Daytona). Requires an E2B or Daytona API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
+        'Execute a shell command in a cloud sandbox (E2B). Requires an E2B API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
       parameters: {
         type: 'object',
         properties: {
           command: {
             type: 'string',
             description: 'Shell command to run (bash). Examples: "pip install pandas", "python script.py", "ls /workspace".',
+          },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'serve_preview',
+      description:
+        'Start a dev server or static file server for a project in the cloud sandbox. Returns a preview URL that renders in the Preview tab. Use this after copying a template to /workspace/project. Examples: serve_preview(command="cd /workspace/project && npm run dev", port=3000) for Next.js/Vite, or serve_preview(command="serve /workspace/project -l 3000", port=3000) for static files. Requires E2B cloud sandbox.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'The shell command to start the server. Must bind to 0.0.0.0 and the specified port.',
+          },
+          port: {
+            type: 'integer',
+            description: 'The port the server will listen on (default 3000).',
+            default: 3000,
           },
         },
         required: ['command'],

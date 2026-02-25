@@ -38,9 +38,15 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
       /(?:next|react|shadcn).*(?:landing|hero|ui)\s+(?:page|section|component)/i,
     ],
     contextInjection:
-      'Stack detected: Next.js + shadcn/ui. Template pre-loaded at /workspace/index.html — ' +
-      'this is a self-contained CDN version that renders identically to a shadcn Next.js app. ' +
-      'Start writing component code immediately. Do NOT run npm, create package.json, or scaffold a project.',
+      'Stack detected: Next.js + shadcn/ui.\n' +
+      'If a cloud sandbox (E2B) is active: a pre-built template with all dependencies installed is at ' +
+      '/templates/nextjs-shadcn/. Your workflow:\n' +
+      '  1. bash_execute("cp -r /templates/nextjs-shadcn /workspace/project")\n' +
+      '  2. serve_preview(command="cd /workspace/project && npm run dev", port=3000)\n' +
+      '  3. write_file("/workspace/project/src/app/page.tsx", ...) to build the UI\n' +
+      'NEVER run npx create-next-app, npm init, or npm install from scratch.\n' +
+      'If NO cloud sandbox is active (browser-only): a CDN-based template is pre-loaded at ' +
+      '/workspace/index.html — write component HTML directly into it. No npm needed.',
   },
   {
     id: 'react-spa',
@@ -51,8 +57,15 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
       /create.react/i,
     ],
     contextInjection:
-      'Stack detected: React SPA. Template pre-loaded at /workspace/index.html with React + Babel CDN. ' +
-      'Write components directly in <script type="text/babel"> blocks. No npm needed.',
+      'Stack detected: React SPA.\n' +
+      'If a cloud sandbox (E2B) is active: a pre-built Vite + React template is at ' +
+      '/templates/react-vite/. Your workflow:\n' +
+      '  1. bash_execute("cp -r /templates/react-vite /workspace/project")\n' +
+      '  2. serve_preview(command="cd /workspace/project && npm run dev", port=3000)\n' +
+      '  3. write_file("/workspace/project/src/App.tsx", ...) to build the UI\n' +
+      'NEVER run npx create-react-app or npm init.\n' +
+      'If NO cloud sandbox is active (browser-only): a CDN-based template is pre-loaded at ' +
+      '/workspace/index.html with React + Babel CDN. Write components directly in <script type="text/babel"> blocks.',
   },
   {
     id: 'html-tailwind',

@@ -85,3 +85,6 @@ data: {"id"... [truncated]
 2026-02-24T21:43:27.696Z [console][log] [vite] server connection lost. Polling for restart...
 2026-02-25T09:09:08.087Z [console][error] Uncaught ReferenceError: workspace is not defined
 2026-02-25T09:09:55.295Z [console][error] Uncaught ReferenceError: workspace is not defined
+2026-02-25T11:08:02.615Z [console][log] [vite] connecting...
+2026-02-25T11:08:02.620Z [console][log] [vite] connected.
+2026-02-25T11:08:02.620Z [console][debug] [vite] connected.

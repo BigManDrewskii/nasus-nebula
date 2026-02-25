@@ -14,7 +14,8 @@ import {
   browserSelect,
 } from './browserBridge'
 import { runSearch } from './search'
-export type { SearchConfig, SearchStatusCallback } from './search'
+import type { SearchConfig, SearchStatusCallback } from './search'
+export type { SearchConfig, SearchStatusCallback }
 
 /**
  * Browser-safe tool execution for the web agent.
@@ -360,12 +361,80 @@ export async function executeTool(
         return await executePython(code, cfg)
       }
 
-      case 'bash_execute': {
-        const command = String(args.command ?? '')
-        if (!command.trim()) return { output: 'Missing command', isError: true }
-        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'disabled' }
-        return await executeBash(command, cfg)
-      }
+       case 'serve_preview': {
+         const command = String(args.command ?? '')
+         const port = Number(args.port ?? 3000)
+         if (!command.trim()) return { output: 'Missing command', isError: true }
+
+         const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'disabled' }
+         if (cfg.executionMode !== 'e2b' || !cfg.e2bApiKey?.trim()) {
+           return {
+             output:
+               'serve_preview requires E2B cloud sandbox. Add your E2B API key in Settings → Code Execution. ' +
+               'In browser-only mode, use write_file to create index.html and preview it in the Output panel instead.',
+             isError: true,
+           }
+         }
+
+         // Kill any existing server on this port
+         await executeBash(
+           `kill $(lsof -t -i:${port} 2>/dev/null) 2>/dev/null || true`,
+           cfg,
+         )
+
+         // Start server in background — nohup so it survives the exec timeout
+         const bgCommand = `nohup sh -c ${JSON.stringify(command)} > /tmp/nasus-server-${port}.log 2>&1 &`
+         await executeBash(bgCommand, cfg)
+
+         // Poll until port responds (max 20 × 500ms = 10s)
+         let ready = false
+         for (let i = 0; i < 20; i++) {
+           await new Promise((r) => setTimeout(r, 500))
+           const check = await executeBash(
+             `curl -s -o /dev/null -w '%{http_code}' http://localhost:${port}/ 2>/dev/null || echo waiting`,
+             cfg,
+           )
+           const code = check.output.trim()
+           if (code === '200' || code === '304' || code === '302' || code === '101') {
+             ready = true
+             break
+           }
+         }
+
+         if (ready) {
+           // Emit preview-ready event so the frontend can open the Preview tab
+           window.dispatchEvent(
+             new CustomEvent('nasus:preview-ready', {
+               detail: { port, url: `http://localhost:${port}` },
+             }),
+           )
+           return {
+             output:
+               `Dev server is running on port ${port}. Preview is now live in the Preview tab.\n` +
+               `URL: http://localhost:${port}\n` +
+               `Edit files in the project directory — the dev server hot-reloads automatically.`,
+             isError: false,
+           }
+         }
+
+         // Server didn't come up — return logs
+         const logs = await executeBash(
+           `tail -30 /tmp/nasus-server-${port}.log 2>/dev/null || echo '(no logs)'`,
+           cfg,
+         )
+         return {
+           output:
+             `Server did not respond on port ${port} within 10 seconds.\n` +
+             `Server logs:\n${logs.output.trim()}`,
+           isError: true,
+         }
+       }
+       case 'bash_execute': {
+         const command = String(args.command ?? '')
+         if (!command.trim()) return { output: 'Missing command', isError: true }
+         const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'disabled' }
+         return await executeBash(command, cfg)
+       }
 
       case 'browser_navigate': {
         const url = String(args.url ?? '')

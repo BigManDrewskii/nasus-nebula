@@ -22,8 +22,25 @@ import { SYSTEM_PROMPT } from './systemPrompt'
 
 class ErrorTracker {
   private strikes: Map<string, { count: number; attempts: string[] }> = new Map()
+  // Global error total per tool — prevents the agent from cycling through many
+  // different error signatures (e.g. npm → npx → apt → curl) and getting a fresh
+  // 3-strike budget for each one.  Once a tool hits this cap, force strike-3 escalation.
+  private toolTotals: Map<string, number> = new Map()
+  // Per-tool global cap before forcing escalation
+  private static TOOL_GLOBAL_CAP: Record<string, number> = {
+    bash: 4, // bash has many intercepted variants — cap tightly
+  }
 
   record(tool: string, summary: string): number {
+    // Increment and check global tool total first
+    const total = (this.toolTotals.get(tool) ?? 0) + 1
+    this.toolTotals.set(tool, total)
+    const cap = ErrorTracker.TOOL_GLOBAL_CAP[tool]
+    if (cap !== undefined && total >= cap) {
+      // Force strike-3 escalation regardless of per-signature count
+      return 3
+    }
+
     const sig = `${tool}::${summary.slice(0, 60)}`
     const entry = this.strikes.get(sig) ?? { count: 0, attempts: [] }
     entry.count++
@@ -37,6 +54,7 @@ class ErrorTracker {
     for (const key of this.strikes.keys()) {
       if (key.startsWith(`${tool}::`)) this.strikes.delete(key)
     }
+    this.toolTotals.delete(tool)
   }
 
   attempts(tool: string): string[] {
@@ -283,6 +301,18 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
     ...userMessages,
   ]
 
+  // ── Dynamic environment declaration ──────────────────────────────────────────
+  // Inject a concrete, honest description of what tools are actually available.
+  // This prevents the LLM from acting on the static "npm/node available" assumption
+  // that can bleed in from training data or stale context.
+  const hasCloudSandbox =
+    executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'daytona'
+  const envSummary = hasCloudSandbox
+      ? `[Environment] Cloud sandbox active (${executionConfig!.executionMode}). Full shell available via bash_execute: npm, node, npx, pip, apt, git, curl, wget all work. Pre-built web templates with all dependencies installed are available at /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html. For web projects: copy a template with bash_execute, then use serve_preview to start the dev server. Do NOT scaffold projects from scratch with npm init or npx create-next-app.`
+      : `[Environment] Browser-only mode. No cloud sandbox configured. Available tools: write_file, read_file, patch_file, list_files, http_fetch, search_web, python_execute, bash (cat/ls/echo/mkdir only). npm, node, npx, pip, curl, wget, apt, git WILL FAIL — do not attempt them. Write files directly with write_file instead.`
+  // Insert right after system prompt (position 1) so it's the second thing seen
+  messages.splice(1, 0, { role: 'system', content: envSummary })
+
   // ── Stack template pre-seeding ───────────────────────────────────────────────
   // For UI/web/code tasks, detect the stack from the user's message and seed the
   // workspace with a ready-to-use template file + inject context so the agent
@@ -293,8 +323,8 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
     const detectedStack = detectStack(firstUserContent)
     if (detectedStack) {
       seedStackTemplate(taskId, detectedStack.id)
-      // Insert after system prompt so the agent sees it before the user message
-      messages.splice(1, 0, {
+      // Insert after system prompt + env summary so the agent sees it before the user message
+      messages.splice(2, 0, {
         role: 'system',
         content: `[Stack Template Ready] ${detectedStack.contextInjection}`,
       })
@@ -423,7 +453,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
           const { output: rawOutput, isError } = await executeTool(
             taskId, fnName, args, searchConfig,
             fnName === 'search_web'
-              ? (evt) => emit.searchStatus(callId, evt)
+              ? (evt: Parameters<SearchStatusCallback>[0]) => emit.searchStatus(callId, evt)
               : undefined,
             executionConfig
               ? {
