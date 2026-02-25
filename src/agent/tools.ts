@@ -45,8 +45,8 @@ const workspaceVersions: Map<string, number> = new Map()
 
 // ── Workspace localStorage persistence ───────────────────────────────────────
 const WS_STORAGE_PREFIX = 'nasus-ws-'
-// Max size per file stored in localStorage (32 KB) — prevents quota exhaustion
-const WS_MAX_FILE_BYTES = 32 * 1024
+// Max size per file stored in localStorage (256 KB) — prevents quota exhaustion
+const WS_MAX_FILE_BYTES = 256 * 1024
 
 function loadWorkspaceFromStorage(taskId: string): Map<string, string> {
   try {
@@ -612,18 +612,69 @@ export async function executeTool(
         return { output: echoMatch[1].replace(/['"]/g, ''), isError: false }
       }
 
-        // Intercept any command containing curl, wget, python, python3, node, pip, npm, git, apt
-        if (/\bcurl\b|\bwget\b|\bpython3?\b|\bnode\b|\bnpm\b|\bpip3?\b|\bgit\b|\bapt\b|\bapt-get\b|\bwhich\b/.test(cmd)) {
+        // Intercept framework/package-manager commands — return as an ERROR so the
+        // 3-strike counter fires and the agent pivots instead of retrying endlessly.
+        if (/\bnpx\b|\bnpm\b|\bnode\b|\byarn\b|\bpnpm\b|\bbun\b/.test(cmd)) {
           return {
-            output: '[Browser sandbox: shell commands (curl, wget, python3, etc.) are not available. Use http_fetch or search_web for network access, and read_file/write_file for file operations. Use python_execute for Python code, bash_execute if a cloud sandbox is configured.]',
-            isError: false,
+            output:
+              'Error: Node.js / npm / npx is not available in browser mode. ' +
+              'Do NOT retry this command. Instead: write the file contents directly with write_file. ' +
+              'For a Next.js page write a .tsx file. For a website write index.html + styles.css. ' +
+              'Use bash_execute only if a cloud sandbox (E2B/Daytona) is configured in Settings.',
+            isError: true,
+          }
+        }
+
+        if (/\bpip3?\b|\bpython3?\b/.test(cmd)) {
+          return {
+            output:
+              'Error: pip / python is not available as a shell command in browser mode. ' +
+              'Use python_execute to run Python code, or bash_execute if a cloud sandbox is configured.',
+            isError: true,
+          }
+        }
+
+        if (/\bcurl\b|\bwget\b/.test(cmd)) {
+          return {
+            output:
+              'Error: curl / wget is not available in browser mode. ' +
+              'Use http_fetch to make HTTP requests or search_web to search the internet.',
+            isError: true,
+          }
+        }
+
+        if (/\bapt\b|\bapt-get\b|\bbrew\b/.test(cmd)) {
+          return {
+            output:
+              'Error: apt / brew package managers are not available in browser mode. ' +
+              'Use bash_execute if a cloud sandbox (E2B/Daytona) is configured.',
+            isError: true,
+          }
+        }
+
+        if (/\bgit\b/.test(cmd)) {
+          return {
+            output:
+              'Error: git is not available in browser mode. ' +
+              'Write files directly with write_file instead.',
+            isError: true,
+          }
+        }
+
+        if (/\bwhich\b/.test(cmd)) {
+          return {
+            output:
+              'Error: which returned nothing — no shell tools are available in browser mode. ' +
+              'Use write_file for file creation, http_fetch for network, python_execute for code.',
+            isError: true,
           }
         }
 
         return {
           output:
-            '[Browser sandbox: arbitrary bash commands cannot run. Use http_fetch, search_web, read_file, write_file, list_files, python_execute, or bash_execute instead.]',
-          isError: false,
+            'Error: this shell command is not available in browser mode. ' +
+            'Use write_file, read_file, http_fetch, search_web, python_execute, or bash_execute instead.',
+          isError: true,
         }
     }
 

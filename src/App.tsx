@@ -78,13 +78,14 @@ function App() {
     saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab })
   }, [leftCollapsed, rightCollapsed, rightActiveTab])
 
-  // Auto-show + expand right panel when the agent creates its first file
-  useEffect(() => {
-    if (workspaceFiles.length > 0) {
-      if (!outputVisible) setOutputVisible(true)
-      if (rightCollapsed) setRightCollapsed(false)
-    }
-  }, [workspaceFiles.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    // Auto-show + expand right panel when the agent creates its first file,
+    // or when switching to a task that already has files.
+    useEffect(() => {
+      if (workspaceFiles.length > 0) {
+        if (!outputVisible) setOutputVisible(true)
+        if (rightCollapsed) setRightCollapsed(false)
+      }
+    }, [workspaceFiles.length, activeTaskId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcuts
   useEffect(() => {

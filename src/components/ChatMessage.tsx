@@ -269,18 +269,26 @@ function renderMarkdown(text: string): React.ReactNode {
       }
 
           // Agents often stream a wall of text with no newlines. Split into
-          // separate paragraphs only at sentence boundaries that are clearly
-          // between full sentences (two or more spaces after a period/colon,
-          // OR a period/colon followed by a capital letter with ≥2 prior words).
-          // We deliberately avoid splitting on e.g., i.e., Dr., Mr., etc.
+          // separate paragraphs at sentence boundaries.
           if (lines[i].trim() && !/^(#{1,3}\s|> |[-*+]\s|\d+\. |```|[-*_]{3,})/.test(lines[i])) {
             const rawLine = lines[i]
-            // Only split when punctuation is followed by 2+ spaces (explicit break)
-            // or by end-of-string. Single-space splits cause too many false positives.
-            const segments = rawLine
-              .split(/(?<=[.!?])\s{2,}/)
-              .map((s) => s.trim())
-              .filter(Boolean)
+
+            let segments: string[]
+            if (rawLine.length > 200) {
+              // Long lines: split at sentence boundaries (. ! ?) followed by a space
+              // and an uppercase letter. Avoids splitting on "e.g.", "i.e.", "Mr.", etc.
+              // by requiring the next word to start with a capital letter.
+              segments = rawLine
+                .split(/(?<=[.!?:])(\s{2,}|\s(?=[A-Z]))/)
+                .filter((s) => s && !/^(\s+)$/.test(s))
+                .map((s) => s.trim())
+                .filter(Boolean)
+              // If splitting produced only 1 segment (no boundaries found), keep as-is
+              if (segments.length <= 1) segments = [rawLine.trim()]
+            } else {
+              // Short lines: keep as one paragraph
+              segments = [rawLine.trim()].filter(Boolean)
+            }
 
             for (const seg of segments) {
               nodes.push(
