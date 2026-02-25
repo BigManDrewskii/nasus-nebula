@@ -306,7 +306,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
   // This prevents the LLM from acting on the static "npm/node available" assumption
   // that can bleed in from training data or stale context.
   const hasCloudSandbox =
-    executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'daytona'
+    executionConfig?.executionMode === 'e2b'
   const envSummary = hasCloudSandbox
       ? `[Environment] Cloud sandbox active (${executionConfig!.executionMode}). Full shell available via bash_execute: npm, node, npx, pip, apt, git, curl, wget all work. Pre-built web templates with all dependencies installed are available at /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html. For web projects: copy a template with bash_execute, then use serve_preview to start the dev server. Do NOT scaffold projects from scratch with npm init or npx create-next-app.`
       : `[Environment] Browser-only mode. No cloud sandbox configured. Available tools: write_file, read_file, patch_file, list_files, http_fetch, search_web, python_execute, bash (cat/ls/echo/mkdir only). npm, node, npx, pip, curl, wget, apt, git WILL FAIL — do not attempt them. Write files directly with write_file instead.`
