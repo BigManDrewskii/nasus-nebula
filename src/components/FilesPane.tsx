@@ -101,126 +101,57 @@ export function FilesPane({ files }: FilesPaneProps) {
   const selectedCount = checked.size
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toolbar */}
-      <div
-        style={{
-          padding: '7px 12px',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+    <div className="output-files-layout">
+      <div className="output-files-toolbar">
+        <label className="output-files-select-all">
           <input
             type="checkbox"
             checked={allChecked}
             onChange={toggleAll}
-            style={{ accentColor: 'var(--amber)', cursor: 'pointer' }}
+            className="output-checkbox"
           />
-          <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>
-            {selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}
-          </span>
+          <span>{selectedCount > 0 ? `${selectedCount} selected` : 'Select all'}</span>
         </label>
 
-        <div style={{ flex: 1 }} />
+        <div className="output-panel-spacer" />
 
         {selectedCount > 1 && (
-          <button
-            onClick={downloadZip}
-            disabled={zipping}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '4px 10px',
-              borderRadius: 7,
-              background: 'rgba(234,179,8,0.1)',
-              border: '1px solid rgba(234,179,8,0.25)',
-              color: 'var(--amber)',
-              fontSize: 11,
-              fontWeight: 500,
-              cursor: zipping ? 'wait' : 'pointer',
-              transition: 'background 0.1s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.18)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.1)' }}
-          >
-            <Pxi name={zipping ? 'circle-notch' : 'download'} size={10} style={zipping ? { animation: 'spin 1s linear infinite' } : {}} />
-            {zipping ? 'Zipping…' : `Download ZIP (${selectedCount})`}
+          <button onClick={downloadZip} disabled={zipping} className="output-files-zip-btn">
+            <Pxi
+              name={zipping ? 'circle-notch' : 'download'}
+              size={10}
+              style={zipping ? { animation: 'spin 1s linear infinite' } : {}}
+            />
+            {zipping ? 'Zipping...' : `Download ZIP (${selectedCount})`}
           </button>
         )}
       </div>
 
-      {/* File list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      <div className="output-files-list">
         {files.map((f) => {
           const isChecked = checked.has(f.name)
           const bytes = new TextEncoder().encode(f.content).length
           return (
-            <div
-              key={f.name}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '6px 12px',
-                background: isChecked ? 'rgba(234,179,8,0.05)' : 'transparent',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => {
-                if (!isChecked) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-              }}
-              onMouseLeave={(e) => {
-                if (!isChecked) e.currentTarget.style.background = 'transparent'
-              }}
-            >
+            <div key={f.name} className={`output-file-row${isChecked ? ' output-file-row--selected' : ''}`}>
               <input
                 type="checkbox"
                 checked={isChecked}
                 onChange={() => toggle(f.name)}
-                style={{ accentColor: 'var(--amber)', cursor: 'pointer', flexShrink: 0 }}
+                className="output-checkbox"
               />
 
               <Pxi name="file-alt" size={10} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
 
-              <span
-                style={{
-                  flex: 1,
-                  fontSize: 11,
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--tx-secondary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-                title={f.name}
-              >
+              <span className="output-file-row-name" title={f.name}>
                 {f.name}
               </span>
 
-              <span style={{ fontSize: 10, color: 'var(--tx-muted)', flexShrink: 0 }}>
-                {formatBytes(bytes)}
-              </span>
+              <span className="output-file-row-size">{formatBytes(bytes)}</span>
 
               <button
                 onClick={() => downloadSingle(f)}
                 title={`Download ${f.name}`}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--tx-tertiary)',
-                  padding: 3,
-                  borderRadius: 5,
-                  display: 'flex',
-                  alignItems: 'center',
-                  transition: 'color 0.1s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+                className="output-file-row-download"
               >
                 <Pxi name="download" size={11} />
               </button>
@@ -229,18 +160,8 @@ export function FilesPane({ files }: FilesPaneProps) {
         })}
       </div>
 
-      {/* Footer summary */}
-      <div
-        style={{
-          padding: '6px 12px',
-          borderTop: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>
+      <div className="output-files-footer">
+        <span>
           {files.length} file{files.length !== 1 ? 's' : ''} ·{' '}
           {formatBytes(files.reduce((a, f) => a + new TextEncoder().encode(f.content).length, 0))} total
         </span>

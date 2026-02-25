@@ -10,7 +10,7 @@ interface PreviewPaneProps {
 function pickHtmlEntry(files: WorkspaceFile[]): WorkspaceFile | null {
   const priority = ['index.html', 'output.html', 'main.html']
   for (const name of priority) {
-    const f = files.find((f) => f.name === name || f.name.endsWith(`/${name}`))
+    const f = files.find((file) => file.name === name || file.name.endsWith(`/${name}`))
     if (f) return f
   }
   return files.find((f) => f.ext === 'html') ?? null
@@ -77,36 +77,17 @@ export function PreviewPane({ files }: PreviewPaneProps) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
-      {/* Filename badge */}
-      <div
-        style={{
-          padding: '4px 10px',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          flexShrink: 0,
-        }}
-      >
-        <Pxi name="globe" size={9} style={{ color: 'var(--tx-tertiary)' }} />
-        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>
-          {htmlFile.name}
-        </span>
+    <div className="output-preview-layout">
+      <div className="output-pane-meta">
+        <Pxi name="globe" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+        <span className="output-pane-meta-path">{htmlFile.name}</span>
       </div>
 
       <iframe
         key={srcDoc}
         srcDoc={srcDoc}
         sandbox="allow-scripts allow-forms allow-modals"
-        style={{
-          flex: 1,
-          border: 'none',
-          background: '#fff',
-          width: '100%',
-          height: '100%',
-          minHeight: 0,
-        }}
+        className="output-preview-iframe"
         title="Preview"
       />
     </div>

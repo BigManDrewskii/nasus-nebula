@@ -25,7 +25,7 @@ function colorizeJson(s: string): string {
     (m, str, colon, kw, num) => {
       if (str && colon) return `<span class="tok-key">${str}</span>${colon}`
       if (str) return `<span class="tok-str">${str}</span>`
-      if (kw)  return `<span class="tok-kw">${kw}</span>`
+      if (kw) return `<span class="tok-kw">${kw}</span>`
       if (num) return `<span class="tok-num">${num}</span>`
       return m
     },
@@ -84,9 +84,7 @@ function formatBytes(n: number): string {
 }
 
 export function CodePane({ files }: CodePaneProps) {
-  const [selected, setSelected] = useState<string | null>(
-    files.length > 0 ? files[0].name : null,
-  )
+  const [selected, setSelected] = useState<string | null>(files.length > 0 ? files[0].name : null)
 
   // Keep selection valid as file list changes
   const activeFile = files.find((f) => f.name === selected) ?? files[0] ?? null
@@ -104,17 +102,8 @@ export function CodePane({ files }: CodePaneProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flex: 1, overflow: 'hidden', height: '100%' }}>
-      {/* File tree */}
-      <div
-        style={{
-          width: 180,
-          flexShrink: 0,
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          overflowY: 'auto',
-          padding: '6px 0',
-        }}
-      >
+    <div className="output-code-layout">
+      <aside className="output-file-list" aria-label="Workspace files">
         {files.map((f) => {
           const isActive = f.name === activeFile?.name
           return (
@@ -122,86 +111,36 @@ export function CodePane({ files }: CodePaneProps) {
               key={f.name}
               onClick={() => setSelected(f.name)}
               title={f.name}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 10px',
-                background: isActive ? 'rgba(234,179,8,0.08)' : 'transparent',
-                borderLeft: isActive ? '2px solid var(--amber)' : '2px solid transparent',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) e.currentTarget.style.background = 'transparent'
-              }}
+              className={`output-file-item${isActive ? ' output-file-item--active' : ''}`}
             >
-              <Pxi name={fileIcon(f.ext)} size={10} style={{ color: isActive ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }} />
-              <span
-                style={{
-                  fontSize: 11,
-                  fontFamily: 'var(--font-mono)',
-                  color: isActive ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {f.name.split('/').pop()}
-              </span>
+              <Pxi
+                name={fileIcon(f.ext)}
+                size={10}
+                style={{ color: isActive ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
+              />
+              <span className="output-file-item-name">{f.name.split('/').pop()}</span>
             </button>
           )
         })}
-      </div>
+      </aside>
 
-      {/* Code viewer */}
       {activeFile ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* File meta bar */}
-          <div
-            style={{
-              padding: '4px 12px',
-              borderBottom: '1px solid rgba(255,255,255,0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>
-              {activeFile.name}
-            </span>
-            <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>
+        <section className="output-code-view">
+          <div className="output-pane-meta output-pane-meta--code">
+            <span className="output-pane-meta-path">{activeFile.name}</span>
+            <span className="output-pane-meta-chip">
               {formatBytes(new TextEncoder().encode(activeFile.content).length)}
             </span>
-            <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>
-              {activeFile.content.split('\n').length} lines
-            </span>
+            <span className="output-pane-meta-chip">{activeFile.content.split('\n').length} lines</span>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+          <div className="output-scroll-surface">
             <pre
-              style={{
-                margin: 0,
-                padding: '14px 16px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11.5,
-                lineHeight: 1.65,
-                color: 'var(--tx-secondary)',
-                whiteSpace: 'pre',
-                minHeight: '100%',
-              }}
-              // eslint-disable-next-line react/no-danger
+              className="output-code-pre"
               dangerouslySetInnerHTML={{ __html: tokenize(activeFile.content, activeFile.ext) }}
             />
           </div>
-        </div>
+        </section>
       ) : null}
     </div>
   )

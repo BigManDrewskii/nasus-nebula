@@ -22,47 +22,47 @@ export function OutputPanel({ files, onCollapse }: OutputPanelProps) {
   // Auto-prefer code tab if no HTML is present and there are files
   const effectiveTab = tab === 'preview' && !hasHtml && hasFiles ? 'code' : tab
 
-  const tabs: { id: Tab; icon: string; label: string }[] = [
+  const tabs: { id: Tab; icon: string; label: string; count?: number }[] = [
     { id: 'preview', icon: 'browser', label: 'Preview' },
-    { id: 'code',    icon: 'code',    label: 'Code' },
-    { id: 'files',   icon: 'folder',  label: `Files${hasFiles ? ` (${files.length})` : ''}` },
+    { id: 'code', icon: 'code', label: 'Code' },
+    { id: 'files', icon: 'folder', label: 'Files', count: hasFiles ? files.length : undefined },
   ]
 
   return (
     <div className="output-panel">
-      {/* Tab bar */}
-      <div className="output-panel-tabs">
+      <div className="output-panel-tabs" role="tablist" aria-label="Output tabs">
         {tabs.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`output-tab${effectiveTab === t.id ? ' output-tab--active' : ''}`}
+            role="tab"
+            aria-selected={effectiveTab === t.id}
           >
             <Pxi name={t.icon} size={10} />
-            {t.label}
+            <span>{t.label}</span>
+            {typeof t.count === 'number' && <span className="output-tab-badge">{t.count}</span>}
           </button>
         ))}
 
-        <div style={{ flex: 1 }} />
+        <div className="output-panel-spacer" />
 
-        {/* Collapse button */}
         {onCollapse && (
           <button
             onClick={onCollapse}
             title="Hide output panel"
-            className="output-tab"
-            style={{ padding: '0 10px', marginRight: 4 }}
+            className="output-tab output-tab--icon"
+            aria-label="Hide output panel"
           >
             <Pxi name="chevron-right" size={10} />
           </button>
         )}
       </div>
 
-      {/* Content */}
       <div className="output-panel-body">
         {effectiveTab === 'preview' && <PreviewPane files={files} />}
-        {effectiveTab === 'code'    && <CodePane files={files} />}
-        {effectiveTab === 'files'   && <FilesPane files={files} />}
+        {effectiveTab === 'code' && <CodePane files={files} />}
+        {effectiveTab === 'files' && <FilesPane files={files} />}
       </div>
     </div>
   )
