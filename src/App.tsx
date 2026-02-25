@@ -159,9 +159,15 @@ function App() {
     )
   }
 
-  return (
-    <ErrorBoundary>
-      <div className="app-root">
+    return (
+      <ErrorBoundary>
+        <div className="app-root">
+          {isTauri && (
+            <>
+              <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
+              <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
+            </>
+          )}
         {/* ── Left Sidebar ── */}
         <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
           <Sidebar

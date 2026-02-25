@@ -269,7 +269,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         display: 'flex',
         alignItems: 'center',
         gap: 9,
-        padding: isTauri ? '14px 14px 10px 76px' : '14px 14px 10px',
+        padding: isTauri ? '10px 14px 10px 14px' : '14px 14px 10px',
         userSelect: 'none',
       }}
     >

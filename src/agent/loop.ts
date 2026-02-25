@@ -7,7 +7,7 @@
  */
 
 import { streamCompletion, chatOnce, cheapestModel, type LlmMessage, type ToolDefinition } from './llm'
-import { executeTool, startTurnTracking, flushTurnFiles, type SearchConfig, type SearchStatusCallback } from './tools'
+import { executeTool, startTurnTracking, flushTurnFiles, getWorkspace, type SearchConfig, type SearchStatusCallback } from './tools'
 import type { ExecutionConfig } from './sandboxRuntime'
 import { useAppStore } from '../store'
 import type { AgentStep } from '../types'
@@ -274,6 +274,29 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
 
 const SYSTEM_PROMPT = `You are Nasus, an autonomous AI agent.
 Your job: take the user's goal and independently plan and execute a multi-step solution until fully complete.
+
+═══════════════════════════════════════════════════════
+CRITICAL — NO NARRATION RULE
+═══════════════════════════════════════════════════════
+
+NEVER narrate what you are about to do. NEVER write sentences like:
+  - "I'll build you a website..."
+  - "Let's start by creating..."
+  - "Now, let's update the progress file..."
+  - "First, I'll create the task plan..."
+
+Instead: **immediately call the next tool**. Text output is ONLY for the final summary when all work is done.
+
+If you find yourself writing explanatory prose mid-task, STOP and call a tool instead.
+
+═══════════════════════════════════════════════════════
+CRITICAL — KEEP GOING UNTIL DONE
+═══════════════════════════════════════════════════════
+
+Do NOT stop after setting up memory files. Do NOT stop after mkdir. Do NOT stop after writing task_plan.md.
+After writing task_plan.md → immediately start executing Phase 1 with tool calls.
+After completing each phase → immediately start the next phase with tool calls.
+Only stop (return final text) when ALL phases in task_plan.md are marked [x].
 
 IMPORTANT: You are running in browser mode. The sandbox environment has limitations:
   - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available — use bash_execute if you have a cloud sandbox configured
@@ -846,17 +869,35 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
         useAppStore.getState().appendRawHistory(taskId, batchRaw)
       }
 
-      // Emit output_cards step if any deliverable files were written this turn
-      const turnFiles = flushTurnFiles(taskId)
-      const deliverableFiles = turnFiles.filter((f) => {
-        const name = f.filename
-        return name !== 'task_plan.md' && name !== 'findings.md' && name !== 'progress.md'
-      })
-      if (deliverableFiles.length > 0) {
-        const step: AgentStep = { kind: 'output_cards', files: deliverableFiles }
-        useAppStore.getState().addStep(taskId, messageId, step)
-      }
-  }
+        // Emit output_cards step if any deliverable files were written this turn
+        const turnFiles = flushTurnFiles(taskId)
+        const deliverableFiles = turnFiles.filter((f) => {
+          const name = f.filename
+          return name !== 'task_plan.md' && name !== 'findings.md' && name !== 'progress.md'
+        })
+        if (deliverableFiles.length > 0) {
+          const step: AgentStep = { kind: 'output_cards', files: deliverableFiles }
+          useAppStore.getState().addStep(taskId, messageId, step)
+        }
+
+        // After every tool batch: inject a continuation nudge to prevent the model
+        // from prematurely stopping with narration instead of continuing to work.
+        // Only inject if we are mid-task (not first iteration) and haven't hit warn threshold.
+        if (iteration > 0 && iteration < warnIter - 1) {
+          const ws = getWorkspace(taskId)
+          const hasPlan = ws.has('task_plan.md')
+          if (hasPlan) {
+            const plan = ws.get('task_plan.md') ?? ''
+            const hasUnchecked = plan.includes('- [ ]')
+            if (hasUnchecked) {
+              messages.push({
+                role: 'system',
+                content: `[Continue] task_plan.md has unchecked phases. Do NOT output a summary yet — immediately call the next tool to continue execution.`,
+              })
+            }
+          }
+        }
+    }
 
   // Max iterations hit
   emit.error(`Maximum iterations (${maxIter}) reached. The agent stopped to prevent runaway usage.`)
