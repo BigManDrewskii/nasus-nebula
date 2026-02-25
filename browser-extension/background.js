@@ -16,14 +16,18 @@ const NASUS_ORIGINS = [
 // Track which tabs we have the debugger attached to
 const attachedTabs = new Set();
 
-// ─── CDP helpers ────────────────────────────────────────────────────────────
+// ─── CDP helpers ─────────────────────────────────────────────────────────────
 
 async function ensureAttached(tabId) {
   if (!attachedTabs.has(tabId)) {
     await chrome.debugger.attach({ tabId }, "1.3");
     attachedTabs.add(tabId);
-    chrome.debugger.onDetach.addListener((src) => {
-      if (src.tabId === tabId) attachedTabs.delete(tabId);
+    // Register detach listener only once per tab
+    chrome.debugger.onDetach.addListener(function onDetach(src) {
+      if (src.tabId === tabId) {
+        attachedTabs.delete(tabId);
+        chrome.debugger.onDetach.removeListener(onDetach);
+      }
     });
   }
 }
@@ -33,42 +37,53 @@ async function cdp(tabId, method, params = {}) {
   return chrome.debugger.sendCommand({ tabId }, method, params);
 }
 
-// ─── Get or create a Nasus-controlled tab ───────────────────────────────────
+// ─── Get or create a Nasus-controlled tab ────────────────────────────────────
 
 async function getNasusTab() {
-  // Look for an existing tab we already control
   const tabs = await chrome.tabs.query({});
   const existing = tabs.find(
     (t) => t.title?.startsWith("[Nasus]") || t.url?.includes("__nasus__=1")
   );
   if (existing) return existing.id;
 
-  // Create a new tab
+  // Reuse the active tab if it exists rather than always spawning a new one
+  const activeTab = tabs.find((t) => t.active);
+  if (activeTab) return activeTab.id;
+
   const tab = await chrome.tabs.create({ url: "about:blank", active: true });
   return tab.id;
 }
 
-// ─── Wait for page load ──────────────────────────────────────────────────────
+// ─── Wait for page load ───────────────────────────────────────────────────────
+// Fixes the race condition: check if tab is already complete before listening.
 
 function waitForLoad(tabId, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve(); // resolve anyway — page may still be useful
-    }, timeoutMs);
-
-    function listener(id, info) {
-      if (id === tabId && info.status === "complete") {
-        clearTimeout(timer);
-        chrome.tabs.onUpdated.removeListener(listener);
+  return new Promise((resolve) => {
+    // Check if already loaded
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError || tab?.status === "complete") {
         resolve();
+        return;
       }
-    }
-    chrome.tabs.onUpdated.addListener(listener);
+
+      const timer = setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve(); // Resolve anyway — page may still be usable
+      }, timeoutMs);
+
+      function listener(id, info) {
+        if (id === tabId && info.status === "complete") {
+          clearTimeout(timer);
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+    });
   });
 }
 
-// ─── Tool implementations ────────────────────────────────────────────────────
+// ─── Tool implementations ─────────────────────────────────────────────────────
 
 async function browserNavigate({ url, newTab }) {
   let tabId;
@@ -88,13 +103,15 @@ async function browserClick({ tabId, selector, x, y }) {
   if (!tabId) tabId = await getNasusTab();
 
   if (selector) {
-    // Use Runtime.evaluate to click by selector
     const result = await cdp(tabId, "Runtime.evaluate", {
       expression: `
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
           if (!el) return { error: 'Element not found: ' + ${JSON.stringify(selector)} };
           el.scrollIntoView({ block: 'center' });
+          // Use both .click() and a real pointer event for SPA frameworks
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
           el.click();
           return { success: true, tag: el.tagName, text: el.innerText?.slice(0, 80) };
         })()
@@ -121,28 +138,47 @@ async function browserClick({ tabId, selector, x, y }) {
 async function browserType({ tabId, selector, text, clearFirst }) {
   if (!tabId) tabId = await getNasusTab();
 
+  // Focus the element first if a selector is provided
   if (selector) {
     await cdp(tabId, "Runtime.evaluate", {
       expression: `
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
-          if (!el) return;
+          if (!el) return { error: 'Element not found' };
           el.focus();
-          ${clearFirst ? "el.value = '';" : ""}
+          el.scrollIntoView({ block: 'center' });
+          ${clearFirst ? `
+          el.select?.();
+          document.execCommand('selectAll', false, null);
+          ` : ""}
+          return { ok: true };
         })()
       `,
       returnByValue: true,
+      awaitPromise: false,
     });
   }
 
-  // Type char by char via Input.dispatchKeyEvent
-  for (const char of text) {
-    await cdp(tabId, "Input.dispatchKeyEvent", {
-      type: "keyDown", text: char,
-    });
-    await cdp(tabId, "Input.dispatchKeyEvent", {
-      type: "keyUp", text: char,
-    });
+  if (clearFirst) {
+    // Dispatch select-all + delete to clear the field properly
+    await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", key: "a", modifiers: 8 /* Ctrl/Cmd */ });
+    await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", key: "a", modifiers: 8 });
+    await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", key: "Backspace" });
+    await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace" });
+  }
+
+  // Use Input.insertText for reliable typing that triggers React/Vue/Angular input events.
+  // Falls back to char-by-char for special keys like Enter.
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].length > 0) {
+      await cdp(tabId, "Input.insertText", { text: lines[i] });
+    }
+    // Send Enter between lines (but not after the last segment)
+    if (i < lines.length - 1) {
+      await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+      await cdp(tabId, "Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+    }
   }
 
   return { success: true, typed: text.length + " characters" };
@@ -157,7 +193,6 @@ async function browserExtract({ tabId, selector }) {
         const target = ${selector ? `document.querySelector(${JSON.stringify(selector)})` : "document.body"};
         if (!target) return { error: 'Element not found' };
 
-        // Simple Markdown-ish extraction
         function extractText(node, depth) {
           if (!node) return '';
           if (node.nodeType === Node.TEXT_NODE) return node.textContent.trim();
@@ -169,19 +204,23 @@ async function browserExtract({ tabId, selector }) {
           if (!inner.trim()) return '';
 
           if (['script','style','noscript','nav','footer','aside'].includes(tag)) return '';
-          if (tag === 'h1') return '# ' + inner;
-          if (tag === 'h2') return '## ' + inner;
-          if (tag === 'h3') return '### ' + inner;
-          if (['h4','h5','h6'].includes(tag)) return '#### ' + inner;
+          if (tag === 'h1') return '\\n# ' + inner + '\\n';
+          if (tag === 'h2') return '\\n## ' + inner + '\\n';
+          if (tag === 'h3') return '\\n### ' + inner + '\\n';
+          if (['h4','h5','h6'].includes(tag)) return '\\n#### ' + inner + '\\n';
           if (tag === 'a') return inner + ' [' + (node.href || '') + ']';
-          if (tag === 'li') return '- ' + inner;
+          if (tag === 'li') return '\\n- ' + inner;
           if (['p','div','section','article','main'].includes(tag)) return inner + '\\n';
           return inner;
         }
 
-        const tab = { url: window.location.href, title: document.title };
+        const pageInfo = {
+          url: window.location.href,
+          title: document.title,
+          readyState: document.readyState,
+        };
         const content = extractText(target, 0).replace(/\\n{3,}/g, '\\n\\n').trim();
-        return { ...tab, content, length: content.length };
+        return { ...pageInfo, content, length: content.length };
       })()
     `,
     returnByValue: true,
@@ -195,7 +234,7 @@ async function browserScreenshot({ tabId, fullPage }) {
   if (!tabId) tabId = await getNasusTab();
   await ensureAttached(tabId);
 
-  const params = { format: "jpeg", quality: 70 };
+  const params = { format: "jpeg", quality: 75 };
   if (fullPage) {
     const metrics = await cdp(tabId, "Page.getLayoutMetrics");
     params.clip = {
@@ -214,7 +253,7 @@ async function browserScroll({ tabId, direction, amount }) {
   if (!tabId) tabId = await getNasusTab();
   const delta = (direction === "up" ? -1 : 1) * (amount || 400);
   await cdp(tabId, "Runtime.evaluate", {
-    expression: `window.scrollBy(0, ${delta})`,
+    expression: `window.scrollBy({ top: ${delta}, behavior: 'instant' })`,
   });
   return { success: true, scrolled: delta };
 }
@@ -224,7 +263,85 @@ async function browserGetTabs() {
   return tabs.map((t) => ({ id: t.id, url: t.url, title: t.title, active: t.active }));
 }
 
-// ─── Message router ──────────────────────────────────────────────────────────
+/** Wait for a selector to appear or a URL pattern to match. */
+async function browserWaitFor({ tabId, selector, urlPattern, timeoutMs = 10000 }) {
+  if (!tabId) tabId = await getNasusTab();
+
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (urlPattern) {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.url && tab.url.includes(urlPattern)) {
+        return { success: true, matched: "url", url: tab.url };
+      }
+    }
+
+    if (selector) {
+      const result = await cdp(tabId, "Runtime.evaluate", {
+        expression: `!!document.querySelector(${JSON.stringify(selector)})`,
+        returnByValue: true,
+        awaitPromise: false,
+      });
+      if (result?.result?.value === true) {
+        return { success: true, matched: "selector", selector };
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
+  return {
+    success: false,
+    error: `Timed out after ${timeoutMs}ms waiting for ${selector || urlPattern}`,
+  };
+}
+
+/** Evaluate arbitrary JavaScript in the page and return the result. */
+async function browserEval({ tabId, expression, awaitPromise = false }) {
+  if (!tabId) tabId = await getNasusTab();
+
+  const result = await cdp(tabId, "Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+    awaitPromise,
+  });
+
+  const val = result?.result?.value;
+  const exceptionDetails = result?.exceptionDetails;
+
+  if (exceptionDetails) {
+    return { error: exceptionDetails.text || "JS evaluation threw an exception" };
+  }
+
+  return { success: true, result: val };
+}
+
+/** Select an option in a <select> element. */
+async function browserSelect({ tabId, selector, value, label }) {
+  if (!tabId) tabId = await getNasusTab();
+
+  const matchExpr = value !== undefined
+    ? `el.value = ${JSON.stringify(String(value))};`
+    : `Array.from(el.options).forEach(o => { if (o.text.trim() === ${JSON.stringify(String(label))}) el.value = o.value; });`;
+
+  const result = await cdp(tabId, "Runtime.evaluate", {
+    expression: `
+      (function() {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return { error: 'Element not found: ' + ${JSON.stringify(selector)} };
+        ${matchExpr}
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, selectedValue: el.value };
+      })()
+    `,
+    returnByValue: true,
+    awaitPromise: false,
+  });
+  return result?.result?.value ?? { error: "evaluate failed" };
+}
+
+// ─── Message router ───────────────────────────────────────────────────────────
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   // Validate origin
@@ -236,14 +353,17 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
   const { action, params = {} } = message;
 
   const handlers = {
-    browser_navigate: browserNavigate,
-    browser_click: browserClick,
-    browser_type: browserType,
-    browser_extract: browserExtract,
+    browser_navigate:  browserNavigate,
+    browser_click:     browserClick,
+    browser_type:      browserType,
+    browser_extract:   browserExtract,
     browser_screenshot: browserScreenshot,
-    browser_scroll: browserScroll,
-    browser_get_tabs: browserGetTabs,
-    ping: async () => ({ pong: true, version: "1.0.0" }),
+    browser_scroll:    browserScroll,
+    browser_get_tabs:  browserGetTabs,
+    browser_wait_for:  browserWaitFor,
+    browser_eval:      browserEval,
+    browser_select:    browserSelect,
+    ping: async () => ({ pong: true, version: "1.1.0" }),
   };
 
   const handler = handlers[action];

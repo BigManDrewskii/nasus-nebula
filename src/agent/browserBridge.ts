@@ -10,6 +10,10 @@
 const STORAGE_KEY = "nasus_extension_id";
 const DEFAULT_EXTENSION_ID = ""; // populated after first successful ping or user sets it
 
+// Default timeout for all extension calls (ms). Most operations should be fast;
+// navigate + waitForLoad can take longer so callers may override.
+const DEFAULT_TIMEOUT_MS = 20_000;
+
 export function getExtensionId(): string {
   return localStorage.getItem(STORAGE_KEY) ?? DEFAULT_EXTENSION_ID;
 }
@@ -26,7 +30,11 @@ function hasChromeRuntime(): boolean {
 }
 
 /** Send a message to the extension. Rejects with a user-friendly error if unavailable. */
-async function send<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
+async function send<T>(
+  action: string,
+  params: Record<string, unknown> = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<T> {
   if (!hasChromeRuntime()) {
     throw new Error(
       "Browser extension not available. Open Nasus in Chrome with the extension installed."
@@ -41,10 +49,15 @@ async function send<T>(action: string, params: Record<string, unknown> = {}): Pr
   }
 
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Extension call '${action}' timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
+
     (window as any).chrome.runtime.sendMessage(
       extId,
       { action, params },
       (response: any) => {
+        clearTimeout(timer);
         const err = (window as any).chrome.runtime.lastError;
         if (err) {
           reject(new Error(
@@ -68,7 +81,7 @@ async function send<T>(action: string, params: Record<string, unknown> = {}): Pr
 /** Check if the extension is installed and responding */
 export async function pingExtension(): Promise<boolean> {
   try {
-    const res = await send<{ pong: boolean }>("ping");
+    const res = await send<{ pong: boolean }>("ping", {}, 3000);
     return res?.pong === true;
   } catch {
     return false;
@@ -83,7 +96,8 @@ export interface NavigateResult {
 }
 
 export async function browserNavigate(url: string, newTab = false): Promise<NavigateResult> {
-  return send<NavigateResult>("browser_navigate", { url, newTab });
+  // Navigation can be slow — give it extra time
+  return send<NavigateResult>("browser_navigate", { url, newTab }, 30_000);
 }
 
 export interface ClickResult {
@@ -115,6 +129,7 @@ export interface ExtractResult {
   title: string;
   content: string;
   length: number;
+  readyState?: string;
   error?: string;
 }
 
@@ -132,7 +147,7 @@ export interface ScreenshotResult {
 export async function browserScreenshot(
   params: { tabId?: number; fullPage?: boolean }
 ): Promise<ScreenshotResult> {
-  return send<ScreenshotResult>("browser_screenshot", params);
+  return send<ScreenshotResult>("browser_screenshot", params, 30_000);
 }
 
 export interface ScrollResult {
@@ -155,4 +170,44 @@ export interface TabInfo {
 
 export async function browserGetTabs(): Promise<TabInfo[]> {
   return send<TabInfo[]>("browser_get_tabs", {});
+}
+
+export interface WaitForResult {
+  success: boolean;
+  matched?: "selector" | "url";
+  selector?: string;
+  url?: string;
+  error?: string;
+}
+
+export async function browserWaitFor(
+  params: { tabId?: number; selector?: string; urlPattern?: string; timeoutMs?: number }
+): Promise<WaitForResult> {
+  const timeoutMs = params.timeoutMs ?? 10_000;
+  // Add a buffer so the outer Promise timeout doesn't fire before the inner one
+  return send<WaitForResult>("browser_wait_for", params, timeoutMs + 3000);
+}
+
+export interface EvalResult {
+  success?: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+export async function browserEval(
+  params: { tabId?: number; expression: string; awaitPromise?: boolean }
+): Promise<EvalResult> {
+  return send<EvalResult>("browser_eval", params);
+}
+
+export interface SelectResult {
+  success?: boolean;
+  selectedValue?: string;
+  error?: string;
+}
+
+export async function browserSelect(
+  params: { tabId?: number; selector: string; value?: string | number; label?: string }
+): Promise<SelectResult> {
+  return send<SelectResult>("browser_select", params);
 }

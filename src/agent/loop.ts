@@ -252,23 +252,87 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
           },
         },
       },
-      {
-        type: 'function',
-        function: {
-          name: 'browser_scroll',
-          description: 'Scroll the current browser tab up or down.',
-          parameters: {
-            type: 'object',
-            properties: {
-              direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction.' },
-              amount: { type: 'number', description: 'Pixels to scroll (default 400).' },
-              tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
-            },
-            required: ['direction'],
+    {
+      type: 'function',
+      function: {
+        name: 'browser_scroll',
+        description: 'Scroll the current browser tab up or down.',
+        parameters: {
+          type: 'object',
+          properties: {
+            direction: { type: 'string', enum: ['up', 'down'], description: 'Scroll direction.' },
+            amount: { type: 'number', description: 'Pixels to scroll (default 400).' },
+            tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+          },
+          required: ['direction'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'browser_get_tabs',
+        description:
+          'List all open browser tabs with their IDs, titles, and URLs. Use this to find a specific tab to target, or to understand what the user currently has open.',
+        parameters: { type: 'object', properties: {} },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'browser_wait_for',
+        description:
+          'Wait until a CSS selector appears in the DOM or the current URL matches a pattern. Essential after navigation on SPAs (React, Vue, Angular) where page content loads asynchronously after the URL changes. Use before browser_extract or browser_click on dynamically rendered content.',
+        parameters: {
+          type: 'object',
+          properties: {
+            selector: { type: 'string', description: 'CSS selector to wait for (e.g. "main.content", "#results").' },
+            url_pattern: { type: 'string', description: 'Substring to match against the current tab URL (e.g. "/dashboard", "search?q=").' },
+            timeout_ms: { type: 'number', description: 'How long to wait in milliseconds (default 10000).', default: 10000 },
+            tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
           },
         },
       },
-    ]
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'browser_eval',
+        description:
+          'Evaluate a JavaScript expression in the current page and return its value. Use to read page state that browser_extract cannot capture: form field values, JavaScript variables, computed styles, element counts, localStorage values, etc. Keep expressions simple and side-effect-free when possible.',
+        parameters: {
+          type: 'object',
+          properties: {
+            expression: {
+              type: 'string',
+              description: 'JavaScript expression to evaluate. Examples: "document.querySelector(\'input#email\').value", "window.__APP_STATE__.user.name", "document.querySelectorAll(\'.item\').length".',
+            },
+            await_promise: { type: 'boolean', description: 'If the expression returns a Promise, await it before returning (default false).', default: false },
+            tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+          },
+          required: ['expression'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'browser_select',
+        description:
+          'Select an option in a <select> dropdown by value or visible label text. More reliable than browser_click for dropdowns.',
+        parameters: {
+          type: 'object',
+          properties: {
+            selector: { type: 'string', description: 'CSS selector of the <select> element.' },
+            value: { type: 'string', description: 'The option value attribute to select.' },
+            label: { type: 'string', description: 'The visible option text to select (use if value is unknown).' },
+            tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+          },
+          required: ['selector'],
+        },
+      },
+    },
+  ]
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -317,7 +381,17 @@ IMPORTANT: You are running in browser mode. The sandbox environment has limitati
   - search_web: multi-backend search (Serper → Tavily → Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
   - python_execute: run Python. If E2B or Daytona is configured, this runs in a full cloud Linux sandbox with all packages. Otherwise falls back to Pyodide (WebAssembly) in the browser (install packages with: import micropip; await micropip.install("pkg"))
   - bash_execute: run shell commands in a cloud sandbox (E2B/Daytona). Requires API key in Settings → Code Execution. Use for pip install, apt-get, running scripts, etc.
-  - browser_navigate / browser_click / browser_type / browser_extract / browser_screenshot / browser_scroll: control the user's real Chrome browser via the Nasus Browser Bridge extension. These use the user's actual session (real cookies, logins, saved data). Only available if the extension is installed and enabled in Settings → Browser Access. If a browser tool returns an extension error, inform the user and stop using browser tools.
+  - browser_navigate: open a URL in the user's real Chrome browser (with their real session/cookies/logins)
+  - browser_click: click an element by CSS selector (preferred) or x,y coordinates
+  - browser_type: type text into an input — uses Input.insertText so React/Vue/Angular fields update correctly
+  - browser_extract: extract readable page text as Markdown — use after navigation to read page content
+  - browser_screenshot: capture a JPEG screenshot — use to visually verify UI state
+  - browser_scroll: scroll up or down by pixels
+  - browser_get_tabs: list all open tabs with IDs and URLs
+  - browser_wait_for: wait for a CSS selector or URL pattern — ALWAYS use after browser_navigate on SPAs
+  - browser_eval: evaluate JavaScript in the page — use to read form values, JS state, element counts
+  - browser_select: select a <select> dropdown option by value or label text
+  All browser tools require the Nasus Browser Bridge extension (Settings → Browser Access). If a browser tool returns an extension error, stop using browser tools and inform the user.
 
 ═══════════════════════════════════════════════════════
 TASK COMPLEXITY JUDGEMENT (decide FIRST)
@@ -386,6 +460,70 @@ For complex tasks, use THREE persistent files in /workspace:
 
 **3. progress.md** — Action log (optional for very long tasks)
    Append a row after each tool call if the task spans many iterations.
+
+═══════════════════════════════════════════════════════
+BROWSER AGENT RULES
+═══════════════════════════════════════════════════════
+
+Use these rules whenever controlling the user's real browser.
+
+**Standard navigation pattern:**
+1. browser_navigate(url)
+2. browser_wait_for(selector="main" or url_pattern="/expected-path")  ← ALWAYS after navigate on SPAs
+3. browser_extract() or browser_screenshot() to see the page
+4. browser_click / browser_type / browser_select to interact
+
+**Why browser_wait_for matters:**
+SPAs (React, Vue, Angular) render content asynchronously. browser_navigate returns as soon as
+the URL changes — but the DOM content hasn't loaded yet. Calling browser_extract immediately
+will return an empty or skeleton page. Always wait for a key selector before reading/interacting.
+
+**Form-filling pattern:**
+1. browser_navigate to the form URL
+2. browser_wait_for(selector="form") to confirm the form is loaded
+3. For each field: browser_click(selector="input#email") → browser_type(text="...", clear_first=true)
+4. For dropdowns: browser_select(selector="select#country", label="United States")
+5. For checkboxes/radio: browser_click(selector="input[name=agree]")
+6. Submit: browser_click(selector="button[type=submit]") or browser_click(selector="form button")
+7. browser_wait_for(url_pattern="/success" or selector=".confirmation") to verify submission
+
+**Element selectors — preference order:**
+1. ID: #submit-btn (most reliable)
+2. Name/data attribute: [name="email"], [data-testid="login-btn"]
+3. Role: button[type="submit"]
+4. Text content (use browser_eval): document.querySelector('button').innerText === 'Login'
+5. Coordinates (last resort): x,y from screenshot
+
+**When a click doesn't work:**
+- The element may not be visible — try browser_scroll(direction="down") first
+- The element may not exist yet — use browser_wait_for(selector="...") first
+- It may be inside a shadow DOM — use browser_eval with shadowRoot.querySelector
+- Try browser_eval: document.querySelector('selector').click() for JS-only clickables
+
+**Reading page state:**
+- Use browser_extract for full page text (articles, search results, product pages)
+- Use browser_eval for specific values: form fields, counters, JS variables
+- Use browser_screenshot to visually verify UI state after interactions
+- Use browser_eval("document.readyState") to check if the page has finished loading
+
+**Multi-tab strategy:**
+- Use browser_get_tabs to list all open tabs and find the right tab_id
+- Pass tab_id to all subsequent calls to target that specific tab
+- Omit tab_id to target the most recently controlled Nasus tab
+
+**Popup / modal handling:**
+- Detect with: browser_eval("!!document.querySelector('.modal, [role=dialog]')")
+- Dismiss with: browser_click(selector=".modal .close, [aria-label=Close], button.dismiss")
+- Or press Escape: browser_eval("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
+
+**Login sessions:**
+Browser tools use the user's REAL Chrome session — cookies, saved passwords, and logins are all
+active. If a site requires login, the user is already logged in (or will need to log in manually).
+Do NOT attempt to automate password entry unless the user explicitly provides credentials.
+
+**CORS limitation:**
+http_fetch is blocked by CORS on most real websites. For reading live pages,
+prefer browser_navigate + browser_extract over http_fetch.
 
 ═══════════════════════════════════════════════════════
 CODING RULES

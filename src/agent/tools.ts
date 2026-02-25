@@ -8,6 +8,10 @@ import {
   browserExtract,
   browserScreenshot,
   browserScroll,
+  browserGetTabs,
+  browserWaitFor,
+  browserEval,
+  browserSelect,
 } from './browserBridge'
 
 /**
@@ -818,21 +822,102 @@ export async function executeTool(
         }
       }
 
-      case 'browser_scroll': {
-        const direction = String(args.direction ?? 'down') as 'up' | 'down'
-        try {
-          const result = await browserScroll({
-            tabId: args.tab_id as number | undefined,
-            direction,
-            amount: args.amount as number | undefined,
-          })
-          return { output: `Scrolled ${direction} by ${Math.abs(result.scrolled)}px`, isError: false }
-        } catch (err) {
-          return { output: err instanceof Error ? err.message : String(err), isError: true }
-        }
-      }
+       case 'browser_scroll': {
+         const direction = String(args.direction ?? 'down') as 'up' | 'down'
+         try {
+           const result = await browserScroll({
+             tabId: args.tab_id as number | undefined,
+             direction,
+             amount: args.amount as number | undefined,
+           })
+           return { output: `Scrolled ${direction} by ${Math.abs(result.scrolled)}px`, isError: false }
+         } catch (err) {
+           return { output: err instanceof Error ? err.message : String(err), isError: true }
+         }
+       }
 
-      default:
-        return { output: `Unknown tool: ${toolName}`, isError: true }
-    }
-  }
+       case 'browser_get_tabs': {
+         try {
+           const tabs = await browserGetTabs()
+           if (!tabs || tabs.length === 0) return { output: 'No open tabs', isError: false }
+           const lines = tabs.map((t, i) =>
+             `[${i + 1}] Tab ID: ${t.id}  Active: ${t.active}\n    Title: ${t.title}\n    URL: ${t.url}`
+           )
+           return { output: lines.join('\n\n'), isError: false }
+         } catch (err) {
+           return { output: err instanceof Error ? err.message : String(err), isError: true }
+         }
+       }
+
+       case 'browser_wait_for': {
+         const selector = args.selector as string | undefined
+         const urlPattern = args.url_pattern as string | undefined
+         const timeoutMs = args.timeout_ms as number | undefined
+         if (!selector && !urlPattern) {
+           return { output: 'Provide selector or url_pattern to wait for', isError: true }
+         }
+         try {
+           const result = await browserWaitFor({
+             tabId: args.tab_id as number | undefined,
+             selector,
+             urlPattern,
+             timeoutMs,
+           })
+           if (!result.success) return { output: result.error ?? 'Timed out', isError: true }
+           return {
+             output: result.matched === 'url'
+               ? `URL pattern matched: ${result.url}`
+               : `Element appeared: ${result.selector}`,
+             isError: false,
+           }
+         } catch (err) {
+           return { output: err instanceof Error ? err.message : String(err), isError: true }
+         }
+       }
+
+       case 'browser_eval': {
+         const expression = String(args.expression ?? '')
+         if (!expression) return { output: 'Missing expression', isError: true }
+         try {
+           const result = await browserEval({
+             tabId: args.tab_id as number | undefined,
+             expression,
+             awaitPromise: Boolean(args.await_promise),
+           })
+           if (result.error) return { output: result.error, isError: true }
+           const val = result.result
+           const output = val === undefined || val === null
+             ? '(no return value)'
+             : typeof val === 'object'
+               ? JSON.stringify(val, null, 2)
+               : String(val)
+           return { output, isError: false }
+         } catch (err) {
+           return { output: err instanceof Error ? err.message : String(err), isError: true }
+         }
+       }
+
+       case 'browser_select': {
+         const selector = String(args.selector ?? '')
+         if (!selector) return { output: 'Missing selector', isError: true }
+         if (args.value === undefined && args.label === undefined) {
+           return { output: 'Provide value or label to select', isError: true }
+         }
+         try {
+           const result = await browserSelect({
+             tabId: args.tab_id as number | undefined,
+             selector,
+             value: args.value as string | number | undefined,
+             label: args.label as string | undefined,
+           })
+           if (result.error) return { output: result.error, isError: true }
+           return { output: `Selected value: ${result.selectedValue}`, isError: false }
+         } catch (err) {
+           return { output: err instanceof Error ? err.message : String(err), isError: true }
+         }
+       }
+
+       default:
+         return { output: `Unknown tool: ${toolName}`, isError: true }
+     }
+   }
