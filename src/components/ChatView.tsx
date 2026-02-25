@@ -115,7 +115,7 @@ interface AgentEventPayload {
   messages?: LlmMessage[]
 }
 
-export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed = false, rightCollapsed = false, onToggleLeft, onToggleRight }: ChatViewProps) {
+export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed: _leftCollapsed = false, rightCollapsed: _rightCollapsed = false, onToggleLeft: _onToggleLeft, onToggleRight: _onToggleRight }: ChatViewProps) {
   const {
     getMessages,
     getRawHistory,

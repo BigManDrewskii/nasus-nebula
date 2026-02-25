@@ -8,14 +8,16 @@ interface PxiProps {
   size?: number
   className?: string
   style?: React.CSSProperties
+  title?: string
 }
 
-export function Pxi({ name, size = 14, className = '', style }: PxiProps) {
+export function Pxi({ name, size = 14, className = '', style, title }: PxiProps) {
   return (
     <i
       className={`hn hn-${name} ${className}`}
       style={{ fontSize: size, lineHeight: 1, display: 'inline-block', ...style }}
       aria-hidden="true"
+      title={title}
     />
   )
 }

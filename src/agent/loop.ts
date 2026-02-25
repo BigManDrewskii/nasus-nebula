@@ -633,7 +633,7 @@ RULES
    ## What was built
    (1-2 sentence description)
    ## Files created
-   - `/workspace/path/file.ext` — purpose
+   - '/workspace/path/file.ext' — purpose
    ## How to use
    (numbered steps if applicable)
    ## Key details
