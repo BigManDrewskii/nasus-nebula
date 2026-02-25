@@ -467,19 +467,17 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
 
 const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   const [hovered, setHovered] = useState(false)
-  const hasSteps   = (message.steps?.length ?? 0) > 0
-  const hasContent = message.content.trim().length > 0
+  const hasSteps    = (message.steps?.length ?? 0) > 0
+  const hasContent  = message.content.trim().length > 0
   const isStreaming = message.streaming
-  const hasError   = !!message.error
-  // "Dead air" gap: agent message exists but nothing has arrived yet
-  const isWaiting  = !hasContent && !hasSteps && isStreaming && !hasError
+  const hasError    = !!message.error
+  const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
 
   const renderedContent = useMemo(
     () => hasContent ? renderMarkdown(message.content) : null,
     [message.content, hasContent],
   )
 
-  // Collect output_cards files from steps — these are emitted once the turn is done
   const outputCardFiles = useMemo<OutputCardFile[]>(() => {
     if (!message.steps) return []
     for (let i = message.steps.length - 1; i >= 0; i--) {
@@ -489,67 +487,77 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
     return []
   }, [message.steps])
 
-  // Show the ThinkingIndicator as a standalone row during the dead-air gap
   if (isWaiting) {
     return <ThinkingIndicator visible={true} />
   }
 
+  const showBetweenDots = hasSteps && !hasContent && isStreaming && !hasError && (() => {
+    const lastStep = message.steps![message.steps!.length - 1]
+    const lastIsPendingTool = lastStep?.kind === 'tool_call' && !(lastStep as { result?: unknown }).result
+    return !lastIsPendingTool
+  })()
+
   return (
     <div
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ marginTop: 1, flexShrink: 0 }}>
+      {/* Avatar */}
+      <div style={{ marginTop: 2, flexShrink: 0 }}>
         <NasusAvatar />
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+
+      {/* Content column */}
+      <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
+        {/* Steps (tool calls) */}
         {hasSteps && <AgentStepsView steps={message.steps!} />}
+
+        {/* Between-turn typing indicator */}
+        {showBetweenDots && (
+          <div style={{ marginTop: hasSteps ? 6 : 0 }}>
+            <TypingDots />
+          </div>
+        )}
+
+        {/* Final text response */}
         {hasContent && (
-          <div style={hasSteps ? { marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.05)' } : {}}>
-          <div>
+          <div style={hasSteps ? {
+            marginTop: 14,
+            paddingTop: 14,
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+          } : {}}>
             {renderedContent}
             {isStreaming && (
               <span
                 style={{
                   display: 'inline-block',
-                  width: 2, height: 14,
+                  width: 2, height: 13,
                   borderRadius: 1,
-                  marginLeft: 1,
+                  marginLeft: 2,
                   verticalAlign: 'text-bottom',
                   background: 'var(--amber)',
-                  opacity: 0.85,
+                  opacity: 0.8,
                   animation: 'cursor-blink 1s step-start infinite',
                 }}
               />
             )}
           </div>
-          </div>
         )}
-        {/* Typing dots between tool calls: has steps, no content yet, still streaming.
-            Only show if the last step is NOT a pending tool_call (which has its own dots). */}
-        {hasSteps && !hasContent && isStreaming && !hasError && (() => {
-          const lastStep = message.steps![message.steps!.length - 1]
-          const lastIsPendingTool = lastStep?.kind === 'tool_call' && !(lastStep as { result?: unknown }).result
-          return !lastIsPendingTool
-        })() && (
+
+        {hasError && (
+          <ErrorBanner error={message.error!} onRetry={onRetry} />
+        )}
+
+        {!isStreaming && outputCardFiles.length > 0 && (
+          <OutputCardRenderer files={outputCardFiles} />
+        )}
+
+        {hasContent && !isStreaming && !hasError && hovered && (
           <div style={{ marginTop: 8 }}>
-            <TypingDots />
+            <CopyButton text={message.content} />
           </div>
         )}
-          {hasError && (
-            <ErrorBanner error={message.error!} onRetry={onRetry} />
-          )}
-          {/* Output cards — rendered after steps complete, not during streaming */}
-          {!isStreaming && outputCardFiles.length > 0 && (
-            <OutputCardRenderer files={outputCardFiles} />
-          )}
-          {/* Copy message action — hover reveal, only when content exists and not streaming */}
-          {hasContent && !isStreaming && !hasError && hovered && (
-            <div style={{ marginTop: 8 }}>
-              <CopyButton text={message.content} />
-            </div>
-          )}
       </div>
     </div>
   )

@@ -16,22 +16,22 @@ import type { AgentStep } from '../types'
 // ── Tool schema ───────────────────────────────────────────────────────────────
 
 const TOOL_DEFINITIONS: ToolDefinition[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'bash',
-      description:
-        'Execute a shell command. In browser mode, complex commands are not available — use read_file/write_file for file operations and http_fetch/search_web for network access.',
-      parameters: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: 'Bash command to run.' },
-          timeout_secs: { type: 'integer', description: 'Max seconds (default 30).', default: 30 },
+    {
+      type: 'function',
+      function: {
+        name: 'bash',
+        description:
+          'Run a simple shell command. ONLY these commands work: cat, ls, echo, mkdir, cp, mv, rm, pwd. THESE ALWAYS FAIL AND MUST NEVER BE USED: npm, node, npx, pip, python, python3, curl, wget, git, apt, apt-get, brew, yarn, pnpm, bun. For web/code tasks, use write_file instead of npm/npx. For network, use http_fetch. For Python, use python_execute.',
+        parameters: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Simple shell command (cat/ls/echo/mkdir only — NO npm/node/npx/pip/python/curl).' },
+            timeout_secs: { type: 'integer', description: 'Max seconds (default 30).', default: 30 },
+          },
+          required: ['command'],
         },
-        required: ['command'],
       },
     },
-  },
   {
     type: 'function',
     function: {
@@ -374,52 +374,33 @@ After writing task_plan.md → immediately start executing Phase 1 with a tool c
 After completing each phase → immediately start the next phase with a tool call.
 Only stop (return final text) when ALL phases in task_plan.md are marked [x].
 
-  IMPORTANT: You are running in browser mode. The sandbox environment has limitations:
-    - bash: only simple file operations (cat, echo, mkdir) work; npm, node, npx, pip, python, curl, wget, git, apt are NOT available — use bash_execute if you have a cloud sandbox configured, or write_file for static output
-    - read_file / write_file / patch_file: use these directly for all file operations — they work reliably
-    - http_fetch: fetches URLs and returns readable text (HTML pages are extracted to clean text automatically); external requests may be blocked by CORS
-    - search_web: multi-backend search (Serper → Tavily → Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
-    - python_execute: run Python. If E2B or Daytona is configured, this runs in a full cloud Linux sandbox with all packages. Otherwise falls back to Pyodide (WebAssembly) in the browser (install packages with: import micropip; await micropip.install("pkg"))
-    - bash_execute: run shell commands in a cloud sandbox (E2B/Daytona). Requires API key in Settings → Code Execution. Use for pip install, apt-get, running scripts, etc.
-    - browser_navigate: open a URL in the user's real Chrome browser (with their real session/cookies/logins)
-    - browser_click: click an element by CSS selector (preferred) or x,y coordinates
-    - browser_type: type text into an input — uses Input.insertText so React/Vue/Angular fields update correctly
-    - browser_extract: extract readable page text as Markdown — use after navigation to read page content
-    - browser_screenshot: capture a JPEG screenshot — use to visually verify UI state
-    - browser_scroll: scroll up or down by pixels
-    - browser_get_tabs: list all open tabs with IDs and URLs
-    - browser_wait_for: wait for a CSS selector or URL pattern — ALWAYS use after browser_navigate on SPAs
-    - browser_eval: evaluate JavaScript in the page — use to read form values, JS state, element counts
-    - browser_select: select a <select> dropdown option by value or label text
-    All browser tools require the Nasus Browser Bridge extension (Settings → Browser Access). If a browser tool returns an extension error, stop using browser tools and inform the user.
+  TOOL CAPABILITIES:
+    - bash: ONLY cat/ls/echo/mkdir/cp/mv/rm work. npm, node, npx, pip, python, curl, wget, git, apt ALWAYS FAIL — do not attempt them, ever.
+    - read_file / write_file / patch_file: primary file I/O — use for all file operations
+    - http_fetch: HTTP GET/POST; HTML is auto-extracted to readable text; CORS may block some URLs
+    - search_web: multi-backend web search (Serper → Tavily → Brave → DuckDuckGo fallback chain)
+    - python_execute: run Python in Pyodide (WebAssembly browser sandbox); install packages with micropip: import micropip; await micropip.install("pkg")
+    - bash_execute: cloud sandbox shell (E2B/Daytona only — requires API key in Settings). Use for pip, apt, npm if cloud sandbox is explicitly configured.
+    - browser_navigate/click/type/extract/screenshot/scroll: control the user's real browser (requires Nasus Browser Bridge extension)
 
 ═══════════════════════════════════════════════════════
-BROWSER-MODE CODING STRATEGY (CRITICAL)
+CODING STRATEGY — FILE-FIRST (CRITICAL)
 ═══════════════════════════════════════════════════════
 
-You have NO Node.js, npm, npx, Python CLI, pip, curl, wget, git, or apt available.
-The bash tool only handles: cat, ls, echo, mkdir.
+There is NO Node.js, npm, npx, pip, curl, wget, git, or apt in this environment.
+Calling npm, npx, node, pip, or python via bash WILL ALWAYS FAIL. Do not try them. Do not retry them.
 
-DO NOT attempt to:
-  - Run "npx create-next-app", "npm init", "npm install", or ANY npm/node command
-  - Run "pip install", "python3 script.py", or any python CLI
-  - Run "curl", "wget", "apt-get", or any installer
-  - Check "which node" or "which npm" — they will always fail
+FOR ALL WEB/CODE TASKS — write files directly:
+  - "Build a Next.js landing page" → write_file("/workspace/index.html") with self-contained HTML+Tailwind CDN+JS
+  - "Create a React component" → write_file("/workspace/Component.tsx") with full TSX source
+  - "Write a Python script" → write_file("/workspace/script.py") with complete source
+  - "Build a multi-file project" → write each file one at a time with write_file
 
-INSTEAD, for web UI tasks (websites, Next.js pages, React components, HTML pages):
-  1. Write all files directly with write_file — HTML, CSS, JS, TSX, etc.
-  2. You do NOT need to run npm install to write a Next.js page — just write the files
-  3. Write complete, self-contained files that the user can drop into their project
-  4. For a Next.js page: write the .tsx file. For plain HTML: write the .html + .css files.
+You do NOT need npm install, node_modules, or any build step to deliver working code.
+Write complete, self-contained output files the user can immediately use.
 
-EXAMPLES:
-  - "Create a Next.js page" → write_file("/workspace/page.tsx") with full TSX source
-  - "Build a fintech landing page" → write_file("/workspace/index.html") + write_file("/workspace/styles.css")
-  - "Write a Python script" → write_file("/workspace/script.py") with the full source code
-
-If a task genuinely needs a running server (E2B/Daytona is configured):
-  - Use bash_execute for shell commands in the cloud sandbox
-  - Use python_execute for Python code execution
+For plain HTML pages: use Tailwind CDN (https://cdn.tailwindcss.com) and vanilla JS or Alpine.js CDN.
+For Next.js/React TSX files: write the .tsx source directly — no need to scaffold a project.
 
 ═══════════════════════════════════════════════════════
 TASK COMPLEXITY JUDGEMENT (decide FIRST)
