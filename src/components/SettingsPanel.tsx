@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { tauriInvoke } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
-import { useAppStore } from '../store'
+import { useAppStore, type RouterConfig } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { getExtensionId, setExtensionId, pingExtension } from '../agent/browserBridge'
@@ -58,6 +58,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       searchProvider, setSearchProvider,
       maxIterations, setMaxIterations,
       addRecentWorkspacePath,
+      routerConfig, setRouterConfig,
     } = useAppStore()
 
   const [localKey, setLocalKey] = useState(apiKey)
@@ -84,6 +85,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [errors, setErrors] = useState<ValidationErrors>({})
+
+  // Local router config state
+  const [localRouterMode, setLocalRouterMode] = useState(routerConfig.mode)
+  const [localRouterBudget, setLocalRouterBudget] = useState(routerConfig.budget)
+  const [localModelOverrides, setLocalModelOverrides] = useState<Record<string, boolean>>(routerConfig.modelOverrides)
 
   const [modelOpen, setModelOpen] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
@@ -190,6 +196,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalMaxIterations('50')
     setLocalE2bKey('')
     setLocalExecutionMode('e2b')
+    setLocalRouterMode('auto')
+    setLocalRouterBudget('paid')
+    setLocalModelOverrides({})
     setExtensionId('')
     try { localStorage.removeItem('nasus_extension_id') } catch { /* ignore */ }
     setErrors({})
@@ -218,6 +227,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setMaxIterations(parsedIter)
     setE2bApiKey(localE2bKey.trim())
     setExecutionMode(localExecutionMode)
+    // Save router config
+    setRouterConfig({
+      mode: localRouterMode,
+      budget: localRouterBudget,
+      modelOverrides: localModelOverrides,
+    })
+    await tauriInvoke('save_router_settings', {
+      mode: localRouterMode,
+      budget: localRouterBudget,
+      modelOverrides: localModelOverrides,
+    }).catch(() => { /* non-blocking */ })
     await tauriInvoke('save_config', {
       apiKey: localKey.trim(),
       model: localModel,
@@ -439,7 +459,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </div>
             </Field>
 
-            {/* ── Workspace Path ── */}
+              {/* ── Model Router ── */}
+              <ModelRouterSection
+                mode={localRouterMode}
+                onModeChange={setLocalRouterMode}
+                budget={localRouterBudget}
+                onBudgetChange={setLocalRouterBudget}
+                modelOverrides={localModelOverrides}
+                onModelOverridesChange={setLocalModelOverrides}
+              />
+
+              {/* ── Workspace Path ── */}
             <Field
               label="Workspace Path"
               icon="folder-open"
@@ -966,6 +996,250 @@ function BrowserAccessSection() {
         <div>4. Copy the Extension ID shown on the card and paste it above</div>
         <div>5. Click <strong style={{ color: 'var(--tx-secondary)' }}>Test</strong> to verify the connection</div>
       </div>
+    </div>
+  )
+}
+
+// ─── ModelRouterSection ───────────────────────────────────────────────────────
+
+// Static model registry (mirrors Rust defaults.rs) — used in the UI for the
+// enable/disable toggles. The Rust backend is the source of truth; this is
+// only for display purposes.
+const ROUTER_MODELS: Array<{
+  id: string
+  name: string
+  tier: 'premium' | 'standard' | 'budget' | 'free'
+  provider: string
+}> = [
+  { id: 'anthropic/claude-opus-4-5',            name: 'Claude Opus 4.5',         tier: 'premium',  provider: 'Anthropic' },
+  { id: 'anthropic/claude-sonnet-4-5',          name: 'Claude Sonnet 4.5',       tier: 'standard', provider: 'Anthropic' },
+  { id: 'anthropic/claude-3.7-sonnet',          name: 'Claude 3.7 Sonnet',       tier: 'standard', provider: 'Anthropic' },
+  { id: 'openai/gpt-4.1',                       name: 'GPT-4.1',                 tier: 'standard', provider: 'OpenAI'    },
+  { id: 'google/gemini-2.5-pro-preview',        name: 'Gemini 2.5 Pro',          tier: 'standard', provider: 'Google'    },
+  { id: 'anthropic/claude-3-5-haiku',           name: 'Claude 3.5 Haiku',        tier: 'budget',   provider: 'Anthropic' },
+  { id: 'google/gemini-2.0-flash-001',          name: 'Gemini 2.0 Flash',        tier: 'budget',   provider: 'Google'    },
+  { id: 'deepseek/deepseek-chat',               name: 'DeepSeek V3',             tier: 'budget',   provider: 'DeepSeek'  },
+  { id: 'openai/gpt-4.1-mini',                  name: 'GPT-4.1 Mini',            tier: 'budget',   provider: 'OpenAI'    },
+  { id: 'google/gemini-2.0-flash-exp:free',     name: 'Gemini 2.0 Flash (Free)', tier: 'free',     provider: 'Google'    },
+  { id: 'deepseek/deepseek-chat:free',          name: 'DeepSeek V3 (Free)',      tier: 'free',     provider: 'DeepSeek'  },
+  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', tier: 'free',     provider: 'Meta'      },
+]
+
+const TIER_COLORS: Record<string, { bg: string; color: string; label: string }> = {
+  premium:  { bg: 'rgba(168,85,247,0.12)', color: '#c084fc', label: 'Premium'  },
+  standard: { bg: 'rgba(234,179,8,0.1)',   color: 'var(--amber)', label: 'Standard' },
+  budget:   { bg: 'rgba(34,197,94,0.1)',   color: '#4ade80',      label: 'Budget'   },
+  free:     { bg: 'rgba(99,102,241,0.1)',  color: '#818cf8',      label: 'Free'     },
+}
+
+function ModelRouterSection({
+  mode, onModeChange,
+  budget, onBudgetChange,
+  modelOverrides, onModelOverridesChange,
+}: {
+  mode: string
+  onModeChange: (v: string) => void
+  budget: string
+  onBudgetChange: (v: string) => void
+  modelOverrides: Record<string, boolean>
+  onModelOverridesChange: (v: Record<string, boolean>) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  // Which models to show based on budget
+  const visibleModels = budget === 'free'
+    ? ROUTER_MODELS.filter((m) => m.tier === 'free')
+    : ROUTER_MODELS.filter((m) => m.tier !== 'free')
+
+  function isEnabled(modelId: string): boolean {
+    if (modelId in modelOverrides) return modelOverrides[modelId]
+    return true // default: all enabled
+  }
+
+  function toggleModel(modelId: string) {
+    const current = isEnabled(modelId)
+    onModelOverridesChange({ ...modelOverrides, [modelId]: !current })
+  }
+
+  const isAutoMode = mode === 'auto'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {/* Header row */}
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2,
+        fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
+        textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
+      }}>
+        <Pxi name="route" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+        Model Router
+      </label>
+
+      {/* Mode: Auto vs Manual */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[
+          { id: 'auto', label: 'Auto', desc: 'Nasus picks the best model per task' },
+          { id: 'manual', label: 'Manual', desc: 'Always use the model selected above' },
+        ].map((opt) => {
+          const isSel = isAutoMode ? opt.id === 'auto' : opt.id === 'manual'
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onModeChange(opt.id === 'auto' ? 'auto' : mode === 'auto' ? 'anthropic/claude-3.7-sonnet' : mode)}
+              title={opt.desc}
+              style={{
+                flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 12,
+                border: `1px solid ${isSel ? 'oklch(64% 0.214 40.1 / 0.4)' : 'rgba(255,255,255,0.08)'}`,
+                background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                color: isSel ? 'var(--amber)' : 'var(--tx-secondary)',
+                cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
+              }}
+              onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+              onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Budget: Free vs Paid (only in Auto mode) */}
+      {isAutoMode && (
+        <div>
+          <div style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginBottom: 6, letterSpacing: '0.04em' }}>
+            Budget
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[
+              { id: 'paid', label: 'Paid', desc: 'Best models — requires credits on OpenRouter' },
+              { id: 'free', label: 'Free only', desc: 'Only models with $0 cost — no credits needed' },
+            ].map((opt) => {
+              const isSel = budget === opt.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => onBudgetChange(opt.id)}
+                  title={opt.desc}
+                  style={{
+                    flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 12,
+                    border: `1px solid ${isSel ? (opt.id === 'free' ? 'rgba(129,140,248,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.08)'}`,
+                    background: isSel ? (opt.id === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
+                    color: isSel ? (opt.id === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
+                    cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
+                  }}
+                  onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                  onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Hint about free tier */}
+      {isAutoMode && budget === 'free' && (
+        <div style={{
+          padding: '8px 10px', borderRadius: 8, fontSize: 11,
+          background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
+          color: '#a5b4fc', lineHeight: 1.55,
+        }}>
+          Free models are rate-limited by OpenRouter (typically ~50 req/day). No API credits needed.
+        </div>
+      )}
+
+      {/* Enabled models list — collapsible */}
+      {isAutoMode && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setExpanded((o) => !o)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 11, color: 'var(--tx-tertiary)', padding: '2px 0',
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+          >
+            <Pxi name={expanded ? 'chevron-down' : 'chevron-right'} size={9} />
+            <span>{expanded ? 'Hide' : 'Customize'} enabled models ({visibleModels.filter((m) => isEnabled(m.id)).length}/{visibleModels.length})</span>
+          </button>
+
+          {expanded && (
+            <div style={{
+              marginTop: 8, borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.07)',
+              overflow: 'hidden',
+            }}>
+              {visibleModels.map((m, i) => {
+                const tier = TIER_COLORS[m.tier] ?? TIER_COLORS.standard
+                const enabled = isEnabled(m.id)
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 12px',
+                      background: enabled ? 'transparent' : 'rgba(0,0,0,0.2)',
+                      borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
+                      transition: 'background 0.1s',
+                    }}
+                  >
+                    {/* Toggle */}
+                    <button
+                      type="button"
+                      onClick={() => toggleModel(m.id)}
+                      style={{
+                        width: 28, height: 16, borderRadius: 8, flexShrink: 0,
+                        border: 'none', cursor: 'pointer', position: 'relative',
+                        background: enabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
+                        transition: 'background 0.15s',
+                        padding: 0,
+                      }}
+                    >
+                      <span style={{
+                        position: 'absolute', top: 2, borderRadius: '50%',
+                        width: 12, height: 12,
+                        background: '#fff',
+                        left: enabled ? 'calc(100% - 14px)' : 2,
+                        transition: 'left 0.15s',
+                        display: 'block',
+                      }} />
+                    </button>
+
+                    {/* Model info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 12, color: enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        transition: 'color 0.1s',
+                      }}>
+                        {m.name}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginTop: 1 }}>
+                        {m.provider}
+                      </div>
+                    </div>
+
+                    {/* Tier badge */}
+                    <span style={{
+                      fontSize: 9.5, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
+                      background: tier.bg, color: tier.color, fontWeight: 500,
+                    }}>
+                      {tier.label}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

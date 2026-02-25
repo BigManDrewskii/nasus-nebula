@@ -1,3 +1,5 @@
+mod models;
+
 use bollard::container::{
     Config, CreateContainerOptions, LogOutput, RemoveContainerOptions,
     StartContainerOptions,
@@ -12,6 +14,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
+
+use models::classifier::classify_task;
+use models::router::{
+    build_fallback_chain, BudgetMode, ModelSelectionMode, RouterConfig, TaskCostTracker,
+    RateLimitTracker,
+};
 
 // ─── Global cancellation flags ────────────────────────────────────────────────
 
@@ -240,6 +248,30 @@ pub enum AgentEvent {
     RawMessages {
         task_id: String,
         messages: Vec<serde_json::Value>,
+    },
+    /// Fired when the router selects a model for the current task.
+    ModelSelected {
+        task_id: String,
+        message_id: String,
+        model_id: String,
+        display_name: String,
+        reason: String,
+    },
+    /// Fired when a task completes with accumulated cost data.
+    TaskCost {
+        task_id: String,
+        message_id: String,
+        total_cost_usd: f64,
+        total_input_tokens: u64,
+        total_output_tokens: u64,
+        call_count: usize,
+        is_free: bool,
+    },
+    /// Fired when the free-tier rate limit is running low.
+    FreeLimitWarning {
+        task_id: String,
+        message_id: String,
+        remaining: u32,
     },
 }
 
@@ -1418,6 +1450,84 @@ async fn stop_agent(app: AppHandle, task_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// ─── Router config commands ───────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RouterSettings {
+    /// "auto" or a specific model ID
+    pub mode: String,
+    /// "free" | "paid"
+    pub budget: String,
+    /// Map of model_id → enabled override
+    pub model_overrides: HashMap<String, bool>,
+}
+
+#[tauri::command]
+fn get_router_settings(app: AppHandle) -> Result<RouterSettings, String> {
+    let store = app.store("config.json").map_err(|e| e.to_string())?;
+    let mode = store
+        .get("router_mode")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "auto".to_string());
+    let budget = store
+        .get("router_budget")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "paid".to_string());
+    let model_overrides: HashMap<String, bool> = store
+        .get("router_model_overrides")
+        .and_then(|v: serde_json::Value| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    Ok(RouterSettings { mode, budget, model_overrides })
+}
+
+#[tauri::command]
+fn save_router_settings(
+    app: AppHandle,
+    mode: String,
+    budget: String,
+    model_overrides: HashMap<String, bool>,
+) -> Result<(), String> {
+    let store = app.store("config.json").map_err(|e| e.to_string())?;
+    store.set("router_mode", serde_json::Value::String(mode));
+    store.set("router_budget", serde_json::Value::String(budget));
+    store.set(
+        "router_model_overrides",
+        serde_json::to_value(&model_overrides).unwrap_or_default(),
+    );
+    store.save().map_err(|e: tauri_plugin_store::Error| e.to_string())?;
+    Ok(())
+}
+
+/// Return the full default model registry as JSON (for the settings UI).
+#[tauri::command]
+fn get_model_registry() -> serde_json::Value {
+    serde_json::to_value(models::defaults::default_model_registry())
+        .unwrap_or(serde_json::Value::Array(vec![]))
+}
+
+/// Classify a user message and return the routing decision — used by the UI
+/// to preview which model will be chosen before sending.
+#[tauri::command]
+fn preview_routing(message: String, mode: String, budget: String, model_overrides: HashMap<String, bool>) -> serde_json::Value {
+    let mut config = RouterConfig::default();
+    config.mode = if mode == "auto" {
+        ModelSelectionMode::Auto
+    } else {
+        ModelSelectionMode::Manual { model_id: mode }
+    };
+    config.budget = if budget == "free" { BudgetMode::Free } else { BudgetMode::Paid };
+    config.apply_enabled_overrides(&model_overrides);
+    let classification = classify_task(&message);
+    let decision = config.route(&classification);
+    serde_json::json!({
+        "model_id": decision.model_id,
+        "display_name": decision.display_name,
+        "reason": decision.reason,
+        "task_type": format!("{:?}", classification.task_type),
+        "complexity": format!("{:?}", classification.complexity),
+    })
+}
+
 // ─── Main agent loop ──────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1431,12 +1541,74 @@ async fn run_agent(
     workspace_path: String,
     api_base: Option<String>,
     provider: Option<String>,
+    // Router params (optional for backwards compat)
+    router_mode: Option<String>,
+    router_budget: Option<String>,
+    router_model_overrides: Option<HashMap<String, bool>>,
 ) -> Result<(), String> {
-    let effective_model = if model.is_empty() {
-        "anthropic/claude-3.7-sonnet".to_string()
+    // ── Build router config ────────────────────────────────────────────────────
+    let mut router_config = RouterConfig::default();
+
+    // Apply mode from caller (or fall back to the legacy `model` field as Manual)
+    let mode_str = router_mode.as_deref().unwrap_or("auto");
+    router_config.mode = if mode_str == "auto" {
+        ModelSelectionMode::Auto
     } else {
-        model.clone()
+        // A non-"auto" mode string is a specific model ID
+        let mid = if !mode_str.is_empty() { mode_str } else if !model.is_empty() { &model } else { "anthropic/claude-3.7-sonnet" };
+        ModelSelectionMode::Manual { model_id: mid.to_string() }
     };
+
+    // Legacy fallback: if no router params, treat the `model` field as Manual
+    if router_mode.is_none() && !model.is_empty() && model != "auto" {
+        router_config.mode = ModelSelectionMode::Manual { model_id: model.clone() };
+    }
+
+    router_config.budget = match router_budget.as_deref().unwrap_or("paid") {
+        "free" => BudgetMode::Free,
+        _ => BudgetMode::Paid,
+    };
+    if let Some(overrides) = router_model_overrides {
+        router_config.apply_enabled_overrides(&overrides);
+    }
+
+    // Classify task and perform initial routing
+    let first_user_text = user_messages
+        .first()
+        .and_then(|m| m["content"].as_str())
+        .unwrap_or("")
+        .to_string();
+    let classification = classify_task(&first_user_text);
+    let routing = router_config.route(&classification);
+    let effective_model = routing.model_id.clone();
+
+    // Emit the routing decision to the frontend
+    let _ = app.emit(
+        "agent-event",
+        AgentEvent::ModelSelected {
+            task_id: task_id.clone(),
+            message_id: message_id.clone(),
+            model_id: effective_model.clone(),
+            display_name: routing.display_name.clone(),
+            reason: routing.reason.clone(),
+        },
+    );
+
+    // Free rate limit warning
+    let mut rate_tracker = RateLimitTracker::default();
+    if router_config.budget == BudgetMode::Free {
+        let remaining = rate_tracker.remaining();
+        if remaining <= 20 {
+            let _ = app.emit(
+                "agent-event",
+                AgentEvent::FreeLimitWarning {
+                    task_id: task_id.clone(),
+                    message_id: message_id.clone(),
+                    remaining,
+                },
+            );
+        }
+    }
 
     let effective_api_base = api_base
         .filter(|s| !s.is_empty())
@@ -1562,6 +1734,8 @@ async fn run_agent(
     // ── Agent state ────────────────────────────────────────────────────────────
     let mut error_tracker = ErrorTracker::default();
     let mut search_browse_count: usize = 0;
+    let mut cost_tracker = TaskCostTracker::default();
+    let is_free_budget = router_config.budget == BudgetMode::Free;
 
     const MAX_ITERATIONS: usize = 30;
     // Compression threshold lowered from 80 → 40 to avoid context limit hits
@@ -1629,6 +1803,17 @@ async fn run_agent(
         let finish_reason = choice["finish_reason"].as_str().unwrap_or("");
         let msg = &choice["message"];
 
+        // Record cost for this iteration
+        if let Some(usage) = response["usage"].as_object() {
+            let input_tokens = usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+            let output_tokens = usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+            cost_tracker.record(&effective_model, input_tokens, output_tokens);
+            // Track free-model requests
+            if is_free_budget {
+                rate_tracker.record_free_call();
+            }
+        }
+
         // Token usage is now emitted inside llm_stream
 
         let tool_calls = msg["tool_calls"].as_array().cloned();
@@ -1651,6 +1836,19 @@ async fn run_agent(
                     );
                 }
             }
+            // Emit accumulated cost summary
+            let _ = app.emit(
+                "agent-event",
+                AgentEvent::TaskCost {
+                    task_id: task_id.clone(),
+                    message_id: message_id.clone(),
+                    total_cost_usd: cost_tracker.total_cost_usd,
+                    total_input_tokens: cost_tracker.total_input_tokens,
+                    total_output_tokens: cost_tracker.total_output_tokens,
+                    call_count: cost_tracker.calls.len(),
+                    is_free: is_free_budget,
+                },
+            );
             // Final answer was streamed live — just emit Done
             let _ = app.emit(
                 "agent-event",
@@ -1953,6 +2151,10 @@ pub fn run() {
             read_memory_files,
             check_docker,
             pick_folder,
+            get_router_settings,
+            save_router_settings,
+            get_model_registry,
+            preview_routing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

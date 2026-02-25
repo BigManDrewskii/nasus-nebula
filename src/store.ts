@@ -4,6 +4,31 @@ import type { Task, Message, AgentStep, LlmMessage } from './types'
 import { clearWorkspace, copyWorkspace } from './agent/tools'
 import type { OpenRouterModel } from './agent/llm'
 
+// ── Router config ──────────────────────────────────────────────────────────────
+export interface RouterModelOverrides {
+  [modelId: string]: boolean
+}
+
+export interface RouterConfig {
+  /** 'auto' or a specific model ID */
+  mode: string
+  /** 'free' | 'paid' */
+  budget: string
+  modelOverrides: RouterModelOverrides
+}
+
+// Per-task router state emitted by the Rust backend
+export interface TaskRouterState {
+  modelId: string
+  displayName: string
+  reason: string
+  totalCostUsd: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  callCount: number
+  isFree: boolean
+}
+
 interface AppState {
   tasks: Task[]
   activeTaskId: string | null
@@ -16,6 +41,10 @@ interface AppState {
     recentWorkspacePaths: string[]
     apiBase: string
     provider: string
+  // Router config
+  routerConfig: RouterConfig
+  // Per-task router state (model used, cost, etc.) keyed by taskId
+  taskRouterState: Record<string, TaskRouterState>
       /** Full rich model list fetched from OpenRouter /models */
       openRouterModels: OpenRouterModel[]
       /** Flat sorted ID list — kept for backwards compat */
@@ -78,6 +107,8 @@ interface AppState {
         setE2bApiKey: (key: string) => void
         setExecutionMode: (mode: string) => void
         setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
+  setRouterConfig: (config: Partial<RouterConfig>) => void
+  setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -125,10 +156,16 @@ export const useAppStore = create<AppState>()(
               searchProvider: 'auto',
               maxIterations: 50,
               onboardingComplete: false,
-                e2bApiKey: '',
-                executionMode: 'e2b',
-                sandboxStatus: 'idle',
-                sandboxStatusMessage: '',
+              e2bApiKey: '',
+                  executionMode: 'e2b',
+                  sandboxStatus: 'idle',
+                  sandboxStatusMessage: '',
+          routerConfig: {
+            mode: 'auto',
+            budget: 'paid',
+            modelOverrides: {},
+          },
+          taskRouterState: {},
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
           setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
@@ -378,9 +415,18 @@ export const useAppStore = create<AppState>()(
               setSearchProvider: (provider) => set({ searchProvider: provider }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
-              setE2bApiKey: (key) => set({ e2bApiKey: key }),
-              setExecutionMode: (mode) => set({ executionMode: mode }),
-              setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
+                setE2bApiKey: (key) => set({ e2bApiKey: key }),
+                setExecutionMode: (mode) => set({ executionMode: mode }),
+                setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
+        setRouterConfig: (config) =>
+          set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),
+        setTaskRouterState: (taskId, state) =>
+          set((s) => ({
+            taskRouterState: {
+              ...s.taskRouterState,
+              [taskId]: { ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }), ...state },
+            },
+          })),
     }),
     {
       name: 'nasus-store-v2',
@@ -429,10 +475,11 @@ export const useAppStore = create<AppState>()(
                   executionMode: state.executionMode,
               // openRouterModels is persisted so the dropdown is populated immediately on reload.
               // It will be refreshed in the background on startup if the key is present.
-              openRouterModels: state.openRouterModels,
-              dynamicModels: state.dynamicModels,
-              modelsLastFetched: state.modelsLastFetched,
-              }
+                openRouterModels: state.openRouterModels,
+                dynamicModels: state.dynamicModels,
+                modelsLastFetched: state.modelsLastFetched,
+                routerConfig: state.routerConfig,
+                }
       },
         // On rehydration, clear any streaming:true flags left by a previous crashed session
         onRehydrateStorage: () => (state) => {

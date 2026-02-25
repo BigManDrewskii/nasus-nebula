@@ -75,6 +75,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     addRecentWorkspacePath,
     e2bApiKey,
     executionMode,
+    routerConfig,
+    setTaskRouterState,
   } = useAppStore()
 
     const [iteration, setIteration] = useState(0)
@@ -84,6 +86,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
     // Track whether the agent is actively running (used for correct isActive state)
     const [agentRunning, setAgentRunning] = useState(false)
+  // Selected model badge for in-chat display
+  const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+  // Cost badge for completed tasks
+  const [taskCostBadge, setTaskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
     // processingPhase: true from Send until first token/tool — drives "thinking" input state
     const [processingPhase, setProcessingPhase] = useState(false)
     // Scroll-lock: false = auto-scroll, true = user has scrolled up
@@ -119,10 +125,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-    const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode })
-    useEffect(() => {
-      configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode }
-    }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode])
+      const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig })
+      useEffect(() => {
+        configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig }
+      }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig])
 
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
@@ -206,17 +212,19 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       disposeSandbox().catch(() => {})
     }
     prevTaskIdRef.current = task?.id
-    setIteration(0)
-      setTokenCount(0)
-      setSandboxStatus('idle')
-      setAgentRunning(false)
-      setProcessingPhase(false)
-      setScrollLocked(false)
-    setPillVisible(false)
-    setShowNewMsgPill(false)
-    queuedMsgRef.current = null
-    setQueuedMsg(null)
-    clearAttachments()
+      setIteration(0)
+        setTokenCount(0)
+        setSandboxStatus('idle')
+        setAgentRunning(false)
+        setProcessingPhase(false)
+        setScrollLocked(false)
+      setPillVisible(false)
+      setShowNewMsgPill(false)
+      queuedMsgRef.current = null
+      setQueuedMsg(null)
+      clearAttachments()
+    setActiveModelBadge(null)
+    setTaskCostBadge(null)
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Web-agent custom events (browser mode only) ────────────────────────────
@@ -366,12 +374,53 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
           if (payload.title) updateTaskTitle(task.id, payload.title)
           break
         }
-        case 'raw_messages': {
-          if (payload.messages && payload.messages.length > 0) {
-            appendRawHistory(task.id, payload.messages)
+          case 'raw_messages': {
+            if (payload.messages && payload.messages.length > 0) {
+              appendRawHistory(task.id, payload.messages)
+            }
+            break
           }
-          break
-        }
+          case 'model_selected': {
+            if (payload.model_id) {
+              setActiveModelBadge({
+                modelId: payload.model_id,
+                displayName: payload.display_name ?? payload.model_id,
+                reason: payload.reason ?? '',
+              })
+              setTaskRouterState(task.id, {
+                modelId: payload.model_id,
+                displayName: payload.display_name ?? payload.model_id,
+                reason: payload.reason ?? '',
+              })
+            }
+            break
+          }
+          case 'task_cost': {
+            if (typeof payload.total_cost_usd === 'number') {
+              setTaskCostBadge({
+                costUsd: payload.total_cost_usd,
+                isFree: payload.is_free ?? false,
+                callCount: payload.call_count ?? 0,
+              })
+              setTaskRouterState(task.id, {
+                totalCostUsd: payload.total_cost_usd,
+                totalInputTokens: payload.total_input_tokens ?? 0,
+                totalOutputTokens: payload.total_output_tokens ?? 0,
+                callCount: payload.call_count ?? 0,
+                isFree: payload.is_free ?? false,
+              })
+            }
+            break
+          }
+          case 'free_limit_warning': {
+            const remaining = payload.remaining ?? 0
+            setRateLimitWarning(
+              remaining === 0
+                ? 'Free model daily limit reached. Switch to a paid model to continue.'
+                : `Free model limit: ${remaining} requests remaining today.`,
+            )
+            break
+          }
       }
     }).then((fn) => cleanups.push(fn))
 
@@ -389,17 +438,20 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const cfg = configRef.current
       const taskWorkspace = resolveTaskWorkspace(cfg.workspacePath, taskId)
     try {
-      if (isTauri) {
-        await tauriInvoke('run_agent', {
-          taskId,
-          messageId: agentMsgId,
-          userMessages: history,
-          apiKey: cfg.apiKey || '',
-          model: cfg.model || 'anthropic/claude-3.7-sonnet',
-          workspacePath: taskWorkspace,
-          apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-          provider: cfg.provider || 'openrouter',
-          searchConfig: {
+        if (isTauri) {
+          await tauriInvoke('run_agent', {
+            taskId,
+            messageId: agentMsgId,
+            userMessages: history,
+            apiKey: cfg.apiKey || '',
+            model: cfg.model || 'anthropic/claude-3.7-sonnet',
+            workspacePath: taskWorkspace,
+            apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+            provider: cfg.provider || 'openrouter',
+            routerMode: cfg.routerConfig.mode,
+            routerBudget: cfg.routerConfig.budget,
+            routerModelOverrides: cfg.routerConfig.modelOverrides,
+            searchConfig: {
               provider: cfg.searchProvider || 'auto',
               braveKey: cfg.braveSearchKey || undefined,
               googleCseKey: cfg.googleCseKey || undefined,
@@ -904,6 +956,47 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               {/* Input */}
               <div className="flex-shrink-0 px-5 pb-5 pt-1">
                 <div className="max-w-[780px] mx-auto">
+                  {/* Model badge + cost indicator row */}
+                  {(activeModelBadge || taskCostBadge) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                      {activeModelBadge && (
+                        <span
+                          title={activeModelBadge.reason}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                            background: 'rgba(234,179,8,0.08)',
+                            border: '1px solid rgba(234,179,8,0.18)',
+                            color: 'var(--amber)',
+                            cursor: 'default',
+                          }}
+                        >
+                          <Pxi name="sparkles" size={8} />
+                          {activeModelBadge.displayName}
+                        </span>
+                      )}
+                      {taskCostBadge && taskCostBadge.callCount > 0 && (
+                        <span
+                          title={`${taskCostBadge.callCount} LLM call${taskCostBadge.callCount !== 1 ? 's' : ''}`}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                            background: 'rgba(255,255,255,0.04)',
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            color: 'var(--tx-tertiary)',
+                            cursor: 'default',
+                          }}
+                        >
+                          <Pxi name="coin" size={8} />
+                          {taskCostBadge.isFree
+                            ? 'Free'
+                            : taskCostBadge.costUsd < 0.001
+                            ? '<$0.001'
+                            : `$${taskCostBadge.costUsd.toFixed(4)}`}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <UserInputArea
                     ref={inputRef}
                     onSend={handleSend}

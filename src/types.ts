@@ -58,6 +58,9 @@ export interface AgentEventPayload {
     | 'token_usage'
     | 'auto_title'
     | 'raw_messages'
+    | 'model_selected'
+    | 'task_cost'
+    | 'free_limit_warning'
   task_id: string
   message_id: string
   content?: string
@@ -77,6 +80,18 @@ export interface AgentEventPayload {
   total_tokens?: number
   title?: string
   messages?: LlmMessage[]
+  // model_selected
+  model_id?: string
+  display_name?: string
+  reason?: string
+  // task_cost
+  total_cost_usd?: number
+  total_input_tokens?: number
+  total_output_tokens?: number
+  call_count?: number
+  is_free?: boolean
+  // free_limit_warning
+  remaining?: number
 }
 
 export interface MemoryFiles {
