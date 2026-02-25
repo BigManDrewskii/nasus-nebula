@@ -3,6 +3,7 @@ use bollard::container::{
     StartContainerOptions,
 };
 use bollard::exec::{CreateExecOptions, StartExecResults};
+use bollard::image::CreateImageOptions;
 use bollard::models::HostConfig;
 use bollard::Docker;
 use futures_util::StreamExt;
@@ -137,10 +138,34 @@ async fn fetch_models(api_base: String, api_key: String) -> Result<Vec<String>, 
     Ok(models)
 }
 
-/// Check whether a filesystem path exists and is a directory
+/// Check whether a filesystem path exists, is a directory, and is writable
 #[tauri::command]
 fn validate_path(path: String) -> bool {
-    std::path::Path::new(&path).is_dir()
+    let p = std::path::Path::new(&path);
+    if !p.is_dir() {
+        return false;
+    }
+    // Check write permission by attempting to create a temp file
+    let test = p.join(".nasus_write_test");
+    match std::fs::File::create(&test) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&test);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Open a native macOS folder picker dialog and return the selected path
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Choose Workspace Folder")
+        .blocking_pick_folder();
+    Ok(path.map(|p| p.to_string()))
 }
 
 // ─── Agent events ─────────────────────────────────────────────────────────────
@@ -555,9 +580,78 @@ async fn get_or_connect_docker() -> Result<Docker, String> {
     Docker::connect_with_local_defaults().map_err(|e| format!("Docker unavailable: {e}"))
 }
 
+const SANDBOX_IMAGE: &str = "ubuntu:22.04";
+
+async fn ensure_image(docker: &Docker, app: &AppHandle, task_id: &str, message_id: &str) -> Result<(), String> {
+    // Check if the image is already present locally
+    if docker.inspect_image(SANDBOX_IMAGE).await.is_ok() {
+        return Ok(());
+    }
+
+    // Image not found locally — pull it, streaming progress
+    let _ = app.emit(
+        "agent-event",
+        AgentEvent::Thinking {
+            task_id: task_id.to_string(),
+            message_id: message_id.to_string(),
+            content: format!("Pulling Docker image {}… (first-time setup, may take a minute)", SANDBOX_IMAGE),
+        },
+    );
+
+    let mut stream = docker.create_image(
+        Some(CreateImageOptions {
+            from_image: SANDBOX_IMAGE,
+            ..Default::default()
+        }),
+        None,
+        None,
+    );
+
+    let mut last_status = String::new();
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(info) => {
+                let status = info.status.unwrap_or_default();
+                let progress = info.progress.unwrap_or_default();
+                let combined = if progress.is_empty() {
+                    status.clone()
+                } else {
+                    format!("{status}: {progress}")
+                };
+                // Only emit when status changes to avoid flooding the UI
+                if !combined.is_empty() && combined != last_status {
+                    last_status = combined.clone();
+                    let _ = app.emit(
+                        "agent-event",
+                        AgentEvent::Thinking {
+                            task_id: task_id.to_string(),
+                            message_id: message_id.to_string(),
+                            content: format!("[Docker pull] {combined}"),
+                        },
+                    );
+                }
+            }
+            Err(e) => return Err(format!("Image pull failed: {e}")),
+        }
+    }
+
+    let _ = app.emit(
+        "agent-event",
+        AgentEvent::Thinking {
+            task_id: task_id.to_string(),
+            message_id: message_id.to_string(),
+            content: format!("Image {} ready.", SANDBOX_IMAGE),
+        },
+    );
+
+    Ok(())
+}
+
 async fn ensure_sandbox(
     docker: &Docker,
+    app: &AppHandle,
     task_id: &str,
+    message_id: &str,
     workspace_path: &str,
 ) -> Result<String, String> {
     let name = format!("nasus-sandbox-{}", &task_id[..task_id.len().min(8)]);
@@ -577,6 +671,9 @@ async fn ensure_sandbox(
             .await;
     }
 
+    // Pull the image if not present locally before attempting create_container
+    ensure_image(docker, app, task_id, message_id).await?;
+
     tokio::fs::create_dir_all(workspace_path)
         .await
         .map_err(|e| e.to_string())?;
@@ -589,7 +686,7 @@ async fn ensure_sandbox(
     };
 
     let config = Config {
-        image: Some("ubuntu:22.04"),
+        image: Some(SANDBOX_IMAGE),
         cmd: Some(vec!["sleep", "infinity"]),
         working_dir: Some("/workspace"),
         host_config: Some(host_cfg),
@@ -1382,7 +1479,7 @@ async fn run_agent(
     let docker_result = get_or_connect_docker().await;
     let (docker_opt, container_opt) = match &docker_result {
         Ok(d) => {
-            match ensure_sandbox(d, &task_id, &workspace_path).await {
+            match ensure_sandbox(d, &app, &task_id, &message_id, &workspace_path).await {
                 Ok(name) => {
                     let _ = app.emit(
                         "agent-event",
@@ -1781,6 +1878,49 @@ async fn stop_sandbox(task_id: String) -> Result<(), String> {
     Ok(())
 }
 
+// ─── Docker health check ──────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct DockerStatus {
+    pub available: bool,
+    /// Human-readable message shown in the UI
+    pub message: String,
+    /// Docker Desktop download URL (shown when not installed)
+    pub download_url: String,
+}
+
+/// Called once on app launch. Returns whether Docker is reachable and,
+/// if not, a clear message + download link so the UI can show a blocking modal.
+#[tauri::command]
+async fn check_docker() -> DockerStatus {
+    match Docker::connect_with_local_defaults() {
+        Err(_) => DockerStatus {
+            available: false,
+            message: "Docker is not installed or could not be found.".to_string(),
+            download_url: "https://www.docker.com/products/docker-desktop/".to_string(),
+        },
+        Ok(docker) => {
+            // Ping the daemon — connect_with_local_defaults succeeds even when the
+            // daemon is stopped, so we need an actual round-trip to confirm it's running.
+            match docker.ping().await {
+                Ok(_) => DockerStatus {
+                    available: true,
+                    message: "Docker is running.".to_string(),
+                    download_url: String::new(),
+                },
+                Err(e) => DockerStatus {
+                    available: false,
+                    message: format!(
+                        "Docker Desktop is installed but not running. Please start it and relaunch Nasus. ({})",
+                        e
+                    ),
+                    download_url: "https://www.docker.com/products/docker-desktop/".to_string(),
+                },
+            }
+        }
+    }
+}
+
 // ─── App entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1788,6 +1928,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(CancelMap::default())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -1810,6 +1951,8 @@ pub fn run() {
             get_agent_status,
             stop_sandbox,
             read_memory_files,
+            check_docker,
+            pick_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

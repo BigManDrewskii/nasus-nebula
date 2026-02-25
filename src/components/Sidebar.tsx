@@ -288,21 +288,21 @@ function NewTaskButton({ onClick }: { onClick: () => void }) {
         border: `1px solid ${hov ? 'oklch(64% 0.214 40.1 / 0.22)' : 'rgba(255,255,255,0.07)'}`,
       }}
     >
-      <Pxi name="plus" size={10} style={{ flexShrink: 0 }} />
-      <span style={{ flex: 1, textAlign: 'left' }}>New task</span>
-      <kbd
-        style={{
-          fontSize: 9,
-          color: 'inherit',
-          opacity: 0.55,
-          fontFamily: 'inherit',
-          background: 'none',
-          border: 'none',
-          padding: 0,
-        }}
-      >
-        ⌘N
-      </kbd>
+        <Pxi name="plus" size={10} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, textAlign: 'left' }}>New task</span>
+        <kbd
+          style={{
+            fontSize: 9,
+            color: 'inherit',
+            opacity: 0.55,
+            fontFamily: 'var(--font-mono)',
+            background: 'none',
+            border: 'none',
+            padding: 0,
+          }}
+        >
+          ⌘N
+        </kbd>
     </button>
   )
 }
@@ -314,7 +314,7 @@ function SearchBar({
 }: {
   open: boolean
   value: string
-  inputRef: React.RefObject<HTMLInputElement>
+    inputRef: React.RefObject<HTMLInputElement | null>
   onChange: (v: string) => void
   onOpen: () => void
   onClose: () => void
@@ -474,31 +474,33 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
           />
         )}
 
-        {/* Label */}
-        <span
-          style={{
-            flex: 1,
-            textAlign: 'left',
-            fontSize: 10,
-            fontWeight: 600,
-            letterSpacing: '0.07em',
-            textTransform: 'uppercase',
-            color: isAmber
-              ? 'var(--amber)'
-              : hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
-            lineHeight: 1,
-            userSelect: 'none',
-            transition: 'color 0.1s',
-          }}
-        >
-          {label}
-        </span>
+          {/* Label */}
+          <span
+            style={{
+              flex: 1,
+              textAlign: 'left',
+              fontSize: 10,
+              fontWeight: 600,
+              fontFamily: 'var(--font-display)',
+              letterSpacing: '0.07em',
+              textTransform: 'uppercase',
+              color: isAmber
+                ? 'var(--amber)'
+                : hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
+              lineHeight: 1,
+              userSelect: 'none',
+              transition: 'color 0.1s',
+            }}
+          >
+            {label}
+          </span>
 
         {/* Date — Today only */}
         {date && (
           <span
             style={{
               fontSize: 9.5,
+              fontFamily: 'var(--font-mono)',
               color: hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
               flexShrink: 0,
               marginRight: 5,
@@ -570,13 +572,23 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-const PROVIDER_META: Record<string, { label: string; color: string }> = {
-  openrouter: { label: 'OpenRouter', color: '#7c6ff7' },
-  anthropic:  { label: 'Anthropic',  color: '#d4a574' },
-  openai:     { label: 'OpenAI',     color: '#74b9a0' },
-  google:     { label: 'Google',     color: '#7ab4f5' },
-  ollama:     { label: 'Ollama',     color: '#a0b080' },
-  litellm:    { label: 'LiteLLM',   color: '#9b8ec4' },
+// Per-family accent colors derived from model ID prefix
+const FAMILY_META: Record<string, { label: string; color: string }> = {
+  anthropic:    { label: 'Anthropic',  color: '#d4a574' },
+  openai:       { label: 'OpenAI',     color: '#74b9a0' },
+  google:       { label: 'Google',     color: '#7ab4f5' },
+  'meta-llama': { label: 'Meta',       color: '#6b9ef5' },
+  deepseek:     { label: 'DeepSeek',   color: '#7c9ff7' },
+  mistralai:    { label: 'Mistral',    color: '#b08ee0' },
+  'x-ai':       { label: 'xAI',        color: '#a0b8a0' },
+  qwen:         { label: 'Qwen',       color: '#f5a97f' },
+  cohere:       { label: 'Cohere',     color: '#e0a0b0' },
+  ollama:       { label: 'Ollama',     color: '#a0b080' },
+}
+
+function familyMeta(modelId: string) {
+  const prefix = modelId.split('/')[0] ?? ''
+  return FAMILY_META[prefix] ?? { label: prefix || 'Model', color: 'var(--tx-muted)' }
 }
 
 function SidebarFooter({ model, fullModel, onSettings }: {
@@ -584,72 +596,233 @@ function SidebarFooter({ model, fullModel, onSettings }: {
   fullModel: string
   onSettings: () => void
 }) {
-  const provider = useAppStore((s) => s.provider)
-  const [modelHov, setModelHov] = useState(false)
-  const [gearHov,  setGearHov]  = useState(false)
-  const meta = PROVIDER_META[provider] ?? { label: provider, color: 'var(--tx-muted)' }
+  const { setModel, openRouterModels, modelsLastFetched } = useAppStore()
+  const [open, setOpen]         = useState(false)
+  const [search, setSearch]     = useState('')
+  const [gearHov, setGearHov]   = useState(false)
+  const containerRef            = useRef<HTMLDivElement>(null)
+  const searchRef               = useRef<HTMLInputElement>(null)
+
+  const meta = familyMeta(fullModel)
+
+  // ── Build model list (same logic as UserInputArea) ──────────────────────────
+  const STATIC_MODELS = [
+    { value: 'anthropic/claude-3.7-sonnet',           label: 'Claude 3.7 Sonnet',           group: 'Anthropic' },
+    { value: 'anthropic/claude-3.7-sonnet:thinking',  label: 'Claude 3.7 Sonnet (Thinking)', group: 'Anthropic' },
+    { value: 'anthropic/claude-3.5-sonnet',           label: 'Claude 3.5 Sonnet',           group: 'Anthropic' },
+    { value: 'anthropic/claude-3.5-haiku',            label: 'Claude 3.5 Haiku',            group: 'Anthropic' },
+    { value: 'openai/gpt-4.1',                        label: 'GPT-4.1',                     group: 'OpenAI' },
+    { value: 'openai/gpt-4o',                         label: 'GPT-4o',                      group: 'OpenAI' },
+    { value: 'openai/gpt-4o-mini',                    label: 'GPT-4o Mini',                 group: 'OpenAI' },
+    { value: 'openai/o3-mini',                        label: 'o3-mini',                     group: 'OpenAI' },
+    { value: 'google/gemini-2.5-pro-preview',         label: 'Gemini 2.5 Pro',              group: 'Google' },
+    { value: 'google/gemini-2.0-flash-001',           label: 'Gemini 2.0 Flash',            group: 'Google' },
+    { value: 'meta-llama/llama-3.3-70b-instruct',    label: 'Llama 3.3 70B',               group: 'Meta' },
+    { value: 'deepseek/deepseek-r1',                  label: 'DeepSeek R1',                 group: 'DeepSeek' },
+    { value: 'deepseek/deepseek-chat',                label: 'DeepSeek V3',                 group: 'DeepSeek' },
+    { value: 'x-ai/grok-3',                          label: 'Grok 3',                      group: 'xAI' },
+    { value: 'mistralai/mistral-large',               label: 'Mistral Large',               group: 'Mistral' },
+    { value: 'qwen/qwq-32b',                         label: 'QwQ 32B',                     group: 'Qwen' },
+  ]
+
+  const isLive = openRouterModels.length > 0
+  const allModels = isLive
+    ? openRouterModels.map((m) => ({
+        value: m.id,
+        label: m.name,
+        group: familyMeta(m.id).label,
+      }))
+    : STATIC_MODELS
+
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? allModels.filter((m) => m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q))
+    : allModels
+
+  const grouped = new Map<string, typeof allModels>()
+  for (const m of filtered) {
+    if (!grouped.has(m.group)) grouped.set(m.group, [])
+    grouped.get(m.group)!.push(m)
+  }
+
+  const freshLabel = (() => {
+    if (!isLive) return null
+    const age = Date.now() - modelsLastFetched
+    if (age < 60_000) return 'just now'
+    if (age < 3_600_000) return `${Math.round(age / 60_000)}m ago`
+    return `${Math.round(age / 3_600_000)}h ago`
+  })()
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 30)
+  }, [open])
 
   return (
     <div
+      ref={containerRef}
       style={{
         borderTop: '1px solid rgba(255,255,255,0.05)',
         padding: '6px 8px 8px',
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
+        position: 'relative',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 2px',
-        }}
-      >
-        <span
+      {/* ── Inline model switcher dropdown ─────────────────────────── */}
+      {open && (
+        <div
           style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 6px)',
+            left: 8,
+            right: 8,
+            zIndex: 200,
+            borderRadius: 12,
+            background: '#161616',
+            border: '1px solid rgba(255,255,255,0.09)',
+            boxShadow: '0 20px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
             display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 9,
-            fontWeight: 600,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: meta.color,
-            opacity: 0.75,
+            flexDirection: 'column',
+            maxHeight: 300,
+            overflow: 'hidden',
+            animation: 'dropUp 0.14s ease',
           }}
         >
-          <span
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: '50%',
-              background: meta.color,
-              flexShrink: 0,
-              boxShadow: `0 0 5px ${meta.color}88`,
-            }}
-          />
+          {/* Search */}
+          <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 10px', borderRadius: 8,
+              background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search models…"
+                style={{
+                  flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                  fontSize: 11.5, color: 'var(--tx-primary)', fontFamily: 'inherit',
+                }}
+              />
+              {search && (
+                <button type="button" onClick={() => setSearch('')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0 }}>
+                  <Pxi name="times" size={9} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List */}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {grouped.size === 0 ? (
+              <div style={{ padding: '14px 12px', textAlign: 'center', fontSize: 11.5, color: 'var(--tx-tertiary)' }}>
+                No models match "{search}"
+              </div>
+            ) : [...grouped.entries()].map(([group, models]) => (
+              <div key={group}>
+                <div style={{
+                  padding: '5px 12px 3px', fontSize: 9.5, fontWeight: 600,
+                  letterSpacing: '0.09em', textTransform: 'uppercase',
+                  color: 'var(--tx-tertiary)', borderTop: '1px solid rgba(255,255,255,0.04)',
+                }}>{group}</div>
+                {models.map((m) => {
+                  const isSel = m.value === fullModel
+                  return (
+                    <button key={m.value} type="button"
+                      onClick={() => { setModel(m.value); setOpen(false); setSearch('') }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center',
+                        justifyContent: 'space-between', padding: '6px 12px',
+                        textAlign: 'left', border: 'none', cursor: 'pointer', gap: 8,
+                        fontSize: 11.5, fontFamily: 'inherit',
+                        color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                        background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                        transition: 'background 0.08s',
+                      }}
+                      onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                      onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {m.label}
+                      </span>
+                      {isSel && <Pxi name="check" size={9} style={{ color: 'var(--amber)', flexShrink: 0 }} />}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <div style={{
+            padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,0.05)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexShrink: 0, gap: 6,
+          }}>
+            {isLive ? (
+              <>
+                <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>{openRouterModels.length} models · OpenRouter</span>
+                <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>Updated {freshLabel}</span>
+              </>
+            ) : (
+              <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>Curated list · add API key to load all</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Top row: family badge + settings gear ──────────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', padding: '0 2px',
+      }}>
+        {/* Provider family pill */}
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: 5,
+          fontSize: 9, fontWeight: 600, fontFamily: 'var(--font-display)',
+          letterSpacing: '0.08em', textTransform: 'uppercase',
+          color: meta.color, opacity: 0.75,
+        }}>
+          <span style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: meta.color, flexShrink: 0,
+            boxShadow: `0 0 5px ${meta.color}88`,
+          }} />
           {meta.label}
         </span>
 
+        {/* Settings gear */}
         <button
           onClick={onSettings}
           onMouseEnter={() => setGearHov(true)}
           onMouseLeave={() => setGearHov(false)}
           title="Settings (⌘,)"
           style={{
-            width: 22,
-            height: 22,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            width: 22, height: 22, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
             borderRadius: 5,
             border: `1px solid ${gearHov ? 'rgba(255,255,255,0.1)' : 'transparent'}`,
             background: gearHov ? 'rgba(255,255,255,0.06)' : 'transparent',
             color: gearHov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
-            cursor: 'pointer',
-            flexShrink: 0,
+            cursor: 'pointer', flexShrink: 0,
             transition: 'background 0.1s, border-color 0.1s, color 0.1s',
           }}
         >
@@ -657,67 +830,57 @@ function SidebarFooter({ model, fullModel, onSettings }: {
         </button>
       </div>
 
+      {/* ── Model selector button ───────────────────────────────────── */}
       <button
-        onClick={onSettings}
-        onMouseEnter={() => setModelHov(true)}
-        onMouseLeave={() => setModelHov(false)}
-        title={`Model: ${fullModel}\nClick to change`}
+        onClick={() => setOpen((o) => !o)}
+        title={`Model: ${fullModel}\nClick to switch`}
         style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '5px 8px',
-          borderRadius: 7,
-          background: modelHov ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.025)',
-          border: `1px solid ${modelHov ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.05)'}`,
-          cursor: 'pointer',
-          fontFamily: 'inherit',
-          transition: 'background 0.1s, border-color 0.1s',
-          textAlign: 'left',
+          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
+          padding: '5px 8px', borderRadius: 7,
+          background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)',
+          border: `1px solid ${open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
+          cursor: 'pointer', fontFamily: 'inherit',
+          transition: 'background 0.1s, border-color 0.1s', textAlign: 'left',
+        }}
+        onMouseEnter={(e) => {
+          if (!open) {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!open) {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'
+          }
         }}
       >
-        <div
-          style={{
-            width: 20,
-            height: 20,
-            borderRadius: 5,
-            background: `${meta.color}18`,
-            border: `1px solid ${meta.color}28`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Pxi name="robot" size={9} style={{ color: meta.color }} />
+        {/* Model family icon badge */}
+        <div style={{
+          width: 20, height: 20, borderRadius: 5,
+          background: `${meta.color}18`, border: `1px solid ${meta.color}28`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}>
+          <Pxi name="sparkles" size={9} style={{ color: meta.color }} />
         </div>
-        <span
-          style={{
-            flex: 1,
-            fontSize: 11,
-            fontWeight: 500,
-            color: modelHov ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            transition: 'color 0.1s',
-            letterSpacing: '-0.01em',
-          }}
-        >
+
+        {/* Model name */}
+        <span style={{
+          flex: 1, fontSize: 11, fontWeight: 500,
+          fontFamily: 'var(--font-mono)',
+          color: open ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          transition: 'color 0.1s', letterSpacing: '-0.01em',
+        }}>
           {model}
         </span>
-        <span
-          style={{
-            display: 'flex',
-            color: 'var(--tx-muted)',
-            flexShrink: 0,
-            opacity: modelHov ? 0.8 : 0.35,
-            transition: 'opacity 0.1s',
-          }}
-        >
-          <Pxi name="sort" size={9} />
-        </span>
+
+        {/* Chevron */}
+        <Pxi name="angle-down" size={9} style={{
+          color: 'var(--tx-muted)', flexShrink: 0,
+          transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+          transition: 'transform 0.15s',
+        }} />
       </button>
     </div>
   )

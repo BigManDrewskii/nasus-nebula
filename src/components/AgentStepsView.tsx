@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, memo, useMemo } from 'react'
+import { useState, useRef, memo, useMemo } from 'react'
 import type { AgentStep } from '../types'
 import { Pxi } from './Pxi'
 
@@ -36,48 +36,55 @@ type AnyRow =
   | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
 
 function buildRows(steps: AgentStep[]): AnyRow[] {
-  const rows: AnyRow[] = []
-  for (const step of steps) {
-    if (step.kind === 'thinking') {
-      rows.push({ kind: 'thinking', step })
-    } else if (step.kind === 'tool_call') {
-      rows.push({ kind: 'tool_pair', call: step, result: null })
-    } else if (step.kind === 'tool_result') {
-      const pairIdx = rows.findIndex(
-        (r) => r.kind === 'tool_pair' && r.call.callId === step.callId && r.result === null,
-      )
-      if (pairIdx !== -1) {
-        ;(rows[pairIdx] as ToolPair).result = step
-      } else {
-        rows.push({
-          kind: 'tool_pair',
-          call: { kind: 'tool_call', tool: 'unknown', input: {}, callId: step.callId },
-          result: step,
-        })
-      }
-    } else if (step.kind === 'strike_escalation') {
-      rows.push({ kind: 'strike_escalation', step })
-    } else if (step.kind === 'context_compressed') {
-      rows.push({ kind: 'context_compressed', step })
-    } else if (step.kind === 'search_status') {
-      const existingIdx = (() => {
-        for (let i = rows.length - 1; i >= 0; i--) {
-          const r = rows[i]
-          if (r.kind === 'search_status' && r.step.callId === step.callId) return i
+    const rows: AnyRow[] = []
+    for (const step of steps) {
+      if (step.kind === 'thinking') {
+        rows.push({ kind: 'thinking', step })
+      } else if (step.kind === 'tool_call') {
+        // The store's updateStep embeds the tool_result directly onto the tool_call
+        // step as a `.result` property (a runtime addition not in the type). Check for
+        // it so we can render the pair as completed rather than forever pending.
+        const embeddedResult = (step as typeof step & { result?: Extract<AgentStep, { kind: 'tool_result' }> }).result ?? null
+        rows.push({ kind: 'tool_pair', call: step, result: embeddedResult })
+      } else if (step.kind === 'tool_result') {
+        // Fallback: handle orphan tool_result steps (e.g. from Tauri backend events
+        // that arrive as separate steps rather than being merged).
+        const pairIdx = rows.findIndex(
+          (r) => r.kind === 'tool_pair' && r.call.callId === step.callId && r.result === null,
+        )
+        if (pairIdx !== -1) {
+          ;(rows[pairIdx] as ToolPair).result = step
+        } else {
+          rows.push({
+            kind: 'tool_pair',
+            call: { kind: 'tool_call', tool: 'unknown', input: {}, callId: step.callId },
+            result: step,
+          })
         }
-        return -1
-      })()
-      if (existingIdx !== -1) {
-        rows[existingIdx] = { kind: 'search_status', step }
-      } else {
-        rows.push({ kind: 'search_status', step })
+      } else if (step.kind === 'strike_escalation') {
+        rows.push({ kind: 'strike_escalation', step })
+      } else if (step.kind === 'context_compressed') {
+        rows.push({ kind: 'context_compressed', step })
+      } else if (step.kind === 'search_status') {
+        const existingIdx = (() => {
+          for (let i = rows.length - 1; i >= 0; i--) {
+            const r = rows[i]
+            if (r.kind === 'search_status' && r.step.callId === step.callId) return i
+          }
+          return -1
+        })()
+        if (existingIdx !== -1) {
+          rows[existingIdx] = { kind: 'search_status', step }
+        } else {
+          rows.push({ kind: 'search_status', step })
+        }
+      } else if (step.kind === 'browser_action') {
+        rows.push({ kind: 'browser_action', step })
       }
-    } else if (step.kind === 'browser_action') {
-      rows.push({ kind: 'browser_action', step })
+      // output_cards is intentionally skipped here — rendered by ChatMessage via OutputCardRenderer
     }
+    return rows
   }
-  return rows
-}
 
 // ─── Row dispatcher ───────────────────────────────────────────────────────────
 
@@ -108,8 +115,10 @@ function Row({ row }: { row: AnyRow }) {
 
 const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) {
   const [open, setOpen] = useState(false)
-  const preview = content.split('\n')[0].slice(0, 90)
-  const isLong = content.length > 90 || content.includes('\n')
+  // Show up to the first 120 chars of the first non-empty line as preview
+  const firstLine = content.split('\n').find((l) => l.trim()) ?? ''
+  const preview = firstLine.length > 120 ? firstLine.slice(0, 120) + '…' : firstLine
+  const isLong = content.length > 120 || content.includes('\n')
 
   return (
     <button
@@ -120,7 +129,7 @@ const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) 
         display: 'flex',
         alignItems: 'flex-start',
         gap: 8,
-        padding: '5px 6px',
+        padding: '4px 6px',
         borderRadius: 8,
         background: 'transparent',
         border: 'none',
@@ -130,16 +139,26 @@ const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) 
       onMouseEnter={(e) => { if (isLong) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
       onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
     >
-      <Pxi name="face-thinking" size={11} style={{ color: 'var(--tx-tertiary)', marginTop: 3, flexShrink: 0 }} />
-      <span style={{ fontSize: 12, fontStyle: 'italic', lineHeight: 1.6, flex: 1, minWidth: 0, color: 'var(--tx-secondary)' }}>
-        {open ? content : preview}
-        {isLong && !open && '…'}
-        {isLong && (
-          <Pxi
-            name={open ? 'chevron-up' : 'chevron-down'}
-            size={10}
-            style={{ color: 'var(--tx-tertiary)', marginLeft: 4, display: 'inline-block', verticalAlign: 'middle' }}
-          />
+      <Pxi name="lightbulb" size={11} style={{ color: 'rgba(255,200,80,0.45)', marginTop: 3, flexShrink: 0 }} />
+      <span style={{ fontSize: 11.5, fontStyle: 'italic', lineHeight: 1.6, flex: 1, minWidth: 0, color: 'var(--tx-tertiary)' }}>
+        {open ? (
+          <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
+        ) : (
+          <>
+            {preview}
+            {isLong && (
+              <Pxi
+                name="chevron-down"
+                size={9}
+                style={{ color: 'var(--tx-tertiary)', marginLeft: 5, display: 'inline-block', verticalAlign: 'middle', opacity: 0.5 }}
+              />
+            )}
+          </>
+        )}
+        {open && isLong && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6, opacity: 0.5 }}>
+            <Pxi name="chevron-up" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+          </span>
         )}
       </span>
     </button>
@@ -526,9 +545,11 @@ function SearchStatusChip({ step }: { step: Extract<AgentStep, { kind: 'search_s
         {message}
       </span>
 
-      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        &ldquo;{query}&rdquo;
-      </span>
+      {query && (
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          &ldquo;{query}&rdquo;
+        </span>
+      )}
 
       {providerLabel && (
         <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.05)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
@@ -591,10 +612,8 @@ function BrowserActionRow({ step }: { step: Extract<AgentStep, { kind: 'browser_
         </span>
       )}
       {phase === 'start' && (
-        <span style={{ display: 'flex', gap: 3, marginLeft: 'auto', flexShrink: 0 }}>
-          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 0ms infinite', display: 'block' }} />
-          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 120ms infinite', display: 'block' }} />
-          <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--amber)', animation: 'typing-bounce 1.2s ease-in-out 240ms infinite', display: 'block' }} />
+        <span style={{ marginLeft: 'auto', flexShrink: 0 }}>
+          <PendingDots />
         </span>
       )}
     </div>

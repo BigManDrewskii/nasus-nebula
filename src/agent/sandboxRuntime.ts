@@ -1,11 +1,9 @@
 /**
  * Unified sandbox dispatcher.
  *
- * Resolves which runtime to use (E2B / Daytona / Pyodide) based on the
- * ExecutionConfig from the store, then delegates to the appropriate module.
- *
- * Fallback chain for 'auto' mode:
- *   E2B (if key set) → Daytona (if key set) → Pyodide (Python only) → error
+ * E2B is the only supported cloud sandbox backend.
+ * Pyodide (browser WebAssembly) is the local-only fallback for Python.
+ * Daytona has been removed.
  */
 
 import { runPython } from './pythonRuntime'
@@ -13,20 +11,15 @@ import {
   e2bRunPython,
   e2bRunBash,
   disposeE2bSandbox,
+  type SandboxStatusCallback,
 } from './e2bRuntime'
-import {
-  daytonaRunPython,
-  daytonaRunBash,
-  disposeDaytonaSandbox,
-} from './daytonaRuntime'
 
 export interface ExecutionConfig {
   /** Execution mode selected in Settings */
-  executionMode: 'auto' | 'e2b' | 'daytona' | 'pyodide' | 'disabled'
+  executionMode: 'e2b' | 'pyodide' | 'disabled'
   e2bApiKey?: string
-  daytonaApiKey?: string
-  /** Defaults to 'https://app.daytona.io/api' */
-  daytonaApiUrl?: string
+  /** Called during sandbox cold-start so the UI can show a spinner */
+  onSandboxStatus?: SandboxStatusCallback
 }
 
 export interface SandboxResult {
@@ -34,38 +27,31 @@ export interface SandboxResult {
   isError: boolean
 }
 
-const DEFAULT_DAYTONA_URL = 'https://app.daytona.io/api'
-
 /** Resolve which backend to use for the given config and capability. */
 function resolveBackend(
   cfg: ExecutionConfig,
   capability: 'python' | 'bash',
-): 'e2b' | 'daytona' | 'pyodide' | 'disabled' {
-  const { executionMode, e2bApiKey, daytonaApiKey } = cfg
+): 'e2b' | 'pyodide' | 'disabled' {
+  const { executionMode, e2bApiKey } = cfg
 
   if (executionMode === 'disabled') return 'disabled'
 
   if (executionMode === 'e2b') {
-    if (!e2bApiKey) return 'disabled'
-    return 'e2b'
-  }
-
-  if (executionMode === 'daytona') {
-    if (!daytonaApiKey) return 'disabled'
-    return 'daytona'
+    return e2bApiKey?.trim() ? 'e2b' : 'disabled'
   }
 
   if (executionMode === 'pyodide') {
-    if (capability === 'bash') return 'disabled'
-    return 'pyodide'
+    return capability === 'bash' ? 'disabled' : 'pyodide'
   }
 
-  // Auto: try each available backend in order
-  if (e2bApiKey) return 'e2b'
-  if (daytonaApiKey) return 'daytona'
+  // Fallback: e2b if key present, else pyodide for python, disabled for bash
+  if (e2bApiKey?.trim()) return 'e2b'
   if (capability === 'python') return 'pyodide'
   return 'disabled'
 }
+
+const NO_E2B_KEY_MSG =
+  '[No E2B API key configured. Add your key in Settings → Code Execution → E2B API Key.]'
 
 /** Execute Python code using the best available runtime. */
 export async function executePython(
@@ -76,7 +62,7 @@ export async function executePython(
 
   if (backend === 'e2b') {
     try {
-      const res = await e2bRunPython(code, cfg.e2bApiKey!)
+      const res = await e2bRunPython(code, cfg.e2bApiKey!, cfg.onSandboxStatus)
       const parts: string[] = []
       if (res.stdout) parts.push(res.stdout)
       if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
@@ -91,24 +77,10 @@ export async function executePython(
       }
       return { output: parts.join('\n').trim() || '(no output)', isError: false }
     } catch (err) {
-      return { output: `E2B error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
-    }
-  }
-
-  if (backend === 'daytona') {
-    try {
-      const apiUrl = cfg.daytonaApiUrl || DEFAULT_DAYTONA_URL
-      const res = await daytonaRunPython(code, cfg.daytonaApiKey!, apiUrl)
-      const parts: string[] = []
-      if (res.stdout) parts.push(res.stdout)
-      if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
-      if (res.error) {
-        parts.push(`[error]\n${res.error}`)
-        return { output: parts.join('\n').trim() || res.error, isError: true }
+      return {
+        output: `E2B error: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
       }
-      return { output: parts.join('\n').trim() || '(no output)', isError: false }
-    } catch (err) {
-      return { output: `Daytona error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
     }
   }
 
@@ -124,20 +96,21 @@ export async function executePython(
       }
       return { output: parts.join('\n').trim() || '(no output)', isError: false }
     } catch (err) {
-      return { output: `python_execute error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
+      return {
+        output: `python_execute error: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
+      }
     }
   }
 
   // disabled
-  return {
-    output: cfg.executionMode === 'disabled'
-      ? '[Code execution is disabled. Enable it in Settings → Code Execution.]'
-      : '[No code execution backend configured. Add an E2B or Daytona API key in Settings → Code Execution, or set mode to Pyodide.]',
-    isError: false,
+  if (cfg.executionMode === 'disabled') {
+    return { output: '[Code execution is disabled. Enable it in Settings → Code Execution.]', isError: false }
   }
+  return { output: NO_E2B_KEY_MSG, isError: false }
 }
 
-/** Execute a shell command using a cloud sandbox runtime. */
+/** Execute a shell command using E2B cloud sandbox. */
 export async function executeBash(
   command: string,
   cfg: ExecutionConfig,
@@ -146,7 +119,7 @@ export async function executeBash(
 
   if (backend === 'e2b') {
     try {
-      const res = await e2bRunBash(command, cfg.e2bApiKey!)
+      const res = await e2bRunBash(command, cfg.e2bApiKey!, cfg.onSandboxStatus)
       const parts: string[] = []
       if (res.stdout) parts.push(res.stdout)
       if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
@@ -156,38 +129,23 @@ export async function executeBash(
       }
       return { output: parts.join('\n').trim() || '(no output)', isError: false }
     } catch (err) {
-      return { output: `E2B bash error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
-    }
-  }
-
-  if (backend === 'daytona') {
-    try {
-      const apiUrl = cfg.daytonaApiUrl || DEFAULT_DAYTONA_URL
-      const res = await daytonaRunBash(command, cfg.daytonaApiKey!, apiUrl)
-      const parts: string[] = []
-      if (res.stdout) parts.push(res.stdout)
-      if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
-      if (res.error) {
-        parts.push(`[error]\n${res.error}`)
-        return { output: parts.join('\n').trim() || res.error, isError: true }
+      return {
+        output: `E2B bash error: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
       }
-      return { output: parts.join('\n').trim() || '(no output)', isError: false }
-    } catch (err) {
-      return { output: `Daytona bash error: ${err instanceof Error ? err.message : String(err)}`, isError: true }
     }
   }
 
-  // No cloud sandbox available for bash
+  if (cfg.executionMode === 'disabled') {
+    return { output: '[Code execution is disabled. Enable it in Settings → Code Execution.]', isError: false }
+  }
   return {
-    output:
-      cfg.executionMode === 'disabled'
-        ? '[Code execution is disabled. Enable it in Settings → Code Execution.]'
-        : '[bash_execute requires a cloud sandbox (E2B or Daytona). Add an API key in Settings → Code Execution.]',
+    output: '[bash_execute requires E2B. Add your E2B API key in Settings → Code Execution.]',
     isError: false,
   }
 }
 
-/** Kill any active sandbox (E2B + Daytona). Call on task stop/switch. */
+/** Kill any active E2B sandbox. Call on task stop/switch. */
 export async function disposeSandbox(): Promise<void> {
-  await Promise.allSettled([disposeE2bSandbox(), disposeDaytonaSandbox()])
+  await disposeE2bSandbox()
 }

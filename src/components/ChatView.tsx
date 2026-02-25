@@ -5,7 +5,7 @@ import { disposeSandbox } from '../agent/sandboxRuntime'
 import type { Task, Message, AgentStep, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
-import { UserInputArea, type UserInputAreaHandle } from './UserInputArea'
+import { UserInputArea, type UserInputAreaHandle, type InputState } from './UserInputArea'
 import { ActionChips } from './ActionChips'
 import { MemoryViewer } from './MemoryViewer'
 import { NasusLogo } from './NasusLogo'
@@ -67,6 +67,9 @@ interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
   onOpenSettings: () => void
+  outputVisible?: boolean
+  onShowOutput?: () => void
+  workspaceFileCount?: number
 }
 
 interface AgentEventPayload {
@@ -104,7 +107,7 @@ interface AgentEventPayload {
   messages?: LlmMessage[]
 }
 
-export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
+export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0 }: ChatViewProps) {
   const {
     getMessages,
     getRawHistory,
@@ -125,6 +128,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     braveSearchKey,
     googleCseKey,
     googleCseId,
+    serperKey,
+    tavilyKey,
+    searxngUrl,
     searchProvider,
     maxIterations,
     setWorkspacePath,
@@ -134,8 +140,6 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setProvider,
     addRecentWorkspacePath,
     e2bApiKey,
-    daytonaApiKey,
-    daytonaApiUrl,
     executionMode,
   } = useAppStore()
 
@@ -146,6 +150,8 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
     // Track whether the agent is actively running (used for correct isActive state)
     const [agentRunning, setAgentRunning] = useState(false)
+    // processingPhase: true from Send until first token/tool — drives "thinking" input state
+    const [processingPhase, setProcessingPhase] = useState(false)
     // Scroll-lock: false = auto-scroll, true = user has scrolled up
     const [scrollLocked, setScrollLocked] = useState(false)
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
@@ -153,7 +159,8 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
     const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
-    const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
+    const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null)
+  const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
 
     // Attachments
   const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
@@ -178,10 +185,10 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-    const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode })
+    const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode })
     useEffect(() => {
-      configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode }
-    }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, searchProvider, maxIterations, e2bApiKey, daytonaApiKey, daytonaApiUrl, executionMode])
+      configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode }
+    }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode])
 
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
@@ -198,6 +205,13 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
   const messages = task ? getMessages(task.id) : []
   // isActive is driven by agentRunning state (set when we kick off, cleared on done/error)
   const isActive = agentRunning
+
+  // Derive 4-state input machine from running states
+  const inputState: InputState = processingPhase
+    ? 'processing'
+    : agentRunning
+    ? 'streaming'
+    : 'idle'
 
   const messageListRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -259,10 +273,11 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     }
     prevTaskIdRef.current = task?.id
     setIteration(0)
-    setTokenCount(0)
-    setSandboxStatus('idle')
-    setAgentRunning(false)
-    setScrollLocked(false)
+      setTokenCount(0)
+      setSandboxStatus('idle')
+      setAgentRunning(false)
+      setProcessingPhase(false)
+      setScrollLocked(false)
     setPillVisible(false)
     setShowNewMsgPill(false)
     queuedMsgRef.current = null
@@ -302,18 +317,20 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
 
       switch (payload.kind) {
         case 'thinking': {
-          const content = payload.content ?? ''
-          if (content.includes('Starting sandbox') || content.includes('Pulling image')) {
-            setSandboxStatus('starting')
-          } else if (content.includes('Sandbox ready') || content.includes('ready')) {
-            setSandboxStatus('ready')
+            const content = payload.content ?? ''
+            if (content.includes('Starting sandbox') || content.includes('Pulling image') || content.includes('Pulling Docker image') || content.includes('[Docker pull]')) {
+              setSandboxStatus('starting')
+            } else if (content.includes('Sandbox ready') || content.includes('Image') && content.includes('ready')) {
+              setSandboxStatus('ready')
+            }
+            setProcessingPhase(false)
+            const step: AgentStep = { kind: 'thinking', content }
+            addStep(task.id, payload.message_id, step)
+            break
           }
-          const step: AgentStep = { kind: 'thinking', content }
-          addStep(task.id, payload.message_id, step)
-          break
-        }
-        case 'tool_call': {
-          const step: AgentStep = {
+          case 'tool_call': {
+            setProcessingPhase(false)
+            const step: AgentStep = {
             kind: 'tool_call',
             tool: payload.tool ?? '',
             input: payload.input ?? {},
@@ -332,8 +349,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           updateStep(task.id, payload.message_id, step)
           break
         }
-        case 'stream_chunk': {
-          if (!payload.done && payload.delta) {
+          case 'stream_chunk': {
+            setProcessingPhase(false)
+            if (!payload.done && payload.delta) {
             appendChunk(task.id, payload.message_id, payload.delta)
           }
           if (payload.done) {
@@ -343,16 +361,18 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           }
           break
         }
-        case 'done': {
-          runningRef.current = false
+          case 'done': {
+            setProcessingPhase(false)
+            runningRef.current = false
           setAgentRunning(false)
           updateTaskStatus(task.id, 'completed')
           setStreaming(task.id, payload.message_id, false)
           setSandboxStatus('stopped')
           break
         }
-        case 'error': {
-          runningRef.current = false
+          case 'error': {
+            setProcessingPhase(false)
+            runningRef.current = false
           setAgentRunning(false)
           setError(task.id, payload.message_id, payload.error ?? 'Unknown error')
           updateTaskStatus(task.id, 'failed')
@@ -421,34 +441,38 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
           provider: cfg.provider || 'openrouter',
           searchConfig: {
-            provider: cfg.searchProvider || 'auto',
-            braveKey: cfg.braveSearchKey || undefined,
-            googleCseKey: cfg.googleCseKey || undefined,
-            googleCseId: cfg.googleCseId || undefined,
-          },
-        })
-      } else {
-        // Web mode — runWebAgent already manages its own AbortController per taskId
-        // and cancels any previous run for the same task on start
-          await runWebAgent({
-            taskId,
-            messageId: agentMsgId,
-            userMessages: history,
-            apiKey: cfg.apiKey || '',
-            model: cfg.model || 'anthropic/claude-3.7-sonnet',
-            apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-            provider: cfg.provider || 'openrouter',
-            searchConfig: {
               provider: cfg.searchProvider || 'auto',
               braveKey: cfg.braveSearchKey || undefined,
               googleCseKey: cfg.googleCseKey || undefined,
               googleCseId: cfg.googleCseId || undefined,
+              serperKey: cfg.serperKey || undefined,
+              tavilyKey: cfg.tavilyKey || undefined,
+              searxngUrl: cfg.searxngUrl || undefined,
             },
+          })
+        } else {
+          // Web mode — runWebAgent already manages its own AbortController per taskId
+          // and cancels any previous run for the same task on start
+            await runWebAgent({
+              taskId,
+              messageId: agentMsgId,
+              userMessages: history,
+              apiKey: cfg.apiKey || '',
+              model: cfg.model || 'anthropic/claude-3.7-sonnet',
+              apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+              provider: cfg.provider || 'openrouter',
+              searchConfig: {
+                provider: cfg.searchProvider || 'auto',
+                braveKey: cfg.braveSearchKey || undefined,
+                googleCseKey: cfg.googleCseKey || undefined,
+                googleCseId: cfg.googleCseId || undefined,
+                serperKey: cfg.serperKey || undefined,
+                tavilyKey: cfg.tavilyKey || undefined,
+                searxngUrl: cfg.searxngUrl || undefined,
+              },
             executionConfig: {
-              executionMode: (cfg.executionMode || 'auto') as 'auto' | 'e2b' | 'daytona' | 'pyodide' | 'disabled',
+              executionMode: (cfg.executionMode || 'e2b') as 'e2b' | 'pyodide' | 'disabled',
               e2bApiKey: cfg.e2bApiKey || undefined,
-              daytonaApiKey: cfg.daytonaApiKey || undefined,
-              daytonaApiUrl: cfg.daytonaApiUrl || undefined,
             },
             maxIterations: cfg.maxIterations ?? 50,
           })
@@ -571,6 +595,7 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
       addMessage(task.id, agentMsg)
       runningRef.current = true
       setAgentRunning(true)
+      setProcessingPhase(true)
       setIteration(0)
       setTokenCount(0)
       setSandboxStatus(isTauri ? 'starting' : 'idle')
@@ -579,6 +604,18 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         setScrollLocked(false)
         hidePill()
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+
+      // Validate workspace path before running (Tauri only)
+      if (isTauri && workspacePath) {
+        try {
+          const ok = await tauriInvoke<boolean>('validate_path', { path: workspacePath })
+          if (!ok) {
+            setWorkspaceWarning(`Workspace path "${workspacePath}" is not accessible or not writable. Please update it in settings.`)
+            setTimeout(() => setWorkspaceWarning(null), 6000)
+          }
+        } catch { /* non-blocking — proceed anyway */ }
+      }
+
       await runAgent(task.id, agentMsgId, history)
     }
 
@@ -597,11 +634,12 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
     await runAgent(task.id, failedMsgId, history)
   }
 
-  async function handleStop() {
-    if (!task) return
-    queuedMsgRef.current = null
-    setQueuedMsg(null)
-    if (isTauri) {
+    async function handleStop() {
+      if (!task) return
+      queuedMsgRef.current = null
+      setQueuedMsg(null)
+      setProcessingPhase(false)
+      if (isTauri) {
       try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
     } else {
       stopWebAgent(task.id)
@@ -654,6 +692,36 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         {...dragHandlers}
       >
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
+
+        {/* Workspace warning toast */}
+        {workspaceWarning && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 60,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 14px',
+              borderRadius: 12,
+              background: 'rgba(13,13,13,0.95)',
+              border: '1px solid rgba(234,179,8,0.35)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              backdropFilter: 'blur(8px)',
+              animation: 'fadeIn 0.18s ease',
+              pointerEvents: 'none',
+              maxWidth: 'calc(100% - 48px)',
+            }}
+          >
+            <Pxi name="exclamation-triangle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>
+              {workspaceWarning}
+            </span>
+          </div>
+        )}
 
         {/* Rate limit toast */}
         {rateLimitWarning && (
@@ -729,9 +797,9 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
         style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0d0d0d' }}
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <h2 className="font-medium truncate" style={{ fontSize: 13, color: 'var(--tx-primary)' }}>
-            {task.title}
-          </h2>
+            <h2 className="font-display font-medium truncate" style={{ fontSize: 11, color: 'var(--tx-primary)', letterSpacing: '-0.01em' }}>
+              {task.title}
+            </h2>
           {isActive && iteration > 0 && (
             <span className="flex items-center gap-1.5 flex-shrink-0">
               <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)', animation: 'spin 1s linear infinite' }} />
@@ -745,13 +813,34 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
-            <SandboxPill status={sandboxStatus} />
-          )}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
+              <SandboxPill status={sandboxStatus} />
+            )}
 
-          <button
-            onClick={() => setShowMemory(true)}
+            {/* Workspace pill — shown when output panel is hidden but files exist */}
+            {!outputVisible && workspaceFileCount > 0 && onShowOutput && (
+              <button
+                onClick={onShowOutput}
+                title="Show output panel"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors"
+                style={{
+                  background: 'rgba(234,179,8,0.08)',
+                  border: '1px solid rgba(234,179,8,0.2)',
+                  color: 'var(--amber)',
+                  fontSize: 10,
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.15)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
+              >
+                <Pxi name="folder" size={9} />
+                {workspaceFileCount} file{workspaceFileCount !== 1 ? 's' : ''}
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowMemory(true)}
             title="View agent memory files"
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors"
             style={{ color: 'var(--tx-tertiary)' }}
@@ -908,19 +997,20 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
                 )}
               </div>
 
-                  <div className="w-full">
-                    <UserInputArea
-                      ref={inputRef}
-                      onSend={handleSend}
-                      disabled={false}
-                      autoFocus
-                      attachments={attachments}
-                      onAddFiles={addFiles}
-                      onRemoveAttachment={removeAttachment}
-                      isOverLimit={isOverLimit}
-                      totalAttachmentSize={totalSize}
-                    />
-                  </div>
+                    <div className="w-full">
+                      <UserInputArea
+                        ref={inputRef}
+                        onSend={handleSend}
+                        disabled={false}
+                        autoFocus
+                        inputState={inputState}
+                        attachments={attachments}
+                        onAddFiles={addFiles}
+                        onRemoveAttachment={removeAttachment}
+                        isOverLimit={isOverLimit}
+                        totalAttachmentSize={totalSize}
+                      />
+                    </div>
 
                   {/* Keyboard shortcut legend */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -1012,23 +1102,24 @@ export function ChatView({ task, onNewTask, onOpenSettings }: ChatViewProps) {
             </div>
           )}
 
-            {/* Input */}
-            <div className="flex-shrink-0 px-5 pb-5 pt-1">
-              <div className="max-w-[780px] mx-auto">
-                <UserInputArea
-                  ref={inputRef}
-                  onSend={handleSend}
-                  onStop={handleStop}
-                  isRunning={isActive}
-                  queuedMsg={queuedMsg}
-                  attachments={attachments}
-                  onAddFiles={addFiles}
-                  onRemoveAttachment={removeAttachment}
-                  isOverLimit={isOverLimit}
-                  totalAttachmentSize={totalSize}
-                />
+              {/* Input */}
+              <div className="flex-shrink-0 px-5 pb-5 pt-1">
+                <div className="max-w-[780px] mx-auto">
+                  <UserInputArea
+                    ref={inputRef}
+                    onSend={handleSend}
+                    onStop={handleStop}
+                    isRunning={isActive}
+                    inputState={inputState}
+                    queuedMsg={queuedMsg}
+                    attachments={attachments}
+                    onAddFiles={addFiles}
+                    onRemoveAttachment={removeAttachment}
+                    isOverLimit={isOverLimit}
+                    totalAttachmentSize={totalSize}
+                  />
+                </div>
               </div>
-            </div>
         </>
       )}
     </div>

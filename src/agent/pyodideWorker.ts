@@ -31,9 +31,9 @@ async function loadPyodide(): Promise<PyodideInterface> {
 
   loading = (async () => {
     // importScripts is synchronous but pyodide itself needs async init
-    importScripts(PYODIDE_CDN)
-    // @ts-expect-error — injected by importScripts
-    const instance = await (self as unknown as { loadPyodide: (opts: object) => Promise<PyodideInterface> }).loadPyodide({
+      importScripts(PYODIDE_CDN)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const instance = await (self as any).loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/',
       stdout: () => {}, // we capture via io redirect below
       stderr: () => {},

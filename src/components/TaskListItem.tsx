@@ -342,6 +342,7 @@ function MicroBtn({
 // ── Status dot ────────────────────────────────────────────────────────────────
 
 function StatusDot({ status }: { status: Task['status'] }) {
+  if (status === 'pending') return null
   if (status === 'in_progress') {
     return (
       <span
@@ -405,19 +406,7 @@ function StatusDot({ status }: { status: Task['status'] }) {
       />
     )
   }
-  // idle / pending — nearly invisible dot
-  return (
-    <span
-      style={{
-        flexShrink: 0,
-        width: 4,
-        height: 4,
-        borderRadius: '50%',
-        background: 'rgba(255,255,255,0.08)',
-        display: 'inline-block',
-      }}
-    />
-  )
+  return null
 }
 
 // ── Task type → icon name ─────────────────────────────────────────────────────

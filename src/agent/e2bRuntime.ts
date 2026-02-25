@@ -21,6 +21,8 @@ export interface SandboxExecResult {
   charts?: string[]
 }
 
+export type SandboxStatusCallback = (status: 'starting' | 'ready' | 'error', message?: string) => void
+
 // One sandbox per session — created lazily, reused across calls
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeSandbox: any | null = null
@@ -32,34 +34,64 @@ async function loadSdk(): Promise<{ Sandbox: any }> {
   return import('@e2b/code-interpreter') as Promise<{ Sandbox: any }>
 }
 
-/** Get or create the sandbox, re-creating if the key changed. */
-async function getSandbox(apiKey: string): Promise<NonNullable<typeof activeSandbox>> {
+/**
+ * Get or create the sandbox, re-creating if the key changed or sandbox is dead.
+ * Calls onStatus('starting') before creation, onStatus('ready') after.
+ */
+async function getSandbox(
+  apiKey: string,
+  onStatus?: SandboxStatusCallback,
+): Promise<NonNullable<typeof activeSandbox>> {
   const { Sandbox } = await loadSdk()
 
+  // Reuse existing sandbox if key matches and it's still alive
   if (activeSandbox && sandboxApiKey === apiKey) {
-    // Ping to verify it's still alive
-    const alive = await activeSandbox.isRunning().catch(() => false)
-    if (alive) return activeSandbox
-    // Dead — reset and recreate
+    try {
+      const alive = await activeSandbox.isRunning({ requestTimeoutMs: 5_000 })
+      if (alive) return activeSandbox
+    } catch {
+      // Treat any error as dead — fall through to re-create
+    }
     activeSandbox = null
     sandboxApiKey = null
   }
 
-  // Create fresh sandbox
-  const sbx = await Sandbox.create({ apiKey, timeoutMs: 1_800_000 /* 30 min */ })
-  activeSandbox = sbx
-  sandboxApiKey = apiKey
-  return sbx
+  // Key changed — kill the old sandbox if there is one
+  if (activeSandbox && sandboxApiKey !== apiKey) {
+    try { await activeSandbox.kill() } catch { /* best-effort */ }
+    activeSandbox = null
+    sandboxApiKey = null
+  }
+
+  onStatus?.('starting', 'Starting E2B sandbox…')
+
+  try {
+    // Sandbox.create(opts) — apiKey and timeoutMs are both in SandboxOpts
+    const sbx = await Sandbox.create({ apiKey, timeoutMs: 1_800_000 /* 30 min */ })
+    activeSandbox = sbx
+    sandboxApiKey = apiKey
+    onStatus?.('ready', 'Sandbox ready')
+    return sbx
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    onStatus?.('error', `Sandbox start failed: ${msg}`)
+    throw err
+  }
 }
 
 /** Run Python code in the E2B cloud sandbox. */
-export async function e2bRunPython(code: string, apiKey: string): Promise<SandboxExecResult> {
-  const sbx = await getSandbox(apiKey)
+export async function e2bRunPython(
+  code: string,
+  apiKey: string,
+  onStatus?: SandboxStatusCallback,
+): Promise<SandboxExecResult> {
+  const sbx = await getSandbox(apiKey, onStatus)
 
-  const execution = await sbx.runCode(code, { language: 'python' })
+  // runCode(code, opts?) — language defaults to 'python', no need to pass it
+  const execution = await sbx.runCode(code)
 
-  const stdout = execution.logs.stdout.join('\n')
-  const stderr = execution.logs.stderr.join('\n')
+  const stdout = (execution.logs?.stdout ?? []).join('\n')
+  const stderr = (execution.logs?.stderr ?? []).join('\n')
 
   let errorMsg: string | undefined
   if (execution.error) {
@@ -69,7 +101,7 @@ export async function e2bRunPython(code: string, apiKey: string): Promise<Sandbo
 
   // Collect any PNG charts from results (matplotlib savefig / show)
   const charts: string[] = []
-  for (const result of execution.results) {
+  for (const result of (execution.results ?? [])) {
     if (result.png) charts.push(result.png)
   }
 
@@ -77,8 +109,12 @@ export async function e2bRunPython(code: string, apiKey: string): Promise<Sandbo
 }
 
 /** Run a shell command in the E2B cloud sandbox. */
-export async function e2bRunBash(command: string, apiKey: string): Promise<SandboxExecResult> {
-  const sbx = await getSandbox(apiKey)
+export async function e2bRunBash(
+  command: string,
+  apiKey: string,
+  onStatus?: SandboxStatusCallback,
+): Promise<SandboxExecResult> {
+  const sbx = await getSandbox(apiKey, onStatus)
 
   const result = await sbx.commands.run(command, { timeoutMs: 120_000 })
 
@@ -96,4 +132,9 @@ export async function disposeE2bSandbox(): Promise<void> {
     activeSandbox = null
     sandboxApiKey = null
   }
+}
+
+/** Returns true if an active sandbox is currently alive. */
+export function hasActiveSandbox(): boolean {
+  return activeSandbox !== null && sandboxApiKey !== null
 }

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Task, Message, AgentStep, LlmMessage } from './types'
 import { clearWorkspace, copyWorkspace } from './agent/tools'
+import type { OpenRouterModel } from './agent/llm'
 
 interface AppState {
   tasks: Task[]
@@ -15,23 +16,33 @@ interface AppState {
     recentWorkspacePaths: string[]
     apiBase: string
     provider: string
-    dynamicModels: string[]
-      braveSearchKey: string
-      googleCseKey: string
-      googleCseId: string
-      // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
-      searchProvider: string
+      /** Full rich model list fetched from OpenRouter /models */
+      openRouterModels: OpenRouterModel[]
+      /** Flat sorted ID list — kept for backwards compat */
+      dynamicModels: string[]
+      /** Unix ms timestamp of last successful models fetch — used to decide when to refresh */
+      modelsLastFetched: number
+        braveSearchKey: string
+        googleCseKey: string
+        googleCseId: string
+        serperKey: string
+        tavilyKey: string
+        searxngUrl: string
+        // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg' | 'serper' | 'tavily'
+        searchProvider: string
       maxIterations: number
       /** Set to true after the user completes onboarding */
       onboardingComplete: boolean
-      // Code execution (BYOK sandboxes)
-      e2bApiKey: string
-      daytonaApiKey: string
-      daytonaApiUrl: string
-      /** 'auto' | 'e2b' | 'daytona' | 'pyodide' | 'disabled' */
-      executionMode: string
+        // Code execution (BYOK sandboxes)
+        e2bApiKey: string
+        /** 'e2b' | 'pyodide' | 'disabled' */
+        executionMode: string
+        /** Live sandbox status shown in UI */
+        sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
+        sandboxStatusMessage: string
 
   setActiveTaskId: (id: string | null) => void
+  setOpenRouterModels: (models: OpenRouterModel[]) => void
   setDynamicModels: (models: string[]) => void
   addTask: (task: Task) => void
   deleteTask: (id: string) => void
@@ -55,16 +66,18 @@ interface AppState {
   addRecentWorkspacePath: (path: string) => void
   setApiBase: (base: string) => void
   setProvider: (provider: string) => void
-  setBraveSearchKey: (key: string) => void
-  setGoogleCseKey: (key: string) => void
-  setGoogleCseId: (id: string) => void
+    setBraveSearchKey: (key: string) => void
+    setGoogleCseKey: (key: string) => void
+    setGoogleCseId: (id: string) => void
+    setSerperKey: (key: string) => void
+    setTavilyKey: (key: string) => void
+    setSearxngUrl: (url: string) => void
       setSearchProvider: (provider: string) => void
       setMaxIterations: (n: number) => void
       setOnboardingComplete: () => void
-      setE2bApiKey: (key: string) => void
-      setDaytonaApiKey: (key: string) => void
-      setDaytonaApiUrl: (url: string) => void
-      setExecutionMode: (mode: string) => void
+        setE2bApiKey: (key: string) => void
+        setExecutionMode: (mode: string) => void
+        setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -94,25 +107,31 @@ export const useAppStore = create<AppState>()(
       activeTaskId: 'initial',
       messages: { initial: [WELCOME_MESSAGE] },
       rawHistory: {},
-            apiKey: '',
-            model: 'anthropic/claude-3.7-sonnet',
-          workspacePath: '',
-          recentWorkspacePaths: [],
-          apiBase: 'https://openrouter.ai/api/v1',
-          provider: 'openrouter',
+          apiKey: '',
+          model: 'anthropic/claude-3.7-sonnet',
+        workspacePath: '',
+        recentWorkspacePaths: [],
+        apiBase: 'https://openrouter.ai/api/v1',
+        provider: 'openrouter',
+          openRouterModels: [],
           dynamicModels: [],
-          braveSearchKey: '',
-          googleCseKey: '',
-          googleCseId: '',
+          modelsLastFetched: 0,
+            braveSearchKey: '',
+            googleCseKey: '',
+            googleCseId: '',
+            serperKey: '',
+            tavilyKey: '',
+            searxngUrl: '',
               searchProvider: 'auto',
               maxIterations: 50,
               onboardingComplete: false,
-              e2bApiKey: '',
-              daytonaApiKey: '',
-              daytonaApiUrl: '',
-              executionMode: 'auto',
+                e2bApiKey: '',
+                executionMode: 'e2b',
+                sandboxStatus: 'idle',
+                sandboxStatusMessage: '',
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
+          setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
         setDynamicModels: (models) => set({ dynamicModels: models }),
 
         addTask: (task) =>
@@ -350,16 +369,18 @@ export const useAppStore = create<AppState>()(
               }),
             setApiBase: (base) => set({ apiBase: base }),
             setProvider: (provider) => set({ provider }),
-            setBraveSearchKey: (key) => set({ braveSearchKey: key }),
-            setGoogleCseKey: (key) => set({ googleCseKey: key }),
-            setGoogleCseId: (id) => set({ googleCseId: id }),
+              setBraveSearchKey: (key) => set({ braveSearchKey: key }),
+              setGoogleCseKey: (key) => set({ googleCseKey: key }),
+              setGoogleCseId: (id) => set({ googleCseId: id }),
+              setSerperKey: (key) => set({ serperKey: key }),
+              setTavilyKey: (key) => set({ tavilyKey: key }),
+              setSearxngUrl: (url) => set({ searxngUrl: url }),
               setSearchProvider: (provider) => set({ searchProvider: provider }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
               setE2bApiKey: (key) => set({ e2bApiKey: key }),
-              setDaytonaApiKey: (key) => set({ daytonaApiKey: key }),
-              setDaytonaApiUrl: (url) => set({ daytonaApiUrl: url }),
               setExecutionMode: (mode) => set({ executionMode: mode }),
+              setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
     }),
     {
       name: 'nasus-store-v2',
@@ -371,11 +392,8 @@ export const useAppStore = create<AppState>()(
             if (!m.steps || m.steps.length === 0) return m
             return {
               ...m,
-              steps: m.steps.map((s) => {
-                if (s.kind === 'tool_call' && s.result && typeof s.result.output === 'string' && s.result.output.length > MAX_TOOL_RESULT_CHARS) {
-                  return { ...s, result: { ...s.result, output: s.result.output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n[…truncated for storage]' } }
-                }
-                if (s.kind === 'tool_result' && typeof s.output === 'string' && s.output.length > MAX_TOOL_RESULT_CHARS) {
+                steps: m.steps.map((s) => {
+                  if (s.kind === 'tool_result' && typeof s.output === 'string' && s.output.length > MAX_TOOL_RESULT_CHARS) {
                   return { ...s, output: s.output.slice(0, MAX_TOOL_RESULT_CHARS) + '\n[…truncated for storage]' }
                 }
                 return s
@@ -398,17 +416,23 @@ export const useAppStore = create<AppState>()(
             apiBase: state.apiBase,
           provider: state.provider,
           activeTaskId: state.activeTaskId,
-            braveSearchKey: state.braveSearchKey,
-            googleCseKey: state.googleCseKey,
-            googleCseId: state.googleCseId,
+              braveSearchKey: state.braveSearchKey,
+              googleCseKey: state.googleCseKey,
+              googleCseId: state.googleCseId,
+              serperKey: state.serperKey,
+              tavilyKey: state.tavilyKey,
+              searxngUrl: state.searxngUrl,
               searchProvider: state.searchProvider,
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
-                e2bApiKey: state.e2bApiKey,
-                daytonaApiKey: state.daytonaApiKey,
-                daytonaApiUrl: state.daytonaApiUrl,
-                executionMode: state.executionMode,
-            }
+                  e2bApiKey: state.e2bApiKey,
+                  executionMode: state.executionMode,
+              // openRouterModels is persisted so the dropdown is populated immediately on reload.
+              // It will be refreshed in the background on startup if the key is present.
+              openRouterModels: state.openRouterModels,
+              dynamicModels: state.dynamicModels,
+              modelsLastFetched: state.modelsLastFetched,
+              }
       },
         // On rehydration, clear any streaming:true flags left by a previous crashed session
         onRehydrateStorage: () => (state) => {

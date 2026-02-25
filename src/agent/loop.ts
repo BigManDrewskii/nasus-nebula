@@ -6,8 +6,8 @@
  * Tauri events.
  */
 
-import { streamCompletion, chatOnce, type LlmMessage, type ToolDefinition } from './llm'
-import { executeTool, type SearchConfig, type SearchStatusCallback } from './tools'
+import { streamCompletion, chatOnce, cheapestModel, type LlmMessage, type ToolDefinition } from './llm'
+import { executeTool, startTurnTracking, flushTurnFiles, type SearchConfig, type SearchStatusCallback } from './tools'
 import type { ExecutionConfig } from './sandboxRuntime'
 import { useAppStore } from '../store'
 import type { AgentStep } from '../types'
@@ -279,7 +279,7 @@ IMPORTANT: You are running in browser mode. The sandbox environment has limitati
   - bash: only simple file operations (cat, echo, mkdir) work; complex commands are NOT available — use bash_execute if you have a cloud sandbox configured
   - read_file / write_file / patch_file: use these directly for all file operations — they work reliably
   - http_fetch: fetches URLs and returns readable text (HTML pages are extracted to clean text automatically); external requests may be blocked by CORS
-  - search_web: multi-backend search (Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
+    - search_web: multi-backend search (Serper → Tavily → Brave → Google CSE → SearXNG → DuckDuckGo fallback chain); Wikipedia always included for factual queries
   - python_execute: run Python. If E2B or Daytona is configured, this runs in a full cloud Linux sandbox with all packages. Otherwise falls back to Pyodide (WebAssembly) in the browser (install packages with: import micropip; await micropip.install("pkg"))
   - bash_execute: run shell commands in a cloud sandbox (E2B/Daytona). Requires API key in Settings → Code Execution. Use for pip install, apt-get, running scripts, etc.
   - browser_navigate / browser_click / browser_type / browser_extract / browser_screenshot / browser_scroll: control the user's real Chrome browser via the Nasus Browser Bridge extension. These use the user's actual session (real cookies, logins, saved data). Only available if the extension is installed and enabled in Settings → Browser Access. If a browser tool returns an extension error, inform the user and stop using browser tools.
@@ -486,20 +486,17 @@ async function autoTitle(
   apiBase: string,
   apiKey: string,
   provider: string,
-  model: string,
+  _model: string,
   userMessage: string,
   taskId: string,
 ) {
-  // Always use the cheapest available model for auto-title to avoid burning expensive tokens.
-  // Priority: known cheap model for the provider → fall back to current model.
-  const CHEAP_MODELS: Record<string, string> = {
-    openrouter: 'anthropic/claude-3-haiku',
-    anthropic: 'claude-3-haiku-20240307',
-    openai: 'gpt-4o-mini',
-    google: 'gemini-2.0-flash-001',
-    ollama: model, // local — no cost concern
-  }
-  const titleModel = CHEAP_MODELS[provider] ?? model
+  // Use the cheapest model from the fetched OR list, or fall back to haiku.
+  // This avoids burning expensive tokens on a 6-word title.
+  const { openRouterModels } = useAppStore.getState()
+  const titleModel = openRouterModels.length > 0
+    ? cheapestModel(openRouterModels)
+    : 'anthropic/claude-3-haiku'
+
   const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
   const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 20)
   if (title) {
@@ -525,25 +522,38 @@ export interface RunAgentParams {
 }
 
 const MAX_ITERATIONS = 50
-const WARN_ITERATIONS = 40
 
 // Context windows (tokens) per model family — used to set compression threshold.
 // Compression removes old tool call pairs once the message count suggests we
 // might be approaching the limit.  We use a conservative message-count heuristic
 // rather than counting tokens precisely (no tokenizer in browser).
+// All model IDs here are OpenRouter format (provider/name).
 const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
-  [/claude-3[.-]5|claude-3[.-]7|claude-sonnet-4/, 200_000],
-  [/claude-3-haiku/,                                200_000],
-  [/gpt-4\.1/,                                      1_000_000],
-  [/gpt-4o/,                                        128_000],
-  [/o1|o3/,                                         200_000],
-  [/gemini-2\.5/,                                   1_000_000],
-  [/gemini-2\.0/,                                   1_000_000],
-  [/gemini-1\.5/,                                   1_000_000],
-  [/deepseek-r1/,                                   128_000],
-  [/deepseek/,                                      64_000],
-  [/llama-3\.3/,                                    128_000],
-  [/mistral-large/,                                 128_000],
+  // Anthropic
+  [/claude-3[.-]5|claude-3[.-]7|claude-sonnet-4|claude-opus-4/, 200_000],
+  [/claude-3-haiku/,                                              200_000],
+  // OpenAI
+  [/gpt-4\.1/,                                                   1_000_000],
+  [/gpt-4o/,                                                       128_000],
+  [/o1|o3|o4/,                                                     200_000],
+  // Google
+  [/gemini-2\.5/,                                                1_048_576],
+  [/gemini-2\.0/,                                                1_048_576],
+  [/gemini-1\.5/,                                                1_048_576],
+  // DeepSeek
+  [/deepseek-r1/,                                                  128_000],
+  [/deepseek-v3|deepseek-chat/,                                    128_000],
+  [/deepseek/,                                                      64_000],
+  // Meta Llama
+  [/llama-3\.[23]-\d+b/,                                          128_000],
+  [/llama-3\.3/,                                                   128_000],
+  // Mistral
+  [/mistral-large|mistral-medium/,                                 128_000],
+  [/mixtral/,                                                       32_000],
+  // Qwen
+  [/qwen-2\.5|qwq/,                                               131_072],
+  // Cohere
+  [/command-r/,                                                    128_000],
 ]
 
 /** Return approximate message-count compression threshold for a model. */
@@ -617,7 +627,7 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
 
   // ── Preflight: validate API key ─────────────────────────────────────────────
   if (!apiKey) {
-    emit.error('No API key configured. Open Settings (⌘,) and enter your OpenRouter or LiteLLM API key.')
+    emit.error('No API key configured. Open Settings (⌘,) and enter your OpenRouter API key (sk-or-…).')
     return
   }
 
@@ -719,14 +729,17 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
       return
     }
 
-    // ── Tool calls ────────────────────────────────────────────────────────────
-    messages.push({
-      role: 'assistant',
-      content: responseContent,
-      tool_calls: responseToolCalls,
-    })
+      // ── Tool calls ────────────────────────────────────────────────────────────
+        messages.push({
+          role: 'assistant',
+          content: responseContent || null,
+          tool_calls: responseToolCalls,
+        })
 
-    for (const tc of responseToolCalls) {
+      // Begin tracking files written during this batch of tool calls
+      startTurnTracking(taskId)
+
+      for (const tc of responseToolCalls) {
       if (signal.aborted) { emit.done(); return }
 
       const callId = tc.id
@@ -749,13 +762,20 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
           }
         }
 
-        const { output: rawOutput, isError } = await executeTool(
-          taskId, fnName, args, searchConfig,
-          fnName === 'search_web'
-            ? (evt) => emit.searchStatus(callId, evt)
-            : undefined,
-          executionConfig,
-        )
+          const { output: rawOutput, isError } = await executeTool(
+            taskId, fnName, args, searchConfig,
+            fnName === 'search_web'
+              ? (evt) => emit.searchStatus(callId, evt)
+              : undefined,
+            executionConfig
+              ? {
+                  ...executionConfig,
+                  onSandboxStatus: (status, message) => {
+                    useAppStore.getState().setSandboxStatus(status, message)
+                  },
+                }
+              : undefined,
+          )
 
         let output: string
         // For successful screenshot results, store a sentinel so we can inject
@@ -809,22 +829,33 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
         }
     }
 
-    // Sync rawHistory so multi-turn follow-ups work
-    const batchRaw: LlmMessage[] = []
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.role === 'tool') {
-        batchRaw.unshift(m)
-      } else if (m.role === 'assistant' && m.tool_calls?.length) {
-        batchRaw.unshift(m)
-        break
-      } else {
-        break
+      // Sync rawHistory so multi-turn follow-ups work
+      const batchRaw: LlmMessage[] = []
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]
+        if (m.role === 'tool') {
+          batchRaw.unshift(m)
+        } else if (m.role === 'assistant' && m.tool_calls?.length) {
+          batchRaw.unshift(m)
+          break
+        } else {
+          break
+        }
       }
-    }
-    if (batchRaw.length > 0) {
-      useAppStore.getState().appendRawHistory(taskId, batchRaw)
-    }
+      if (batchRaw.length > 0) {
+        useAppStore.getState().appendRawHistory(taskId, batchRaw)
+      }
+
+      // Emit output_cards step if any deliverable files were written this turn
+      const turnFiles = flushTurnFiles(taskId)
+      const deliverableFiles = turnFiles.filter((f) => {
+        const name = f.filename
+        return name !== 'task_plan.md' && name !== 'findings.md' && name !== 'progress.md'
+      })
+      if (deliverableFiles.length > 0) {
+        const step: AgentStep = { kind: 'output_cards', files: deliverableFiles }
+        useAppStore.getState().addStep(taskId, messageId, step)
+      }
   }
 
   // Max iterations hit

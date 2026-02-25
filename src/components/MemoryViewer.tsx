@@ -274,7 +274,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               <span style={{ fontSize: 12, fontStyle: 'italic' }}>No content yet — the agent will populate this file as it works.</span>
             </div>
           ) : (
-            <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-words', color: 'var(--tx-secondary)', margin: 0 }}>
+              <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.65, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--tx-secondary)', margin: 0 }}>
               {currentContent}
             </pre>
           )}

@@ -19,10 +19,13 @@ import {
  * - bash / read_file / write_file / list_files → in-memory workspace shim
  *
  * Search backend priority (Auto mode):
- *   1. Brave Search API   — best real-web index, 2 000 req/mo free
- *   2. Google CSE         — 100 req/day free, CORS-safe
- *   3. SearXNG            — free public instances, CORS-safe, may be unreliable
- *   4. DuckDuckGo Instant — always-on fallback (Instant Answers only)
+ *   1. Serper           — Google results via API, 2,500 free queries
+ *   2. Tavily           — AI-optimized, 1,000 free credits/month
+ *   3. Brave Search API — best real-web index, 2,000 req/mo free
+ *   4. Google CSE       — 100 req/day free, CORS-safe
+ *   5. SearXNG          — free public instances or self-hosted
+ *   6. DuckDuckGo Instant — via CORS proxy fallback (limited to instant answers)
+ *   7. Wikipedia        — parallel supplement for all factual queries
  *
  * Wikipedia is used as a parallel supplement for factual queries regardless of
  * which main backend is active.
@@ -95,6 +98,34 @@ export function clearWorkspace(taskId: string) {
   try { localStorage.removeItem(`${WS_STORAGE_PREFIX}${taskId}`) } catch { /* ignore */ }
 }
 
+// ── Per-turn file tracker ─────────────────────────────────────────────────────
+// Tracks files written during a single agent turn so the loop can emit output cards.
+
+const turnFileTrackers: Map<string, { path: string; filename: string; content: string; size: number }[]> = new Map()
+
+/** Call at the start of each agent turn to begin tracking write_file calls. */
+export function startTurnTracking(taskId: string) {
+  turnFileTrackers.set(taskId, [])
+}
+
+/** Call at the end of a turn to get all files written and clear the tracker. */
+export function flushTurnFiles(taskId: string) {
+  const files = turnFileTrackers.get(taskId) ?? []
+  turnFileTrackers.delete(taskId)
+  return files
+}
+
+function trackTurnFile(taskId: string, path: string, content: string) {
+  const tracker = turnFileTrackers.get(taskId)
+  if (!tracker) return
+  const filename = path.split('/').pop() ?? path
+  // Deduplicate — keep latest version of same path
+  const idx = tracker.findIndex((f) => f.path === path)
+  const entry = { path, filename, content, size: new TextEncoder().encode(content).length }
+  if (idx !== -1) tracker[idx] = entry
+  else tracker.push(entry)
+}
+
 /** Copy all workspace files from one task to another. */
 export function copyWorkspace(sourceTaskId: string, destTaskId: string) {
   const source = getWorkspace(sourceTaskId)
@@ -112,10 +143,13 @@ function normPath(p: string): string {
 // ── Search config passed in from the store ────────────────────────────────────
 
 export interface SearchConfig {
-  provider: string        // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg'
+  provider: string        // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg' | 'serper' | 'tavily'
   braveKey?: string
   googleCseKey?: string
   googleCseId?: string
+  serperKey?: string
+  tavilyKey?: string
+  searxngUrl?: string     // Custom SearXNG instance URL (overrides rotating public list)
 }
 
 // Status emitted during a search so the UI can render real-time progress chips
@@ -191,10 +225,93 @@ async function searchGoogleCSE(query: string, num: number, apiKey: string, cseId
       .join('\n\n')
 }
 
-async function searchSearXNG(query: string, num: number): Promise<string> {
+async function searchSerper(query: string, num: number, apiKey: string): Promise<string> {
+  const res = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: {
+      'X-API-KEY': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ q: query, num }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Serper HTTP ${res.status}: ${body.slice(0, 120)}`)
+  }
+  const json = await res.json()
+  const parts: string[] = []
+
+  // Knowledge Graph — high-value direct answer
+  if (json.knowledgeGraph) {
+    const kg = json.knowledgeGraph
+    if (kg.title) {
+      parts.push(`[Knowledge] ${kg.title}`)
+      if (kg.description) parts.push(`    ${kg.description.slice(0, 200)}`)
+      if (kg.website) parts.push(`    URL: ${kg.website}`)
+      parts.push('')
+    }
+  }
+
+  // Organic results
+  const organic: Array<{ title?: string; link?: string; snippet?: string; date?: string }> = json.organic ?? []
+  if (organic.length === 0 && parts.length === 0) return `No results for "${query}".`
+  for (let i = 0; i < Math.min(organic.length, num); i++) {
+    const r = organic[i]
+    parts.push(`[${i + 1}] ${r.title ?? '(no title)'}`)
+    if (r.link)    parts.push(`    URL: ${r.link}`)
+    if (r.snippet) parts.push(`    ${r.snippet.slice(0, 180)}`)
+    if (r.date)    parts.push(`    Date: ${r.date}`)
+    parts.push('')
+  }
+
+  return parts.join('\n').trim()
+}
+
+async function searchTavily(query: string, num: number, apiKey: string): Promise<string> {
+  const res = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: apiKey,
+      query,
+      search_depth: 'basic',
+      max_results: num,
+      include_answer: true,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Tavily HTTP ${res.status}: ${body.slice(0, 120)}`)
+  }
+  const json = await res.json()
+  const parts: string[] = []
+
+  // Direct synthesized answer from Tavily
+  if (json.answer) {
+    parts.push(`[Direct Answer] ${json.answer}`)
+    parts.push('')
+  }
+
+  const results: Array<{ title?: string; url?: string; content?: string; published_date?: string }> = json.results ?? []
+  if (results.length === 0 && parts.length === 0) return `No results for "${query}".`
+  for (let i = 0; i < Math.min(results.length, num); i++) {
+    const r = results[i]
+    parts.push(`[${i + 1}] ${r.title ?? '(no title)'}`)
+    if (r.url)            parts.push(`    URL: ${r.url}`)
+    if (r.content)        parts.push(`    ${r.content.slice(0, 180)}`)
+    if (r.published_date) parts.push(`    Date: ${r.published_date}`)
+    parts.push('')
+  }
+
+  return parts.join('\n').trim()
+}
+
+async function searchSearXNG(query: string, num: number, customUrl?: string): Promise<string> {
   let lastErr: Error | null = null
-  // Shuffle instances to distribute load
-  const instances = [...SEARXNG_INSTANCES].sort(() => Math.random() - 0.5)
+  // If a custom instance URL is provided, use it exclusively
+  const instances = customUrl
+    ? [customUrl]
+    : [...SEARXNG_INSTANCES].sort(() => Math.random() - 0.5)
 
   for (const base of instances) {
     try {
@@ -226,19 +343,44 @@ async function searchSearXNG(query: string, num: number): Promise<string> {
 }
 
 async function searchDuckDuckGo(query: string, num: number): Promise<string> {
-  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
-  const res = await fetch(url, { headers: { Accept: 'application/json' } })
-  const json = await res.json()
+  // DuckDuckGo's API blocks CORS in the browser. Route through a public CORS proxy.
+  // We try two proxy hosts; fall back to a stub message if both fail.
+  const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(apiUrl)}`,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
+  ]
+
+  let json: Record<string, unknown> | null = null
+  for (const proxyUrl of proxies) {
+    try {
+      const res = await fetch(proxyUrl, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (res.ok) {
+        json = await res.json()
+        break
+      }
+    } catch { /* try next proxy */ }
+  }
+
+  if (!json) {
+    throw new Error('DuckDuckGo unavailable (CORS proxy failed)')
+  }
 
   const lines: string[] = []
 
-  if (json.AbstractText) {
-    lines.push(`[Abstract] ${json.AbstractText}`)
-    if (json.AbstractURL) lines.push(`  URL: ${json.AbstractURL}`)
+  const abstract = json.AbstractText as string | undefined
+  const abstractUrl = json.AbstractURL as string | undefined
+  if (abstract) {
+    lines.push(`[Abstract] ${abstract}`)
+    if (abstractUrl) lines.push(`  URL: ${abstractUrl}`)
     lines.push('')
   }
 
-  const topics: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }> = json.RelatedTopics ?? []
+  const topics: Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }> =
+    (json.RelatedTopics as Array<{ Text?: string; FirstURL?: string; Topics?: unknown[] }>) ?? []
   let count = 0
   for (const t of topics) {
     if (count >= num) break
@@ -257,7 +399,7 @@ async function searchDuckDuckGo(query: string, num: number): Promise<string> {
   }
 
   if (lines.length === 0) {
-    return `No instant results for "${query}". Try http_fetch with a specific URL, or refine your query.`
+    throw new Error(`No DuckDuckGo instant results for "${query}"`)
   }
   return lines.join('\n')
 }
@@ -287,7 +429,7 @@ async function runSearch(
   cfg: SearchConfig,
   onStatus?: SearchStatusCallback,
 ): Promise<string> {
-  const { provider, braveKey, googleCseKey, googleCseId } = cfg
+  const { provider, braveKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl } = cfg
   const results: string[] = []
 
   // Helper to try a backend with status events and timing
@@ -308,6 +450,26 @@ async function runSearch(
       onStatus?.({ phase: 'fallback', provider: name, query, message: `${name} failed, trying next…` })
     }
     return false
+  }
+
+  if (provider === 'serper') {
+    if (!serperKey) throw new Error('Serper API key not configured. Add it in Settings → Web Search.')
+    onStatus?.({ phase: 'searching', provider: 'Serper', query, message: 'Searching with Serper…' })
+    const t0 = Date.now()
+    const r = await searchSerper(query, num, serperKey)
+    const rc = (r.match(/^\[/gm) ?? []).length || 1
+    onStatus?.({ phase: 'complete', provider: 'Serper', query, message: 'Found results via Serper', resultCount: rc, durationMs: Date.now() - t0 })
+    return r
+  }
+
+  if (provider === 'tavily') {
+    if (!tavilyKey) throw new Error('Tavily API key not configured. Add it in Settings → Web Search.')
+    onStatus?.({ phase: 'searching', provider: 'Tavily', query, message: 'Searching with Tavily…' })
+    const t0 = Date.now()
+    const r = await searchTavily(query, num, tavilyKey)
+    const rc = (r.match(/^\[/gm) ?? []).length || 1
+    onStatus?.({ phase: 'complete', provider: 'Tavily', query, message: 'Found results via Tavily', resultCount: rc, durationMs: Date.now() - t0 })
+    return r
   }
 
   if (provider === 'brave') {
@@ -333,7 +495,7 @@ async function runSearch(
   if (provider === 'searxng') {
     onStatus?.({ phase: 'searching', provider: 'searxng', query, message: 'Searching with SearXNG…' })
     const t0 = Date.now()
-    const r = await searchSearXNG(query, num)
+    const r = await searchSearXNG(query, num, searxngUrl)
     const rc = (r.match(/^\[/gm) ?? []).length || 1
     onStatus?.({ phase: 'complete', provider: 'searxng', query, message: `Found results via SearXNG`, resultCount: rc, durationMs: Date.now() - t0 })
     return r
@@ -363,7 +525,15 @@ async function runSearch(
 
   let primaryOk = false
 
-  if (braveKey) {
+  if (serperKey) {
+    primaryOk = await tryBackend('Serper', () => searchSerper(query, num, serperKey))
+  }
+
+  if (!primaryOk && tavilyKey) {
+    primaryOk = await tryBackend('Tavily', () => searchTavily(query, num, tavilyKey))
+  }
+
+  if (!primaryOk && braveKey) {
     primaryOk = await tryBackend('Brave Search', () => searchBrave(query, num, braveKey))
   }
 
@@ -372,7 +542,7 @@ async function runSearch(
   }
 
   if (!primaryOk) {
-    primaryOk = await tryBackend('SearXNG', () => searchSearXNG(query, num))
+    primaryOk = await tryBackend('SearXNG', () => searchSearXNG(query, num, searxngUrl))
   }
 
   if (!primaryOk) {
@@ -438,18 +608,19 @@ export async function executeTool(
         return { output: echoMatch[1].replace(/['"]/g, ''), isError: false }
       }
 
-      if (cmd.match(/^which\s|^apt-get|^apt\s|^npm\s|^pip\s|^python\s|^node\s|^git\s|^curl\s|^wget\s/)) {
+        // Intercept any command containing curl, wget, python, python3, node, pip, npm, git, apt
+        if (/\bcurl\b|\bwget\b|\bpython3?\b|\bnode\b|\bnpm\b|\bpip3?\b|\bgit\b|\bapt\b|\bapt-get\b|\bwhich\b/.test(cmd)) {
+          return {
+            output: '[Browser sandbox: shell commands (curl, wget, python3, etc.) are not available. Use http_fetch or search_web for network access, and read_file/write_file for file operations. Use python_execute for Python code, bash_execute if a cloud sandbox is configured.]',
+            isError: false,
+          }
+        }
+
         return {
-          output: '[Browser sandbox: shell commands are not available. Use http_fetch or search_web instead, and read_file/write_file for file operations.]',
+          output:
+            '[Browser sandbox: arbitrary bash commands cannot run. Use http_fetch, search_web, read_file, write_file, list_files, python_execute, or bash_execute instead.]',
           isError: false,
         }
-      }
-
-      return {
-        output:
-          '[Browser sandbox: arbitrary bash commands cannot run. Use http_fetch, search_web, read_file, write_file, and list_files instead.]',
-        isError: false,
-      }
     }
 
     case 'read_file': {
@@ -461,8 +632,10 @@ export async function executeTool(
 
       case 'write_file': {
         const path = normPath(String(args.path ?? 'output.txt'))
-        ws.set(path, String(args.content ?? ''))
+        const content = String(args.content ?? '')
+        ws.set(path, content)
         bumpVersion(taskId)
+        trackTurnFile(taskId, path, content)
         return { output: `Written: ${args.path}`, isError: false }
       }
 
@@ -562,14 +735,14 @@ export async function executeTool(
       case 'python_execute': {
         const code = String(args.code ?? '')
         if (!code.trim()) return { output: 'Missing code', isError: true }
-        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'auto' }
+        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'disabled' }
         return await executePython(code, cfg)
       }
 
       case 'bash_execute': {
         const command = String(args.command ?? '')
         if (!command.trim()) return { output: 'Missing command', isError: true }
-        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'auto' }
+        const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'disabled' }
         return await executeBash(command, cfg)
       }
 

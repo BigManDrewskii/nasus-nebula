@@ -1,17 +1,20 @@
-import { useRef, useEffect, useImperativeHandle, forwardRef } from 'react'
+import { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { AttachmentPreviewBar } from './AttachmentPreviewBar'
 import type { Attachment } from '../types'
+
+// ── Input state machine ───────────────────────────────────────────────────────
+export type InputState = 'idle' | 'processing' | 'streaming' | 'awaiting_input'
 
 interface UserInputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
   disabled?: boolean
   isRunning?: boolean
+  inputState?: InputState
   queuedMsg?: string | null
   autoFocus?: boolean
-  // Attachment props
   attachments?: Attachment[]
   onAddFiles?: (files: File[]) => void
   onRemoveAttachment?: (id: string) => void
@@ -23,42 +26,362 @@ export interface UserInputAreaHandle {
   prefill: (text: string) => void
 }
 
+// ── Curated fallback model list (used when no OR models fetched yet) ──────────
+// Keep this in sync with FALLBACK_MODELS in SettingsPanel.tsx
 const STATIC_MODELS = [
-  { value: 'anthropic/claude-3.5-sonnet',        label: 'Claude 3.5 Sonnet' },
-  { value: 'anthropic/claude-3-haiku',            label: 'Claude 3 Haiku' },
-  { value: 'anthropic/claude-3.7-sonnet',         label: 'Claude 3.7 Sonnet' },
-  { value: 'openai/gpt-4o',                       label: 'GPT-4o' },
-  { value: 'openai/gpt-4o-mini',                  label: 'GPT-4o Mini' },
-  { value: 'google/gemini-2.0-flash-001',         label: 'Gemini 2.0 Flash' },
-  { value: 'google/gemini-2.5-pro-exp-03-25',     label: 'Gemini 2.5 Pro' },
-  { value: 'meta-llama/llama-3.3-70b-instruct',  label: 'Llama 3.3 70B' },
-  { value: 'deepseek/deepseek-r1',                label: 'DeepSeek R1' },
+  // Anthropic
+  { value: 'anthropic/claude-3.7-sonnet',          label: 'Claude 3.7 Sonnet',          group: 'Anthropic' },
+  { value: 'anthropic/claude-3.7-sonnet:thinking', label: 'Claude 3.7 Sonnet (Thinking)',group: 'Anthropic' },
+  { value: 'anthropic/claude-3.5-sonnet',          label: 'Claude 3.5 Sonnet',          group: 'Anthropic' },
+  { value: 'anthropic/claude-3.5-haiku',           label: 'Claude 3.5 Haiku',           group: 'Anthropic' },
+  { value: 'anthropic/claude-3-haiku',             label: 'Claude 3 Haiku',             group: 'Anthropic' },
+  // OpenAI
+  { value: 'openai/gpt-4.1',                       label: 'GPT-4.1',                    group: 'OpenAI' },
+  { value: 'openai/gpt-4.1-mini',                  label: 'GPT-4.1 Mini',               group: 'OpenAI' },
+  { value: 'openai/gpt-4.1-nano',                  label: 'GPT-4.1 Nano',               group: 'OpenAI' },
+  { value: 'openai/gpt-4o',                        label: 'GPT-4o',                     group: 'OpenAI' },
+  { value: 'openai/gpt-4o-mini',                   label: 'GPT-4o Mini',                group: 'OpenAI' },
+  { value: 'openai/o3',                            label: 'o3',                         group: 'OpenAI' },
+  { value: 'openai/o3-mini',                       label: 'o3-mini',                    group: 'OpenAI' },
+  { value: 'openai/o4-mini',                       label: 'o4-mini',                    group: 'OpenAI' },
+  // Google
+  { value: 'google/gemini-2.5-pro-preview',        label: 'Gemini 2.5 Pro',             group: 'Google' },
+  { value: 'google/gemini-2.0-flash-001',          label: 'Gemini 2.0 Flash',           group: 'Google' },
+  { value: 'google/gemini-2.0-flash-thinking-exp', label: 'Gemini 2.0 Flash Thinking',  group: 'Google' },
+  { value: 'google/gemini-flash-1.5',              label: 'Gemini 1.5 Flash',           group: 'Google' },
+  // Meta
+  { value: 'meta-llama/llama-3.3-70b-instruct',   label: 'Llama 3.3 70B',              group: 'Meta' },
+  { value: 'meta-llama/llama-3.1-405b-instruct',  label: 'Llama 3.1 405B',             group: 'Meta' },
+  // DeepSeek
+  { value: 'deepseek/deepseek-r1',                 label: 'DeepSeek R1',                group: 'DeepSeek' },
+  { value: 'deepseek/deepseek-r1-zero',            label: 'DeepSeek R1 Zero',           group: 'DeepSeek' },
+  { value: 'deepseek/deepseek-chat',               label: 'DeepSeek V3',                group: 'DeepSeek' },
+  // Mistral
+  { value: 'mistralai/mistral-large',              label: 'Mistral Large',              group: 'Mistral' },
+  { value: 'mistralai/codestral-2501',             label: 'Codestral 2501',             group: 'Mistral' },
+  // xAI
+  { value: 'x-ai/grok-3',                         label: 'Grok 3',                     group: 'xAI' },
+  { value: 'x-ai/grok-3-mini',                    label: 'Grok 3 Mini',                group: 'xAI' },
+  { value: 'x-ai/grok-2-1212',                    label: 'Grok 2',                     group: 'xAI' },
+  // Qwen
+  { value: 'qwen/qwen-2.5-72b-instruct',          label: 'Qwen 2.5 72B',               group: 'Qwen' },
+  { value: 'qwen/qwq-32b',                        label: 'QwQ 32B',                    group: 'Qwen' },
 ]
 
-function shortLabel(modelId: string): string {
-  const slash = modelId.indexOf('/')
-  return slash >= 0 ? modelId.slice(slash + 1) : modelId
+function shortLabel(id: string): string {
+  const slash = id.indexOf('/')
+  return slash >= 0 ? id.slice(slash + 1) : id
 }
 
+function familyLabel(id: string): string {
+  const prefix = id.split('/')[0] ?? id
+  return prefix.charAt(0).toUpperCase() + prefix.slice(1).replace(/-/g, ' ')
+}
+
+// ── Model dropdown ─────────────────────────────────────────────────────────────
+function ModelDropdown({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string
+  onChange: (v: string) => void
+  disabled: boolean
+}) {
+  const { openRouterModels, modelsLastFetched } = useAppStore()
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const isLive = openRouterModels.length > 0
+
+  // Build display list: rich OR models if available, else static fallback
+  const allModels: Array<{ value: string; label: string; group: string }> =
+    isLive
+      ? openRouterModels.map((m) => ({
+          value: m.id,
+          label: m.name,
+          group: familyLabel(m.id),
+        }))
+      : STATIC_MODELS
+
+  // Filter
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? allModels.filter(
+        (m) => m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q),
+      )
+    : allModels
+
+  // Group
+  const grouped = new Map<string, typeof allModels>()
+  for (const m of filtered) {
+    if (!grouped.has(m.group)) grouped.set(m.group, [])
+    grouped.get(m.group)!.push(m)
+  }
+
+  const selected = allModels.find((m) => m.value === value)
+  const displayLabel = selected?.label ?? shortLabel(value)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  // Focus search on open
+  useEffect(() => {
+    if (open) setTimeout(() => searchRef.current?.focus(), 30)
+  }, [open])
+
+  // Human-readable "last fetched" label
+  const freshLabel = (() => {
+    if (!isLive) return null
+    const ageMs = Date.now() - modelsLastFetched
+    if (ageMs < 60_000) return 'just now'
+    if (ageMs < 3_600_000) return `${Math.round(ageMs / 60_000)}m ago`
+    return `${Math.round(ageMs / 3_600_000)}h ago`
+  })()
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => { if (!disabled) setOpen((o) => !o) }}
+        disabled={disabled}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          background: 'transparent',
+          border: 'none',
+          padding: '2px 4px 2px 2px',
+          borderRadius: 6,
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          color: open ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          minWidth: 0,
+          maxWidth: 148,
+          transition: 'color 0.12s',
+        }}
+        onMouseEnter={(e) => { if (!disabled && !open) e.currentTarget.style.color = 'var(--amber-soft)' }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.color = 'var(--tx-secondary)' }}
+        title={value}
+      >
+        <Pxi name="sparkles" size={10} style={{ flexShrink: 0, color: 'inherit', opacity: 0.75 }} />
+        <span style={{
+          fontSize: 11,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          flex: 1,
+          textAlign: 'left',
+          fontWeight: 450,
+          letterSpacing: '-0.01em',
+        }}>
+          {displayLabel}
+        </span>
+        <Pxi
+          name="angle-down"
+          size={9}
+          style={{
+            flexShrink: 0,
+            color: 'var(--tx-tertiary)',
+            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+            transition: 'transform 0.15s',
+          }}
+        />
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            left: 0,
+            zIndex: 100,
+            width: 264,
+            borderRadius: 12,
+            background: '#161616',
+            border: '1px solid rgba(255,255,255,0.09)',
+            boxShadow: '0 20px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            maxHeight: 320,
+            overflow: 'hidden',
+            animation: 'dropUp 0.14s ease',
+          }}
+        >
+          {/* Search bar */}
+          <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 10px',
+              borderRadius: 8,
+              background: '#0d0d0d',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+              <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search models…"
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: 12,
+                  color: 'var(--tx-primary)',
+                  fontFamily: 'inherit',
+                }}
+                className="placeholder-[var(--tx-muted)]"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}
+                >
+                  <Pxi name="times" size={9} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Model list */}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {grouped.size === 0 ? (
+              <div style={{ padding: '16px 12px', textAlign: 'center', fontSize: 12, color: 'var(--tx-tertiary)' }}>
+                No models match "{search}"
+              </div>
+            ) : [...grouped.entries()].map(([group, models]) => (
+              <div key={group}>
+                {/* Group header */}
+                <div style={{
+                  padding: '5px 12px 3px',
+                  fontSize: 9.5,
+                  fontWeight: 600,
+                  letterSpacing: '0.09em',
+                  textTransform: 'uppercase',
+                  color: 'var(--tx-tertiary)',
+                  borderTop: '1px solid rgba(255,255,255,0.04)',
+                }}>
+                  {group}
+                </div>
+                {models.map((m) => {
+                  const isSel = m.value === value
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => {
+                        onChange(m.value)
+                        setOpen(false)
+                        setSearch('')
+                      }}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 12px',
+                        textAlign: 'left',
+                        border: 'none',
+                        cursor: 'pointer',
+                        gap: 8,
+                        fontSize: 12,
+                        fontFamily: 'inherit',
+                        color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                        background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                        transition: 'background 0.08s',
+                      }}
+                      onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                      onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        {m.label}
+                      </span>
+                      {isSel && (
+                        <Pxi name="check" size={9} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+
+          {/* Footer: source + freshness */}
+          <div style={{
+            padding: '5px 10px',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            gap: 6,
+          }}>
+            {isLive ? (
+              <>
+                <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>
+                  {openRouterModels.length} models · OpenRouter
+                </span>
+                <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>
+                  Updated {freshLabel}
+                </span>
+              </>
+            ) : (
+              <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>
+                Curated list · add API key to load all
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>(
   function UserInputArea({
-    onSend, onStop, disabled, isRunning, queuedMsg, autoFocus,
+    onSend, onStop, disabled, isRunning, inputState: inputStateProp, queuedMsg, autoFocus,
     attachments = [], onAddFiles, onRemoveAttachment, isOverLimit = false, totalAttachmentSize = 0,
   }, ref) {
-    const { model, setModel, dynamicModels } = useAppStore()
-
-    const models: Array<{ value: string; label: string }> = dynamicModels.length > 0
-      ? dynamicModels.map((id) => {
-          const staticEntry = STATIC_MODELS.find((m) => m.value === id)
-          return { value: id, label: staticEntry?.label ?? shortLabel(id) }
-        })
-      : STATIC_MODELS
+    const { model, setModel } = useAppStore()
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
-    const isDisabled = disabled === true
+    const inputState: InputState = inputStateProp ?? (isRunning ? 'streaming' : (disabled ? 'processing' : 'idle'))
+    const isWorking = inputState === 'processing' || inputState === 'streaming'
+    const isTextareaDisabled = disabled === true || inputState === 'processing'
     const hasAttachments = attachments.length > 0
+
+    const placeholder = {
+      idle:           'Message Nasus…',
+      processing:     'Nasus is thinking…',
+      streaming:      'Agent running — type to queue a follow-up…',
+      awaiting_input: 'Nasus is waiting for your answer…',
+    }[inputState]
+
+    const effectivePlaceholder = (isWorking && queuedMsg)
+      ? 'Message queued — will send when agent finishes'
+      : placeholder
 
     useImperativeHandle(ref, () => ({
       prefill: (text: string) => {
@@ -67,15 +390,13 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         textareaRef.current.style.height = 'auto'
         textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 220) + 'px'
         textareaRef.current.focus()
-        const len = text.length
-        textareaRef.current.setSelectionRange(len, len)
+        textareaRef.current.setSelectionRange(text.length, text.length)
       },
     }))
 
     function handleSend() {
       const trimmed = textareaRef.current?.value.trim() ?? ''
-      // Allow send with attachments even if no text
-      if ((!trimmed && !hasAttachments) || isDisabled || isOverLimit) return
+      if ((!trimmed && !hasAttachments) || isTextareaDisabled || isOverLimit) return
       onSend(trimmed)
       if (textareaRef.current) {
         textareaRef.current.value = ''
@@ -84,10 +405,8 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
     }
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        handleSend()
-      }
+      if (e.key === 'Escape' && isWorking && onStop) { e.preventDefault(); onStop(); return }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
     }
 
     function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -96,18 +415,15 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       ta.style.height = Math.min(ta.scrollHeight, 220) + 'px'
     }
 
-    // Clipboard paste — capture image/file pastes
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
       if (!onAddFiles) return
       const items = Array.from(e.clipboardData.items)
       const fileItems = items.filter((item) => item.kind === 'file')
-      if (fileItems.length === 0) return // let normal text paste through
-
+      if (fileItems.length === 0) return
       e.preventDefault()
       const files = fileItems.map((item) => {
         const file = item.getAsFile()
         if (!file) return null
-        // Give clipboard images a meaningful name
         if ((file.name === 'image.png' || file.name === '') && file.type.startsWith('image/')) {
           const ts = new Date().toISOString().slice(11, 19).replace(/:/g, '-')
           const ext = file.type.split('/')[1] || 'png'
@@ -115,14 +431,12 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         }
         return file
       }).filter((f): f is File => f !== null)
-
       if (files.length > 0) onAddFiles(files)
     }
 
     function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
       if (!onAddFiles || !e.target.files) return
       onAddFiles(Array.from(e.target.files))
-      // Reset so the same file can be re-selected
       e.target.value = ''
     }
 
@@ -130,23 +444,32 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       if (autoFocus) textareaRef.current?.focus()
     }, [autoFocus])
 
-    const placeholder = isRunning
-      ? queuedMsg
-        ? 'Message queued — will send when agent finishes'
-        : 'Agent running — type to queue a follow-up…'
-      : 'Message Nasus…'
+    const canSend = !isTextareaDisabled && !isOverLimit
 
-    const canSend = !isDisabled && !isOverLimit
+    // Border/glow driven by state
+    const borderColor = (() => {
+      if (inputState === 'awaiting_input') return 'var(--amber)'
+      if (inputState === 'streaming')      return 'rgba(234,179,8,0.22)'
+      if (inputState === 'processing')     return 'rgba(255,255,255,0.05)'
+      return 'rgba(255,255,255,0.09)'
+    })()
+
+    const containerStyle: React.CSSProperties = {
+      borderRadius: 16,
+      border: `1px solid ${borderColor}`,
+      background: inputState === 'processing' ? '#0f0f0f' : '#131313',
+      transition: 'border-color 0.2s, box-shadow 0.2s',
+      ...(inputState === 'awaiting_input' ? {
+        borderLeft: '3px solid var(--amber)',
+        boxShadow: '0 0 0 2px rgba(234,179,8,0.1)',
+        animation: 'inputPulse 2s ease-in-out infinite',
+      } : inputState === 'streaming' ? {
+        boxShadow: '0 0 0 1px rgba(234,179,8,0.08)',
+      } : {}),
+    }
 
     return (
-      <div
-        style={{
-          borderRadius: 16,
-          border: `1px solid ${isDisabled ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.09)'}`,
-          background: '#131313',
-          transition: 'border-color 0.15s',
-        }}
-      >
+      <div style={containerStyle} className={`user-input-area state-${inputState}`}>
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
@@ -159,32 +482,30 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         />
 
         {/* Queued message banner */}
-        {isRunning && queuedMsg && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px 0' }}>
-            <span
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-                color: 'var(--amber)',
-                background: 'rgba(234,179,8,0.08)',
-                border: '1px solid rgba(234,179,8,0.18)',
-                borderRadius: 6,
-                padding: '3px 8px',
-                maxWidth: '100%',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
+        {isWorking && queuedMsg && (
+          <div style={{ padding: '7px 14px 0' }}>
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 11,
+              color: 'var(--amber)',
+              background: 'rgba(234,179,8,0.07)',
+              border: '1px solid rgba(234,179,8,0.16)',
+              borderRadius: 6,
+              padding: '3px 8px',
+              maxWidth: '100%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
               <Pxi name="clock" size={9} />
               Queued: {queuedMsg.length > 60 ? queuedMsg.slice(0, 60) + '…' : queuedMsg}
             </span>
           </div>
         )}
 
-        {/* Attachment preview chips */}
+        {/* Attachment chips */}
         {hasAttachments && onRemoveAttachment && (
           <AttachmentPreviewBar
             attachments={attachments}
@@ -196,15 +517,15 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         )}
 
         {/* Textarea */}
-        <div style={{ padding: '14px 16px 4px' }}>
+        <div style={{ padding: '12px 14px 6px' }}>
           <textarea
             ref={textareaRef}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={placeholder}
+            placeholder={effectivePlaceholder}
             rows={1}
-            disabled={isDisabled}
+            disabled={isTextareaDisabled}
             style={{
               width: '100%',
               resize: 'none',
@@ -212,143 +533,164 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
               border: 'none',
               outline: 'none',
               fontSize: 13,
-              color: 'var(--tx-primary)',
+              color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
+              fontStyle: inputState === 'processing' ? 'italic' : 'normal',
               lineHeight: 1.65,
               minHeight: 26,
               maxHeight: 220,
               fontFamily: 'inherit',
-              cursor: isDisabled ? 'not-allowed' : 'text',
-              opacity: isRunning && queuedMsg ? 0.4 : 1,
+              cursor: isTextareaDisabled ? 'not-allowed' : 'text',
+              opacity: isWorking && queuedMsg ? 0.4 : 1,
+              transition: 'color 0.15s, opacity 0.15s',
             }}
             className="placeholder-[var(--tx-muted)] disabled:opacity-60"
           />
         </div>
 
         {/* Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 12px 12px', gap: 8 }}>
-
-          {/* Left: attach + model */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            {/* Attach button */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '2px 10px 10px',
+          gap: 8,
+        }}>
+          {/* Left: attach + model selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
+            {/* Attach */}
             {onAddFiles && (
               <button
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isDisabled}
+                disabled={isTextareaDisabled}
                 title="Attach files"
                 aria-label="Attach files"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
+                  width: 26,
+                  height: 26,
+                  borderRadius: 7,
                   border: 'none',
                   background: 'transparent',
                   color: 'var(--tx-tertiary)',
-                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  cursor: isTextareaDisabled ? 'not-allowed' : 'pointer',
                   flexShrink: 0,
                   padding: 0,
-                  transition: 'color 0.12s',
+                  transition: 'color 0.12s, background 0.12s',
                 }}
-                onMouseEnter={(e) => { if (!isDisabled) e.currentTarget.style.color = 'var(--amber-soft)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+                onMouseEnter={(e) => {
+                  if (!isTextareaDisabled) {
+                    e.currentTarget.style.color = 'var(--tx-secondary)'
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--tx-tertiary)'
+                  e.currentTarget.style.background = 'transparent'
+                }}
               >
                 <Pxi name="paperclip" size={12} />
               </button>
             )}
 
-            {/* Model selector */}
-            <Pxi name="sparkles" size={11} style={{ flexShrink: 0, color: 'var(--tx-secondary)' }} />
-            <select
+            {/* Divider */}
+            <div style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.07)', flexShrink: 0, margin: '0 2px' }} />
+
+            {/* Model dropdown */}
+            <ModelDropdown
               value={model}
-              onChange={(e) => setModel(e.target.value)}
-              style={{
-                fontSize: 11,
-                background: 'transparent',
-                border: 'none',
-                outline: 'none',
-                cursor: 'pointer',
-                appearance: 'none',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                maxWidth: 130,
-                color: 'var(--tx-secondary)',
-                fontFamily: 'inherit',
-                transition: 'color 0.12s',
-              }}
-              title="Select model"
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-            >
-              {models.map((m) => (
-                <option key={m.value} value={m.value} style={{ background: '#1a1a1a', color: '#ccc' }}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-            <Pxi name="angle-down" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+              onChange={setModel}
+              disabled={isWorking}
+            />
           </div>
 
-          {/* Right side: hint + send/stop */}
+          {/* Right: hint + send/stop */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {!isRunning && !isDisabled && (
+            {isWorking ? (
+              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', userSelect: 'none', whiteSpace: 'nowrap' }} className="hidden sm:block">
+                Esc to stop
+              </span>
+            ) : (
               <span style={{ fontSize: 10, userSelect: 'none', color: 'var(--tx-tertiary)' }} className="hidden sm:block">
                 ↵ send · ⇧↵ newline
               </span>
             )}
 
-            {isRunning && onStop ? (
+            {/* Stop */}
+            {isWorking && onStop ? (
               <button
                 onClick={onStop}
+                title="Stop generating (Esc)"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '6px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 10px',
                   borderRadius: 8,
                   fontSize: 11,
                   fontWeight: 500,
                   background: 'rgba(239,68,68,0.08)',
-                  border: '1px solid rgba(239,68,68,0.2)',
+                  border: '1.5px solid rgba(239,68,68,0.28)',
                   color: '#f87171',
                   cursor: 'pointer',
-                  transition: 'background 0.12s, border-color 0.12s',
+                  transition: 'background 0.12s, border-color 0.12s, transform 0.1s',
+                  animation: 'buttonAppear 0.15s ease',
+                  flexShrink: 0,
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(239,68,68,0.14)'
-                  e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'
+                  e.currentTarget.style.background = 'rgba(239,68,68,0.16)'
+                  e.currentTarget.style.borderColor = 'rgba(239,68,68,0.5)'
+                  e.currentTarget.style.transform = 'scale(1.04)'
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
-                  e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
+                  e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'
+                  e.currentTarget.style.transform = 'scale(1)'
                 }}
               >
-                <Pxi name="times-circle" size={11} />
+                <StopIcon />
                 Stop
               </button>
             ) : (
+              /* Send */
               <button
                 onClick={handleSend}
                 disabled={!canSend}
+                title="Send (Enter)"
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 28, height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 28,
+                  height: 28,
                   borderRadius: 8,
                   border: 'none',
                   cursor: !canSend ? 'not-allowed' : 'pointer',
-                  background: !canSend ? '#1a1a1a' : isRunning ? 'rgba(234,179,8,0.25)' : 'var(--amber)',
-                  opacity: !canSend ? 0.25 : 1,
-                  transition: 'background 0.12s',
+                  background: !canSend ? 'rgba(255,255,255,0.06)' : inputState === 'awaiting_input' ? 'var(--amber)' : 'var(--amber)',
+                  opacity: !canSend ? 0.3 : 1,
+                  transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
+                  animation: 'buttonAppear 0.15s ease',
+                  flexShrink: 0,
                 }}
-                onMouseEnter={(e) => { if (canSend && !isRunning) e.currentTarget.style.background = 'var(--amber-soft)' }}
-                onMouseLeave={(e) => { if (canSend && !isRunning) e.currentTarget.style.background = 'var(--amber)' }}
-                title={isRunning ? 'Queue message (sends when agent finishes)' : 'Send (Enter)'}
+                onMouseEnter={(e) => { if (canSend) { e.currentTarget.style.background = 'var(--amber-soft)'; e.currentTarget.style.transform = 'scale(1.06)' } }}
+                onMouseLeave={(e) => { if (canSend) { e.currentTarget.style.background = 'var(--amber)'; e.currentTarget.style.transform = 'scale(1)' } }}
               >
-                <Pxi name={isRunning ? 'clock' : 'arrow-up'} size={12} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
+                <Pxi name="arrow-up" size={12} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
               </button>
             )}
           </div>
         </div>
       </div>
     )
-  }
+  },
 )
+
+// ── Stop icon ──────────────────────────────────────────────────────────────────
+function StopIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+      <rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor" />
+    </svg>
+  )
+}

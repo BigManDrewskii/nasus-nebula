@@ -1,9 +1,11 @@
 import { useState, memo, useMemo } from 'react'
-import type { Message, MessageAttachment, AttachmentCategory } from '../types'
+import type { Message, MessageAttachment, AttachmentCategory, OutputCardFile } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
+import { ThinkingIndicator } from './ThinkingIndicator'
 import { formatBytes } from '../hooks/useAttachments'
+import { OutputCardRenderer } from './OutputCards'
 
 // ─── Copy button ──────────────────────────────────────────────────────────────
 
@@ -209,15 +211,15 @@ function renderMarkdown(text: string): React.ReactNode {
       const h1 = line.match(/^#\s+(.+)/)
       if (h1) {
         /* h1: white, 16px */
-        nodes.push(<h1 key={k()} style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginTop: 20, marginBottom: 8, lineHeight: 1.35 }}>{inlineMarkdown(h1[1], k())}</h1>)
+        nodes.push(<h1 key={k()} className="para-in" style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginTop: 20, marginBottom: 6, lineHeight: 1.35 }}>{inlineMarkdown(h1[1], k())}</h1>)
         i++; continue
       }
       if (h2) {
-        nodes.push(<h2 key={k()} style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 16, marginBottom: 6, lineHeight: 1.35 }}>{inlineMarkdown(h2[1], k())}</h2>)
+        nodes.push(<h2 key={k()} className="para-in" style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 16, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h2[1], k())}</h2>)
         i++; continue
       }
       if (h3) {
-        nodes.push(<h3 key={k()} style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx-primary)', marginTop: 12, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h3[1], k())}</h3>)
+        nodes.push(<h3 key={k()} className="para-in" style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx-primary)', marginTop: 12, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h3[1], k())}</h3>)
         i++; continue
       }
 
@@ -237,8 +239,8 @@ function renderMarkdown(text: string): React.ReactNode {
       if (/^[-*+]\s/.test(line)) {
         const items: string[] = []
         while (i < lines.length && /^[-*+]\s/.test(lines[i])) { items.push(lines[i].replace(/^[-*+]\s/, '')); i++ }
-        nodes.push(
-          <ul key={k()} style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
+          nodes.push(
+            <ul key={k()} className="para-in" style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
             {items.map((item, ii) => (
               <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
                 {/* Bullet: amber — visible without being noisy */}
@@ -253,12 +255,12 @@ function renderMarkdown(text: string): React.ReactNode {
       if (/^\d+\.\s/.test(line)) {
         const items: string[] = []
         while (i < lines.length && /^\d+\.\s/.test(lines[i])) { items.push(lines[i].replace(/^\d+\.\s+/, '')); i++ }
-        nodes.push(
-          <ol key={k()} style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
+          nodes.push(
+            <ol key={k()} className="para-in" style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
             {items.map((item, ii) => (
               <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
                 {/* Number: tertiary (#757575 ≈ 4.6:1) — clearly readable */}
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, minWidth: 16, textAlign: 'right', tabularNums: 'tabular-nums' } as React.CSSProperties}>{ii + 1}.</span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, minWidth: 16, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{ii + 1}.</span>
                 <span>{inlineMarkdown(item, `ol-${ii}`)}</span>
               </li>
             ))}
@@ -266,26 +268,31 @@ function renderMarkdown(text: string): React.ReactNode {
         ); continue
       }
 
-      const paraLines: string[] = []
-      while (
-        i < lines.length &&
-        lines[i].trim() &&
-        !/^(#{1,3}\s|> |[-*+]\s|\d+\. |```|[-*_]{3,})/.test(lines[i])
-      ) { paraLines.push(lines[i]); i++ }
+          // Agents often stream a wall of text with no newlines. Split into
+          // separate paragraphs only at sentence boundaries that are clearly
+          // between full sentences (two or more spaces after a period/colon,
+          // OR a period/colon followed by a capital letter with ≥2 prior words).
+          // We deliberately avoid splitting on e.g., i.e., Dr., Mr., etc.
+          if (lines[i].trim() && !/^(#{1,3}\s|> |[-*+]\s|\d+\. |```|[-*_]{3,})/.test(lines[i])) {
+            const rawLine = lines[i]
+            // Only split when punctuation is followed by 2+ spaces (explicit break)
+            // or by end-of-string. Single-space splits cause too many false positives.
+            const segments = rawLine
+              .split(/(?<=[.!?])\s{2,}/)
+              .map((s) => s.trim())
+              .filter(Boolean)
 
-      if (paraLines.length > 0) {
-        nodes.push(
-          /* Body paragraphs: #ababab on #0d0d0d ≈ 7.9:1 */
-          <p key={k()} style={{ fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)', margin: '4px 0' }}>
-            {paraLines.map((pl, pi) => (
-              <span key={pi}>
-                {inlineMarkdown(pl, `p-${pi}`)}
-                {pi < paraLines.length - 1 && <br />}
-              </span>
-            ))}
-          </p>,
-        )
-      }
+            for (const seg of segments) {
+              nodes.push(
+                <p key={k()} className="para-in" style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--tx-secondary)', margin: '0 0 8px 0' }}>
+                  {inlineMarkdown(seg, k())}
+                </p>,
+              )
+            }
+            i++
+          } else {
+            i++
+          }
     }
   }
 
@@ -365,7 +372,7 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
               <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {att.name}
               </p>
-              <p style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{formatBytes(att.size)}</p>
+                <p style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>{formatBytes(att.size)}</p>
             </div>
           </div>
         )
@@ -456,12 +463,28 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   const hasContent = message.content.trim().length > 0
   const isStreaming = message.streaming
   const hasError   = !!message.error
+  // "Dead air" gap: agent message exists but nothing has arrived yet
   const isWaiting  = !hasContent && !hasSteps && isStreaming && !hasError
 
   const renderedContent = useMemo(
     () => hasContent ? renderMarkdown(message.content) : null,
     [message.content, hasContent],
   )
+
+  // Collect output_cards files from steps — these are emitted once the turn is done
+  const outputCardFiles = useMemo<OutputCardFile[]>(() => {
+    if (!message.steps) return []
+    for (let i = message.steps.length - 1; i >= 0; i--) {
+      const s = message.steps[i]
+      if (s.kind === 'output_cards') return s.files
+    }
+    return []
+  }, [message.steps])
+
+  // Show the ThinkingIndicator as a standalone row during the dead-air gap
+  if (isWaiting) {
+    return <ThinkingIndicator visible={true} />
+  }
 
   return (
     <div
@@ -473,41 +496,52 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
         <NasusAvatar />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        {isWaiting && <TypingDots />}
         {hasSteps && <AgentStepsView steps={message.steps!} />}
         {hasContent && (
-            <div style={hasSteps ? { marginTop: 12 } : {}}>
-              {renderedContent}
+          <div style={hasSteps ? { marginTop: 16, paddingTop: 14, borderTop: '1px solid rgba(255,255,255,0.05)' } : {}}>
+          <div>
+            {renderedContent}
             {isStreaming && (
               <span
                 style={{
                   display: 'inline-block',
-                  width: 2, height: 13,
-                  borderRadius: 2,
-                  marginLeft: 2,
-                  verticalAlign: 'middle',
+                  width: 2, height: 14,
+                  borderRadius: 1,
+                  marginLeft: 1,
+                  verticalAlign: 'text-bottom',
                   background: 'var(--amber)',
-                  opacity: 0.9,
+                  opacity: 0.85,
                   animation: 'cursor-blink 1s step-start infinite',
                 }}
               />
             )}
           </div>
+          </div>
         )}
-        {hasSteps && !hasContent && isStreaming && !hasError && (
+        {/* Typing dots between tool calls: has steps, no content yet, still streaming.
+            Only show if the last step is NOT a pending tool_call (which has its own dots). */}
+        {hasSteps && !hasContent && isStreaming && !hasError && (() => {
+          const lastStep = message.steps![message.steps!.length - 1]
+          const lastIsPendingTool = lastStep?.kind === 'tool_call' && !(lastStep as { result?: unknown }).result
+          return !lastIsPendingTool
+        })() && (
           <div style={{ marginTop: 8 }}>
             <TypingDots />
           </div>
         )}
-        {hasError && (
-          <ErrorBanner error={message.error!} onRetry={onRetry} />
-        )}
-        {/* Copy message action — hover reveal, only when content exists and not streaming */}
+          {hasError && (
+            <ErrorBanner error={message.error!} onRetry={onRetry} />
+          )}
+          {/* Output cards — rendered after steps complete, not during streaming */}
+          {!isStreaming && outputCardFiles.length > 0 && (
+            <OutputCardRenderer files={outputCardFiles} />
+          )}
+          {/* Copy message action — hover reveal, only when content exists and not streaming */}
           {hasContent && !isStreaming && !hasError && hovered && (
-          <div style={{ marginTop: 8 }}>
-            <CopyButton text={message.content} />
-          </div>
-        )}
+            <div style={{ marginTop: 8 }}>
+              <CopyButton text={message.content} />
+            </div>
+          )}
       </div>
     </div>
   )

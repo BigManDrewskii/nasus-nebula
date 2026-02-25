@@ -32,6 +32,15 @@ export type AgentStep =
   | { kind: 'context_compressed'; removedCount: number }
   | { kind: 'search_status'; callId: string; query: string; phase: 'searching' | 'fallback' | 'complete' | 'no_results' | 'all_failed'; provider: string; message: string; resultCount?: number; durationMs?: number }
   | { kind: 'browser_action'; action: string; url?: string; selector?: string; tabId?: number; phase: 'start' | 'done' | 'error'; detail?: string }
+  | { kind: 'output_cards'; files: OutputCardFile[] }
+
+// A file written by the agent during a turn — used to render output cards
+export interface OutputCardFile {
+  filename: string
+  path: string      // normalised path (no leading /workspace/)
+  content: string
+  size: number      // byte length of content
+}
 
 export interface MemoryFiles {
   task_plan: string

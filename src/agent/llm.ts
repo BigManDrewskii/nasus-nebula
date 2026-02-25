@@ -1,6 +1,6 @@
 /**
- * LLM streaming client — works with any OpenAI-compatible endpoint.
- * Supports OpenRouter, LiteLLM proxy, and OpenAI direct.
+ * LLM client — OpenRouter only.
+ * Handles streaming completions, retries, rich model fetching.
  */
 
 export interface LlmMessage {
@@ -65,7 +65,7 @@ function isRetryable(status: number): boolean {
 export async function streamCompletion(
   apiBase: string,
   apiKey: string,
-  provider: string,
+  _provider: string,
   model: string,
   messages: LlmMessage[],
   tools: ToolDefinition[],
@@ -73,15 +73,12 @@ export async function streamCompletion(
 ): Promise<LlmResponse> {
   const url = `${apiBase.replace(/\/$/, '')}/chat/completions`
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-  }
-
-  if (provider === 'openrouter') {
-    headers['HTTP-Referer'] = 'https://nasus.app'
-    headers['X-Title'] = 'Nasus'
-  }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://nasus.app',
+      'X-Title': 'Nasus',
+    }
 
   const body = JSON.stringify({
     model,
@@ -122,11 +119,14 @@ export async function streamCompletion(
         continue
       }
 
-      let errMsg = `HTTP ${resp.status}`
-      try {
-        const errJson = await resp.json()
-        errMsg = errJson?.error?.message ?? errMsg
-      } catch { /* ignore */ }
+        let errMsg = `HTTP ${resp.status}`
+        try {
+          const errJson = await resp.json()
+          // OpenRouter error format: { error: { message, code, metadata } }
+          const orMsg = errJson?.error?.message
+          const orCode = errJson?.error?.code
+          if (orMsg) errMsg = orCode ? `[${orCode}] ${orMsg}` : orMsg
+        } catch { /* ignore */ }
       cb.onError(errMsg)
       throw new Error(errMsg)
     }
@@ -296,21 +296,19 @@ export async function streamCompletion(
 export async function chatOnce(
   apiBase: string,
   apiKey: string,
-  provider: string,
+  _provider: string,
   model: string,
   userPrompt: string,
   maxTokens = 20,
 ): Promise<string> {
   const url = `${apiBase.replace(/\/$/, '')}/chat/completions`
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-  }
-  if (provider === 'openrouter') {
-    headers['HTTP-Referer'] = 'https://nasus.app'
-    headers['X-Title'] = 'Nasus'
-  }
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://nasus.app',
+      'X-Title': 'Nasus',
+    }
 
   const body = JSON.stringify({
     model,
@@ -330,6 +328,7 @@ export async function chatOnce(
 
 /**
  * Fetch available models from any OpenAI-compatible /models endpoint.
+ * Kept for backwards compat — new code should use fetchOpenRouterModels.
  */
 export async function fetchModels(apiBase: string, apiKey: string): Promise<string[]> {
   const url = `${apiBase.replace(/\/$/, '')}/models`
@@ -343,4 +342,100 @@ export async function fetchModels(apiBase: string, apiKey: string): Promise<stri
   return (json?.data ?? [])
     .map((m: Record<string, unknown>) => m.id as string)
     .filter(Boolean)
+}
+
+// ── OpenRouter rich model metadata ────────────────────────────────────────────
+
+export interface OpenRouterModel {
+  id: string
+  name: string
+  description: string
+  context_length: number
+  architecture: {
+    tokenizer: string
+    instruct_type: string | null
+    input_modalities: string[]
+    output_modalities: string[]
+  }
+  pricing: {
+    prompt: string        // cost per token in USD as string e.g. "0.000003"
+    completion: string
+    request?: string
+    image?: string
+  }
+  top_provider: {
+    context_length: number | null
+    is_moderated: boolean
+  }
+  supported_parameters?: string[]
+}
+
+const OR_API_BASE = 'https://openrouter.ai/api/v1'
+const OR_HEADERS = { 'HTTP-Referer': 'https://nasus.app', 'X-Title': 'Nasus' }
+
+/**
+ * Fetch rich model metadata from OpenRouter's /models endpoint.
+ * Returns full OpenRouterModel objects sorted by provider family then name.
+ */
+export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
+  const url = `${OR_API_BASE}/models`
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+    ...OR_HEADERS,
+  }
+  const resp = await fetch(url, { headers })
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      const orMsg = body?.error?.message
+      const orCode = body?.error?.code
+      if (orMsg) msg = orCode ? `[${orCode}] ${orMsg}` : orMsg
+    } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+  const json = await resp.json()
+  const models: OpenRouterModel[] = (json?.data ?? []).filter(
+    (m: OpenRouterModel) =>
+      m.id &&
+      m.name &&
+      (m.architecture?.output_modalities ?? ['text']).includes('text'),
+  )
+  models.sort((a, b) => {
+    const fa = a.id.split('/')[0]
+    const fb = b.id.split('/')[0]
+    if (fa !== fb) return fa.localeCompare(fb)
+    return a.name.localeCompare(b.name)
+  })
+  return models
+}
+
+/**
+ * Format a per-token USD price (as string) into a human-readable label.
+ * OpenRouter returns prices as strings like "0.000003" (per token).
+ */
+export function formatTokenPrice(pricePerToken: string | undefined): string {
+  if (!pricePerToken) return '?'
+  const n = parseFloat(pricePerToken)
+  if (isNaN(n) || n === 0) return 'free'
+  const perMillion = n * 1_000_000
+  if (perMillion < 0.1) return `$${perMillion.toFixed(3)}/M`
+  if (perMillion < 1)   return `$${perMillion.toFixed(2)}/M`
+  return `$${perMillion.toFixed(1)}/M`
+}
+
+/**
+ * Return the cheapest model from a list (by completion token price).
+ * Falls back to claude-3-haiku if the list is empty.
+ */
+export function cheapestModel(models: OpenRouterModel[]): string {
+  if (models.length === 0) return 'anthropic/claude-3-haiku'
+  let cheapest = models[0]
+  for (const m of models) {
+    const price = parseFloat(m.pricing?.completion ?? '999')
+    const best  = parseFloat(cheapest.pricing?.completion ?? '999')
+    if (price < best) cheapest = m
+  }
+  return cheapest.id
 }

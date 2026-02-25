@@ -16,10 +16,9 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
   const [showRecent, setShowRecent] = useState(false)
   const [checking, setChecking] = useState(false)
   const [valid, setValid] = useState<boolean | null>(null)
+  const [picking, setPicking] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Hidden file input for browser-mode folder picking
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Close recent dropdown on outside click
   useEffect(() => {
@@ -39,7 +38,6 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     if (!trimmed || !trimmed.startsWith('/')) { setValid(null); setChecking(false); return }
 
     if (!isTauri) {
-      // In browser mode: validate_path is unavailable — use a simple heuristic
       setValid(trimmed.length > 1)
       return
     }
@@ -58,25 +56,21 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     return () => { if (checkTimer.current) clearTimeout(checkTimer.current) }
   }, [value])
 
-  /** Open the folder picker — uses hidden file input in all environments */
-  function handleBrowse() {
-    fileInputRef.current?.click()
-  }
-
-  /** Handle browser-mode folder selection via the hidden file input */
-  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? [])
-    if (files.length === 0) return
-    // webkitRelativePath: "FolderName/subdir/file.txt" — extract top folder name
-    const first = files[0]
-    const rel = first.webkitRelativePath
-    if (rel) {
-      const folderName = rel.split('/')[0]
-      // In browser mode we can't get absolute path — use the folder name as identifier
-      onChange(`/${folderName}`)
+  /** Open the native macOS folder picker via Tauri dialog plugin */
+  async function handleBrowse() {
+    if (!isTauri) return
+    if (picking) return
+    setPicking(true)
+    try {
+      const selected = await tauriInvoke<string | null>('pick_folder')
+      if (selected) {
+        onChange(selected)
+      }
+    } catch (err) {
+      console.error('pick_folder error:', err)
+    } finally {
+      setPicking(false)
     }
-    // Reset so the same folder can be re-selected
-    e.target.value = ''
   }
 
   const borderColor = error
@@ -89,18 +83,6 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
 
   return (
     <div style={{ position: 'relative' }} ref={containerRef}>
-      {/* Hidden folder input for browser-mode picking */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        // @ts-expect-error webkitdirectory is not in standard typings
-        webkitdirectory=""
-        multiple
-        style={{ display: 'none' }}
-        onChange={handleFileInputChange}
-        tabIndex={-1}
-        aria-hidden="true"
-      />
 
       <div
         style={{
@@ -113,35 +95,37 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
           overflow: 'hidden',
         }}
       >
-        {/* Browse button */}
-        <button
-          type="button"
-          onClick={handleBrowse}
-          title="Browse for folder"
-          style={{
-            flexShrink: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 5,
-            padding: '0 10px',
-            height: 36,
-            background: 'transparent',
-            border: 'none',
-            borderRight: '1px solid rgba(255,255,255,0.07)',
-            cursor: 'pointer',
-            color: 'var(--amber)',
-            fontSize: 11,
-            fontWeight: 500,
-            transition: 'color 0.12s, background 0.12s',
-            whiteSpace: 'nowrap',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-        >
-          <Pxi name="folder-open" size={10} style={{ color: 'var(--amber)' }} />
-          Browse
-        </button>
+        {/* Browse button — opens native macOS folder picker */}
+          <button
+            type="button"
+            onClick={handleBrowse}
+            disabled={!isTauri || picking}
+            title={isTauri ? 'Browse for folder' : 'Folder picker only available in the desktop app'}
+            style={{
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 5,
+              padding: '0 10px',
+              height: 36,
+              background: 'transparent',
+              border: 'none',
+              borderRight: '1px solid rgba(255,255,255,0.07)',
+              cursor: isTauri && !picking ? 'pointer' : 'default',
+              color: isTauri ? 'var(--amber)' : 'var(--tx-tertiary)',
+              fontSize: 11,
+              fontWeight: 500,
+              transition: 'color 0.12s, background 0.12s',
+              opacity: picking ? 0.6 : 1,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => { if (isTauri && !picking) e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          >
+            <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={10} style={{ color: isTauri ? 'var(--amber)' : 'var(--tx-tertiary)' }} />
+            {picking ? 'Opening…' : 'Browse'}
+          </button>
 
         <input
           type="text"
