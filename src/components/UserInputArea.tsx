@@ -176,8 +176,7 @@ function ModelDropdown({
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.color = 'var(--tx-secondary)' }}
         title={value}
       >
-        <Pxi name="sparkles" size={10} style={{ flexShrink: 0, color: 'inherit', opacity: 0.75 }} />
-        <span style={{
+          <span style={{
           fontSize: 11,
           overflow: 'hidden',
           textOverflow: 'ellipsis',

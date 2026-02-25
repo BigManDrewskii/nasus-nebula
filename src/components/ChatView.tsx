@@ -70,6 +70,14 @@ interface ChatViewProps {
   outputVisible?: boolean
   onShowOutput?: () => void
   workspaceFileCount?: number
+  /** Whether the left sidebar is currently collapsed */
+  leftCollapsed?: boolean
+  /** Whether the right output panel is currently collapsed */
+  rightCollapsed?: boolean
+  /** Toggle the left sidebar */
+  onToggleLeft?: () => void
+  /** Toggle the right output panel */
+  onToggleRight?: () => void
 }
 
 interface AgentEventPayload {
@@ -107,7 +115,7 @@ interface AgentEventPayload {
   messages?: LlmMessage[]
 }
 
-export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0 }: ChatViewProps) {
+export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed = false, rightCollapsed = false, onToggleLeft, onToggleRight }: ChatViewProps) {
   const {
     getMessages,
     getRawHistory,
@@ -791,95 +799,82 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         />
       )}
 
-      {/* Header */}
-      <header
-        className="flex-shrink-0 flex items-center justify-between px-5 py-3"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: '#0d0d0d' }}
-      >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-            <h2 className="font-display font-medium truncate" style={{ fontSize: 11, color: 'var(--tx-primary)', letterSpacing: '-0.01em' }}>
+        {/* Header */}
+        <header
+          className="flex-shrink-0 flex items-center justify-between"
+          style={{
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            background: '#0d0d0d',
+            minHeight: 44,
+            padding: '0 12px',
+          }}
+        >
+          {/* Left cluster */}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+
+            <h2
+              className="font-display font-medium truncate"
+              style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
+            >
               {task.title}
             </h2>
-          {isActive && iteration > 0 && (
-            <span className="flex items-center gap-1.5 flex-shrink-0">
-              <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)', animation: 'spin 1s linear infinite' }} />
-              <span className="font-mono" style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{iteration}</span>
-            </span>
-          )}
-          {tokenCount > 0 && (
-            <span className="font-mono flex-shrink-0" style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
-              {(tokenCount / 1000).toFixed(1)}k · {estimateCost(model, tokenCount)}
-            </span>
-          )}
-        </div>
+            {isActive && iteration > 0 && (
+              <span className="flex items-center gap-1 flex-shrink-0">
+                <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
+                <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
+              </span>
+            )}
+            {tokenCount > 0 && (
+              <span className="font-mono flex-shrink-0" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>
+                {(tokenCount / 1000).toFixed(1)}k · {estimateCost(model, tokenCount)}
+              </span>
+            )}
+          </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Right cluster */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
               <SandboxPill status={sandboxStatus} />
             )}
 
-            {/* Workspace pill — shown when output panel is hidden but files exist */}
+            {/* Files pill — shown when output panel is hidden but files exist */}
             {!outputVisible && workspaceFileCount > 0 && onShowOutput && (
               <button
                 onClick={onShowOutput}
                 title="Show output panel"
-                className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors"
-                style={{
-                  background: 'rgba(234,179,8,0.08)',
-                  border: '1px solid rgba(234,179,8,0.2)',
-                  color: 'var(--amber)',
-                  fontSize: 10,
-                  fontWeight: 500,
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.15)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
+                className="header-action-btn"
               >
-                <Pxi name="folder" size={9} />
-                {workspaceFileCount} file{workspaceFileCount !== 1 ? 's' : ''}
+                <Pxi name="folder" size={11} />
+                <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
               </button>
             )}
 
+            {/* Memory */}
             <button
               onClick={() => setShowMemory(true)}
-            title="View agent memory files"
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors"
-            style={{ color: 'var(--tx-tertiary)' }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-          >
-            <Pxi name="bookmark" size={11} />
-            <span style={{ fontSize: 11 }}>memory</span>
-          </button>
-
-          {isActive && (
-            <button
-              onClick={handleStop}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-all"
-              style={{
-                fontSize: 11,
-                background: 'rgba(239,68,68,0.08)',
-                border: '1px solid rgba(239,68,68,0.2)',
-                color: '#f87171',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.14)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
-              }}
-              title="Stop agent (Esc)"
+              title="Agent memory"
+              className="header-sidebar-toggle"
             >
-              <Pxi name="times-circle" size={11} />
-              Stop
-              <span style={{ fontSize: 10, opacity: 0.55, marginLeft: 2 }}>Esc</span>
+              <Pxi name="bookmark" size={12} />
             </button>
-          )}
 
-          {!isActive && <StatusDot status={task.status} />}
-        </div>
-      </header>
+            {/* Stop / status */}
+            {isActive ? (
+              <button
+                onClick={handleStop}
+                className="header-stop-btn"
+                title="Stop agent (Esc)"
+              >
+                <Pxi name="times-circle" size={11} />
+                <span>Stop</span>
+              </button>
+            ) : (
+              <StatusDot status={task.status} />
+            )}
+
+
+          </div>
+        </header>
 
       {/* Empty state */}
       {showEmptyState ? (
@@ -1131,38 +1126,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 function StatusDot({ status }: { status: Task['status'] }) {
   if (status === 'pending') return null
   if (status === 'completed') {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
-        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Done</span>
-      </div>
-    )
+    return <Pxi name="check-circle" size={13} style={{ color: '#34d399', flexShrink: 0 }} title="Done" />
   }
   if (status === 'failed') {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Pxi name="times-circle" size={11} style={{ color: '#f87171' }} />
-        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Failed</span>
-      </div>
-    )
+    return <Pxi name="times-circle" size={13} style={{ color: '#f87171', flexShrink: 0 }} title="Failed" />
   }
   if (status === 'stopped') {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Pxi name="stop-circle" size={11} style={{ color: 'var(--tx-tertiary)' }} />
-        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Stopped</span>
-      </div>
-    )
+    return <Pxi name="stop-circle" size={13} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} title="Stopped" />
   }
   if (status === 'in_progress') {
     return (
-      <div className="flex items-center gap-1.5">
-        <span
-          className="w-1.5 h-1.5 rounded-full"
-          style={{ background: 'var(--amber)', animation: 'pulseGlow 1.6s ease-in-out infinite' }}
-        />
-        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Running</span>
-      </div>
+      <span
+        className="w-2 h-2 rounded-full flex-shrink-0"
+        style={{ background: 'var(--amber)', animation: 'pulseGlow 1.6s ease-in-out infinite' }}
+        title="Running"
+      />
     )
   }
   return null

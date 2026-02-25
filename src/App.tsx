@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { invoke } from '@tauri-apps/api/core'
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels'
 import type { Task } from './types'
 import { useAppStore } from './store'
 import { Sidebar } from './components/Sidebar'
@@ -15,6 +14,26 @@ import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
+const LAYOUT_KEY = 'nasus-layout-state'
+
+interface LayoutState {
+  leftCollapsed: boolean
+  rightCollapsed: boolean
+  rightActiveTab: 'preview' | 'code' | 'files'
+}
+
+function loadLayout(): LayoutState {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return { leftCollapsed: false, rightCollapsed: false, rightActiveTab: 'preview' }
+}
+
+function saveLayout(state: LayoutState) {
+  try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(state)) } catch { /* ignore */ }
+}
 
 interface DockerStatus {
   available: boolean
@@ -35,6 +54,12 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
   const [dockerStatus, setDockerStatus] = useState<DockerStatus | null>(null)
+
+  // Layout state — loaded from localStorage
+  const [savedLayout] = useState<LayoutState>(loadLayout)
+  const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
+  const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
+  const [rightActiveTab, setRightActiveTab] = useState<'preview' | 'code' | 'files'>(savedLayout.rightActiveTab)
   const [outputVisible, setOutputVisible] = useState(true)
 
   // Silently keep the OpenRouter model list fresh in the background
@@ -48,15 +73,36 @@ function App() {
   // Workspace files for the active task (reactive — updates on agent writes)
   const workspaceFiles = useWorkspaceFiles(activeTaskId)
 
-  // Auto-show output panel when the agent creates its first file
+  // Persist layout state whenever it changes
   useEffect(() => {
-    if (workspaceFiles.length > 0 && !outputVisible) {
-      setOutputVisible(true)
+    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab })
+  }, [leftCollapsed, rightCollapsed, rightActiveTab])
+
+  // Auto-show + expand right panel when the agent creates its first file
+  useEffect(() => {
+    if (workspaceFiles.length > 0) {
+      if (!outputVisible) setOutputVisible(true)
+      if (rightCollapsed) setRightCollapsed(false)
     }
   }, [workspaceFiles.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Keyboard shortcuts
   useEffect(() => {
-    if (!isTauri) return  // Docker check only applies to the desktop (Tauri) app
+    function handler(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      if (e.key === '\\' && !e.shiftKey) { e.preventDefault(); setLeftCollapsed((v) => !v) }
+      if (e.key === '\\' && e.shiftKey)  { e.preventDefault(); setRightCollapsed((v) => !v) }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const toggleLeft  = useCallback(() => setLeftCollapsed((v) => !v),  [])
+  const toggleRight = useCallback(() => setRightCollapsed((v) => !v), [])
+
+  useEffect(() => {
+    if (!isTauri) return
     invoke<DockerStatus>('check_docker')
       .then(setDockerStatus)
       .catch(() =>
@@ -105,7 +151,6 @@ function App() {
   const openSettings  = useCallback(() => setShowSettings(true),  [])
   const closeSettings = useCallback(() => setShowSettings(false), [])
 
-  // Show onboarding until the user explicitly completes it
   if (!onboardingComplete) {
     return (
       <ErrorBoundary>
@@ -116,44 +161,56 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen w-screen overflow-hidden" style={{ background: '#0a0a0a' }}>
-        <Sidebar
-          tasks={tasks}
-          activeTaskId={activeTaskId}
-          onSelectTask={setActiveTaskId}
-          onNewTask={handleNewTask}
-          onOpenSettings={openSettings}
-        />
+      <div className="app-root">
+        {/* ── Left Sidebar ── */}
+        <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+          <Sidebar
+            tasks={tasks}
+            activeTaskId={activeTaskId}
+            onSelectTask={setActiveTaskId}
+            onNewTask={handleNewTask}
+            onOpenSettings={openSettings}
+            collapsed={leftCollapsed}
+            onToggleCollapse={toggleLeft}
+          />
+        </div>
 
-        {/* Main area — resizable chat + output panels */}
-        <PanelGroup orientation="horizontal" style={{ flex: 1, overflow: 'hidden' }}>
-          {/* Chat panel */}
-          <Panel defaultSize={outputVisible ? 55 : 100} minSize={30}>
-            <main className="flex-1 overflow-hidden flex flex-col h-full" style={{ background: '#0d0d0d', position: 'relative' }}>
-              <ChatView
-                task={activeTask}
-                onNewTask={handleNewTask}
-                onOpenSettings={openSettings}
-                outputVisible={outputVisible}
-                onShowOutput={() => setOutputVisible(true)}
-                workspaceFileCount={workspaceFiles.length}
-              />
-            </main>
-          </Panel>
+        {/* ── Chat ── */}
+        <main className="app-chat">
+          <ChatView
+            task={activeTask}
+            onNewTask={handleNewTask}
+            onOpenSettings={openSettings}
+            outputVisible={outputVisible}
+            onShowOutput={() => {
+              setOutputVisible(true)
+              setRightCollapsed(false)
+            }}
+            workspaceFileCount={workspaceFiles.length}
+            leftCollapsed={leftCollapsed}
+            rightCollapsed={rightCollapsed}
+            onToggleLeft={toggleLeft}
+            onToggleRight={toggleRight}
+          />
+        </main>
 
-          {outputVisible && (
-              <>
-                <PanelResizeHandle className="resize-handle-vertical" />
-                <Panel defaultSize={45} minSize={20}>
-                  <OutputPanel
-                    key={activeTaskId ?? 'none'}
-                    files={workspaceFiles}
-                    onCollapse={() => setOutputVisible(false)}
-                  />
-                </Panel>
-              </>
-          )}
-        </PanelGroup>
+        {/* ── Right Output Panel ── */}
+        {outputVisible && (
+          <div className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+            <OutputPanel
+              key={activeTaskId ?? 'none'}
+              files={workspaceFiles}
+              collapsed={rightCollapsed}
+              activeTab={rightActiveTab}
+              onTabChange={setRightActiveTab}
+              onCollapse={toggleRight}
+              onExpand={(tab) => {
+                if (tab) setRightActiveTab(tab)
+                setRightCollapsed(false)
+              }}
+            />
+          </div>
+        )}
 
         {showSettings && <SettingsPanel onClose={closeSettings} />}
 

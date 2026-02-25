@@ -101,47 +101,51 @@ export function CodePane({ files }: CodePaneProps) {
     )
   }
 
-  return (
-    <div className="output-code-layout">
-      <aside className="output-file-list" aria-label="Workspace files">
-        {files.map((f) => {
-          const isActive = f.name === activeFile?.name
-          return (
-            <button
-              key={f.name}
-              onClick={() => setSelected(f.name)}
-              title={f.name}
-              className={`output-file-item${isActive ? ' output-file-item--active' : ''}`}
-            >
-              <Pxi
-                name={fileIcon(f.ext)}
-                size={10}
-                style={{ color: isActive ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
+    return (
+      <div className="output-code-layout">
+        {/* Horizontal file tab drawer */}
+        <div className="output-file-tabs" role="tablist" aria-label="Workspace files">
+          {files.map((f) => {
+            const isActive = f.name === activeFile?.name
+            return (
+              <button
+                key={f.name}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setSelected(f.name)}
+                title={f.name}
+                className={`output-file-tab${isActive ? ' output-file-tab--active' : ''}`}
+              >
+                <Pxi
+                  name={fileIcon(f.ext)}
+                  size={10}
+                  style={{ color: isActive ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
+                />
+                <span className="output-file-tab-name">{f.name.split('/').pop()}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Code view below the tab drawer */}
+        {activeFile ? (
+          <section className="output-code-view">
+            <div className="output-pane-meta output-pane-meta--code">
+              <span className="output-pane-meta-path">{activeFile.name}</span>
+              <span className="output-pane-meta-chip">
+                {formatBytes(new TextEncoder().encode(activeFile.content).length)}
+              </span>
+              <span className="output-pane-meta-chip">{activeFile.content.split('\n').length} lines</span>
+            </div>
+
+            <div className="output-scroll-surface">
+              <pre
+                className="output-code-pre"
+                dangerouslySetInnerHTML={{ __html: tokenize(activeFile.content, activeFile.ext) }}
               />
-              <span className="output-file-item-name">{f.name.split('/').pop()}</span>
-            </button>
-          )
-        })}
-      </aside>
-
-      {activeFile ? (
-        <section className="output-code-view">
-          <div className="output-pane-meta output-pane-meta--code">
-            <span className="output-pane-meta-path">{activeFile.name}</span>
-            <span className="output-pane-meta-chip">
-              {formatBytes(new TextEncoder().encode(activeFile.content).length)}
-            </span>
-            <span className="output-pane-meta-chip">{activeFile.content.split('\n').length} lines</span>
-          </div>
-
-          <div className="output-scroll-surface">
-            <pre
-              className="output-code-pre"
-              dangerouslySetInnerHTML={{ __html: tokenize(activeFile.content, activeFile.ext) }}
-            />
-          </div>
-        </section>
-      ) : null}
-    </div>
-  )
+            </div>
+          </section>
+        ) : null}
+      </div>
+    )
 }

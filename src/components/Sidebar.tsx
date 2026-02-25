@@ -11,6 +11,9 @@ interface SidebarProps {
   onSelectTask: (id: string) => void
   onNewTask: () => void
   onOpenSettings: () => void
+  /** Controlled collapse state — driven by the Panel's onResize callback */
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -46,12 +49,12 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings }: SidebarProps) {
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed = false, onToggleCollapse }: SidebarProps) {
   const model = useAppStore((s) => s.model)
-  const [search, setSearch]             = useState('')
-  const [searchOpen, setSearchOpen]     = useState(false)
-  const [collapsed, setCollapsed]       = useState<Set<string>>(new Set())
-  const searchRef                       = useRef<HTMLInputElement>(null)
+  const [search, setSearch]                   = useState('')
+  const [searchOpen, setSearchOpen]           = useState(false)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const searchRef                             = useRef<HTMLInputElement>(null)
 
   const pinnedTasks = useMemo(() => tasks.filter((t) => t.pinned), [tasks])
   const groups      = useMemo(() => groupTasks(tasks), [tasks])
@@ -75,7 +78,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
   }, [])
 
   const toggleGroup = useCallback((label: string) => {
-    setCollapsed((prev) => {
+    setCollapsedGroups((prev) => {
       const next = new Set(prev)
       next.has(label) ? next.delete(label) : next.add(label)
       return next
@@ -91,112 +94,162 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 
   return (
     <aside
+      className="sidebar"
+      data-collapsed={collapsed ? 'true' : 'false'}
       style={{
-        width: 224,
-        flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        width: '100%',
         background: '#090909',
         borderRight: '1px solid rgba(255,255,255,0.05)',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
-      <SidebarBrand />
-
-      <div style={{ padding: '0 10px 8px' }}>
-        <NewTaskButton onClick={onNewTask} />
-      </div>
-
-      <div style={{ padding: '0 10px 10px' }}>
-        <SearchBar
-          open={searchOpen}
-          value={search}
-          inputRef={searchRef}
-          onChange={setSearch}
-          onOpen={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }}
-          onClose={() => { setSearch(''); setSearchOpen(false) }}
-        />
-      </div>
-
-      <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '0 10px 4px' }} />
-
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          paddingBottom: 8,
-          scrollbarWidth: 'thin',
-        }}
-      >
-        {tasks.length === 0 ? (
-          <EmptyState onNewTask={onNewTask} />
-        ) : (
-          <div style={{ padding: '4px 6px 0' }}>
-            {pinnedTasks.length > 0 && (
-              <SidebarSection
-                label="Pinned"
-                badge={pinnedTasks.length}
-                collapsed={collapsed.has('Pinned')}
-                onToggle={() => toggleGroup('Pinned')}
-                accent="amber"
-              >
-                {filter(pinnedTasks).map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    isActive={task.id === activeTaskId}
-                    onClick={() => onSelectTask(task.id)}
+      {collapsed ? (
+        /* ── Collapsed icon rail ── */
+        <div className="sidebar-rail">
+          <div
+            className="rail-header"
+            data-tauri-drag-region
+            style={{ paddingTop: isTauri ? 18 : 14 }}
+          >
+              {/* Logo with ambient glow */}
+                <div style={{ position: 'relative', lineHeight: 0 }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: -8,
+                      borderRadius: 12,
+                      background: 'radial-gradient(ellipse at 50% 50%, oklch(64% 0.214 40.1 / 0.25) 0%, transparent 70%)',
+                      pointerEvents: 'none',
+                    }}
                   />
-                ))}
-              </SidebarSection>
-            )}
-
-            {groups.map(({ label, date, items }) => {
-              const filtered = filter(items)
-              if (q && filtered.length === 0) return null
-              return (
-                <SidebarSection
-                  key={label}
-                  label={label}
-                  date={date ?? undefined}
-                  badge={items.length}
-                  collapsed={collapsed.has(label)}
-                  onToggle={() => toggleGroup(label)}
-                >
-                  {filtered.map((task) => (
-                    <TaskListItem
-                      key={task.id}
-                      task={task}
-                      isActive={task.id === activeTaskId}
-                      onClick={() => onSelectTask(task.id)}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width={28}
+                    height={28}
+                    viewBox="0 0 256 256"
+                    fill="none"
+                    style={{ display: 'block', flexShrink: 0 }}
+                  >
+                    <path
+                      d="M 0 192 C 0 227.346 28.654 256 64 256 L 256 256 L 256 64 C 256 28.654 227.346 0 192 0 L 0 0 Z M 178 128 C 150.386 128 128 150.386 128 178 L 128 192 L 64 192 L 64 128 L 78 128 C 105.614 128 128 105.614 128 78 L 128 64 L 192 64 L 192 128 Z"
+                      fill="var(--amber)"
                     />
-                  ))}
-                </SidebarSection>
-              )
-            })}
+                  </svg>
+                </div>
 
-            {noResults && (
-              <p
-                style={{
-                  fontSize: 11,
-                  color: 'var(--tx-tertiary)',
-                  textAlign: 'center',
-                  marginTop: 28,
-                  lineHeight: 1.5,
-                  padding: '0 12px',
-                }}
-              >
-                No tasks match<br />
-                <span style={{ color: 'var(--tx-secondary)' }}>"{search}"</span>
-              </p>
+            <button
+              onClick={onToggleCollapse}
+              title="Expand sidebar"
+              className="rail-toggle-btn"
+            >
+              <Pxi name="angle-right" size={11} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── Expanded full sidebar ── */
+        <>
+          <SidebarBrand onToggleCollapse={onToggleCollapse} />
+
+          <div style={{ padding: '0 10px 8px' }}>
+            <NewTaskButton onClick={onNewTask} />
+          </div>
+
+          <div style={{ padding: '0 10px 10px' }}>
+            <SearchBar
+              open={searchOpen}
+              value={search}
+              inputRef={searchRef}
+              onChange={setSearch}
+              onOpen={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }}
+              onClose={() => { setSearch(''); setSearchOpen(false) }}
+            />
+          </div>
+
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '0 10px 4px' }} />
+
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              paddingBottom: 8,
+              scrollbarWidth: 'thin',
+            }}
+          >
+            {tasks.length === 0 ? (
+              <EmptyState onNewTask={onNewTask} />
+            ) : (
+              <div style={{ padding: '4px 10px 0' }}>
+                  {pinnedTasks.length > 0 && (
+                    <SidebarSection
+                      label="Pinned"
+                      badge={pinnedTasks.length}
+                      collapsed={collapsedGroups.has('Pinned')}
+                      onToggle={() => toggleGroup('Pinned')}
+                      accent="amber"
+                    >
+                    {filter(pinnedTasks).map((task) => (
+                      <TaskListItem
+                        key={task.id}
+                        task={task}
+                        isActive={task.id === activeTaskId}
+                        onClick={() => onSelectTask(task.id)}
+                      />
+                    ))}
+                  </SidebarSection>
+                )}
+
+                {groups.map(({ label, date, items }) => {
+                  const filtered = filter(items)
+                  if (q && filtered.length === 0) return null
+                  return (
+                    <SidebarSection
+                      key={label}
+                      label={label}
+                      date={date ?? undefined}
+                      badge={items.length}
+                      collapsed={collapsedGroups.has(label)}
+                      onToggle={() => toggleGroup(label)}
+                    >
+                      {filtered.map((task) => (
+                        <TaskListItem
+                          key={task.id}
+                          task={task}
+                          isActive={task.id === activeTaskId}
+                          onClick={() => onSelectTask(task.id)}
+                        />
+                      ))}
+                    </SidebarSection>
+                  )
+                })}
+
+                {noResults && (
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--tx-tertiary)',
+                      textAlign: 'center',
+                      marginTop: 28,
+                      lineHeight: 1.5,
+                      padding: '0 12px',
+                    }}
+                  >
+                    No tasks match<br />
+                    <span style={{ color: 'var(--tx-secondary)' }}>"{search}"</span>
+                  </p>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      <SidebarFooter model={shortModel} fullModel={model} onSettings={onOpenSettings} />
+          <SidebarFooter model={shortModel} fullModel={model} onSettings={onOpenSettings} />
+        </>
+      )}
     </aside>
   )
 }
@@ -208,7 +261,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 // to clear them. In web/browser mode no offset is needed.
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
-function SidebarBrand() {
+function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
   return (
     <div
       data-tauri-drag-region
@@ -220,19 +273,19 @@ function SidebarBrand() {
         userSelect: 'none',
       }}
     >
-      <div style={{ position: 'relative', flexShrink: 0, lineHeight: 0 }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: -4,
-            borderRadius: 8,
-            background: 'radial-gradient(ellipse at 40% 50%, oklch(64% 0.214 40.1 / 0.22) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }}
-        />
-        <NasusLogo size={16} fill="var(--amber)" />
-      </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <div style={{ position: 'relative', flexShrink: 0, lineHeight: 0 }}>
+          <div
+            style={{
+              position: 'absolute',
+              inset: -6,
+              borderRadius: 10,
+              background: 'radial-gradient(ellipse at 40% 50%, oklch(64% 0.214 40.1 / 0.22) 0%, transparent 70%)',
+              pointerEvents: 'none',
+            }}
+          />
+          <NasusLogo size={22} fill="var(--amber)" />
+        </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1 }}>
         <span
           className="font-display"
           style={{
@@ -258,6 +311,15 @@ function SidebarBrand() {
           v1
         </span>
       </div>
+      {onToggleCollapse && (
+        <button
+          onClick={onToggleCollapse}
+          title="Collapse sidebar"
+          className="rail-toggle-btn"
+        >
+          <Pxi name="angle-left" size={11} />
+        </button>
+      )}
     </div>
   )
 }
@@ -450,7 +512,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          padding: '4px 4px 4px 6px',
+          padding: '4px 4px 4px 10px',
           borderRadius: 5,
           background: 'transparent',
           border: 'none',
@@ -675,7 +737,7 @@ function SidebarFooter({ model, fullModel, onSettings }: {
       ref={containerRef}
       style={{
         borderTop: '1px solid rgba(255,255,255,0.05)',
-        padding: '6px 8px 8px',
+          padding: '6px 10px 10px',
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
@@ -688,8 +750,8 @@ function SidebarFooter({ model, fullModel, onSettings }: {
           style={{
             position: 'absolute',
             bottom: 'calc(100% + 6px)',
-            left: 8,
-            right: 8,
+              left: 10,
+              right: 10,
             zIndex: 200,
             borderRadius: 12,
             background: '#161616',
