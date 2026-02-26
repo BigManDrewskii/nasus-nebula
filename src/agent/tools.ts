@@ -17,6 +17,8 @@ import { runSearch } from './search'
 import type { SearchConfig, SearchStatusCallback } from './search'
 export type { SearchConfig, SearchStatusCallback }
 
+import { workspaceManager } from './workspace/WorkspaceManager'
+
 /**
  * Browser-safe tool execution for the web agent.
  *
@@ -24,68 +26,20 @@ export type { SearchConfig, SearchStatusCallback }
  * file tracking, and the tool dispatcher switch.
  */
 
-// ── In-memory workspace ───────────────────────────────────────────────────────
-const workspaceStore: Map<string, Map<string, string>> = new Map()
-// Version counter per task — incremented on every write so React can subscribe
-const workspaceVersions: Map<string, number> = new Map()
-
-// ── Workspace localStorage persistence ───────────────────────────────────────
-const WS_STORAGE_PREFIX = 'nasus-ws-'
-// Max size per file stored in localStorage (256 KB) — prevents quota exhaustion
-const WS_MAX_FILE_BYTES = 256 * 1024
-
-function loadWorkspaceFromStorage(taskId: string): Map<string, string> {
-  try {
-    const raw = localStorage.getItem(`${WS_STORAGE_PREFIX}${taskId}`)
-    if (!raw) return new Map()
-    const obj = JSON.parse(raw) as Record<string, string>
-    return new Map(Object.entries(obj))
-  } catch {
-    return new Map()
-  }
-}
-
-function saveWorkspaceToStorage(taskId: string, ws: Map<string, string>) {
-  try {
-    const obj: Record<string, string> = {}
-    for (const [k, v] of ws.entries()) {
-      // Skip oversized binary blobs (e.g. screenshots stored as data URLs)
-      if (v.length <= WS_MAX_FILE_BYTES) obj[k] = v
-    }
-    localStorage.setItem(`${WS_STORAGE_PREFIX}${taskId}`, JSON.stringify(obj))
-  } catch {
-    // localStorage quota exceeded — best effort, ignore
-  }
-}
-
 export function getWorkspace(taskId: string): Map<string, string> {
-  if (!workspaceStore.has(taskId)) {
-    const loaded = loadWorkspaceFromStorage(taskId)
-    workspaceStore.set(taskId, loaded)
-    // If files exist, set version to 1 so subscribers see a non-zero version
-    if (loaded.size > 0 && !workspaceVersions.has(taskId)) {
-      workspaceVersions.set(taskId, 1)
-    }
-  }
-  return workspaceStore.get(taskId)!
+  return workspaceManager.getWorkspaceSync(taskId)
 }
 
 export function getWorkspaceVersion(taskId: string): number {
-  return workspaceVersions.get(taskId) ?? 0
+  return workspaceManager.getVersion(taskId)
 }
 
 function bumpVersion(taskId: string) {
-  workspaceVersions.set(taskId, (workspaceVersions.get(taskId) ?? 0) + 1)
-  // Persist to localStorage on every write
-  const ws = workspaceStore.get(taskId)
-  if (ws) saveWorkspaceToStorage(taskId, ws)
-  window.dispatchEvent(new CustomEvent('nasus:workspace', { detail: { taskId } }))
+  // WorkspaceManager handles versioning and event emission internally in writeFile/deleteFile
 }
 
-export function clearWorkspace(taskId: string) {
-  workspaceStore.delete(taskId)
-  workspaceVersions.delete(taskId)
-  try { localStorage.removeItem(`${WS_STORAGE_PREFIX}${taskId}`) } catch { /* ignore */ }
+export async function clearWorkspace(taskId: string) {
+  await workspaceManager.deleteWorkspace(taskId)
 }
 
 // ── Per-turn file tracker ─────────────────────────────────────────────────────
@@ -117,13 +71,10 @@ function trackTurnFile(taskId: string, path: string, content: string) {
 }
 
 /** Copy all workspace files from one task to another. */
-export function copyWorkspace(sourceTaskId: string, destTaskId: string) {
-  const source = getWorkspace(sourceTaskId)
-  if (source.size === 0) return
-  const dest = new Map(source)
-  workspaceStore.set(destTaskId, dest)
-  workspaceVersions.set(destTaskId, 1)
-  saveWorkspaceToStorage(destTaskId, dest)
+export async function copyWorkspace(sourceTaskId: string, destTaskId: string) {
+  // Use the new async WorkspaceManager
+  const { copyWorkspace: copyWs } = await import('./workspace/WorkspaceManager')
+  await copyWs(sourceTaskId, destTaskId)
 }
 
 function normPath(p: string): string {
@@ -140,8 +91,6 @@ export async function executeTool(
   onSearchStatus?: SearchStatusCallback,
   executionConfig?: ExecutionConfig,
 ): Promise<{ output: string; isError: boolean }> {
-  const ws = getWorkspace(taskId)
-
   switch (toolName) {
     case 'bash': {
       const cmd = String(args.command ?? '')
@@ -150,7 +99,7 @@ export async function executeTool(
         try {
           const decoded = atob(b64WriteMatch[1].replace(/\s/g, ''))
           const path = normPath(b64WriteMatch[2])
-          ws.set(path, decoded)
+          await workspaceManager.writeFile(taskId, path, decoded)
           return { output: `written: ${b64WriteMatch[2]}`, isError: false }
         } catch { /* fall through */ }
       }
@@ -158,14 +107,17 @@ export async function executeTool(
       const catMatch = cmd.match(/^cat\s+'?([^'>\s]+)'?\s*(?:2>&1)?$/)
       if (catMatch) {
         const path = normPath(catMatch[1])
-        const content = ws.get(path)
-        if (content !== undefined) return { output: content, isError: false }
-        return { output: `cat: ${catMatch[1]}: No such file`, isError: true }
+        try {
+          const content = await workspaceManager.readFile(taskId, path)
+          return { output: content, isError: false }
+        } catch {
+          return { output: `cat: ${catMatch[1]}: No such file`, isError: true }
+        }
       }
 
       if (cmd.trim().startsWith('ls') || cmd.trim().startsWith('find')) {
-        const files = [...ws.keys()]
-        return { output: files.length ? files.map((f) => `/workspace/${f}`).join('\n') : '(empty workspace)', isError: false }
+        const files = await workspaceManager.listFiles(taskId)
+        return { output: files.length ? files.map((f) => `/workspace/${f.path}`).join('\n') : '(empty workspace)', isError: false }
       }
 
       if (cmd.trim().startsWith('mkdir')) {
@@ -176,6 +128,8 @@ export async function executeTool(
       if (echoMatch) {
         return { output: echoMatch[1].replace(/['"]/g, ''), isError: false }
       }
+
+      // ... existing intercepts
 
         // Intercept framework/package-manager commands — return as an ERROR so the
           // 3-strike counter fires and the agent pivots instead of retrying endlessly.
@@ -247,24 +201,26 @@ export async function executeTool(
 
     case 'read_file': {
       const path = normPath(String(args.path ?? ''))
-      const content = ws.get(path)
-      if (content !== undefined) return { output: content, isError: false }
-      return { output: `File not found: ${args.path}`, isError: true }
+      try {
+        const content = await workspaceManager.readFile(taskId, path)
+        return { output: content, isError: false }
+      } catch {
+        return { output: `File not found: ${args.path}`, isError: true }
+      }
     }
 
-      case 'write_file': {
-        const path = normPath(String(args.path ?? 'output.txt'))
-        const content = String(args.content ?? '')
-        ws.set(path, content)
-        bumpVersion(taskId)
-        trackTurnFile(taskId, path, content)
-        return { output: `Written: ${args.path}`, isError: false }
-      }
+    case 'write_file': {
+      const path = normPath(String(args.path ?? 'output.txt'))
+      const content = String(args.content ?? '')
+      await workspaceManager.writeFile(taskId, path, content)
+      trackTurnFile(taskId, path, content)
+      return { output: `Written: ${args.path}`, isError: false }
+    }
 
     case 'list_files': {
-      const files = [...ws.keys()]
+      const files = await workspaceManager.listFiles(taskId)
       if (files.length === 0) return { output: '(workspace is empty)', isError: false }
-      const lines = files.map((f) => `/workspace/${f}`)
+      const lines = files.map((f) => `/workspace/${f.path}`)
       if (!Boolean(args.recursive)) {
         const top = [...new Set(lines.map((l) => l.split('/').slice(0, 3).join('/')))]
         return { output: top.join('\n'), isError: false }
@@ -343,15 +299,17 @@ export async function executeTool(
 
       case 'patch_file': {
         const path = normPath(String(args.path ?? ''))
-        const content = ws.get(path)
-        if (content === undefined) return { output: `File not found: ${args.path}`, isError: true }
-        const oldStr = String(args.old_str ?? '')
-        const newStr = String(args.new_str ?? '')
-        if (!oldStr) return { output: 'Missing old_str', isError: true }
-        if (!content.includes(oldStr)) return { output: `old_str not found in ${args.path}. Read the file first and copy the exact string.`, isError: true }
-        ws.set(path, content.replace(oldStr, newStr))
-        bumpVersion(taskId)
-        return { output: `Patched: ${args.path}`, isError: false }
+        try {
+          const content = await workspaceManager.readFile(taskId, path)
+          const oldStr = String(args.old_str ?? '')
+          const newStr = String(args.new_str ?? '')
+          if (!oldStr) return { output: 'Missing old_str', isError: true }
+          if (!content.includes(oldStr)) return { output: `old_str not found in ${args.path}. Read the file first and copy the exact string.`, isError: true }
+          await workspaceManager.writeFile(taskId, path, content.replace(oldStr, newStr))
+          return { output: `Patched: ${args.path}`, isError: false }
+        } catch {
+          return { output: `File not found: ${args.path}`, isError: true }
+        }
       }
 
       case 'python_execute': {

@@ -17,9 +17,18 @@ use tauri_plugin_store::StoreExt;
 
 use models::classifier::classify_task;
 use models::router::{
-    build_fallback_chain, BudgetMode, ModelSelectionMode, RouterConfig, TaskCostTracker,
+    BudgetMode, ModelSelectionMode, RouterConfig, TaskCostTracker,
     RateLimitTracker,
 };
+
+fn slugify(text: &str) -> String {
+    let mut s = text.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+        .collect::<String>();
+    s = s.split_whitespace().collect::<Vec<_>>().join("-");
+    s.chars().take(30).collect::<String>().trim_matches('-').to_string()
+}
 
 // ─── Global cancellation flags ────────────────────────────────────────────────
 
@@ -685,8 +694,10 @@ async fn ensure_sandbox(
     task_id: &str,
     message_id: &str,
     workspace_path: &str,
+    task_title: Option<&str>,
 ) -> Result<String, String> {
-    let name = format!("nasus-sandbox-{}", &task_id[..task_id.len().min(8)]);
+    let slug = task_title.map(slugify).unwrap_or_else(|| "task".to_string());
+    let name = format!("nasus-sandbox-{}-{}", slug, &task_id[..task_id.len().min(4)]);
 
     if let Ok(info) = docker.inspect_container(&name, None).await {
         if info.state.and_then(|s| s.running).unwrap_or(false) {
@@ -1545,6 +1556,7 @@ async fn run_agent(
     router_mode: Option<String>,
     router_budget: Option<String>,
     router_model_overrides: Option<HashMap<String, bool>>,
+    task_title: Option<String>,
 ) -> Result<(), String> {
     // ── Build router config ────────────────────────────────────────────────────
     let mut router_config = RouterConfig::default();
@@ -1651,7 +1663,7 @@ async fn run_agent(
     let docker_result = get_or_connect_docker().await;
     let (docker_opt, container_opt) = match &docker_result {
         Ok(d) => {
-            match ensure_sandbox(d, &app, &task_id, &message_id, &workspace_path).await {
+            match ensure_sandbox(d, &app, &task_id, &message_id, &workspace_path, task_title.as_deref()).await {
                 Ok(name) => {
                     let _ = app.emit(
                         "agent-event",
@@ -2119,6 +2131,177 @@ async fn check_docker() -> DockerStatus {
     }
 }
 
+// ─── Workspace filesystem commands ───────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkspaceFile {
+    pub path: String,
+    pub filename: String,
+    pub size: u64,
+    pub modified_at: u64, // Unix timestamp
+}
+
+/// Read a file from a task's workspace directory
+#[tauri::command]
+async fn workspace_read(app: tauri::AppHandle, task_id: String, path: String) -> Result<String, String> {
+    let store = app.store("workspaces.json").map_err(|e| e.to_string())?;
+
+    let base_path = store
+        .get("base_path")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
+        });
+
+    let workspace_dir = std::path::PathBuf::from(base_path)
+        .join("workspaces")
+        .join(format!("task-{}", task_id));
+
+    let file_path = workspace_dir.join(
+        path.replace("/workspace/", "")
+            .trim_start_matches('.')
+    );
+
+    std::fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+/// Write a file to a task's workspace directory
+#[tauri::command]
+async fn workspace_write(app: tauri::AppHandle, task_id: String, path: String, content: String) -> Result<(), String> {
+    let store = app.store("workspaces.json").map_err(|e| e.to_string())?;
+
+    let base_path = store
+        .get("base_path")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
+        });
+
+    let workspace_dir = std::path::PathBuf::from(base_path)
+        .join("workspaces")
+        .join(format!("task-{}", task_id));
+
+    // Create workspace directory if it doesn't exist
+    std::fs::create_dir_all(&workspace_dir)
+        .map_err(|e| format!("Failed to create workspace directory: {}", e))?;
+
+    let file_path = workspace_dir.join(
+        path.replace("/workspace/", "")
+            .trim_start_matches('.')
+    );
+
+    // Ensure parent directory exists
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+
+    std::fs::write(&file_path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))
+}
+
+/// List all files in a task's workspace directory
+#[tauri::command]
+async fn workspace_list(app: tauri::AppHandle, task_id: String) -> Result<Vec<WorkspaceFile>, String> {
+    let store = app.store("workspaces.json").map_err(|e| e.to_string())?;
+
+    let base_path = store
+        .get("base_path")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
+        });
+
+    let workspace_dir = std::path::PathBuf::from(base_path)
+        .join("workspaces")
+        .join(format!("task-{}", task_id));
+
+    let mut files = Vec::new();
+
+    let walk_iter = walkdir::WalkDir::new(&workspace_dir).max_depth(10).into_iter();
+    for entry in walk_iter.flatten() {
+        if entry.file_type().is_file() {
+            if let Ok(rel) = entry.path().strip_prefix(&workspace_dir) {
+                let metadata = entry.metadata().ok();
+                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                let modified_at = metadata
+                    .as_ref()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as u64)
+                    .unwrap_or(0);
+                files.push(WorkspaceFile {
+                    path: rel.to_string_lossy().to_string(),
+                    filename: entry.file_name().to_string_lossy().to_string(),
+                    size,
+                    modified_at,
+                });
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+/// Delete a file from a task's workspace directory
+#[tauri::command]
+async fn workspace_delete(app: tauri::AppHandle, task_id: String, path: String) -> Result<(), String> {
+    let store = app.store("workspaces.json").map_err(|e| e.to_string())?;
+
+    let base_path = store
+        .get("base_path")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
+        });
+
+    let workspace_dir = std::path::PathBuf::from(base_path)
+        .join("workspaces")
+        .join(format!("task-{}", task_id));
+
+    let file_path = workspace_dir.join(
+        path.replace("/workspace/", "")
+            .trim_start_matches('.')
+    );
+
+    std::fs::remove_file(&file_path)
+        .map_err(|e| format!("Failed to delete file: {}", e))
+}
+
+/// Delete an entire workspace directory
+#[tauri::command]
+async fn workspace_delete_all(app: tauri::AppHandle, task_id: String) -> Result<(), String> {
+    let store = app.store("workspaces.json").map_err(|e| e.to_string())?;
+
+    let base_path = store
+        .get("base_path")
+        .and_then(|v: serde_json::Value| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|p| p.join("nasus-workspace").to_string_lossy().to_string())
+                .unwrap_or_else(|| "/tmp/nasus-workspace".to_string())
+        });
+
+    let workspace_dir = std::path::PathBuf::from(base_path)
+        .join("workspaces")
+        .join(format!("task-{}", task_id));
+
+    if workspace_dir.exists() {
+        std::fs::remove_dir_all(&workspace_dir)
+            .map_err(|e| format!("Failed to delete workspace: {}", e))?;
+    }
+
+    Ok(())
+}
+
 // ─── App entry ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2155,6 +2338,11 @@ pub fn run() {
             save_router_settings,
             get_model_registry,
             preview_routing,
+            workspace_read,
+            workspace_write,
+            workspace_list,
+            workspace_delete,
+            workspace_delete_all,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

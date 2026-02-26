@@ -1,6 +1,21 @@
 import type { LlmMessage } from './agent/llm'
 export type { LlmMessage }
 
+// ── Agent types (multi-agent architecture) ────────────────────────────────────────
+export type {
+  Agent,
+  AgentContext,
+  AgentResult,
+  AgentTool,
+  AgentConfig,
+  AgentIssue,
+  ExecutionPlan,
+  PlanPhase,
+  PlanStep,
+} from './agent/core/Agent'
+
+export type { AgentState, StateManager } from './agent/core/AgentState'
+
 export interface Task {
   id: string
   title: string
@@ -33,6 +48,7 @@ export type AgentStep =
   | { kind: 'search_status'; callId: string; query: string; phase: 'searching' | 'fallback' | 'complete' | 'no_results' | 'all_failed'; provider: string; message: string; resultCount?: number; durationMs?: number }
   | { kind: 'browser_action'; action: string; url?: string; selector?: string; tabId?: number; phase: 'start' | 'done' | 'error'; detail?: string }
   | { kind: 'output_cards'; files: OutputCardFile[] }
+  | { kind: 'verification'; status: 'passed' | 'failed'; error?: string }
 
 // A file written by the agent during a turn — used to render output cards
 export interface OutputCardFile {

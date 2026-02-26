@@ -15,13 +15,26 @@ import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { getWorkspace } from '../agent/tools'
 import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
+import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
+function slugify(text: string): string {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s-_]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 30)
+    .replace(/-+$/, '')
+}
+
 /** Resolves the per-task workspace directory consistently everywhere */
-function resolveTaskWorkspace(basePath: string, taskId: string): string {
-  const base = basePath.trim()
-  return base ? `${base}/${taskId}` : `/tmp/nasus-workspace/${taskId}`
+function resolveTaskWorkspace(basePath: string, taskId: string, title?: string): string {
+  const base = basePath.trim() || '/tmp/nasus-workspace'
+  const slug = title ? slugify(title) : 'task'
+  // Use a stable slug based on the initial title if possible, or just the task ID
+  // For now, we'll use the ID to keep it simple and unique, but add the slug as a prefix for descriptiveness
+  return `${base}/${slug}-${taskId.slice(0, 8)}`
 }
 
 interface ChatViewProps {
@@ -88,6 +101,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [agentRunning, setAgentRunning] = useState(false)
   // Selected model badge for in-chat display
   const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+  // Routing preview state
+  const [routingPreview, setRoutingPreview] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
   // Cost badge for completed tasks
   const [taskCostBadge, setTaskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
     // processingPhase: true from Send until first token/tool — drives "thinking" input state
@@ -306,16 +321,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
           addStep(task.id, payload.message_id, step)
           break
         }
-        case 'tool_result': {
-          const step: AgentStep = {
-            kind: 'tool_result',
-            callId: payload.call_id ?? '',
-            output: payload.output ?? '',
-            isError: payload.is_error ?? false,
+          case 'tool_result': {
+            const step: AgentStep = {
+              kind: 'tool_result',
+              callId: payload.call_id ?? '',
+              output: payload.output ?? '',
+              isError: payload.is_error ?? false,
+            }
+            updateStep(task.id, payload.message_id, step)
+            // Desktop mode sync: force workspace refresh on tool results
+            if (isTauri) {
+              workspaceManager.refresh(task.id).catch(() => {})
+            }
+            break
           }
-          updateStep(task.id, payload.message_id, step)
-          break
-        }
+
           case 'stream_chunk': {
             setProcessingPhase(false)
             if (!payload.done && payload.delta) {
@@ -430,28 +450,55 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     }
   }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const runAgent = useCallback(async (
-    taskId: string,
-    agentMsgId: string,
-    history: LlmMessage[],
-  ) => {
-    const cfg = configRef.current
-      const taskWorkspace = resolveTaskWorkspace(cfg.workspacePath, taskId)
+  const updateRoutingPreview = useCallback(async (content: string) => {
+    if (!isTauri || !content.trim() || routerConfig.mode !== 'auto' || isActive) {
+      setRoutingPreview(null)
+      return
+    }
     try {
+      const preview = await tauriInvoke<any>('preview_routing', {
+        message: content,
+        mode: routerConfig.mode,
+        budget: routerConfig.budget,
+        modelOverrides: routerConfig.modelOverrides,
+      })
+      if (preview) {
+        setRoutingPreview({
+          modelId: preview.model_id,
+          displayName: preview.display_name,
+          reason: preview.reason,
+        })
+      }
+    } catch {
+      setRoutingPreview(null)
+    }
+  }, [routerConfig, isActive])
+
+    const runAgent = useCallback(async (
+      taskId: string,
+      agentMsgId: string,
+      history: LlmMessage[],
+    ) => {
+      const cfg = configRef.current
+        const taskWorkspace = resolveTaskWorkspace(cfg.workspacePath, taskId, task?.title)
+      try {
+
         if (isTauri) {
-          await tauriInvoke('run_agent', {
-            taskId,
-            messageId: agentMsgId,
-            userMessages: history,
-            apiKey: cfg.apiKey || '',
-            model: cfg.model || 'anthropic/claude-3.7-sonnet',
-            workspacePath: taskWorkspace,
-            apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-            provider: cfg.provider || 'openrouter',
-            routerMode: cfg.routerConfig.mode,
-            routerBudget: cfg.routerConfig.budget,
-            routerModelOverrides: cfg.routerConfig.modelOverrides,
-            searchConfig: {
+            await tauriInvoke('run_agent', {
+              taskId,
+              messageId: agentMsgId,
+              userMessages: history,
+              apiKey: cfg.apiKey || '',
+              model: cfg.model || 'anthropic/claude-3.7-sonnet',
+              workspacePath: taskWorkspace,
+              apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+              provider: cfg.provider || 'openrouter',
+              routerMode: cfg.routerConfig.mode,
+              routerBudget: cfg.routerConfig.budget,
+              routerModelOverrides: cfg.routerConfig.modelOverrides,
+              taskTitle: task.title,
+              searchConfig: {
+
               provider: cfg.searchProvider || 'auto',
               braveKey: cfg.braveSearchKey || undefined,
               googleCseKey: cfg.googleCseKey || undefined,
@@ -558,13 +605,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
       // ── Inject files into workspace so agent can read them with file tools ────
       if (pendingAttachments.length > 0) {
-        const ws = getWorkspace(task.id)
         for (const att of pendingAttachments) {
           if (att.textContent !== null) {
-            ws.set(`uploads/${att.name}`, att.textContent)
+            await workspaceManager.writeFile(task.id, `uploads/${att.name}`, att.textContent)
           } else if (att.base64 !== null) {
             // Store base64 image data with a data URL header so agent can reference it
-            ws.set(`uploads/${att.name}`, `data:${att.mimeType};base64,${att.base64}`)
+            await workspaceManager.writeFile(task.id, `uploads/${att.name}`, `data:${att.mimeType};base64,${att.base64}`)
           }
         }
       }
@@ -712,7 +758,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       {showMemory && (
         <MemoryViewer
           taskId={task.id}
-          workspacePath={resolveTaskWorkspace(workspacePath, task.id)}
+          workspacePath={resolveTaskWorkspace(workspacePath, task.id, task.title)}
           onResume={handleResume}
           onClose={() => setShowMemory(false)}
         />
@@ -851,7 +897,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                     <div className="w-full">
                       <UserInputArea
                         ref={inputRef}
-                        onSend={handleSend}
+                        onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
+                        onContentChange={updateRoutingPreview}
                         disabled={false}
                         autoFocus
                         inputState={inputState}
@@ -956,26 +1003,44 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               {/* Input */}
               <div className="flex-shrink-0 px-5 pb-5 pt-1">
                 <div className="max-w-[780px] mx-auto">
-                  {/* Model badge + cost indicator row */}
-                  {(activeModelBadge || taskCostBadge) && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                      {activeModelBadge && (
-                        <span
-                          title={activeModelBadge.reason}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            fontSize: 10, padding: '2px 8px', borderRadius: 6,
-                            background: 'rgba(234,179,8,0.08)',
-                            border: '1px solid rgba(234,179,8,0.18)',
-                            color: 'var(--amber)',
-                            cursor: 'default',
-                          }}
-                        >
-                          <Pxi name="sparkles" size={8} />
-                          {activeModelBadge.displayName}
-                        </span>
-                      )}
-                      {taskCostBadge && taskCostBadge.callCount > 0 && (
+                    {/* Model badge + cost indicator row */}
+                    {(activeModelBadge || routingPreview || taskCostBadge) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                        {activeModelBadge && (
+                          <span
+                            title={activeModelBadge.reason}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                              background: 'rgba(234,179,8,0.08)',
+                              border: '1px solid rgba(234,179,8,0.18)',
+                              color: 'var(--amber)',
+                              cursor: 'default',
+                            }}
+                          >
+                            <Pxi name="sparkles" size={8} />
+                            {activeModelBadge.displayName}
+                          </span>
+                        )}
+                        {!isActive && routingPreview && (
+                          <span
+                            title={routingPreview.reason}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                              background: 'rgba(255,255,255,0.04)',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              color: 'var(--tx-tertiary)',
+                              cursor: 'default',
+                              animation: 'fadeIn 0.2s ease',
+                            }}
+                          >
+                            <Pxi name="route" size={8} />
+                            Auto-route: {routingPreview.displayName}
+                          </span>
+                        )}
+                        {taskCostBadge && taskCostBadge.callCount > 0 && (
+
                         <span
                           title={`${taskCostBadge.callCount} LLM call${taskCostBadge.callCount !== 1 ? 's' : ''}`}
                           style={{
@@ -997,19 +1062,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                       )}
                     </div>
                   )}
-                  <UserInputArea
-                    ref={inputRef}
-                    onSend={handleSend}
-                    onStop={handleStop}
-                    isRunning={isActive}
-                    inputState={inputState}
-                    queuedMsg={queuedMsg}
-                    attachments={attachments}
-                    onAddFiles={addFiles}
-                    onRemoveAttachment={removeAttachment}
-                    isOverLimit={isOverLimit}
-                    totalAttachmentSize={totalSize}
-                  />
+                    <UserInputArea
+                      ref={inputRef}
+                      onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
+                      onStop={handleStop}
+                      onContentChange={updateRoutingPreview}
+                      isRunning={isActive}
+                      inputState={inputState}
+                      queuedMsg={queuedMsg}
+                      attachments={attachments}
+                      onAddFiles={addFiles}
+                      onRemoveAttachment={removeAttachment}
+                      isOverLimit={isOverLimit}
+                      totalAttachmentSize={totalSize}
+                    />
+
                 </div>
               </div>
         </>

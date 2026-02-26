@@ -1002,29 +1002,6 @@ function BrowserAccessSection() {
 
 // ─── ModelRouterSection ───────────────────────────────────────────────────────
 
-// Static model registry (mirrors Rust defaults.rs) — used in the UI for the
-// enable/disable toggles. The Rust backend is the source of truth; this is
-// only for display purposes.
-const ROUTER_MODELS: Array<{
-  id: string
-  name: string
-  tier: 'premium' | 'standard' | 'budget' | 'free'
-  provider: string
-}> = [
-  { id: 'anthropic/claude-opus-4-5',            name: 'Claude Opus 4.5',         tier: 'premium',  provider: 'Anthropic' },
-  { id: 'anthropic/claude-sonnet-4-5',          name: 'Claude Sonnet 4.5',       tier: 'standard', provider: 'Anthropic' },
-  { id: 'anthropic/claude-3.7-sonnet',          name: 'Claude 3.7 Sonnet',       tier: 'standard', provider: 'Anthropic' },
-  { id: 'openai/gpt-4.1',                       name: 'GPT-4.1',                 tier: 'standard', provider: 'OpenAI'    },
-  { id: 'google/gemini-2.5-pro-preview',        name: 'Gemini 2.5 Pro',          tier: 'standard', provider: 'Google'    },
-  { id: 'anthropic/claude-3-5-haiku',           name: 'Claude 3.5 Haiku',        tier: 'budget',   provider: 'Anthropic' },
-  { id: 'google/gemini-2.0-flash-001',          name: 'Gemini 2.0 Flash',        tier: 'budget',   provider: 'Google'    },
-  { id: 'deepseek/deepseek-chat',               name: 'DeepSeek V3',             tier: 'budget',   provider: 'DeepSeek'  },
-  { id: 'openai/gpt-4.1-mini',                  name: 'GPT-4.1 Mini',            tier: 'budget',   provider: 'OpenAI'    },
-  { id: 'google/gemini-2.0-flash-exp:free',     name: 'Gemini 2.0 Flash (Free)', tier: 'free',     provider: 'Google'    },
-  { id: 'deepseek/deepseek-chat:free',          name: 'DeepSeek V3 (Free)',      tier: 'free',     provider: 'DeepSeek'  },
-  { id: 'meta-llama/llama-3.3-70b-instruct:free', name: 'Llama 3.3 70B (Free)', tier: 'free',     provider: 'Meta'      },
-]
-
 const TIER_COLORS: Record<string, { bg: string; color: string; label: string }> = {
   premium:  { bg: 'rgba(168,85,247,0.12)', color: '#c084fc', label: 'Premium'  },
   standard: { bg: 'rgba(234,179,8,0.1)',   color: 'var(--amber)', label: 'Standard' },
@@ -1045,11 +1022,23 @@ function ModelRouterSection({
   onModelOverridesChange: (v: Record<string, boolean>) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const { routerConfig } = useAppStore()
+
+  // Use registry from store if available, else fallback to empty
+  const registry = routerConfig.registry || []
+
+  // Map backend ModelInfo to UI format
+  const allModels = registry.map((m) => ({
+    id: m.id,
+    name: m.display_name,
+    tier: m.cost_tier.toLowerCase() as 'premium' | 'standard' | 'budget' | 'free',
+    provider: m.provider as string,
+  }))
 
   // Which models to show based on budget
   const visibleModels = budget === 'free'
-    ? ROUTER_MODELS.filter((m) => m.tier === 'free')
-    : ROUTER_MODELS.filter((m) => m.tier !== 'free')
+    ? allModels.filter((m) => m.tier === 'free')
+    : allModels.filter((m) => m.tier !== 'free')
 
   function isEnabled(modelId: string): boolean {
     if (modelId in modelOverrides) return modelOverrides[modelId]

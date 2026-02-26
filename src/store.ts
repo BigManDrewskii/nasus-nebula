@@ -2,9 +2,36 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Task, Message, AgentStep, LlmMessage } from './types'
 import { clearWorkspace, copyWorkspace } from './agent/tools'
+import type { ExecutionPlan } from './agent/core/Agent'
+
+// NOTE: clearWorkspace is now async - we call it without await in state updates
+// The workspace cleanup happens in the background
 import type { OpenRouterModel } from './agent/llm'
 
 // ── Router config ──────────────────────────────────────────────────────────────
+export type ToolCallingSupport = 'Strong' | 'Moderate' | 'Weak' | 'Unknown'
+export type CostTier = 'Free' | 'Budget' | 'Standard' | 'Premium'
+export type ModelProvider = 'Anthropic' | 'OpenAI' | 'Google' | 'DeepSeek' | 'Meta' | 'Mistral' | 'XAI' | 'Other'
+
+export interface ModelCapabilities {
+  reasoning: number
+  coding: number
+  writing: number
+  speed: number
+  instruction_following: number
+}
+
+export interface ModelInfo {
+  id: string
+  display_name: string
+  provider: ModelProvider
+  capabilities: ModelCapabilities
+  tool_calling: ToolCallingSupport
+  cost_tier: CostTier
+  context_window: number
+  enabled: boolean
+}
+
 export interface RouterModelOverrides {
   [modelId: string]: boolean
 }
@@ -15,6 +42,8 @@ export interface RouterConfig {
   /** 'free' | 'paid' */
   budget: string
   modelOverrides: RouterModelOverrides
+  /** Full model registry sync'd from backend */
+  registry?: ModelInfo[]
 }
 
 // Per-task router state emitted by the Rust backend
@@ -70,6 +99,10 @@ interface AppState {
         sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
         sandboxStatusMessage: string
 
+  // Planning state
+  pendingPlan: ExecutionPlan | null
+  planApprovalStatus: 'pending' | 'approved' | 'rejected' | null
+
   setActiveTaskId: (id: string | null) => void
   setOpenRouterModels: (models: OpenRouterModel[]) => void
   setDynamicModels: (models: string[]) => void
@@ -109,6 +142,10 @@ interface AppState {
         setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
+  setPendingPlan: (plan: ExecutionPlan | null) => void
+  setPlanApprovalStatus: (status: 'pending' | 'approved' | 'rejected' | null) => void
+  approvePlan: () => void
+  rejectPlan: () => void
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -166,6 +203,8 @@ export const useAppStore = create<AppState>()(
             modelOverrides: {},
           },
           taskRouterState: {},
+          pendingPlan: null,
+          planApprovalStatus: null,
 
         setActiveTaskId: (id) => set({ activeTaskId: id }),
           setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
@@ -183,7 +222,8 @@ export const useAppStore = create<AppState>()(
                 for (const t of pruned) {
                   delete messages[t.id]
                   delete rawHistory[t.id]
-                  clearWorkspace(t.id)
+                  // Async workspace cleanup - fire and forget
+                  clearWorkspace(t.id).catch(() => {})
                 }
                 // Notify UI that old tasks were pruned
                 window.dispatchEvent(new CustomEvent('nasus:tasks-pruned', {
@@ -205,8 +245,8 @@ export const useAppStore = create<AppState>()(
           const rawHistory = { ...state.rawHistory }
           delete messages[id]
           delete rawHistory[id]
-          // Also clean up persisted workspace files for this task
-          clearWorkspace(id)
+          // Async workspace cleanup - fire and forget
+          clearWorkspace(id).catch(() => {})
           // If we deleted the active task, select the next one
           const activeTaskId =
             state.activeTaskId === id
@@ -427,6 +467,24 @@ export const useAppStore = create<AppState>()(
               [taskId]: { ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }), ...state },
             },
           })),
+        setPendingPlan: (plan) => set({ pendingPlan: plan }),
+        setPlanApprovalStatus: (status) => set({ planApprovalStatus: status }),
+        approvePlan: () => {
+          const state = useAppStore.getState()
+          set({ planApprovalStatus: 'approved' })
+          // Emit approval event for orchestrator
+          if (state.activeTaskId) {
+            window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${state.activeTaskId}`))
+          }
+        },
+        rejectPlan: () => {
+          const state = useAppStore.getState()
+          set({ planApprovalStatus: 'rejected', pendingPlan: null })
+          // Emit rejection event for orchestrator
+          if (state.activeTaskId) {
+            window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${state.activeTaskId}`))
+          }
+        },
     }),
     {
       name: 'nasus-store-v2',
@@ -495,10 +553,10 @@ export const useAppStore = create<AppState>()(
 
           // Seed workspaceVersions for any tasks that have persisted workspace data,
           // so getWorkspaceVersion() returns > 0 and components re-render correctly.
-          import('./agent/tools').then(({ getWorkspace }) => {
+          import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
             for (const task of state.tasks ?? []) {
-              // Calling getWorkspace lazily loads from localStorage and seeds the version
-              getWorkspace(task.id)
+              // Initialize workspace for each task - this loads file metadata
+              workspaceManager.getWorkspace(task.id).catch(() => {})
             }
           }).catch(() => {})
         },

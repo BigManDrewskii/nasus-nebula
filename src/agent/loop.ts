@@ -575,3 +575,14 @@ export async function runAgentLoop(params: RunAgentParams): Promise<void> {
   }
   emit.error(`Maximum iterations (${maxIter}) reached. Check the Output panel for files that were created.`)
 }
+
+// ── New Agent Architecture ─────────────────────────────────────────────────────────
+// Re-export the new ExecutionAgent for forward compatibility.
+// The original runAgentLoop above is maintained for backward compatibility.
+// New code should use runExecutionAgent from the agents module.
+
+export { runExecutionAgent, ExecutionAgent, type ExecutionConfigParams } from './agents'
+export type { Agent, AgentContext, AgentResult, ExecutionPlan } from './core/Agent'
+export { AgentState, StateManager } from './core/AgentState'
+export { BaseAgent } from './core/BaseAgent'
+

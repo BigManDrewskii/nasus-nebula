@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 import { fetchOpenRouterModels } from '../agent/llm'
+import { tauriInvoke } from '../tauri'
 
 // Refresh the model list if the cached copy is older than this threshold
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
@@ -23,6 +24,15 @@ export function useModelSync() {
   const lastFetchedKey = useRef<string>('')
 
   useEffect(() => {
+    // Sync backend model registry
+    tauriInvoke<any[]>('get_model_registry')
+      .then((registry) => {
+        if (registry && registry.length > 0) {
+          useAppStore.getState().setRouterConfig({ registry })
+        }
+      })
+      .catch(() => { /* non-blocking */ })
+
     if (!apiKey?.trim()) return
 
     const keyChanged = lastFetchedKey.current !== apiKey.trim()

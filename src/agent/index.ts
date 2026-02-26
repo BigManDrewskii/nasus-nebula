@@ -10,6 +10,8 @@ import { runAgentLoop } from './loop'
 import type { SearchConfig } from './tools'
 import type { ExecutionConfig } from './sandboxRuntime'
 import { disposeSandbox } from './sandboxRuntime'
+import { processTaskWithOrchestrator, type OrchestratorConfig } from './Orchestrator'
+import { workspaceManager } from './workspace/WorkspaceManager'
 
 // AbortControllers keyed by taskId
 const controllers: Map<string, AbortController> = new Map()
@@ -25,6 +27,10 @@ export interface RunWebAgentParams {
   searchConfig?: SearchConfig
   executionConfig?: ExecutionConfig
   maxIterations?: number
+  /** Enable multi-agent mode with planning (default: false for backward compatibility) */
+  usePlanning?: boolean
+  /** Orchestrator configuration */
+  orchestratorConfig?: OrchestratorConfig
 }
 
 export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
@@ -35,10 +41,41 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
   controllers.set(params.taskId, controller)
 
   try {
-    await runAgentLoop({
-      ...params,
-      signal: controller.signal,
-    })
+    // Ensure workspace is loaded before agent starts
+    await workspaceManager.ensureLoaded(params.taskId)
+
+    // Use orchestrator if planning is enabled
+    if (params.usePlanning) {
+      // Extract first user message for planning
+      const firstUserMessage = params.userMessages.find(m => m.role === 'user')
+      const userMessage = typeof firstUserMessage?.content === 'string'
+        ? firstUserMessage.content
+        : ''
+
+      await processTaskWithOrchestrator(
+        {
+          taskId: params.taskId,
+          messageId: params.messageId,
+          userMessages: params.userMessages,
+          userMessage,
+          apiKey: params.apiKey,
+          model: params.model,
+          apiBase: params.apiBase,
+          provider: params.provider,
+          searchConfig: params.searchConfig,
+          executionConfig: params.executionConfig,
+          signal: controller.signal,
+          maxIterations: params.maxIterations,
+        },
+        params.orchestratorConfig,
+      )
+    } else {
+      // Original behavior: direct execution
+      await runAgentLoop({
+        ...params,
+        signal: controller.signal,
+      })
+    }
   } finally {
     controllers.delete(params.taskId)
   }

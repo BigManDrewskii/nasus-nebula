@@ -49,8 +49,15 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
     }
     return undefined as unknown as T
   }
-  const { invoke } = await import('@tauri-apps/api/core')
-  return invoke<T>(cmd, args)
+  try {
+    const core = await import('@tauri-apps/api/core')
+    if (core && typeof core.invoke === 'function') {
+      return core.invoke<T>(cmd, args)
+    }
+  } catch (e) {
+    console.error(`Tauri invoke error for ${cmd}:`, e)
+  }
+  return undefined as unknown as T
 }
 
 export async function tauriListen<T>(

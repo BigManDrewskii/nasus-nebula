@@ -11,6 +11,7 @@ export type InputState = 'idle' | 'processing' | 'streaming' | 'awaiting_input'
 interface UserInputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
+  onContentChange?: (content: string) => void
   disabled?: boolean
   isRunning?: boolean
   inputState?: InputState
@@ -305,11 +306,12 @@ function ModelDropdown({
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>(
-  function UserInputArea({
-    onSend, onStop, disabled, isRunning, inputState: inputStateProp, queuedMsg, autoFocus,
-    attachments = [], onAddFiles, onRemoveAttachment, isOverLimit = false, totalAttachmentSize = 0,
-  }, ref) {
+  export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>(
+    function UserInputArea({
+      onSend, onStop, onContentChange, disabled, isRunning, inputState: inputStateProp, queuedMsg, autoFocus,
+      attachments = [], onAddFiles, onRemoveAttachment, isOverLimit = false, totalAttachmentSize = 0,
+    }, ref) {
+
     const { model, setModel } = useAppStore()
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -361,6 +363,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       const ta = e.target
       ta.style.height = 'auto'
       ta.style.height = Math.min(ta.scrollHeight, 220) + 'px'
+      onContentChange?.(ta.value)
     }
 
     function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {

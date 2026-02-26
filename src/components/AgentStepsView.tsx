@@ -8,9 +8,10 @@ interface Props {
 }
 
 export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming = false }: Props) {
-  if (!steps || steps.length === 0) return null
-  const rows = useMemo(() => buildRows(steps), [steps])
+  // Hooks must be called before any early returns (React Rules of Hooks)
   const [collapsed, setCollapsed] = useState(false)
+
+  const rows = useMemo(() => buildRows(steps || []), [steps])
 
   // Find the most recently active / pending action for the live header label
   const liveLabel = useMemo(() => {
@@ -27,6 +28,9 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
   const hasOnlyMemoryOps = useMemo(() => rows.every(r =>
     r.kind === 'tool_pair' && isMemoryPath(String(r.call.input.path ?? ''))
   ), [rows])
+
+  // Early return after all hooks are called
+  if (!steps || steps.length === 0) return null
 
   return (
     <div style={{ marginBottom: 6 }}>
@@ -117,6 +121,7 @@ type AnyRow =
   | { kind: 'context_compressed'; step: Extract<AgentStep, { kind: 'context_compressed' }> }
   | { kind: 'search_status'; step: Extract<AgentStep, { kind: 'search_status' }> }
   | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
+  | { kind: 'verification'; step: Extract<AgentStep, { kind: 'verification' }> }
 
 function buildRows(steps: AgentStep[]): AnyRow[] {
   const rows: AnyRow[] = []
@@ -158,6 +163,8 @@ function buildRows(steps: AgentStep[]): AnyRow[] {
       }
     } else if (step.kind === 'browser_action') {
       rows.push({ kind: 'browser_action', step })
+    } else if (step.kind === 'verification') {
+      rows.push({ kind: 'verification', step })
     }
   }
   return rows
@@ -171,6 +178,7 @@ function Row({ row }: { row: AnyRow }) {
   if (row.kind === 'strike_escalation') return <StrikeRow step={row.step} />
   if (row.kind === 'search_status') return <SearchStatusRow step={row.step} />
   if (row.kind === 'browser_action') return <BrowserActionRow step={row.step} />
+  if (row.kind === 'verification') return <VerificationRow step={row.step} />
   if (row.kind === 'context_compressed') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
@@ -668,6 +676,48 @@ function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalati
           </p>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ─── Verification row ───────────────────────────────────────────────────────────
+
+function VerificationRow({ step }: { step: Extract<AgentStep, { kind: 'verification' }> }) {
+  const passed = step.status === 'passed'
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '5px 8px',
+      borderRadius: 8,
+      background: passed
+        ? 'rgba(52,211,153,0.04)'
+        : 'rgba(239,68,68,0.04)',
+      border: passed
+        ? '1px solid rgba(52,211,153,0.12)'
+        : '1px solid rgba(239,68,68,0.12)',
+    }}>
+      <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Pxi
+          name={passed ? 'shield-check' : 'shield-x'}
+          size={10}
+          style={{ color: passed ? '#34d399' : '#f87171' }}
+        />
+      </span>
+
+      <Pxi name={passed ? 'check-circle' : 'x-circle'} size={10} style={{ color: passed ? '#34d399' : '#f87171', flexShrink: 0 }} />
+
+      <span style={{ fontSize: 12, fontWeight: 500, color: passed ? '#34d399' : '#f87171', flex: 1 }}>
+        Verification {passed ? 'passed' : 'failed'}
+      </span>
+
+      {step.error && (
+        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'rgba(248,113,113,0.7)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {step.error}
+        </span>
+      )}
     </div>
   )
 }

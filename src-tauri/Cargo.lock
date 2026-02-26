@@ -2146,6 +2146,7 @@ dependencies = [
  "tauri-plugin-store",
  "tokio",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

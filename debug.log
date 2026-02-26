@@ -88,3 +88,21 @@ data: {"id"... [truncated]
 2026-02-25T11:08:02.615Z [console][log] [vite] connecting...
 2026-02-25T11:08:02.620Z [console][log] [vite] connected.
 2026-02-25T11:08:02.620Z [console][debug] [vite] connected.
+2026-02-26T14:31:55.104Z [console][debug] [vite] hot updated: /src/components/OnboardingScreen.tsx
+2026-02-26T14:31:55.104Z [console][debug] [vite] hot updated: /src/components/SettingsPanel.tsx
+2026-02-26T14:31:55.104Z [console][debug] [vite] hot updated: /src/components/WorkspacePicker.tsx
+2026-02-26T14:31:55.104Z [console][debug] [vite] hot updated: /src/components/MemoryViewer.tsx
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/index.css
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/components/OnboardingScreen.tsx
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/components/SettingsPanel.tsx
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/components/WorkspacePicker.tsx
+2026-02-26T14:31:55.472Z [console][debug] [vite] hot updated: /src/components/MemoryViewer.tsx
+2026-02-26T14:43:30.242Z [console][log] [vite] connecting...
+2026-02-26T14:43:30.244Z [console][log] [vite] connected.
+2026-02-26T14:43:30.269Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-02-26T14:43:30.285Z [console][warn] Slow network is detected. See https://www.chromestatus.com/feature/5636954674692096 for more details. Fallback font will be used while loading: http://localhost:5173/node_modules/@hackernoon/pixel-icon-library/fonts/iconfont.woff2?0ff28214377bfc74e5cf29455991154b
+2026-02-26T14:44:30.338Z [console][warn] [vite] server connection lost. Polling for restart...
+2026-02-26T14:44:30.338Z [console][log] [vite] server connection lost. Polling for restart...
+2026-02-26T14:43:30.762Z [network][GET 200] https://openrouter.ai/api/v1/models
+  response: {"data":[{"id":"qwen/qwen3.5-35b-a3b","canonical_slug":"qwen/qwen3.5-35b-a3b-20260224","hugging_face_id":"Qwen/Qwen3.5-35B-A3B","name":"Qwen: Qwen3.5-35B-A3B","created":1772053822,"description":"The Qwen3.5 Series 35B-A3B is a native vision-language model designed with a hybrid architecture that integrates linear attention mechanisms and a sparse mixture-of-experts model, achieving higher inference efficiency. Its overall performance is comparable to that of the Qwen3.5-27B.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Qwen3","instruct_type":null},"pricing":{"prompt":"0.00000025","completion":"0.000002"},"top_provider":{"context_length":262144,"max_completion_tokens":65536,"is_moderated":false},"per_request_limits":null,"supported_parameters":["include_reasoning","logprobs","max_tokens","presence_penalty","reasoning","response_format","seed","structured_outputs","temperature","tool_choice","tools","top_logprobs","top_p"],"default_parameters":{"temperature":1,"top_p":0.95,"frequency_penalty":null},"expiration_date":null},{"id":"qwen/qwen3.5-27b","canonical_slug":"qwen/qwen3.5-27b-20260224","hugging_face_id":"Qwen/Qwen3.5-27B","name":"Qwen: Qwen3.5-27B","created":1772053810,"description":"The Qwen3.5 27B native vision-language Dense model incorporates a linear attention mechanism, delivering fast response times while balancing inference speed and performance. Its overall capabilities are comparable to those of the Qwen3.5-122B-A10B.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Qwen3","instruct_type":null},"pricing":{"prompt":"0.0000003","completion":"0.0000024"},"top_provider":{"context_length":262144,"max_completion_tokens":65536,"is_moderated":false},"per_request_limits":null,"supported_parameters":["include_reasoning","logprobs","max... [truncated]
