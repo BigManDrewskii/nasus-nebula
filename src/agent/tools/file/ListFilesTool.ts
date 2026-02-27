@@ -20,7 +20,6 @@ export class ListFilesTool extends BaseTool {
 
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const path = (args.path as string) || '/workspace'
-    const recursive = (args.recursive as boolean) || false
 
     try {
       const taskId = (args as any).__taskId || 'initial'

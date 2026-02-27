@@ -7,7 +7,7 @@
  */
 
 import { BaseAgent } from '../core/BaseAgent'
-import { AgentState, StateManager } from '../core/AgentState'
+import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
 import { streamCompletion, chatOnce, cheapestModel } from '../llm'
@@ -86,17 +86,10 @@ class ErrorTracker {
 /**
  * Execution configuration for the agent loop.
  */
-export interface ExecutionConfigParams {
+export interface ExecutionConfigParams extends AgentContext {
   taskId: string
   messageId: string
   userMessages: LlmMessage[]
-  apiKey: string
-  model: string
-  apiBase: string
-  provider: string
-  searchConfig?: SearchConfig
-  executionConfig?: ExecutionConfig
-  signal: AbortSignal
   maxIterations?: number
   /** Plan to follow during execution */
   plan?: ExecutionPlan
@@ -122,16 +115,18 @@ export class ExecutionAgent extends BaseAgent {
   readonly name = 'Execution Agent'
   readonly description = 'Executes tasks using tools in a ReAct loop'
 
-  protected stateManager: StateManager = new StateManager()
-
   private errorTracker = new ErrorTracker()
   private searchBrowseCount = 0
+
+  constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
+    super(name, type)
+  }
 
   /**
    * Execute the agent with the given context.
    * Supports self-correction loop when verification is enabled.
    */
-  async execute(context: AgentContext): Promise<AgentResult> {
+  protected async doExecute(context: AgentContext): Promise<AgentResult> {
     const params = context as ExecutionConfigParams
 
     // If correction hints are present, we're in a self-correction loop
@@ -154,149 +149,147 @@ export class ExecutionAgent extends BaseAgent {
    * Execute the agent once (main execution loop).
    */
   private async executeOnce(context: AgentContext): Promise<AgentResult> {
-    return this.stateManager.withState(AgentState.RUNNING, async () => {
-      const params = context as ExecutionConfigParams
-      const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, signal } = params
-      const maxIter = params.maxIterations ?? MAX_ITERATIONS
+    const params = context as ExecutionConfigParams
+    const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, signal } = params
+    const maxIter = params.maxIterations ?? MAX_ITERATIONS
 
-      // Validate API key
-      if (!apiKey) {
-        this.emitError(taskId, messageId, 'No API key configured. Open Settings (⌘,) and enter your OpenRouter API key (sk-or-…).')
-        return { state: AgentState.ERROR, done: true, error: 'No API key configured' }
-      }
+    // Validate API key
+    if (!apiKey) {
+      this.emitError(taskId, messageId, 'No API key configured. Open Settings (⌘,) and enter your OpenRouter API key (sk-or-…).')
+      return { state: AgentState.ERROR, done: true, error: 'No API key configured' }
+    }
 
-      this.emitAgentStarted(taskId, messageId)
+    this.emitAgentStarted(taskId, messageId)
 
       // Auto-title on first message
       const isFirstMessage = userMessages.length === 1
       if (isFirstMessage) {
         const firstContent = typeof userMessages[0].content === 'string' ? userMessages[0].content : ''
         if (firstContent) {
-          this.autoTitle(apiBase, apiBase, provider, model, firstContent, taskId).catch(() => {})
+          this.autoTitle(apiBase, apiKey, provider, model, firstContent, taskId).catch(() => {})
         }
       }
 
-      // Build message history
-      const messages: LlmMessage[] = [
-        { role: 'system', content: SYSTEM_PROMPT },
-        ...userMessages,
-      ]
+    // Build message history
+    const messages: LlmMessage[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...userMessages,
+    ]
 
-      // Inject environment summary
-      const envSummary = this.buildEnvSummary(params.executionConfig)
-      messages.splice(1, 0, { role: 'system', content: envSummary })
+    // Inject environment summary
+    const envSummary = this.buildEnvSummary(params.executionConfig)
+    messages.splice(1, 0, { role: 'system', content: envSummary })
 
-      // Inject stack template if detected
-      const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
-      if (firstUserContent && userMessages.length === 1) {
-        const detectedStack = detectStack(firstUserContent)
-        if (detectedStack) {
-          seedStackTemplate(taskId, detectedStack.id)
-          messages.splice(2, 0, {
-            role: 'system',
-            content: `[Stack Template Ready] ${detectedStack.contextInjection}`,
-          })
-        }
+    // Inject stack template if detected
+    const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
+    if (firstUserContent && userMessages.length === 1) {
+      const detectedStack = detectStack(firstUserContent)
+      if (detectedStack) {
+        seedStackTemplate(taskId, detectedStack.id)
+        messages.splice(2, 0, {
+          role: 'system',
+          content: `[Stack Template Ready] ${detectedStack.contextInjection}`,
+        })
+      }
+    }
+
+    // Inject correction hints if present
+    if (params.correctionHints) {
+      messages.push({
+        role: 'system',
+        content: `[Correction Required]\n${params.correctionHints}\n\nAddress these issues and complete the task.`,
+      })
+    }
+
+    // Main execution loop
+    for (let iteration = 0; iteration < maxIter; iteration++) {
+      if (signal?.aborted) {
+        this.emitDone(taskId, messageId)
+        return { state: AgentState.FINISHED, done: true }
       }
 
-      // Inject correction hints if present
-      if (params.correctionHints) {
+      this.emitIterationTick(taskId, iteration + 1)
+
+      // Warning near max
+      const warnIter = Math.max(1, maxIter - 10)
+      if (iteration === warnIter) {
         messages.push({
           role: 'system',
-          content: `[Correction Required]\n${params.correctionHints}\n\nAddress these issues and complete the task.`,
+          content: `[Warning] You are at iteration ${iteration + 1}/${maxIter}. Prioritize completing remaining phases and delivering results to the user now.`,
         })
       }
 
-      // Main execution loop
-      for (let iteration = 0; iteration < maxIter; iteration++) {
-        if (signal.aborted) {
-          this.emitDone(taskId, messageId)
-          return { state: AgentState.FINISHED, done: true }
-        }
-
-        this.emitIterationTick(taskId, iteration + 1)
-
-        // Warning near max
-        const warnIter = Math.max(1, maxIter - 10)
-        if (iteration === warnIter) {
-          messages.push({
-            role: 'system',
-            content: `[Warning] You are at iteration ${iteration + 1}/${maxIter}. Prioritize completing remaining phases and delivering results to the user now.`,
-          })
-        }
-
-        // Attention refresh
-        if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
-          messages.push({
-            role: 'system',
-            content: `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`,
-          })
-        }
-
-        // Context compression
-        const compressAt = this.compressThreshold(model)
-        if (messages.length > compressAt) {
-          this.compressContext(messages, taskId, messageId)
-        }
-
-        // LLM call
-        const llmResult = await this.callLLM(messages, model, apiBase, apiKey, provider, taskId, messageId, signal)
-        if (!llmResult) {
-          if (!signal.aborted) {
-            return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
-          }
-          return { state: AgentState.FINISHED, done: true }
-        }
-
-        const { finishReason, responseContent, responseToolCalls } = llmResult
-
-        if (signal.aborted) {
-          this.emitDone(taskId, messageId)
-          return { state: AgentState.FINISHED, done: true }
-        }
-
-        // No tool calls = done
-        const noTools = responseToolCalls.length === 0
-        if (finishReason === 'stop' || noTools) {
-          if (responseContent) {
-            useAppStore.getState().appendRawHistory(taskId, [
-              { role: 'assistant', content: responseContent },
-            ])
-          }
-          this.emitDone(taskId, messageId)
-          return { state: AgentState.FINISHED, done: true }
-        }
-
-        // Process tool calls
-        const toolResult = await this.processToolCalls(
-          responseToolCalls,
-          responseContent,
-          messages,
-          taskId,
-          messageId,
-          params.searchConfig,
-          params.executionConfig,
-          signal,
-          iteration,
-          warnIter,
-          maxIter,
-        )
-
-        if (toolResult === 'aborted') {
-          this.emitDone(taskId, messageId)
-          return { state: AgentState.FINISHED, done: true }
-        }
-
-        if (toolResult === 'max_iterations') {
-          this.flushRemainingFiles(taskId, messageId)
-          this.emitError(taskId, messageId, `Maximum iterations (${maxIter}) reached. Check the Output panel for files that were created.`)
-          return { state: AgentState.ERROR, done: true, error: 'Max iterations reached' }
-        }
+      // Attention refresh
+      if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
+        messages.push({
+          role: 'system',
+          content: `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`,
+        })
       }
 
-      return { state: AgentState.FINISHED, done: true }
-    })
+      // Context compression
+      const compressAt = this.compressThreshold(model)
+      if (messages.length > compressAt) {
+        this.compressContext(messages, taskId, messageId)
+      }
+
+      // LLM call
+      const llmResult = await this.callLLM(messages, model, apiBase, apiKey, provider, taskId, messageId, signal!)
+      if (!llmResult) {
+        if (signal && !signal.aborted) {
+          return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
+        }
+        return { state: AgentState.FINISHED, done: true }
+      }
+
+      const { finishReason, responseContent, responseToolCalls } = llmResult
+
+      if (signal?.aborted) {
+        this.emitDone(taskId, messageId)
+        return { state: AgentState.FINISHED, done: true }
+      }
+
+      // No tool calls = done
+      const noTools = responseToolCalls.length === 0
+      if (finishReason === 'stop' || noTools) {
+        if (responseContent) {
+          useAppStore.getState().appendRawHistory(taskId, [
+            { role: 'assistant', content: responseContent },
+          ])
+        }
+        this.emitDone(taskId, messageId)
+        return { state: AgentState.FINISHED, done: true }
+      }
+
+      // Process tool calls
+      const toolResult = await this.processToolCalls(
+        responseToolCalls,
+        responseContent,
+        messages,
+        taskId,
+        messageId,
+        params.searchConfig,
+        params.executionConfig,
+        signal,
+        iteration,
+        warnIter,
+      )
+
+      if (toolResult === 'aborted') {
+        this.emitDone(taskId, messageId)
+        return { state: AgentState.FINISHED, done: true }
+      }
+
+      if (toolResult === 'max_iterations') {
+        this.flushRemainingFiles(taskId, messageId)
+        this.emitError(taskId, messageId, `Maximum iterations (${maxIter}) reached. Check the Output panel for files that were created.`)
+        return { state: AgentState.ERROR, done: true, error: 'Max iterations reached' }
+      }
+    }
+
+    return { state: AgentState.FINISHED, done: true }
   }
+
 
   /**
    * Execute with verification and self-correction loop.
@@ -454,7 +447,7 @@ export class ExecutionAgent extends BaseAgent {
         provider,
         model,
         messages,
-        getToolDefinitions(),
+        getToolDefinitions() as any,
         {
           onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
           onToolCalls: (calls) => { responseToolCalls = calls },
@@ -576,13 +569,13 @@ export class ExecutionAgent extends BaseAgent {
             },
           ],
           tool_call_id: callId,
-        } as LlmMessage)
+        } as unknown as LlmMessage)
       } else {
         messages.push({
           role: 'tool',
-          content: output,
+          content: typeof output === 'string' ? output : JSON.stringify(output),
           tool_call_id: callId,
-        })
+        } as unknown as LlmMessage)
       }
     }
 
@@ -699,7 +692,7 @@ export class ExecutionAgent extends BaseAgent {
     apiBase: string,
     apiKey: string,
     provider: string,
-    model: string,
+    _model: string,
     userMessage: string,
     taskId: string,
   ): Promise<void> {
@@ -809,6 +802,6 @@ export class ExecutionAgent extends BaseAgent {
  * This maintains the same API as the original runAgentLoop function.
  */
 export async function runExecutionAgent(params: ExecutionConfigParams): Promise<void> {
-  const agent = new ExecutionAgent()
+  const agent = new ExecutionAgent('execution', 'executor')
   await agent.execute(params)
 }

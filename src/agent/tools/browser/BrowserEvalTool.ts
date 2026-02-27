@@ -1,6 +1,6 @@
 import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
-import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
+import type { ToolParameterSchema, EvalResult } from '../core/ToolResult'
 import { browserEval } from '../../browserBridge'
 
 /**
@@ -24,11 +24,11 @@ export class BrowserEvalTool extends BaseTool {
     required: ['expression'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>): Promise<EvalResult> {
     const expression = args.expression as string
 
     if (!expression) {
-      return toolFailure('Missing expression')
+      return toolFailure('Missing expression') as EvalResult
     }
 
     try {
@@ -37,9 +37,9 @@ export class BrowserEvalTool extends BaseTool {
         expression,
         awaitPromise: Boolean(args.await_promise),
       })
-      return toolSuccess(String(result.value))
+      return toolSuccess({ value: result.result }) as EvalResult
     } catch (err) {
-      return toolFailure(err instanceof Error ? err.message : String(err))
+      return toolFailure(err instanceof Error ? err.message : String(err)) as EvalResult
     }
   }
 }

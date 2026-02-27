@@ -272,6 +272,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         gap: 9,
         padding: isTauri ? '10px 14px 10px 14px' : '14px 14px 10px',
         userSelect: 'none',
+        background: 'linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 100%)',
       }}
     >
         <div style={{ position: 'relative', flexShrink: 0, lineHeight: 0 }}>
@@ -280,7 +281,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
               position: 'absolute',
               inset: -6,
               borderRadius: 10,
-              background: 'radial-gradient(ellipse at 40% 50%, oklch(64% 0.214 40.1 / 0.22) 0%, transparent 70%)',
+              background: 'radial-gradient(ellipse at 40% 50%, oklch(64% 0.214 40.1 / 0.3) 0%, transparent 70%)',
               pointerEvents: 'none',
             }}
           />
@@ -291,10 +292,11 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
           className="font-display"
           style={{
             fontSize: 12.5,
-            fontWeight: 700,
-            letterSpacing: '0.14em',
+            fontWeight: 800,
+            letterSpacing: '0.12em',
             color: 'var(--amber-light)',
             lineHeight: 1,
+            textShadow: '0 0 12px oklch(64% 0.214 40.1 / 0.3)',
           }}
         >
           NASUS
@@ -302,14 +304,17 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         <span
           style={{
             fontSize: 8.5,
-            fontWeight: 500,
-            letterSpacing: '0.06em',
+            fontWeight: 600,
+            letterSpacing: '0.04em',
             color: 'var(--tx-muted)',
             fontFamily: 'var(--font-mono)',
             lineHeight: 1,
+            background: 'rgba(255,255,255,0.05)',
+            padding: '1px 3px',
+            borderRadius: 3,
           }}
         >
-          v1
+          V1
         </span>
       </div>
       {onToggleCollapse && (
@@ -345,14 +350,15 @@ function NewTaskButton({ onClick }: { onClick: () => void }) {
         fontWeight: 500,
         fontFamily: 'inherit',
         cursor: 'pointer',
-        transition: 'background 0.12s, border-color 0.12s, color 0.12s',
-        color: hov ? 'var(--amber-soft)' : 'var(--tx-tertiary)',
-        background: hov ? 'oklch(64% 0.214 40.1 / 0.07)' : 'transparent',
-        border: `1px solid ${hov ? 'oklch(64% 0.214 40.1 / 0.22)' : 'rgba(255,255,255,0.07)'}`,
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        color: hov ? 'var(--amber-light)' : 'var(--tx-tertiary)',
+        background: hov ? 'oklch(64% 0.214 40.1 / 0.09)' : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${hov ? 'oklch(64% 0.214 40.1 / 0.35)' : 'rgba(255,255,255,0.06)'}`,
+        boxShadow: hov ? '0 0 16px oklch(64% 0.214 40.1 / 0.12)' : 'none',
       }}
     >
-        <Pxi name="plus" size={10} style={{ flexShrink: 0 }} />
-        <span style={{ flex: 1, textAlign: 'left' }}>New task</span>
+        <Pxi name="plus" size={10} style={{ flexShrink: 0, transform: hov ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+        <span style={{ flex: 1, textAlign: 'left', letterSpacing: '0.01em' }}>New task</span>
         <kbd
           style={{
             fontSize: 9,

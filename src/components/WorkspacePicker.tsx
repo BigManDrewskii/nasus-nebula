@@ -43,16 +43,17 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     }
 
     setChecking(true)
-    checkTimer.current = setTimeout(async () => {
-      try {
-        const ok = await tauriInvoke<boolean>('validate_path', { path: trimmed })
-        setValid(ok)
-      } catch {
-        setValid(null)
-      } finally {
-        setChecking(false)
-      }
-    }, 500)
+      checkTimer.current = setTimeout(async () => {
+        try {
+          const ok = await tauriInvoke<boolean>('validate_path', { path: trimmed })
+          setValid(ok ?? null)
+        } catch {
+          setValid(null)
+        } finally {
+          setChecking(false)
+        }
+      }, 500)
+
     return () => { if (checkTimer.current) clearTimeout(checkTimer.current) }
   }, [value])
 

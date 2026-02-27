@@ -71,6 +71,9 @@
   --color-bg-5-contrast: #000;
   --color-bg-6: oklch(67.4% 0.079 119);
   --color-bg-6-contrast: #000;
+
+  --mesh-gradient: radial-gradient(at 0% 0%, oklch(25% 0.1 260 / 0.15) 0px, transparent 50%),
+                   radial-gradient(at 100% 100%, oklch(64% 0.214 40.1 / 0.08) 0px, transparent 50%);
 }
 
 :root {
@@ -81,6 +84,11 @@
   --amber-soft:   oklch(79% 0.164 30.1);
   --amber-light:  oklch(89% 0.135 55.1);
   --amber-pale:   oklch(99% 0.116 70.1);
+
+  /* Glass constants */
+  --glass-bg: rgba(255, 255, 255, 0.025);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: blur(24px);
 
   /*
    * ── Text contrast hierarchy ──
@@ -117,6 +125,13 @@ html, body, #root {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* ── Custom Animations ── */
+@keyframes glow {
+  0%, 100% { opacity: 0.5; filter: blur(8px); }
+  50% { opacity: 0.8; filter: blur(12px); }
 }
 
 /* ── Font role utilities ──────────────────────────────────────────────────── */
@@ -742,9 +757,10 @@ html, body, #root {
 }
 
 .sidebar-rail-task-dot--active > span {
-  background: oklch(64% 0.214 40.1 / 0.18);
-  border-color: oklch(64% 0.214 40.1 / 0.4);
+  background: oklch(64% 0.214 40.1 / 0.22);
+  border-color: oklch(64% 0.214 40.1 / 0.45);
   color: var(--amber-soft);
+  box-shadow: 0 0 12px oklch(64% 0.214 40.1 / 0.15);
 }
 
 .sidebar-rail-task-dot--active {
@@ -760,6 +776,7 @@ html, body, #root {
   width: 100vw;
   overflow: hidden;
   background: #0a0a0a;
+  background-image: var(--mesh-gradient);
   padding-top: 28px;
 }
 
@@ -771,6 +788,8 @@ html, body, #root {
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
+  background: rgba(9, 9, 9, 0.4);
+  backdrop-filter: var(--glass-blur);
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -790,6 +809,8 @@ html, body, #root {
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
+  background: rgba(11, 11, 11, 0.4);
+  backdrop-filter: var(--glass-blur);
   transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
               max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -809,8 +830,18 @@ html, body, #root {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  background: #0d0d0d;
+  background: transparent;
   position: relative;
+  z-index: 1;
+}
+
+.app-chat::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 120%, rgba(234, 179, 8, 0.03) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 /* ── Output panel collapsed rail ─────────────────────────────────────────── */

@@ -4,15 +4,15 @@
  */
 
 export interface LlmMessage {
-  role: string
-  content: string | null
+  role: 'system' | 'user' | 'assistant' | 'tool' | string
+  content: string | null | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>
   tool_call_id?: string
   tool_calls?: ToolCall[]
 }
 
 export interface ToolCall {
   id: string
-  type: string
+  type: 'function' | string
   function: { name: string; arguments: string }
 }
 
@@ -23,6 +23,7 @@ export interface ToolDefinition {
     description: string
     parameters: Record<string, unknown>
   }
+  inactive?: boolean
 }
 
 export interface StreamCallbacks {

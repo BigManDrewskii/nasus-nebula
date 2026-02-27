@@ -3,9 +3,25 @@
  * All agents (Planning, Execution, Verification, Specialist) implement this.
  */
 
-import type { LlmMessage } from '../../llm'
 import type { AgentState } from './AgentState'
-import type { Task } from '../../types'
+import type { LlmMessage } from '../llm'
+
+export type { LlmMessage }
+
+/**
+ * Task definition for the agent system.
+ */
+export interface Task {
+  id: string
+  title: string
+  description?: string
+  status: 'idle' | 'pending' | 'running' | 'in_progress' | 'completed' | 'failed' | 'stopped'
+  createdAt: Date
+  sandboxId?: string
+  pinned?: boolean
+  /** Inferred task type used for the sidebar icon */
+  taskType?: 'research' | 'code' | 'document' | 'web' | 'data' | 'general'
+}
 
 /**
  * Tool definition for agent capability.
@@ -114,6 +130,7 @@ export interface PlanStep {
   agent: 'planner' | 'executor' | 'verifier' | 'specialist'
   specialization?: 'research' | 'code' | 'data' | 'browser'
   tools: string[]
+  status?: 'pending' | 'in_progress' | 'completed' | 'failed'
   estimatedDuration?: number
   dependencies?: string[] // IDs of steps that must complete first
 }

@@ -344,6 +344,8 @@ function ModelDropdown({
       },
     }))
 
+    const [isFocused, setIsFocused] = useState(false)
+
     function handleSend() {
       const trimmed = textareaRef.current?.value.trim() ?? ''
       if ((!trimmed && !hasAttachments) || isTextareaDisabled || isOverLimit) return
@@ -420,7 +422,14 @@ function ModelDropdown({
     }
 
     return (
-      <div style={containerStyle} className={`user-input-area state-${inputState}`}>
+      <div
+        style={{
+          ...containerStyle,
+          boxShadow: isFocused ? '0 0 0 2px rgba(234,179,8,0.15), 0 8px 32px rgba(0,0,0,0.4)' : containerStyle.boxShadow,
+          borderColor: isFocused ? 'rgba(234,179,8,0.4)' : borderColor,
+        }}
+        className={`user-input-area state-${inputState}`}
+      >
         {/* Hidden file input */}
         <input
           ref={fileInputRef}
@@ -474,6 +483,8 @@ function ModelDropdown({
             onChange={handleInput}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder={effectivePlaceholder}
             rows={1}
             disabled={isTextareaDisabled}

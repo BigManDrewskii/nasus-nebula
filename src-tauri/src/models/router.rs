@@ -10,13 +10,38 @@ pub enum BudgetMode {
 }
 
 /// How the user has configured model selection.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ModelSelectionMode {
     /// Nasus picks automatically
     Auto,
     /// User locked to a specific model ID
     Manual { model_id: String },
+}
+
+impl Serialize for ModelSelectionMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            ModelSelectionMode::Auto => serializer.serialize_str("auto"),
+            ModelSelectionMode::Manual { model_id } => serializer.serialize_str(model_id),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelSelectionMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if s == "auto" {
+            Ok(ModelSelectionMode::Auto)
+        } else {
+            Ok(ModelSelectionMode::Manual { model_id: s })
+        }
+    }
 }
 
 /// Full router configuration — loaded from settings, passed into every LLM call.

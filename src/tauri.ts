@@ -20,44 +20,82 @@ interface RunAgentArgs {
 }
 
 async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Promise<void> {
-  const { runWebAgent, stopWebAgent } = await import('./agent/index')
+  try {
+    const { runWebAgent, stopWebAgent } = await import('./agent/index')
 
-  if (cmd === 'run_agent') {
-    const a = args as unknown as RunAgentArgs
-    await runWebAgent({
-      taskId: a.taskId,
-      messageId: a.messageId,
-      userMessages: a.userMessages,
-      apiKey: a.apiKey,
-      model: a.model,
-      apiBase: a.apiBase,
-      provider: a.provider,
-      searchConfig: a.searchConfig,
-    })
-  } else if (cmd === 'stop_agent') {
-    const taskId = (args as Record<string, string>).taskId
-    stopWebAgent(taskId)
+    if (cmd === 'run_agent') {
+      const a = args as unknown as RunAgentArgs
+      await runWebAgent({
+        taskId: a.taskId,
+        messageId: a.messageId,
+        userMessages: a.userMessages,
+        apiKey: a.apiKey,
+        model: a.model,
+        apiBase: a.apiBase,
+        provider: a.provider,
+        searchConfig: a.searchConfig,
+      })
+    } else if (cmd === 'stop_agent') {
+      const taskId = (args as Record<string, string>).taskId
+      stopWebAgent(taskId)
+    }
+  } catch (err) {
+    console.error(`[tauriInvoke] Web agent fallback failed for ${cmd}:`, err)
   }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+/**
+ * Invoke a Tauri backend command.
+ * 
+ * In v2, arguments must use snake_case to match Rust parameter names.
+ * This wrapper catches all errors and returns undefined to prevent crashes.
+ */
+export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
   if (!isTauri) {
     if (cmd === 'run_agent' || cmd === 'stop_agent') {
       await invokeWebAgent(cmd, args)
     }
-    return undefined as unknown as T
+    return undefined
   }
+
   try {
-    const core = await import('@tauri-apps/api/core')
-    if (core && typeof core.invoke === 'function') {
-      return core.invoke<T>(cmd, args)
+    // Tauri v2: try to get invoke from @tauri-apps/api/core
+    const core = await import('@tauri-apps/api/core').catch(() => null)
+    
+    if (core) {
+      // Standard v2 invoke
+      if (typeof core.invoke === 'function') {
+        return await core.invoke(cmd, args)
+      }
+      
+      // Fallback for different v2 build configurations
+      const altInvoke = (core as any).invoke || (core as any).default?.invoke
+      if (typeof altInvoke === 'function') {
+        return await altInvoke(cmd, args)
+      }
     }
+    
+    // Legacy/global fallback
+    const win = window as any
+    const globalInvoke = win.__TAURI_INTERNALS__?.invoke || win.__TAURI__?.invoke || win.external?.invoke
+    if (typeof globalInvoke === 'function') {
+      return await globalInvoke(cmd, args)
+    }
+    
+    // If we're here, we're supposedly in Tauri but have no way to invoke
+    console.warn(`tauriInvoke [${cmd}]: isTauri is true but no invoke method found. Fallback to undefined.`)
+    return undefined
   } catch (e) {
-    console.error(`Tauri invoke error for ${cmd}:`, e)
+    // Only log "real" errors, not "File not found" which is expected during race conditions
+    const errorMsg = String(e)
+    if (!errorMsg.includes('No such file') && !errorMsg.includes('os error 2')) {
+      console.error(`[tauriInvoke] Error calling ${cmd}:`, e)
+    }
   }
-  return undefined as unknown as T
+  
+  return undefined
 }
 
 export async function tauriListen<T>(
@@ -68,7 +106,13 @@ export async function tauriListen<T>(
     // In browser mode the agent writes directly to the store, so no event bus is needed.
     return () => {}
   }
-  const { listen } = await import('@tauri-apps/api/event')
-  const unlisten = await listen<T>(event, (e) => handler(e.payload))
-  return unlisten
+  
+  try {
+    const { listen } = await import('@tauri-apps/api/event')
+    const unlisten = await listen<T>(event, (e) => handler(e.payload))
+    return unlisten
+  } catch (err) {
+    console.error(`[tauriListen] Failed to subscribe to ${event}:`, err)
+    return () => {}
+  }
 }

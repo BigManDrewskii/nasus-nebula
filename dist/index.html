@@ -16,20 +16,21 @@
       - style-src 'self' 'unsafe-inline' fonts.googleapis.com: inline styles + Google Fonts CSS
       - font-src 'self' data: fonts.gstatic.com: local WOFF2 + Google Fonts binaries
     -->
-    <meta http-equiv="Content-Security-Policy"
-      content="
-        default-src 'self';
-        script-src 'self' 'unsafe-inline' 'unsafe-eval';
-        connect-src *;
-        img-src 'self' data: blob: https:;
-        worker-src 'self' blob:;
-        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        font-src 'self' data: https://fonts.gstatic.com;
-        frame-src 'none';
-        object-src 'none';
-      " />
-    <script type="module" crossorigin src="/assets/index-BJnVxcUa.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BxrEi_5a.css">
+      <meta http-equiv="Content-Security-Policy"
+        content="
+          default-src 'self';
+          script-src 'self' 'unsafe-inline' 'unsafe-eval';
+          connect-src * ipc:;
+          img-src 'self' data: blob: https:;
+          worker-src 'self' blob:;
+          style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+          font-src 'self' data: https://fonts.gstatic.com;
+          frame-src 'none';
+          object-src 'none';
+        " />
+
+    <script type="module" crossorigin src="/assets/index-CjJn2jOO.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CCs3gkqe.css">
   </head>
   <body>
     <div id="root"></div>

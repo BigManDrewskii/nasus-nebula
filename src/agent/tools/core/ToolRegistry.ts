@@ -5,7 +5,8 @@
  */
 
 import type { BaseTool, ToolConstructor } from './BaseTool'
-import type { ToolResult, toolSuccess, toolFailure } from './ToolResult'
+import type { ToolResult } from './ToolResult'
+// import { toolSuccess, toolFailure } from './ToolResult'
 
 /**
  * Registry for all available tools.

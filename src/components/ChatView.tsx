@@ -12,30 +12,11 @@ import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
 import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
-import { getWorkspace } from '../agent/tools'
 import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
-function slugify(text: string): string {
-  return text.toLowerCase()
-    .replace(/[^a-z0-9\s-_]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .slice(0, 30)
-    .replace(/-+$/, '')
-}
-
-/** Resolves the per-task workspace directory consistently everywhere */
-function resolveTaskWorkspace(basePath: string, taskId: string, title?: string): string {
-  const base = basePath.trim() || '/tmp/nasus-workspace'
-  const slug = title ? slugify(title) : 'task'
-  // Use a stable slug based on the initial title if possible, or just the task ID
-  // For now, we'll use the ID to keep it simple and unique, but add the slug as a prefix for descriptiveness
-  return `${base}/${slug}-${taskId.slice(0, 8)}`
-}
 
 interface ChatViewProps {
   task: Task | null
@@ -148,11 +129,11 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
   useEffect(() => {
     tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
       .then((cfg) => {
-        if (cfg.workspace_path) setWorkspacePath(cfg.workspace_path)
-        if (cfg.api_key) setApiKey(cfg.api_key)
-        if (cfg.model) setModel(cfg.model)
-        if (cfg.api_base) setApiBase(cfg.api_base)
-        if (cfg.provider) setProvider(cfg.provider)
+        if (cfg?.workspace_path) setWorkspacePath(cfg.workspace_path)
+        if (cfg?.api_key) setApiKey(cfg.api_key)
+        if (cfg?.model) setModel(cfg.model)
+        if (cfg?.api_base) setApiBase(cfg.api_base)
+        if (cfg?.provider) setProvider(cfg.provider)
       })
       .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -161,7 +142,18 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
   // isActive is driven by agentRunning state (set when we kick off, cleared on done/error)
   const isActive = agentRunning
 
-  // Derive 4-state input machine from running states
+    const [taskWorkspacePath, setTaskWorkspacePath] = useState<string | null>(null)
+
+    useEffect(() => {
+      if (task?.id) {
+        workspaceManager.getWorkspacePath(task.id).then(setTaskWorkspacePath)
+      } else {
+        setTaskWorkspacePath(null)
+      }
+    }, [task?.id, workspacePath, task?.title])
+
+    // Derive 4-state input machine from running states
+
   const inputState: InputState = processingPhase
     ? 'processing'
     : agentRunning
@@ -226,6 +218,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       stopWebAgent(prevTaskIdRef.current)
       disposeSandbox().catch(() => {})
     }
+    
+    // Sync task title to workspace manager for descriptive folder naming
+    if (task && task.id && task.title) {
+      workspaceManager.setTaskTitle(task.id, task.title)
+    }
+
     prevTaskIdRef.current = task?.id
       setIteration(0)
         setTokenCount(0)
@@ -474,43 +472,19 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     }
   }, [routerConfig, isActive])
 
-    const runAgent = useCallback(async (
-      taskId: string,
-      agentMsgId: string,
-      history: LlmMessage[],
-    ) => {
-      const cfg = configRef.current
-        const taskWorkspace = resolveTaskWorkspace(cfg.workspacePath, taskId, task?.title)
-      try {
-
-        if (isTauri) {
-            await tauriInvoke('run_agent', {
-              taskId,
-              messageId: agentMsgId,
-              userMessages: history,
-              apiKey: cfg.apiKey || '',
-              model: cfg.model || 'anthropic/claude-3.7-sonnet',
-              workspacePath: taskWorkspace,
-              apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-              provider: cfg.provider || 'openrouter',
-              routerMode: cfg.routerConfig.mode,
-              routerBudget: cfg.routerConfig.budget,
-              routerModelOverrides: cfg.routerConfig.modelOverrides,
-              taskTitle: task.title,
-              searchConfig: {
-
-              provider: cfg.searchProvider || 'auto',
-              braveKey: cfg.braveSearchKey || undefined,
-              googleCseKey: cfg.googleCseKey || undefined,
-              googleCseId: cfg.googleCseId || undefined,
-              serperKey: cfg.serperKey || undefined,
-              tavilyKey: cfg.tavilyKey || undefined,
-              searxngUrl: cfg.searxngUrl || undefined,
-            },
-          })
-        } else {
-          // Web mode — runWebAgent already manages its own AbortController per taskId
-          // and cancels any previous run for the same task on start
+        const runAgent = useCallback(async (
+          taskId: string,
+          agentMsgId: string,
+          history: LlmMessage[],
+          _taskTitle: string,
+        ) => {
+          const cfg = configRef.current
+          // const taskWorkspace = await workspaceManager.getWorkspacePath(taskId)
+          
+          try {
+            // runWebAgent manages its own AbortController per taskId
+            // and cancels any previous run for the same task on start.
+            // We use this even in Tauri mode because the Rust agent is a mockup.
             await runWebAgent({
               taskId,
               messageId: agentMsgId,
@@ -521,21 +495,17 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               provider: cfg.provider || 'openrouter',
               searchConfig: {
                 provider: cfg.searchProvider || 'auto',
-                braveKey: cfg.braveSearchKey || undefined,
-                googleCseKey: cfg.googleCseKey || undefined,
-                googleCseId: cfg.googleCseId || undefined,
+                apiKey: cfg.braveSearchKey || undefined,
                 serperKey: cfg.serperKey || undefined,
                 tavilyKey: cfg.tavilyKey || undefined,
-                searxngUrl: cfg.searxngUrl || undefined,
               },
-            executionConfig: {
-              executionMode: (cfg.executionMode || 'e2b') as 'e2b' | 'pyodide' | 'disabled',
-              e2bApiKey: cfg.e2bApiKey || undefined,
-            },
-            maxIterations: cfg.maxIterations ?? 50,
-          })
-      }
-    } catch (err) {
+              executionConfig: {
+                executionMode: (cfg.executionMode || 'e2b') as 'e2b' | 'pyodide' | 'disabled',
+                e2bApiKey: cfg.e2bApiKey || undefined,
+              },
+              maxIterations: cfg.maxIterations ?? 50,
+            })
+      } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
         setError(taskId, agentMsgId, `Agent error: ${msg}`)
@@ -673,7 +643,9 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         } catch { /* non-blocking — proceed anyway */ }
       }
 
-      await runAgent(task.id, agentMsgId, history)
+      // Always use runWebAgent for now, as the Rust backend is a placeholder.
+      // This ensures the agent actually functions in desktop mode.
+      await runAgent(task.id, agentMsgId, history, task.title)
     }
 
   async function handleRetry(failedMsgId: string) {
@@ -688,7 +660,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setTokenCount(0)
     setSandboxStatus(isTauri ? 'starting' : 'idle')
     updateTaskStatus(task.id, 'in_progress')
-    await runAgent(task.id, failedMsgId, history)
+    await runAgent(task.id, failedMsgId, history, task.title)
   }
 
     async function handleStop() {
@@ -696,15 +668,15 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       queuedMsgRef.current = null
       setQueuedMsg(null)
       setProcessingPhase(false)
-      if (isTauri) {
-      try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
-    } else {
+      // Always call stopWebAgent even in Tauri mode since we're using runWebAgent
       stopWebAgent(task.id)
+      if (isTauri) {
+        try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
+      }
+      runningRef.current = false
+      setAgentRunning(false)
+      updateTaskStatus(task.id, 'stopped')
     }
-    runningRef.current = false
-    setAgentRunning(false)
-    updateTaskStatus(task.id, 'stopped')
-  }
 
   function handleResume(progressContent: string) {
     setShowMemory(false)
@@ -755,10 +727,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
           rateLimitWarning={rateLimitWarning}
           folderDropConfirm={folderDropConfirm}
         />
-      {showMemory && (
+      {showMemory && taskWorkspacePath && (
         <MemoryViewer
           taskId={task.id}
-          workspacePath={resolveTaskWorkspace(workspacePath, task.id, task.title)}
+          workspacePath={taskWorkspacePath}
           onResume={handleResume}
           onClose={() => setShowMemory(false)}
         />
@@ -783,12 +755,11 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-full max-w-lg flex flex-col items-center gap-8">
             <div className="flex flex-col items-center gap-4 text-center">
-              <NasusLogo size={38} fill="var(--amber)" />
-              <div>
-                <h3 className="font-semibold" style={{ fontSize: 16, color: 'var(--tx-primary)' }}>
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <h3 className="font-display font-bold tracking-tight" style={{ fontSize: 20, color: 'var(--tx-primary)', marginBottom: 8 }}>
                   What would you like to accomplish?
                 </h3>
-                <p className="mt-2 max-w-sm leading-relaxed" style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
+                <p className="max-w-sm leading-relaxed mx-auto" style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
                   Autonomous agent with a real sandbox — browses the web, writes &amp; runs code, manages files.
                 </p>
               </div>
@@ -911,24 +882,24 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                     </div>
 
                   {/* Keyboard shortcut legend */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.6 }}>
                     {[
                       { key: '⌘N', label: 'New task' },
-                      { key: '⌘K', label: 'Search tasks' },
+                      { key: '⌘K', label: 'Search' },
                       { key: '⌘,', label: 'Settings' },
-                      { key: 'Esc', label: 'Stop agent' },
+                      { key: 'Esc', label: 'Stop' },
                     ].map(({ key, label }) => (
                       <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <kbd style={{
-                          fontSize: 9.5,
+                          fontSize: 9,
                           fontFamily: 'var(--font-mono)',
-                          color: 'var(--tx-muted)',
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          color: 'var(--tx-secondary)',
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.1)',
                           borderRadius: 4,
-                          padding: '1px 5px',
+                          padding: '1px 4px',
                         }}>{key}</kbd>
-                        <span style={{ fontSize: 10.5, color: 'var(--tx-muted)' }}>{label}</span>
+                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontWeight: 500 }}>{label}</span>
                       </span>
                     ))}
                   </div>
@@ -1084,4 +1055,3 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     </div>
   )
 }
-

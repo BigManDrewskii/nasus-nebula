@@ -4,21 +4,7 @@
  * Inspired by OpenManus BaseTool pattern.
  */
 
-import type { ToolResult } from './ToolResult'
-
-/**
- * JSON Schema for tool parameters.
- */
-export interface ToolParameterSchema {
-  type: 'object'
-  properties: Record<string, {
-    type: string
-    description: string
-    enum?: string[]
-    items?: unknown
-  }>
-  required: string[]
-}
+import type { ToolResult, ToolParameterSchema } from './ToolResult'
 
 /**
  * Abstract base class for all tools.
@@ -74,8 +60,9 @@ export abstract class BaseTool {
    * Validate arguments against the parameter schema.
    * Throws if validation fails.
    */
-  protected validateArgs(args: Record<string, unknown>): void {
-    for (const required of this.parameters.required) {
+    protected validateArgs(args: Record<string, unknown>): void {
+      if (!this.parameters.required) return
+      for (const required of this.parameters.required) {
       if (!(required in args)) {
         throw new Error(`Missing required parameter: ${required}`)
       }

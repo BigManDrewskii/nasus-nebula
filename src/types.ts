@@ -12,20 +12,10 @@ export type {
   ExecutionPlan,
   PlanPhase,
   PlanStep,
+  Task,
 } from './agent/core/Agent'
 
 export type { AgentState, StateManager } from './agent/core/AgentState'
-
-export interface Task {
-  id: string
-  title: string
-  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'stopped'
-  createdAt: Date
-  sandboxId?: string
-  pinned?: boolean
-  /** Inferred task type used for the sidebar icon */
-  taskType?: 'research' | 'code' | 'document' | 'web' | 'data' | 'general'
-}
 
 export interface Message {
   id: string
@@ -108,6 +98,12 @@ export interface AgentEventPayload {
   is_free?: boolean
   // free_limit_warning
   remaining?: number
+}
+
+export interface SearchResult {
+  title: string
+  url: string
+  snippet: string
 }
 
 export interface MemoryFiles {

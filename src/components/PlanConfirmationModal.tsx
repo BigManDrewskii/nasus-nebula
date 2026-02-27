@@ -8,7 +8,6 @@
  */
 
 import { memo } from 'react'
-import { useAppStore } from '../store'
 import type { ExecutionPlan, PlanPhase, PlanStep } from '../agent/core/Agent'
 import { Pxi } from './Pxi'
 
@@ -26,9 +25,7 @@ interface PlanStepCardProps {
   phaseNumber: number
 }
 
-const PlanStepCard = memo(({ step, stepNumber, phaseNumber }: PlanStepCardProps) => {
-  const stepId = `${phaseNumber}-${stepNumber}`
-
+const PlanStepCard = memo(({ step, stepNumber }: PlanStepCardProps) => {
   return (
     <div className="flex items-start gap-2 py-1.5 px-3 rounded-md bg-white/50 dark:bg-white/5 hover:bg-white/80 dark:hover:bg-white/10 transition-colors">
       <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400">

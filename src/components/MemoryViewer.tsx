@@ -68,7 +68,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
       setLoading(true)
       setError(null)
       tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
-        .then((data) => { setFiles(data); setLoading(false) })
+        .then((data) => { setFiles(data ?? null); setLoading(false) })
         .catch((e) => { setError(String(e)); setLoading(false) })
     } else {
       try {

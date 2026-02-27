@@ -42,15 +42,28 @@ interface DockerStatus {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath } = useAppStore(
     useShallow((s) => ({
       tasks: s.tasks,
       activeTaskId: s.activeTaskId,
       setActiveTaskId: s.setActiveTaskId,
       addTask: s.addTask,
       onboardingComplete: s.onboardingComplete,
+      workspacePath: s.workspacePath,
     })),
   )
+  
+  // Sync global workspace path to manager
+    useEffect(() => {
+      if (workspacePath) {
+        import('./agent/workspace/WorkspaceManager').then((mod) => {
+          const manager = mod.workspaceManager || mod.default
+          if (manager) {
+            manager.init(workspacePath)
+          }
+        }).catch(console.error)
+      }
+    }, [workspacePath])
   const [showSettings, setShowSettings] = useState(false)
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
   const [dockerStatus, setDockerStatus] = useState<DockerStatus | null>(null)

@@ -10,10 +10,9 @@
  */
 
 import { BaseAgent } from '../core/BaseAgent'
-import { AgentState, StateManager } from '../core/AgentState'
+import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
 import { chatOnce } from '../llm'
-import { cheapestModel } from '../llm'
 import { getWorkspace } from '../tools'
 
 /**
@@ -66,63 +65,63 @@ export class VerificationAgent extends BaseAgent {
   readonly name = 'Verification Agent'
   readonly type = 'verifier' as const
 
-  protected stateManager: StateManager = new StateManager()
+  constructor(name: string = 'Verification Agent', type: 'verifier' = 'verifier') {
+    super(name, type)
+  }
 
   /**
    * Execute the verification agent.
    */
-  async execute(context: AgentContext): Promise<AgentResult> {
-    return this.stateManager.withState(AgentState.THINKING, async () => {
-      const params = context as VerificationContext
+  protected async doExecute(context: AgentContext): Promise<AgentResult> {
+    const params = context as VerificationContext
 
-      try {
-        // Step 1: Run verification checks
-        const checklist = await this.runChecklist(params)
+    try {
+      // Step 1: Run verification checks
+      const checklist = await this.runChecklist(params)
 
-        // Step 2: Analyze results for issues
-        const issues = await this.identifyIssues(params, checklist)
+      // Step 2: Analyze results for issues
+      const issues = await this.identifyIssues(params, checklist)
 
-        // Step 3: Generate corrections if needed
-        const corrections = await this.generateCorrections(params, issues)
+      // Step 3: Generate corrections if needed
+      const corrections = await this.generateCorrections(params, issues)
 
-        // Step 4: Determine overall result
-        const passed = this.isPassed(checklist, issues)
+      // Step 4: Determine overall result
+      const passed = this.isPassed(checklist, issues)
 
-        const verificationResult: VerificationResult = {
-          passed,
-          checklist,
-          issues,
-          confidence: this.calculateConfidence(checklist, issues),
-          corrections,
-        }
+      const verificationResult: VerificationResult = {
+        passed,
+        checklist,
+        issues,
+        confidence: this.calculateConfidence(checklist, issues),
+        corrections,
+      }
 
-        // Return result based on verification outcome
-        if (passed) {
-          return {
-            state: AgentState.FINISHED,
-            done: true,
-            output: 'Verification passed. Task completed successfully.',
-            metadata: { verificationResult },
-          }
-        }
-
-        // Needs correction
+      // Return result based on verification outcome
+      if (passed) {
         return {
-          state: AgentState.THINKING,
-          done: false,
-          needsVerification: true,
-          issues,
-          output: this.formatVerificationReport(verificationResult),
+          state: AgentState.FINISHED,
+          done: true,
+          output: 'Verification passed. Task completed successfully.',
           metadata: { verificationResult },
         }
-      } catch (error) {
-        return {
-          state: AgentState.ERROR,
-          done: true,
-          error: `Verification failed: ${error instanceof Error ? error.message : String(error)}`,
-        }
       }
-    })
+
+      // Needs correction
+      return {
+        state: AgentState.THINKING,
+        done: false,
+        needsVerification: true,
+        issues,
+        output: this.formatVerificationReport(verificationResult),
+        metadata: { verificationResult },
+      }
+    } catch (error) {
+      return {
+        state: AgentState.ERROR,
+        done: true,
+        error: `Verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
   }
 
   /**
@@ -318,7 +317,7 @@ export class VerificationAgent extends BaseAgent {
   private async analyzeWithLLM(context: VerificationContext): Promise<AgentIssue[]> {
     const { executionOutput, plan, apiKey, model, apiBase, provider } = context
 
-    const verifyModel = model || cheapestModel([model])
+    const verifyModel: string = model || 'anthropic/claude-3-haiku'
 
     const prompt = `You are a Verification Agent. Review the following execution results and identify any issues.
 
@@ -365,7 +364,7 @@ If no issues found, return {"issues": []}.`
    * Generate corrections for identified issues.
    */
   private async generateCorrections(
-    context: VerificationContext,
+    _context: VerificationContext,
     issues: AgentIssue[],
   ): Promise<string[]> {
     return issues
@@ -453,7 +452,7 @@ If no issues found, return {"issues": []}.`
 export async function verifyExecution(
   context: VerificationContext,
 ): Promise<VerificationResult> {
-  const agent = new VerificationAgent()
+  const agent = new VerificationAgent('verification', 'verifier')
   const result = await agent.execute(context)
 
   if (result.metadata?.verificationResult) {

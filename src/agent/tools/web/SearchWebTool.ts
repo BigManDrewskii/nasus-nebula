@@ -40,7 +40,7 @@ export class SearchWebTool extends BaseTool {
       const { invoke } = await import('@tauri-apps/api/core')
       const results = await invoke<ApiSearchResult[]>('search', {
         query,
-        numResults,
+        num_results: numResults,
       })
 
       if (!results || results.length === 0) {

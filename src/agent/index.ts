@@ -6,7 +6,7 @@
  */
 
 import type { LlmMessage } from '../types'
-import { runAgentLoop } from './loop'
+import { runExecutionAgent } from './agents/ExecutionAgent'
 import type { SearchConfig } from './tools'
 import type { ExecutionConfig } from './sandboxRuntime'
 import { disposeSandbox } from './sandboxRuntime'
@@ -69,13 +69,17 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
         },
         params.orchestratorConfig,
       )
-    } else {
-      // Original behavior: direct execution
-      await runAgentLoop({
-        ...params,
-        signal: controller.signal,
-      })
-    }
+      } else {
+        // Original behavior: direct execution
+        await runExecutionAgent({
+          task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+          userInput: params.userMessages[params.userMessages.length - 1]?.content as string || '',
+          messages: params.userMessages,
+          tools: [],
+          ...params,
+          signal: controller.signal,
+        })
+      }
   } finally {
     controllers.delete(params.taskId)
   }

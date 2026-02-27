@@ -1,6 +1,8 @@
 /**
  * Agent state machine types.
  * Based on OpenManus state machine pattern with context manager guarantees.
+ *
+ * Uses const object instead of enum to avoid TypeScript erasableSyntaxOnly restrictions.
  */
 
 /**
@@ -8,14 +10,16 @@
  * Transitions: IDLE → THINKING → RUNNING → (FINISHED | ERROR)
  * WAITING is for user input scenarios (plan confirmation, human-in-the-loop)
  */
-export enum AgentState {
-  IDLE = 'idle',
-  THINKING = 'thinking',
-  RUNNING = 'running',
-  WAITING = 'waiting',
-  FINISHED = 'finished',
-  ERROR = 'error',
-}
+export const AgentState = {
+  IDLE: 'idle',
+  THINKING: 'thinking',
+  RUNNING: 'running',
+  WAITING: 'waiting',
+  FINISHED: 'finished',
+  ERROR: 'error',
+} as const
+
+export type AgentState = (typeof AgentState)[keyof typeof AgentState]
 
 /**
  * State transition result for the context manager pattern.

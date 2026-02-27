@@ -32,3 +32,9 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"
+moka = { version = "0.12", features = ["future"] }
+async-trait = "0.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+urlencoding = "2.1"
+thiserror = "2.0"
+keyring = { version = "3.2", features = ["apple-native", "windows-native"] }

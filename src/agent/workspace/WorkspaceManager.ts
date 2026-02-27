@@ -5,13 +5,22 @@ import { tauriInvoke } from '../../tauri'
  * Uses Tauri commands in desktop mode, browser fs API in web mode.
  *
  * Desktop mode: Uses Rust backend for true filesystem access
- * Browser mode: Falls back to Tauri's fs API with app data directory
+ * Browser mode: Falls back to in-memory cache
  */
 
 /**
  * Check if running in Tauri desktop environment.
  */
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+
+export function slugify(text: string): string {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s-_]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 30)
+    .replace(/-+$/, '')
+}
 
 /**
  * Workspace file metadata.
@@ -50,23 +59,22 @@ export class WorkspaceManager {
   private workspaces: Map<string, Workspace> = new Map()
   private contentCache: Map<string, Map<string, string>> = new Map()
   private basePath: string | null = null
-  private readonly WORKSPACE_PREFIX = 'task-'
+  private taskTitles: Map<string, string> = new Map()
   private initialized = false
 
   /**
    * Ensure workspace files are loaded into memory cache.
    */
   async ensureLoaded(taskId: string): Promise<void> {
-    if (this.contentCache.has(taskId)) return
+    if (this.contentCache.has(taskId) && this.contentCache.get(taskId)!.size > 0) return
     const files = await this.listFiles(taskId)
-    const map = new Map<string, string>()
+    const map = this.getWorkspaceSync(taskId)
     for (const file of files) {
       try {
         const content = await this.readFile(taskId, file.path)
         map.set(file.path, content)
       } catch {}
     }
-    this.contentCache.set(taskId, map)
   }
 
   /**
@@ -83,49 +91,32 @@ export class WorkspaceManager {
    * Initialize the workspace manager with the base directory.
    */
   async init(basePath?: string): Promise<void> {
-    if (this.initialized) return
-
     if (basePath) {
       this.basePath = basePath
     } else if (isTauri) {
       // In Tauri desktop mode, use the backend workspace commands
       try {
         const config = await tauriInvoke<any>('get_config')
-        this.basePath = config.workspace_path
+        if (config?.workspace_path) {
+          this.basePath = config.workspace_path
+        }
       } catch (e) {
         console.warn('Could not get workspace path from backend:', e)
-        // Fallback to default Tauri path
-        try {
-          const { appLocalDataDir, join } = await import('@tauri-apps/api/path')
-          const appLocalData = await appLocalDataDir()
-          this.basePath = await join(appLocalData, 'workspaces')
-        } catch {
-          this.basePath = '/tmp/nasus/workspaces'
-        }
-      }
-    } else {
-      // Browser mode/Fallback: use app data directory if available
-      try {
-        const { appLocalDataDir, join } = await import('@tauri-apps/api/path')
-        const appLocalData = await appLocalDataDir()
-        this.basePath = await join(appLocalData, 'nasus', 'workspaces')
-      } catch {
-        // Pure browser environment without Tauri FS
-        this.basePath = '/tmp/nasus/workspaces'
       }
     }
 
-    // Ensure base directory exists
-    if (this.basePath && !isTauri) {
-      try {
-        const { mkdir } = await import('@tauri-apps/plugin-fs')
-        await mkdir(this.basePath, { recursive: true })
-      } catch (e) {
-        console.warn('Could not create workspace directory:', e)
-      }
+    if (!this.basePath) {
+      this.basePath = '/tmp/nasus-workspace'
     }
 
     this.initialized = true
+  }
+
+  /**
+   * Update task title for descriptive folder naming.
+   */
+  setTaskTitle(taskId: string, title: string): void {
+    this.taskTitles.set(taskId, title)
   }
 
   /**
@@ -139,14 +130,6 @@ export class WorkspaceManager {
     }
 
     const workspacePath = await this.getWorkspacePath(taskId)
-
-    // Create workspace directory if it doesn't exist (browser mode)
-    if (!isTauri && this.basePath) {
-      try {
-        const { mkdir } = await import('@tauri-apps/plugin-fs')
-        await mkdir(workspacePath, { recursive: true })
-      } catch {}
-    }
 
     // Load existing files
     const files = await this.listFiles(taskId)
@@ -169,19 +152,13 @@ export class WorkspaceManager {
     if (!this.initialized) await this.init()
 
     if (isTauri) {
-      return await tauriInvoke<string>('workspace_read', { taskId, path: filePath })
+      const workspacePath = await this.getWorkspacePath(taskId)
+      const result = await tauriInvoke<string>('workspace_read', { taskId, path: filePath, workspacePath })
+      return result ?? ''
     }
 
-    // Browser mode: use fs API
-    const workspace = await this.getWorkspace(taskId)
-    const fullPath = await this.getFullPath(workspace, filePath)
-
-    try {
-      const { readTextFile } = await import('@tauri-apps/plugin-fs')
-      return await readTextFile(fullPath)
-    } catch (e) {
-      throw new Error(`Failed to read file ${filePath}: ${e}`)
-    }
+    // Browser mode: fallback to cache
+    return this.getWorkspaceSync(taskId).get(filePath) || ''
   }
 
   /**
@@ -191,26 +168,8 @@ export class WorkspaceManager {
     if (!this.initialized) await this.init()
 
     if (isTauri) {
-      await tauriInvoke('workspace_write', { taskId, path: filePath, content })
-    } else {
-      // Browser mode: use fs API
-      const workspace = await this.getWorkspace(taskId)
-      const fullPath = await this.getFullPath(workspace, filePath)
-
-      const { mkdir, writeTextFile } = await import('@tauri-apps/plugin-fs')
-
-      // Ensure parent directory exists
-      const lastSlash = fullPath.lastIndexOf('/')
-      if (lastSlash !== -1) {
-        const parentPath = fullPath.substring(0, lastSlash)
-        if (parentPath) {
-          try {
-            await mkdir(parentPath, { recursive: true })
-          } catch {}
-        }
-      }
-
-      await writeTextFile(fullPath, content)
+      const workspacePath = await this.getWorkspacePath(taskId)
+      await tauriInvoke('workspace_write', { taskId, path: filePath, content, workspacePath })
     }
 
     // Update metadata and version
@@ -231,38 +190,14 @@ export class WorkspaceManager {
   }
 
   /**
-   * Check if a file exists in the workspace.
-   */
-  async fileExists(taskId: string, filePath: string): Promise<boolean> {
-    if (!this.initialized) await this.init()
-
-    if (isTauri) {
-      try {
-        await tauriInvoke<string>('workspace_read', { taskId, path: filePath })
-        return true
-      } catch {
-        return false
-      }
-    }
-
-    const workspace = await this.getWorkspace(taskId)
-    const fullPath = await this.getFullPath(workspace, filePath)
-    try {
-      const { exists } = await import('@tauri-apps/plugin-fs')
-      return await exists(fullPath)
-    } catch {
-      return false
-    }
-  }
-
-  /**
    * List all files in a workspace.
    */
   async listFiles(taskId: string): Promise<WorkspaceFile[]> {
     if (!this.initialized) await this.init()
 
     if (isTauri) {
-      const rustFiles = await tauriInvoke<RustWorkspaceFile[]>('workspace_list', { taskId })
+      const workspacePath = await this.getWorkspacePath(taskId)
+      const rustFiles = await tauriInvoke<RustWorkspaceFile[]>('workspace_list', { taskId, workspacePath })
       return (rustFiles || []).map((f) => ({
         path: f.path,
         filename: f.filename,
@@ -271,30 +206,14 @@ export class WorkspaceManager {
       }))
     }
 
-    // Browser mode: use fs API
-    const workspace = await this.getWorkspace(taskId)
-
-    try {
-      const { readDir } = await import('@tauri-apps/plugin-fs')
-      const entries = await readDir(workspace.path, { recursive: true })
-
-      const files: WorkspaceFile[] = []
-      for (const entry of entries) {
-        if (!entry.children) {
-          const relativePath = entry.path.replace(workspace.path + '/', '')
-          files.push({
-            path: relativePath,
-            filename: entry.name,
-            size: entry.metadata?.size ?? 0,
-            modifiedAt: new Date(entry.metadata?.modifiedAt ?? Date.now()),
-          })
-        }
-      }
-
-      return files
-    } catch (e) {
-      return []
-    }
+    // Browser mode: return files from cache
+    const cache = this.getWorkspaceSync(taskId)
+    return Array.from(cache.keys()).map(path => ({
+      path,
+      filename: path.split('/').pop() || path,
+      size: 0,
+      modifiedAt: new Date()
+    }))
   }
 
   /**
@@ -304,12 +223,8 @@ export class WorkspaceManager {
     if (!this.initialized) await this.init()
 
     if (isTauri) {
-      await tauriInvoke('workspace_delete', { taskId, path: filePath })
-    } else {
-      const workspace = await this.getWorkspace(taskId)
-      const fullPath = await this.getFullPath(workspace, filePath)
-      const { remove } = await import('@tauri-apps/plugin-fs')
-      await remove(fullPath)
+      const workspacePath = await this.getWorkspacePath(taskId)
+      await tauriInvoke('workspace_delete', { taskId, path: filePath, workspacePath })
     }
 
     const workspace = await this.getWorkspace(taskId)
@@ -323,39 +238,18 @@ export class WorkspaceManager {
   }
 
   /**
-   * Copy all files from one workspace to another.
-   */
-  async copyWorkspace(sourceTaskId: string, destTaskId: string): Promise<void> {
-    const source = await this.getWorkspace(sourceTaskId)
-    const dest = await this.getWorkspace(destTaskId)
-
-    // Copy each file
-    for (const [filePath, _] of source.files) {
-      const content = await this.readFile(sourceTaskId, filePath)
-      await this.writeFile(destTaskId, filePath, content)
-    }
-
-    dest.version = 1
-    this.emitWorkspaceEvent(destTaskId)
-  }
-
-  /**
    * Delete an entire workspace.
    */
   async deleteWorkspace(taskId: string): Promise<void> {
     if (!this.initialized) await this.init()
 
     if (isTauri) {
-      await tauriInvoke('workspace_delete_all', { taskId })
-    } else {
       const workspacePath = await this.getWorkspacePath(taskId)
-      try {
-        const { remove } = await import('@tauri-apps/plugin-fs')
-        await remove(workspacePath, { recursive: true })
-      } catch {}
+      await tauriInvoke('workspace_delete_all', { taskId, workspacePath })
     }
 
     this.workspaces.delete(taskId)
+    this.contentCache.delete(taskId)
   }
 
   /**
@@ -370,58 +264,37 @@ export class WorkspaceManager {
   }
 
   /**
+   * Resolve the task workspace directory consistently.
+   */
+  public async getWorkspacePath(taskId: string): Promise<string> {
+    if (!this.initialized) await this.init()
+    
+    const base = this.basePath?.trim() || '/tmp/nasus-workspace'
+    // Stable folder name that doesn't change when task title is set later
+    const folderName = `task-${taskId}`
+
+    if (isTauri) {
+      // In Tauri mode, we use absolute paths for the backend commands
+      if (base.startsWith('/') || base.includes(':')) {
+        return `${base}/${folderName}`
+      }
+      try {
+        const { homeDir, join } = await import('@tauri-apps/api/path')
+        const home = await homeDir()
+        return await join(home, base, folderName)
+      } catch {
+        return `${base}/${folderName}`
+      }
+    }
+
+    return `${base}/${folderName}`
+  }
+
+  /**
    * Get the workspace version for React subscriptions.
    */
   getVersion(taskId: string): number {
     return this.workspaces.get(taskId)?.version ?? 0
-  }
-
-  /**
-   * Clear workspace from memory (keeps files on disk).
-   */
-  unload(taskId: string): void {
-    this.workspaces.delete(taskId)
-  }
-
-  /**
-   * Clear all workspaces from memory.
-   */
-  unloadAll(): void {
-    this.workspaces.clear()
-  }
-
-  /**
-   * Get the disk usage of a workspace.
-   */
-  async getDiskUsage(taskId: string): Promise<{ totalBytes: number; fileCount: number }> {
-    const files = await this.listFiles(taskId)
-    const totalBytes = files.reduce((sum, f) => sum + f.size, 0)
-    return { totalBytes, fileCount: files.length }
-  }
-
-  // ── Private methods ────────────────────────────────────────────────────────────
-
-  private async getWorkspacePath(taskId: string): Promise<string> {
-    if (isTauri) {
-      return `task-${taskId}`
-    }
-    if (!this.basePath) {
-      throw new Error('WorkspaceManager not initialized. Call init() first.')
-    }
-    const { join } = await import('@tauri-apps/api/path')
-    return await join(this.basePath, `${this.WORKSPACE_PREFIX}${taskId}`)
-  }
-
-  private async getFullPath(workspace: Workspace, filePath: string): Promise<string> {
-    if (isTauri) {
-      return filePath
-    }
-    const { join } = await import('@tauri-apps/api/path')
-    const normalized = filePath
-      .replace(/^\/workspace\/?/, '')
-      .replace(/^\.\//, '')
-      || 'output.txt'
-    return await join(workspace.path, normalized)
   }
 
   private emitWorkspaceEvent(taskId: string): void {
@@ -437,6 +310,7 @@ export class WorkspaceManager {
  * Global workspace manager instance.
  */
 export const workspaceManager = new WorkspaceManager()
+export default workspaceManager
 
 // ── Legacy compatibility layer (bridges old API to new WorkspaceManager) ───
 
@@ -444,19 +318,8 @@ export const workspaceManager = new WorkspaceManager()
  * Legacy: Get workspace files as a Map (for backward compatibility).
  */
 export async function getWorkspace(taskId: string): Promise<Map<string, string>> {
-  const files = await workspaceManager.listFiles(taskId)
-  const map = new Map<string, string>()
-
-  for (const file of files) {
-    try {
-      const content = await workspaceManager.readFile(taskId, file.path)
-      map.set(file.path, content)
-    } catch {
-      // Skip files that can't be read
-    }
-  }
-
-  return map
+  await workspaceManager.ensureLoaded(taskId)
+  return workspaceManager.getWorkspaceSync(taskId)
 }
 
 /**
@@ -477,5 +340,8 @@ export async function clearWorkspace(taskId: string): Promise<void> {
  * Legacy: Copy workspace from one task to another.
  */
 export async function copyWorkspace(sourceTaskId: string, destTaskId: string): Promise<void> {
-  await workspaceManager.copyWorkspace(sourceTaskId, destTaskId)
+  const source = await getWorkspace(sourceTaskId)
+  for (const [path, content] of source) {
+    await workspaceManager.writeFile(destTaskId, path, content)
+  }
 }

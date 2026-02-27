@@ -12,7 +12,8 @@ import type {
   AgentResult,
   AgentTool,
 } from './Agent'
-import type { AgentState } from './AgentState'
+// Value import — AgentState is a const object, not a type-only export
+import { AgentState } from './AgentState'
 import { StateManager } from './AgentState'
 
 /**

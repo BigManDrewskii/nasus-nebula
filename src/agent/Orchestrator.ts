@@ -63,8 +63,8 @@ export class AgentOrchestrator {
   readonly name = 'Agent Orchestrator'
   readonly description = 'Coordinates planning and execution agents'
 
-  private planningAgent: PlanningAgent = new PlanningAgent()
-  private executionAgent: ExecutionAgent = new ExecutionAgent()
+  private planningAgent: PlanningAgent = new PlanningAgent('planning', 'planner')
+  private executionAgent: ExecutionAgent = new ExecutionAgent('execution', 'executor')
   private config: OrchestratorConfig = {}
 
   setConfig(config: OrchestratorConfig): void {
@@ -99,7 +99,7 @@ export class AgentOrchestrator {
     // Step 4: Wait for user approval
     const approval = await this.waitForApproval(taskId, messageId, plan, signal)
 
-    if (!approval.approved) {
+    if (approval.approved === false) {
       this.emitPlanRejected(taskId, messageId, approval.reason)
       return
     }
@@ -124,6 +124,10 @@ export class AgentOrchestrator {
    */
   private async executeDirectly(params: OrchestratorTaskParams): Promise<void> {
     const executionParams: ExecutionConfigParams = {
+      task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+      userInput: params.userMessage,
+      messages: params.userMessages,
+      tools: [],
       taskId: params.taskId,
       messageId: params.messageId,
       userMessages: params.userMessages,
@@ -159,6 +163,10 @@ export class AgentOrchestrator {
     ]
 
     const executionParams: ExecutionConfigParams = {
+      task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+      userInput: params.userMessage,
+      messages: messagesWithPlan,
+      tools: [],
       taskId: params.taskId,
       messageId: params.messageId,
       userMessages: messagesWithPlan,
@@ -203,7 +211,7 @@ Mark phases as complete by updating task_plan.md with checkboxes.`
    */
   private async waitForApproval(
     taskId: string,
-    messageId: string,
+    _messageId: string,
     plan: ExecutionPlan,
     signal: AbortSignal,
   ): Promise<PlanApprovalResult> {

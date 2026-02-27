@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { tauriInvoke } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
-import { useAppStore, type RouterConfig } from '../store'
+import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { getExtensionId, setExtensionId, pingExtension } from '../agent/browserBridge'

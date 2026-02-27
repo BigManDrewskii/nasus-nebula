@@ -9,7 +9,7 @@
  */
 
 import { BaseAgent } from '../core/BaseAgent'
-import { AgentState, StateManager } from '../core/AgentState'
+import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../core/Agent'
 import { chatOnce } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
@@ -18,7 +18,6 @@ import { memoryStore } from '../memory/LocalMemoryStore'
  * Planning context parameters.
  */
 export interface PlanningContext extends AgentContext {
-  userMessage: string
   apiKey: string
   model: string
   apiBase: string
@@ -49,44 +48,47 @@ export class PlanningAgent extends BaseAgent {
   readonly name = 'Planning Agent'
   readonly description = 'Analyzes requests and generates structured execution plans'
 
-  protected stateManager: StateManager = new StateManager()
-  private config: PlanningConfig = {}
+  private planningConfig: PlanningConfig = {}
+
+  constructor(name: string = 'Planning Agent', type: 'planner' = 'planner') {
+    super(name, type)
+  }
 
   setConfig(config: PlanningConfig): void {
-    this.config = { ...this.config, ...config }
+    this.planningConfig = { ...this.planningConfig, ...config }
   }
 
   /**
    * Execute the planning agent.
    */
-  async execute(context: AgentContext): Promise<AgentResult> {
-    return this.stateManager.withState(AgentState.THINKING, async () => {
-      const params = context as PlanningContext
-      const { userMessage, apiKey, model, apiBase, provider, useMemory } = params
+  protected async doExecute(context: AgentContext): Promise<AgentResult> {
+    const params = context as PlanningContext
+    const { userInput, apiKey, model, apiBase, provider, useMemory } = params
 
-      // Use cheapest model for planning (it's just text generation)
-      const planModel = model || 'anthropic/claude-3-haiku'
+    // Use cheapest model for planning (it's just text generation)
+    const planModel = model || 'anthropic/claude-3-haiku'
 
-      // Build planning prompt (now async for memory lookup)
-      const prompt = await this.buildPlanningPrompt(userMessage, useMemory)
+    // Build planning prompt (now async for memory lookup)
+    const prompt = await this.buildPlanningPrompt(userInput, useMemory)
 
-      try {
-        const response = await chatOnce(apiBase, apiKey, provider, planModel, prompt, 4000)
+    try {
+      const response = await chatOnce(apiBase, apiKey, provider, planModel, prompt, 4000)
 
-        // Parse the response into an ExecutionPlan
-        const plan = this.parsePlan(response, userMessage)
+      // Parse the response into an ExecutionPlan
+      const plan = this.parsePlan(response, userInput)
 
-        return {
-          status: 'needs_approval',
-          plan,
-        }
-      } catch (error) {
-        return {
-          status: 'error',
-          error: `Planning failed: ${error instanceof Error ? error.message : String(error)}`,
-        }
+      return {
+        state: this.state,
+        done: true,
+        metadata: { status: 'needs_approval', plan },
       }
-    })
+    } catch (error) {
+      return {
+        state: AgentState.ERROR,
+        done: true,
+        error: `Planning failed: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
   }
 
   /**
@@ -98,7 +100,7 @@ export class PlanningAgent extends BaseAgent {
 User Request: ${userMessage}`
 
     // Add memory context if enabled
-    if (useMemory && this.config.useMemory !== false) {
+    if (useMemory && this.planningConfig.useMemory !== false) {
       try {
         const { memories, context } = await memoryStore.retrieveContext(userMessage, 3)
         if (context && memories.length > 0) {
@@ -232,7 +234,7 @@ Respond ONLY with the JSON, no other text.`
    * Check if a plan is simple enough to auto-approve.
    */
   isSimplePlan(plan: ExecutionPlan): boolean {
-    if (!this.config.autoApproveSimple) return false
+    if (!this.planningConfig.autoApproveSimple) return false
 
     // Simple plans have:
     // - 1-2 phases max
@@ -259,33 +261,36 @@ Respond ONLY with the JSON, no other text.`
  * Convenience function to generate a plan.
  */
 export async function generatePlan(
-  userMessage: string,
+  userInput: string,
   apiKey: string,
   model: string,
   apiBase: string,
   provider: string,
   config?: PlanningConfig,
 ): Promise<ExecutionPlan> {
-  const agent = new PlanningAgent()
+  const agent = new PlanningAgent('planning', 'planner')
   if (config) agent.setConfig(config)
 
-  const result = await agent.execute({
-    userMessage,
+    const result = await agent.execute({
+      task: { id: 'planning-task', title: 'Planning Task', status: 'pending', createdAt: new Date() },
+      userInput,
+    messages: [],
+    tools: [],
     apiKey,
     model,
     apiBase,
     provider,
   })
 
-  if (result.status === 'needs_approval' && result.plan) {
-    return result.plan
+  if (result.metadata?.status === 'needs_approval' && result.metadata?.plan) {
+    return result.metadata.plan as ExecutionPlan
   }
 
   // Fallback plan on error
   return {
     id: crypto.randomUUID(),
     title: 'Task Execution',
-    description: userMessage.slice(0, 200),
+    description: userInput.slice(0, 200),
     estimatedSteps: 1,
     phases: [{
       id: 'phase-1',
@@ -293,7 +298,7 @@ export async function generatePlan(
       description: 'Execute the user request',
       steps: [{
         id: 'step-1',
-        description: userMessage,
+        description: userInput,
         agent: 'executor',
         tools: [],
         estimatedDuration: 60,

@@ -153,7 +153,7 @@ export function useAttachments(): AttachmentsState {
       const incoming = files.slice(0, slotsLeft)
       const placeholders: Attachment[] = incoming.map((file) => {
         const validation = validate(file)
-        if (!validation.ok) {
+        if (validation.ok === false) {
           return {
             id: crypto.randomUUID(),
             name: file.name,

@@ -109,12 +109,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         'Search the web for current information. Use this tool when you need: real-time data, recent events, facts you are unsure about, current prices/stats, or anything that may have changed after your training cutoff. Do NOT use for general knowledge you are already confident about, coding syntax, math, or creative writing. Do NOT search again if results are already in context for the same topic.',
       parameters: {
         type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'A concise, specific search query written like you would type into Google — use keywords, not full sentences. GOOD: "React 19 release date 2025", "SearXNG JSON API format". BAD: "Can you please find information about when React 19 was released?" (too verbose). The agent should generate the query, never pass the user\'s raw message directly.',
-          },
-          num_results: {
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Concise search query (keywords only). Use current date if looking for recent info.',
+            },
+            num_results: {
+
             type: 'integer',
             description: 'Number of results to return. Use 3 for simple factual lookups, 5 (default) for general research, 10 for comprehensive research.',
             default: 5,

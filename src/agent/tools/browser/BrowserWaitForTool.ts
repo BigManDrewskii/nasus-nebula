@@ -1,6 +1,6 @@
 import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
-import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
+import type { ToolParameterSchema, WaitForResult } from '../core/ToolResult'
 import { browserWaitFor } from '../../browserBridge'
 
 /**
@@ -21,7 +21,7 @@ export class BrowserWaitForTool extends BaseTool {
     },
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>): Promise<WaitForResult> {
     try {
       const result = await browserWaitFor({
         tabId: args.tab_id as number | undefined,
@@ -29,9 +29,9 @@ export class BrowserWaitForTool extends BaseTool {
         urlPattern: args.url_pattern as string | undefined,
         timeoutMs: args.timeout_ms as number | undefined,
       })
-      return toolSuccess(`Found: ${result.found}`)
+      return toolSuccess({ found: result.success, selector: result.selector || '' }) as WaitForResult
     } catch (err) {
-      return toolFailure(err instanceof Error ? err.message : String(err))
+      return toolFailure(err instanceof Error ? err.message : String(err)) as WaitForResult
     }
   }
 }

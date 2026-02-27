@@ -106,3 +106,35 @@ data: {"id"... [truncated]
 2026-02-26T14:44:30.338Z [console][log] [vite] server connection lost. Polling for restart...
 2026-02-26T14:43:30.762Z [network][GET 200] https://openrouter.ai/api/v1/models
   response: {"data":[{"id":"qwen/qwen3.5-35b-a3b","canonical_slug":"qwen/qwen3.5-35b-a3b-20260224","hugging_face_id":"Qwen/Qwen3.5-35B-A3B","name":"Qwen: Qwen3.5-35B-A3B","created":1772053822,"description":"The Qwen3.5 Series 35B-A3B is a native vision-language model designed with a hybrid architecture that integrates linear attention mechanisms and a sparse mixture-of-experts model, achieving higher inference efficiency. Its overall performance is comparable to that of the Qwen3.5-27B.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Qwen3","instruct_type":null},"pricing":{"prompt":"0.00000025","completion":"0.000002"},"top_provider":{"context_length":262144,"max_completion_tokens":65536,"is_moderated":false},"per_request_limits":null,"supported_parameters":["include_reasoning","logprobs","max_tokens","presence_penalty","reasoning","response_format","seed","structured_outputs","temperature","tool_choice","tools","top_logprobs","top_p"],"default_parameters":{"temperature":1,"top_p":0.95,"frequency_penalty":null},"expiration_date":null},{"id":"qwen/qwen3.5-27b","canonical_slug":"qwen/qwen3.5-27b-20260224","hugging_face_id":"Qwen/Qwen3.5-27B","name":"Qwen: Qwen3.5-27B","created":1772053810,"description":"The Qwen3.5 27B native vision-language Dense model incorporates a linear attention mechanism, delivering fast response times while balancing inference speed and performance. Its overall capabilities are comparable to those of the Qwen3.5-122B-A10B.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Qwen3","instruct_type":null},"pricing":{"prompt":"0.0000003","completion":"0.0000024"},"top_provider":{"context_length":262144,"max_completion_tokens":65536,"is_moderated":false},"per_request_limits":null,"supported_parameters":["include_reasoning","logprobs","max... [truncated]
+2026-02-27T06:18:55.562Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-02-27T06:18:55.593Z [console][error] Could not create workspace directory: TypeError: Cannot read properties of undefined (reading 'invoke')
+2026-02-27T06:18:55.593Z [console][error] Uncaught (in promise) TypeError: Cannot read properties of undefined (reading 'invoke')
+2026-02-27T06:18:55.593Z [console][warn] Could not create workspace directory: TypeError: Cannot read properties of undefined (reading 'invoke')
+    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-5XK4A4U5.js?v=7a1b8906:131:37)
+    at mkdir (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-fs.js?v=7a1b8906:261:9)
+    at WorkspaceManager.init (http://localhost:5173/src/agent/workspace/WorkspaceManager.ts?t=1772173132788:76:15)
+    at async WorkspaceManager.getWorkspacePath (http://localhost:5173/src/agent/workspace/WorkspaceManager.ts?t=1772173132788:257:28)
+2026-02-27T07:31:35.916Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-02-27T07:31:35.932Z [console][warn] Slow network is detected. See https://www.chromestatus.com/feature/5636954674692096 for more details. Fallback font will be used while loading: http://localhost:5173/node_modules/@hackernoon/pixel-icon-library/fonts/iconfont.woff2?0ff28214377bfc74e5cf29455991154b
+2026-02-27T07:32:47.970Z [console][warn] [vite] server connection lost. Polling for restart...
+2026-02-27T07:32:47.969Z [console][log] [vite] server connection lost. Polling for restart...
+2026-02-27T07:31:36.386Z [network][GET 200] https://openrouter.ai/api/v1/models
+  response: {"data":[{"id":"bytedance-seed/seed-2.0-mini","canonical_slug":"bytedance-seed/seed-2.0-mini-20260224","hugging_face_id":"","name":"ByteDance Seed: Seed-2.0-Mini","created":1772131107,"description":"Seed-2.0-mini targets latency-sensitive, high-concurrency, and cost-sensitive scenarios, emphasizing fast response and flexible inference deployment. It delivers performance comparable to ByteDance-Seed-1.6, supports 256k context, four reasoning effort modes (minimal/low/medium/high), multimodal understanding, and is optimized for lightweight tasks where cost and speed take priority.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Other","instruct_type":null},"pricing":{"prompt":"0.0000001","completion":"0.0000004"},"top_provider":{"context_length":262144,"max_completion_tokens":131072,"is_moderated":false},"per_request_limits":null,"supported_parameters":["frequency_penalty","include_reasoning","max_tokens","reasoning","response_format","stop","structured_outputs","temperature","tool_choice","tools","top_p"],"default_parameters":{"temperature":null,"top_p":null,"frequency_penalty":null},"expiration_date":null},{"id":"google/gemini-3.1-flash-image-preview","canonical_slug":"google/gemini-3.1-flash-image-preview-20260226","hugging_face_id":"","name":"Google: Nano Banana 2 (Gemini 3.1 Flash Image Preview)","created":1772119558,"description":"Gemini 3.1 Flash Image Preview, a.k.a. \"Nano Banana 2,\" is Google’s latest state of the art image generation and editing model, delivering Pro-level visual quality at Flash speed. It combines advanced contextual understanding with fast, cost-efficient inference, making complex image generation and iterative edits significantly more accessible. Aspect ratios can be controlled with the [image_config API Parameter](https://openrouter.ai/docs/features/multimodal/image-generation#image-aspect-ratio-configuration)","context_le... [truncated]
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
+2026-02-27T08:05:57.301Z [console][log] [vite] connected.
+2026-02-27T08:05:57.301Z [console][debug] [vite] connected.

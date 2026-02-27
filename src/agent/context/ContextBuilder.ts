@@ -111,28 +111,8 @@ function formatTools(
   // Mask tools that aren't active by adding inactive flag
   return tools.map(tool => ({
     ...tool,
-    inactive: !options.activeTools.includes(tool.function.name),
+    inactive: !options.activeTools?.includes(tool.function.name),
   }))
-}
-
-/**
- * Build context for memory injection.
- */
-function buildMemoryContext(memories: MemoryResult[]): string {
-  if (memories.length === 0) return ''
-
-  const items = memories.map((m, i) => {
-    const source = m.metadata.taskId ? `Task ${m.metadata.taskId.slice(0, 8)}` : 'Memory'
-    const tags = m.metadata.tags?.length ? ` [${m.metadata.tags.join(', ')}]` : ''
-    return `${i + 1}. [${source}${tags}] ${m.content.slice(0, 300)}${m.content.length > 300 ? '...' : ''}`
-  }).join('\n')
-
-  return `[Memory Context]
-The following relevant information was found from previous tasks:
-
-${items}
-
-Use this context to inform your approach, but prioritize the user's current request over past work.`
 }
 
 /**

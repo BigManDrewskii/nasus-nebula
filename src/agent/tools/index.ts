@@ -94,7 +94,7 @@ export async function executeTool(
 
   // Set execution config on tools that need it
   if (context?.executionConfig) {
-    const tool = toolRegistry.getTool(name)
+    const tool = toolRegistry.get(name)
     if (tool && 'setExecutionConfig' in tool) {
       (tool as any).setExecutionConfig(context.executionConfig)
     }
@@ -112,7 +112,6 @@ export async function executeTool(
 export {
   // Core
   ToolRegistry,
-  type BaseTool,
   type ToolResult,
   toolSuccess,
   toolFailure,
@@ -123,7 +122,7 @@ export type {
   ToolParameterSchema,
   ToolResultMetadata,
   FileResult,
-  SearchResult,
+  SearchToolResult,
   CodeResult,
   BrowserResult,
 } from './core/ToolResult'

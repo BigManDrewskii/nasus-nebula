@@ -8,14 +8,9 @@
  * - Pin important memories
  */
 
-import { useState, useEffect, useCallback, memo } from 'react'
-import { useAppStore } from '../store'
+import { useState, useEffect, memo } from 'react'
 import { memoryStore, type MemoryResult, type MemoryMetadata } from '../agent/memory/LocalMemoryStore'
 import { Pxi } from './Pxi'
-
-interface MemoryItemWithId extends MemoryResult {
-  isSelected: boolean
-}
 
 // ── Memory Card ────────────────────────────────────────────────────────────────────
 

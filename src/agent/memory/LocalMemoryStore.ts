@@ -8,7 +8,6 @@
 import {
   LocalVectorStore,
   createSimpleEmbedding,
-  createEmbedding,
 } from './MemoryStore'
 import type {
   MemoryStore,

@@ -5,6 +5,21 @@
  */
 
 /**
+ * Schema for tool parameters — used by all tool definitions.
+ */
+export interface ToolParameterSchema {
+  type: 'object'
+  description?: string
+  properties?: Record<string, {
+    type: string
+    description?: string
+    enum?: string[]
+    default?: unknown
+  }>
+  required?: string[]
+}
+
+/**
  * Standard result from any tool execution.
  */
 export interface ToolResult {
@@ -121,7 +136,7 @@ export interface FileResult extends ToolResult {
 }
 
 /** Search result */
-export interface SearchResult extends ToolResult {
+export interface SearchToolResult extends ToolResult {
   output: {
     results: Array<{
       title: string
@@ -150,5 +165,27 @@ export interface BrowserResult extends ToolResult {
     action: string
     url?: string
     screenshot?: string
+  } | null
+}
+
+/** Eval result (for browser eval tool) */
+export interface EvalResult extends ToolResult {
+  output: {
+    value: unknown
+  } | null
+}
+
+/** Select result (for browser select tool) */
+export interface SelectResult extends ToolResult {
+  output: {
+    selected: string
+  } | null
+}
+
+/** Wait-for result (for browser wait tool) */
+export interface WaitForResult extends ToolResult {
+  output: {
+    found: boolean
+    selector: string
   } | null
 }

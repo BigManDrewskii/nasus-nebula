@@ -34,10 +34,6 @@ export function getWorkspaceVersion(taskId: string): number {
   return workspaceManager.getVersion(taskId)
 }
 
-function bumpVersion(taskId: string) {
-  // WorkspaceManager handles versioning and event emission internally in writeFile/deleteFile
-}
-
 export async function clearWorkspace(taskId: string) {
   await workspaceManager.deleteWorkspace(taskId)
 }
@@ -285,7 +281,12 @@ export async function executeTool(
 
       case 'search_web': {
         const query = String(args.query ?? '')
-        if (!query) return { output: 'Missing query', isError: true }
+        if (!query || query === '[object Object]') {
+          return { 
+            output: 'Error: Missing search query. You called search_web with empty arguments or an object. Call it correctly: search_web(query="your keywords here").', 
+            isError: true 
+          }
+        }
         const num = Math.min(Number(args.num_results ?? 5), 10)
         const cfg: SearchConfig = searchConfig ?? { provider: 'auto' }
 

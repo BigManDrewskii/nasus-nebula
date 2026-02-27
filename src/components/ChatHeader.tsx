@@ -159,12 +159,12 @@ export function ChatHeader({
     >
       {/* Left cluster */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        <h2
-          className="font-display font-medium truncate"
-          style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
-        >
-          {task.title}
-        </h2>
+          <h2
+            className="font-display font-medium truncate"
+            style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
+          >
+            {task?.title || 'New Chat'}
+          </h2>
         {isActive && iteration > 0 && (
           <span className="flex items-center gap-1 flex-shrink-0">
             <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
@@ -215,9 +215,9 @@ export function ChatHeader({
             <Pxi name="times-circle" size={11} />
             <span>Stop</span>
           </button>
-        ) : (
-          <StatusDot status={task.status} />
-        )}
+          ) : (
+            <StatusDot status={task?.status || 'idle'} />
+          )}
       </div>
     </header>
   )

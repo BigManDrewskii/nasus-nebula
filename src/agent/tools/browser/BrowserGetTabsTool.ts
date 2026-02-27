@@ -16,7 +16,7 @@ export class BrowserGetTabsTool extends BaseTool {
     properties: {},
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(_args: Record<string, unknown>): Promise<ToolResult> {
     try {
       const tabs = await browserGetTabs()
       if (!tabs || tabs.length === 0) {

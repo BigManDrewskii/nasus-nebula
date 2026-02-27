@@ -50,7 +50,6 @@ export function OutputPanel({
     return (
       <div className="output-collapsed-rail" role="complementary" aria-label="Output panel (collapsed)">
         <div className="rail-header">
-            <Pxi name="code-block" size={28} style={{ color: 'var(--tx-secondary)', display: 'block' }} />
           <button
             className="rail-toggle-btn"
             onClick={() => onExpand?.()}

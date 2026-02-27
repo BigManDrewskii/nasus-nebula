@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { getWorkspace, getWorkspaceVersion } from '../agent/tools'
-import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 
 export interface WorkspaceFile {
   name: string
@@ -14,42 +12,74 @@ export interface WorkspaceFile {
  * whenever the agent writes a file.
  */
 export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
-  const [version, setVersion] = useState(() =>
-    taskId != null ? getWorkspaceVersion(taskId) : 0,
-  )
+  const [files, setFiles] = useState<WorkspaceFile[]>([])
 
   useEffect(() => {
     if (!taskId) {
-      setVersion(0)
+      setFiles([])
       return
     }
 
     const id = taskId
-    setVersion(getWorkspaceVersion(id))
+    let isMounted = true
 
-    // Ensure files are loaded from disk if this is the first time we see this task
-    workspaceManager.ensureLoaded(id).then(() => {
-      setVersion((v) => v + 1)
-    })
+    const updateFiles = async () => {
+      try {
+        const module = await import('../agent/workspace/WorkspaceManager')
+        const manager = module.workspaceManager
+        
+        if (!manager) {
+          console.warn('[useWorkspaceFiles] WorkspaceManager not found in module')
+          return
+        }
+
+        const rawFiles = await manager.listFiles(id)
+        if (!isMounted) return
+
+        const results = await Promise.allSettled(
+          rawFiles.map(async (f) => {
+            try {
+              const content = await manager.readFile(id, f.path)
+              return {
+                name: f.path,
+                content: content || '',
+                ext: f.path.includes('.') ? f.path.split('.').pop()!.toLowerCase() : '',
+              }
+            } catch (err) {
+              console.warn(`[useWorkspaceFiles] Failed to read file ${f.path}:`, err)
+              throw err
+            }
+          })
+        )
+
+        if (!isMounted) return
+
+        const mapped = results
+          .filter((r): r is PromiseFulfilledResult<WorkspaceFile> => r.status === 'fulfilled')
+          .map((r) => r.value)
+
+        setFiles(mapped)
+      } catch (err) {
+        console.error('[useWorkspaceFiles] Failed to update workspace files:', err)
+      }
+    }
+
+    // Initial load
+    updateFiles()
 
     function onWorkspace(e: Event) {
-      const { taskId: tid } = (e as CustomEvent).detail
-      if (tid === id) {
-        setVersion((v) => v + 1)
+      const detail = (e as CustomEvent).detail
+      if (detail && detail.taskId === id) {
+        updateFiles()
       }
     }
 
     window.addEventListener('nasus:workspace', onWorkspace)
-    return () => window.removeEventListener('nasus:workspace', onWorkspace)
+    return () => {
+      isMounted = false
+      window.removeEventListener('nasus:workspace', onWorkspace)
+    }
   }, [taskId])
 
-  if (!taskId) return []
-
-  const ws = getWorkspace(taskId)
-  
-  return Array.from(ws.entries()).map(([name, content]) => ({
-    name,
-    content,
-    ext: name.includes('.') ? name.split('.').pop()!.toLowerCase() : '',
-  }))
+  return files
 }

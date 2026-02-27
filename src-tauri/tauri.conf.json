@@ -27,9 +27,9 @@
         "trafficLightPosition": { "x": 16, "y": 16 }
       }
     ],
-    "security": {
-      "csp": null
-    }
+      "security": {
+        "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ipc: http: https:;"
+      }
   },
   "bundle": {
     "active": true,

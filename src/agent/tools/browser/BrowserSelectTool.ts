@@ -1,6 +1,6 @@
 import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
-import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
+import type { ToolParameterSchema, SelectResult } from '../core/ToolResult'
 import { browserSelect } from '../../browserBridge'
 
 /**
@@ -22,11 +22,11 @@ export class BrowserSelectTool extends BaseTool {
     required: ['selector'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>): Promise<SelectResult> {
     const selector = args.selector as string
 
     if (!selector) {
-      return toolFailure('Missing selector')
+      return toolFailure('Missing selector') as SelectResult
     }
 
     try {
@@ -36,9 +36,9 @@ export class BrowserSelectTool extends BaseTool {
         value: args.value as string | undefined,
         label: args.label as string | undefined,
       })
-      return toolSuccess(`Selected: ${result.selected}`)
+      return toolSuccess({ selected: result.selectedValue || '' }) as SelectResult
     } catch (err) {
-      return toolFailure(err instanceof Error ? err.message : String(err))
+      return toolFailure(err instanceof Error ? err.message : String(err)) as SelectResult
     }
   }
 }
