@@ -8,6 +8,7 @@
 import type { Task } from '../types'
 import { Pxi } from './Pxi'
 import { estimateCost } from '../lib/costEstimate'
+import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
 // ─── Status dot ────────────────────────────────────────────────────────────────
 
@@ -126,6 +127,8 @@ interface ChatHeaderProps {
   iteration: number
   tokenCount: number
   model: string
+  provider: string
+  routerConfig?: { mode: string; budget: string }
   sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped'
   outputVisible?: boolean
   workspaceFileCount?: number
@@ -140,6 +143,8 @@ export function ChatHeader({
   iteration,
   tokenCount,
   model,
+  provider,
+  routerConfig,
   sandboxStatus,
   outputVisible,
   workspaceFileCount = 0,
@@ -147,6 +152,8 @@ export function ChatHeader({
   onShowMemory,
   onStop,
 }: ChatHeaderProps) {
+  const isPaid = isPaidRoute(provider, routerConfig)
+  const label = getRouteLabel(provider, routerConfig)
   return (
     <header
       className="flex-shrink-0 flex items-center justify-between"
@@ -165,6 +172,17 @@ export function ChatHeader({
           >
             {task?.title || 'New Chat'}
           </h2>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 6,
+              background: isPaid ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.08)',
+              border: `1px solid ${isPaid ? 'rgba(234,179,8,0.2)' : 'rgba(34,197,94,0.2)'}`,
+              fontSize: 9, fontWeight: 700, color: isPaid ? 'var(--amber)' : '#4ade80',
+              flexShrink: 0
+            }}>
+              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
+              {label}
+            </div>
+
         {isActive && iteration > 0 && (
           <span className="flex items-center gap-1 flex-shrink-0">
             <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />

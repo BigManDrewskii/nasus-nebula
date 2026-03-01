@@ -349,8 +349,9 @@ function ModelDropdown({
                 }}>
                   {group}
                 </div>
-                {models.map((m, idx) => {
-                  const isSel = m.value === value
+                  {models.map((m) => {
+                    const isSel = m.value === value
+
                   const globalIndex = flatOptions.findIndex((opt) => opt.value === m.value)
                   const isFocused = globalIndex === focusedIndex
                   const optionId = `model-option-${m.value.replace(/[^a-zA-Z0-9]/g, '-')}`

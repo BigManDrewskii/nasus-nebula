@@ -78,9 +78,6 @@ async function resolveBackend(
   return 'disabled'
 }
 
-const NO_E2B_KEY_MSG =
-  '[No E2B API key configured. Add your key in Settings → Code Execution → E2B API Key.]'
-
 const NO_DOCKER_MSG =
   '[Docker is not available. Make sure Docker Desktop is running, or add an E2B API key in Settings.]'
 

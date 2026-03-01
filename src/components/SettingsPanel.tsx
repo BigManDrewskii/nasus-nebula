@@ -4,6 +4,7 @@ import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '.
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
+import { isPaidRoute, getRouteLabel } from '../lib/routing'
 import { getExtensionId, setExtensionId, pingExtension } from '../agent/browserBridge'
 
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
@@ -248,6 +249,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setTavilyKey(localTavilyKey.trim())
       setSearxngUrl(localSearxngUrl.trim())
       setSearchProvider(localSearchProvider)
+      
+      const searchConfig = {
+        provider: localSearchProvider,
+        serperKey: localSerperKey.trim(),
+        tavilyKey: localTavilyKey.trim(),
+        braveKey: localBraveKey.trim(),
+        googleCseKey: localGoogleCseKey.trim(),
+        googleCseId: localGoogleCseId.trim(),
+        searxngUrl: localSearxngUrl.trim(),
+      }
+      
+      await tauriInvoke('save_search_config', { searchConfig }).catch(() => {})
+
       const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
       setMaxIterations(parsedIter)
       setE2bApiKey(localE2bKey.trim())
@@ -278,6 +292,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
 
   const busy = saving
+  const isPaid = isPaidRoute(activeProvider, { mode: localRouterMode, budget: localRouterBudget })
+  const label = getRouteLabel(activeProvider, { mode: localRouterMode, budget: localRouterBudget })
 
   return (
     <div
@@ -294,11 +310,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <Pxi name="cog" size={13} style={{ color: 'var(--tx-tertiary)' }} />
             <h2 style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '-0.01em', color: 'var(--tx-primary)', margin: 0 }}>Settings</h2>
           </div>
-          {/* OpenRouter badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: activeProvider === 'openrouter' ? 'oklch(64% 0.214 40.1 / 0.12)' : 'rgba(255,255,255,0.08)', color: activeProvider === 'openrouter' ? 'var(--amber-soft)' : 'var(--tx-tertiary)', fontWeight: 500, letterSpacing: '0.04em' }}>
-              {activeProvider === 'openrouter' ? 'OpenRouter' : 'Local (Ollama)'}
-            </span>
+            {/* OpenRouter badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                  background: isPaid ? 'rgba(234,179,8,0.12)' : 'rgba(34,197,94,0.12)',
+                  color: isPaid ? 'var(--amber-soft)' : '#4ade80',
+                  fontWeight: 600, letterSpacing: '0.04em', border: `1px solid ${isPaid ? 'rgba(234,179,8,0.2)' : 'rgba(34,197,94,0.2)'}`
+                }}>
+                  {label}
+                </span>
+
+
             <button
               onClick={onClose}
               aria-label="Close settings"
@@ -318,8 +341,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             {/* ── Provider Switcher ── */}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               {[
-                { id: 'openrouter', label: 'Cloud', icon: 'cloud', desc: 'OpenRouter' },
-                { id: 'ollama', label: 'Local', icon: 'server', desc: 'Ollama' }
+                { id: 'openrouter', label: 'Paid (API)', icon: 'cloud', desc: 'OpenRouter Cloud', color: 'var(--amber)' },
+                { id: 'ollama', label: 'Free (Local)', icon: 'server', desc: 'Ollama Offline', color: '#22c55e' }
               ].map(p => {
                 const isSel = activeProvider === p.id
                 return (
@@ -329,13 +352,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     style={{
                       flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
                       padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
-                      background: isSel ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      border: `1px solid ${isSel ? 'var(--amber-soft)' : 'rgba(255,255,255,0.08)'}`,
+                      background: isSel ? `${p.color}15` : 'transparent',
+                      border: `1px solid ${isSel ? p.color : 'rgba(255,255,255,0.08)'}`,
                       transition: 'all 0.12s'
                     }}
                   >
-                    <Pxi name={p.icon as any} size={14} style={{ color: isSel ? 'var(--amber)' : 'var(--tx-tertiary)' }} />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)' }}>{p.label}</span>
+                    <Pxi name={p.icon as any} size={14} style={{ color: isSel ? p.color : 'var(--tx-tertiary)' }} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)' }}>{p.label}</span>
                     <span style={{ fontSize: 9, color: 'var(--tx-muted)' }}>{p.desc}</span>
                   </button>
                 )

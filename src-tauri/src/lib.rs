@@ -25,9 +25,36 @@ pub struct Config {
     pub provider: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchConfig {
+    pub provider: String,
+    pub serper_key: Option<String>,
+    pub tavily_key: Option<String>,
+    pub brave_key: Option<String>,
+    pub google_cse_key: Option<String>,
+    pub google_cse_id: Option<String>,
+    pub searxng_url: Option<String>,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            provider: "auto".into(),
+            serper_key: None,
+            tavily_key: None,
+            brave_key: None,
+            google_cse_key: None,
+            google_cse_id: None,
+            searxng_url: None,
+        }
+    }
+}
+
 pub struct AppState {
     pub config: Mutex<Config>,
     pub router_config: Mutex<RouterConfig>,
+    pub search_config: Mutex<SearchConfig>,
     pub search_service: Arc<SearchService>,
     pub active_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
 }
@@ -164,8 +191,52 @@ async fn search(
     state: State<'_, AppState>,
     query: String,
     numResults: usize,
+    searchConfig: Option<SearchConfig>,
 ) -> Result<Vec<search::SearchResult>, String> {
-    state.search_service.search(&query, numResults, vec![]).await.map_err(|e| e.to_string())
+    let mut providers: Vec<Box<dyn search::SearchProvider>> = vec![];
+    let client = reqwest::Client::new();
+    
+    // Determine which config to use
+    let config = if let Some(c) = searchConfig {
+        c
+    } else {
+        state.search_config.lock().await.clone()
+    };
+
+    // Instantiate providers based on keys
+    if let Some(key) = config.serper_key.filter(|k| !k.is_empty()) {
+        providers.push(Box::new(search::providers::serper::SerperProvider {
+            api_key: key,
+            client: client.clone(),
+        }));
+    }
+    
+    if let Some(key) = config.tavily_key.filter(|k| !k.is_empty()) {
+        providers.push(Box::new(search::providers::tavily::TavilyProvider {
+            api_key: key,
+            client: client.clone(),
+        }));
+    }
+
+    // DuckDuckGo is free and requires no key
+    if config.provider == "ddg" || providers.is_empty() {
+        providers.push(Box::new(search::providers::ddg::DuckDuckGoProvider {
+            client: client.clone(),
+        }));
+    }
+
+    state.search_service.search(&query, numResults, providers).await.map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn save_search_config(
+    state: State<'_, AppState>,
+    searchConfig: SearchConfig,
+) -> Result<(), String> {
+    let mut config = state.search_config.lock().await;
+    *config = searchConfig;
+    Ok(())
 }
 
 // --- Workspace Commands ---
@@ -363,8 +434,11 @@ async fn load_task_history(app: AppHandle, taskId: String) -> Result<Option<Stri
     let table_exists: bool = conn.query_row(
         "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='history'",
         [],
-        |row| row.get(0),
-    ).map_err(|_| false);
+        |row| {
+            let count: i32 = row.get(0)?;
+            Ok(count > 0)
+        },
+    ).unwrap_or(false);
 
     if !table_exists {
         return Ok(None);
@@ -424,6 +498,7 @@ pub fn run() {
             provider: "openrouter".into(),
         }),
         router_config: Mutex::new(RouterConfig::default()),
+        search_config: Mutex::new(SearchConfig::default()),
         search_service: Arc::new(SearchService::new(None)),
         active_tasks: Mutex::new(HashMap::new()),
     })
@@ -435,6 +510,7 @@ pub fn run() {
         save_router_settings,
         preview_routing,
         search,
+        save_search_config,
         workspace_list,
         workspace_read,
         workspace_write,

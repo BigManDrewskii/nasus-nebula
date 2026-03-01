@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { tauriInvoke, tauriListen } from '../tauri'
-import { runWebAgent, stopWebAgent } from '../agent/index'
-import { disposeSandbox } from '../agent/sandboxRuntime'
-import type { Task, Message, AgentStep, LlmMessage, AgentEventPayload } from '../types'
+import { tauriInvoke } from '../tauri'
+import { stopWebAgent } from '../agent/index'
+import type { Task, Message, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
 import { UserInputArea, type UserInputAreaHandle, type InputState } from './UserInputArea'
@@ -16,6 +15,7 @@ import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 import { PlanConfirmationModal } from './PlanConfirmationModal'
+import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -42,11 +42,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       getMessages,
       getRawHistory,
       addMessage,
-      appendChunk,
       setStreaming,
       setError,
-      addStep,
-      updateStep,
       appendRawHistory,
       updateTaskTitle,
       updateTaskStatus,
@@ -64,16 +61,11 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       searchProvider,
       maxIterations,
       setWorkspacePath,
-      setApiKey,
-      setModel,
-      setApiBase,
-      setProvider,
       addRecentWorkspacePath,
       e2bApiKey,
       executionMode,
       enableVerification,
       routerConfig,
-      setTaskRouterState,
       pendingPlan,
       approvePlan,
       rejectPlan,
@@ -94,16 +86,13 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
     // Track whether the agent is actively running (used for correct isActive state)
     const [agentRunning, setAgentRunning] = useState(false)
-  // Selected model badge for in-chat display
-  const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+  const [activeModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
   // Routing preview state
   const [routingPreview, setRoutingPreview] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
   // Cost badge for completed tasks
-  const [taskCostBadge, setTaskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
+  const [taskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
     // processingPhase: true from Send until first token/tool — drives "thinking" input state
     const [processingPhase, setProcessingPhase] = useState(false)
-    // Scroll-lock: false = auto-scroll, true = user has scrolled up
-    const [scrollLocked, setScrollLocked] = useState(false)
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
     const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
@@ -114,6 +103,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
   const sandboxStatus = (globalSandboxStatus === 'error' ? 'stopped' : globalSandboxStatus) as 'idle' | 'starting' | 'ready' | 'stopped'
   const isActive = agentRunning
+  const isPaid = isPaidRoute(provider, routerConfig)
+  const routeLabel = getRouteLabel(provider, routerConfig)
   const messages = task ? (allMessages[task.id] ?? getMessages(task.id)) : []
   const taskWorkspacePath = workspacePath || (task?.id ? `workspace-${task.id}` : null)
 
@@ -140,10 +131,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
   const { isDragOver, dragMode, handlers: dragHandlers } = useDragDrop(addFiles, handleFolderDropped)
 
-  function showPill() {
-    setShowNewMsgPill(true)
-    requestAnimationFrame(() => setPillVisible(true))
-  }
   function hidePill() {
     setPillVisible(false)
     setTimeout(() => setShowNewMsgPill(false), 200)
@@ -316,7 +303,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       setSandboxStatus(isTauri ? 'starting' : 'idle')
       updateTaskStatus(task.id, 'in_progress')
         // Unlock scroll and jump to bottom when a new exchange starts
-        setScrollLocked(false)
         hidePill()
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
@@ -424,19 +410,23 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         />
       )}
 
-      <ChatHeader
-          task={task}
-          isActive={isActive}
-          iteration={iteration}
-          tokenCount={tokenCount}
-          model={model}
-          sandboxStatus={sandboxStatus}
-          outputVisible={outputVisible}
-          workspaceFileCount={workspaceFileCount}
-          onShowOutput={onShowOutput}
-          onShowMemory={() => setShowMemory(true)}
-          onStop={handleStop}
-        />
+          <ChatHeader
+              task={task}
+              isActive={isActive}
+              iteration={iteration}
+              tokenCount={tokenCount}
+              model={model}
+              provider={provider}
+              routerConfig={routerConfig}
+              sandboxStatus={sandboxStatus}
+              outputVisible={outputVisible}
+              workspaceFileCount={workspaceFileCount}
+              onShowOutput={onShowOutput}
+              onShowMemory={() => setShowMemory(true)}
+              onStop={handleStop}
+            />
+
+
 
       {/* Empty state */}
       {showEmptyState ? (
@@ -554,21 +544,33 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 )}
               </div>
 
-                    <div className="w-full">
-                      <UserInputArea
-                        ref={inputRef}
-                        onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
-                        onContentChange={updateRoutingPreview}
-                        disabled={false}
-                        autoFocus
-                        inputState={inputState}
-                        attachments={attachments}
-                        onAddFiles={addFiles}
-                        onRemoveAttachment={removeAttachment}
-                        isOverLimit={isOverLimit}
-                        totalAttachmentSize={totalSize}
-                      />
-                    </div>
+                          <div className="w-full relative">
+                            <div style={{
+                              position: 'absolute', top: -18, right: 0,
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              fontSize: 9, fontWeight: 600, color: isPaid ? 'var(--amber)' : '#4ade80',
+                              opacity: 0.6, letterSpacing: '0.02em'
+                            }}>
+                              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
+                              USING {routeLabel} ROUTE
+                            </div>
+
+
+                        <UserInputArea
+                          ref={inputRef}
+                          onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
+                          onContentChange={updateRoutingPreview}
+                          disabled={false}
+                          autoFocus
+                          inputState={inputState}
+                          attachments={attachments}
+                          onAddFiles={addFiles}
+                          onRemoveAttachment={removeAttachment}
+                          isOverLimit={isOverLimit}
+                          totalAttachmentSize={totalSize}
+                        />
+                      </div>
+
 
                   {/* Keyboard shortcut legend */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.6 }}>
@@ -631,14 +633,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             >
               <button
                 onClick={() => {
-                  setScrollLocked(false)
                   hidePill()
                   bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault()
-                    setScrollLocked(false)
                     hidePill()
                     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
                   }
@@ -730,20 +730,34 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                       )}
                     </div>
                   )}
-                    <UserInputArea
-                      ref={inputRef}
-                      onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
-                      onStop={handleStop}
-                      onContentChange={updateRoutingPreview}
-                      isRunning={isActive}
-                      inputState={inputState}
-                      queuedMsg={queuedMsg}
-                      attachments={attachments}
-                      onAddFiles={addFiles}
-                      onRemoveAttachment={removeAttachment}
-                      isOverLimit={isOverLimit}
-                      totalAttachmentSize={totalSize}
-                    />
+                          <div className="relative">
+                            <div style={{
+                              position: 'absolute', top: -16, right: 0,
+                              display: 'flex', alignItems: 'center', gap: 4,
+                              fontSize: 9, fontWeight: 700, color: isPaid ? 'var(--amber)' : '#4ade80',
+                              opacity: 0.6, letterSpacing: '0.04em'
+                            }}>
+                              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
+                              {routeLabel}
+                            </div>
+
+
+                        <UserInputArea
+                          ref={inputRef}
+                          onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
+                          onStop={handleStop}
+                          onContentChange={updateRoutingPreview}
+                          isRunning={isActive}
+                          inputState={inputState}
+                          queuedMsg={queuedMsg}
+                          attachments={attachments}
+                          onAddFiles={addFiles}
+                          onRemoveAttachment={removeAttachment}
+                          isOverLimit={isOverLimit}
+                          totalAttachmentSize={totalSize}
+                        />
+                      </div>
+
 
                 </div>
               </div>

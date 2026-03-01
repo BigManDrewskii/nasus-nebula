@@ -5,6 +5,7 @@
 
 import type { AgentState } from './AgentState'
 import type { LlmMessage } from '../llm'
+import type { ExecutionConfig } from '../sandboxRuntime'
 
 export type { LlmMessage }
 
@@ -50,10 +51,7 @@ export interface AgentContext {
   apiBase: string
   provider: string
   /** Execution config for sandbox */
-  executionConfig?: {
-    executionMode: 'e2b' | 'pyodide' | 'disabled'
-    e2bApiKey?: string
-  }
+  executionConfig?: ExecutionConfig
   /** Search configuration */
   searchConfig?: {
     provider: string

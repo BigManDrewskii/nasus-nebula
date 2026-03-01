@@ -38,9 +38,25 @@ export class SearchWebTool extends BaseTool {
     try {
       // Call the Tauri command for search
       const { invoke } = await import('@tauri-apps/api/core')
+      
+      // Get search config from the store
+      const { useAppStore } = await import('../../../store')
+      const state = useAppStore.getState()
+      
+      const searchConfig = {
+        provider: state.searchProvider,
+        serperKey: state.serperKey,
+        tavilyKey: state.tavilyKey,
+        braveKey: state.braveSearchKey,
+        googleCseKey: state.googleCseKey,
+        googleCseId: state.googleCseId,
+        searxngUrl: state.searxngUrl,
+      }
+
       const results = await invoke<ApiSearchResult[]>('search', {
         query,
-        num_results: numResults,
+        numResults,
+        searchConfig,
       })
 
       if (!results || results.length === 0) {

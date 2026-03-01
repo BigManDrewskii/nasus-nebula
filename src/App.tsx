@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { invoke } from '@tauri-apps/api/core'
 import type { Task } from './types'
 import { useAppStore } from './store'
 import { Sidebar } from './components/Sidebar'
@@ -35,12 +34,6 @@ function saveLayout(state: LayoutState) {
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(state)) } catch { /* ignore */ }
 }
 
-interface DockerStatus {
-  available: boolean
-  message: string
-  download_url: string
-}
-
 function App() {
   const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath } = useAppStore(
     useShallow((s) => ({
@@ -66,7 +59,6 @@ function App() {
     }, [workspacePath])
   const [showSettings, setShowSettings] = useState(false)
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
-  const [dockerStatus, setDockerStatus] = useState<DockerStatus | null>(null)
 
   // Layout state — loaded from localStorage
   const [savedLayout] = useState<LayoutState>(loadLayout)
@@ -114,19 +106,6 @@ function App() {
 
   const toggleLeft  = useCallback(() => setLeftCollapsed((v) => !v),  [])
   const toggleRight = useCallback(() => setRightCollapsed((v) => !v), [])
-
-  useEffect(() => {
-    if (!isTauri) return
-    invoke<DockerStatus>('check_docker')
-      .then(setDockerStatus)
-      .catch(() =>
-        setDockerStatus({
-          available: false,
-          message: 'Could not reach Docker. Make sure Docker Desktop is running.',
-          download_url: 'https://www.docker.com/products/docker-desktop/',
-        }),
-      )
-  }, [])
 
   useEffect(() => {
     function onPruned(e: Event) {
