@@ -145,6 +145,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
             <button
               onClick={onToggleCollapse}
               title="Expand sidebar"
+              aria-label="Expand sidebar"
               className="rail-toggle-btn"
             >
               <Pxi name="angle-right" size={11} />
@@ -321,6 +322,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         <button
           onClick={onToggleCollapse}
           title="Collapse sidebar"
+          aria-label="Collapse sidebar"
           className="rail-toggle-btn"
         >
           <Pxi name="angle-left" size={11} />
@@ -413,7 +415,6 @@ function SearchBar({
             flex: 1,
             background: 'transparent',
             border: 'none',
-            outline: 'none',
             fontSize: 11.5,
             color: 'var(--tx-primary)',
             fontFamily: 'inherit',
@@ -423,6 +424,7 @@ function SearchBar({
         {value && (
           <button
             onClick={onClose}
+            aria-label="Clear search"
             style={{
               display: 'flex', background: 'none', border: 'none',
               padding: 0, cursor: 'pointer', color: 'var(--tx-tertiary)',
@@ -515,6 +517,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         aria-expanded={!collapsed}
+        aria-controls={`section-${label.toLowerCase().replace(/\s+/g, '-')}`}
         style={{
           width: '100%',
           display: 'flex',
@@ -615,6 +618,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
       {/* Collapsible body */}
       <div
+        id={`section-${label.toLowerCase().replace(/\s+/g, '-')}`}
         style={{
           height: height === 'auto' ? 'auto' : height,
           overflow: 'hidden',
@@ -754,6 +758,7 @@ function SidebarFooter({ model, fullModel, onSettings }: {
               />
               {search && (
                 <button type="button" onClick={() => setSearch('')}
+                  aria-label="Clear model search"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0 }}>
                   <Pxi name="times" size={9} />
                 </button>
@@ -846,6 +851,7 @@ function SidebarFooter({ model, fullModel, onSettings }: {
           onMouseEnter={() => setGearHov(true)}
           onMouseLeave={() => setGearHov(false)}
           title="Settings (⌘,)"
+          aria-label="Open settings"
           style={{
             width: 22, height: 22, display: 'flex',
             alignItems: 'center', justifyContent: 'center',

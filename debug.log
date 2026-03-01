@@ -138,3 +138,18 @@ data: {"id"... [truncated]
 2026-02-27T08:05:57.298Z [console][log] [vite] connecting...
 2026-02-27T08:05:57.301Z [console][log] [vite] connected.
 2026-02-27T08:05:57.301Z [console][debug] [vite] connected.
+2026-03-01T12:43:12.897Z [console][log] [vite] hot updated: /src/index.css
+2026-03-01T12:43:13.261Z [console][log] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:43:13.261Z [console][log] [vite] hot updated: /src/index.css
+2026-03-01T12:42:45.164Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:42:45.164Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-01T12:42:45.516Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:42:45.516Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-01T12:42:50.824Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:42:50.824Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-01T12:42:51.284Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:42:51.284Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-01T12:43:12.897Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:43:12.897Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-01T12:43:13.261Z [console][debug] [vite] hot updated: /src/components/ChatView.tsx
+2026-03-01T12:43:13.261Z [console][debug] [vite] hot updated: /src/index.css

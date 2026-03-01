@@ -264,6 +264,10 @@ Mark phases as complete by updating task_plan.md with checkboxes.`
   // ── Event Emitters ───────────────────────────────────────────────────────────────
 
   private emitPlanPending(taskId: string, messageId: string, plan: ExecutionPlan): void {
+    // Update store for UI to show plan
+    useAppStore.getState().setPendingPlan(plan)
+    useAppStore.getState().setPlanApprovalStatus('pending')
+
     window.dispatchEvent(
       new CustomEvent('nasus:plan-pending', {
         detail: { taskId, messageId, plan },
@@ -272,6 +276,10 @@ Mark phases as complete by updating task_plan.md with checkboxes.`
   }
 
   private emitPlanApproved(taskId: string, messageId: string, plan: ExecutionPlan): void {
+    // Update store
+    useAppStore.getState().setPendingPlan(null)
+    useAppStore.getState().setPlanApprovalStatus('approved')
+
     window.dispatchEvent(
       new CustomEvent('nasus:plan-approved', {
         detail: { taskId, messageId, plan },
@@ -280,6 +288,10 @@ Mark phases as complete by updating task_plan.md with checkboxes.`
   }
 
   private emitPlanRejected(taskId: string, messageId: string, reason: string): void {
+    // Update store
+    useAppStore.getState().setPendingPlan(null)
+    useAppStore.getState().setPlanApprovalStatus('rejected')
+
     window.dispatchEvent(
       new CustomEvent('nasus:plan-rejected', {
         detail: { taskId, messageId, reason },

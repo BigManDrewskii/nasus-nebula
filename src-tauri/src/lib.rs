@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 pub mod models;
 pub mod search;
+pub mod docker;
 
 use crate::models::classifier::{classify_task};
 use crate::models::router::{BudgetMode, ModelSelectionMode, RouterConfig, RoutingDecision};
@@ -275,10 +276,10 @@ async fn workspace_delete_all(taskId: String, workspacePath: String) -> Result<(
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn run_agent(
-    app: AppHandle,
+    _app: AppHandle,
     state: State<'_, AppState>,
     taskId: String,
-    messageId: String,
+    _messageId: String,
     _userMessages: Vec<serde_json::Value>,
     _apiKey: String,
     _model: String,
@@ -291,22 +292,12 @@ async fn run_agent(
     _taskTitle: String,
     _searchConfig: serde_json::Value,
 ) -> Result<(), String> {
-    let task_id_clone = taskId.clone();
-    let message_id_clone = messageId.clone();
-    
+    // Rust backend tracks active tasks so it can clean up resources (like Docker containers)
+    // if the app crashes or if the task is aborted from the backend.
+    // The actual agent logic now runs in the TypeScript Orchestrator.
     let handle = tokio::spawn(async move {
-        let _ = app.emit("agent-event", AgentEvent::Thinking {
-            task_id: task_id_clone.clone(),
-            message_id: message_id_clone.clone(),
-            content: "Agent initialized in Rust backend...".into(),
-        });
-        
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        
-        let _ = app.emit("agent-event", AgentEvent::Done {
-            task_id: task_id_clone,
-            message_id: message_id_clone,
-        });
+        // Placeholder for future backend-side state tracking or cleanup logic
+        // For now, we just keep the task "active" in the state
     });
     
     let mut active_tasks = state.active_tasks.lock().await;
@@ -360,6 +351,11 @@ pub fn run() {
         run_agent,
         stop_agent,
         check_docker,
+        docker::commands::docker_create_container,
+        docker::commands::docker_execute_python,
+        docker::commands::docker_execute_bash,
+        docker::commands::docker_dispose_container,
+        docker::commands::docker_check_status,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

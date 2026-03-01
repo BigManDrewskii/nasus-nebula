@@ -165,7 +165,15 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             <button
               type="button"
               onClick={() => setShowRecent((o) => !o)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setShowRecent((o) => !o)
+                }
+              }}
               title="Recent workspaces"
+              aria-label="Toggle recent workspaces"
+              aria-expanded={showRecent}
               style={{
                 width: 26,
                 height: 26,

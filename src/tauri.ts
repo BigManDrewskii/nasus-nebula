@@ -17,6 +17,10 @@ interface RunAgentArgs {
   apiBase: string
   provider: string
   searchConfig?: import('./agent/tools').SearchConfig
+  executionConfig?: import('./agent/sandboxRuntime').ExecutionConfig
+  maxIterations?: number
+  usePlanning?: boolean
+  orchestratorConfig?: import('./agent/Orchestrator').OrchestratorConfig
 }
 
 async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Promise<void> {
@@ -34,6 +38,10 @@ async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Prom
         apiBase: a.apiBase,
         provider: a.provider,
         searchConfig: a.searchConfig,
+        executionConfig: a.executionConfig,
+        maxIterations: a.maxIterations,
+        usePlanning: a.usePlanning,
+        orchestratorConfig: a.orchestratorConfig,
       })
     } else if (cmd === 'stop_agent') {
       const taskId = (args as Record<string, string>).taskId
@@ -53,10 +61,15 @@ async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Prom
  * This wrapper catches all errors and returns undefined to prevent crashes.
  */
 export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
+  // Always route agent commands through the TS Orchestrator
+  if (cmd === 'run_agent' || cmd === 'stop_agent') {
+    await invokeWebAgent(cmd, args)
+    // If not in Tauri, we're done.
+    // If in Tauri, we fall through to ALSO invoke the Rust backend (for state tracking).
+    if (!isTauri) return undefined
+  }
+
   if (!isTauri) {
-    if (cmd === 'run_agent' || cmd === 'stop_agent') {
-      await invokeWebAgent(cmd, args)
-    }
     return undefined
   }
 

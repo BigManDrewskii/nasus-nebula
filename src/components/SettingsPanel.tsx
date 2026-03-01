@@ -77,10 +77,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     e2bApiKey, setE2bApiKey,
     executionMode, setExecutionMode,
+    enableVerification, setEnableVerification,
     sandboxStatus, sandboxStatusMessage,
   } = useAppStore()
   const [localE2bKey, setLocalE2bKey] = useState(e2bApiKey || '')
   const [localExecutionMode, setLocalExecutionMode] = useState(executionMode || 'e2b')
+  const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
 
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -196,6 +198,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalMaxIterations('50')
     setLocalE2bKey('')
     setLocalExecutionMode('e2b')
+    setLocalEnableVerification(true)
     setLocalRouterMode('auto')
     setLocalRouterBudget('paid')
     setLocalModelOverrides({})
@@ -227,6 +230,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setMaxIterations(parsedIter)
     setE2bApiKey(localE2bKey.trim())
     setExecutionMode(localExecutionMode)
+    setEnableVerification(localEnableVerification)
     // Save router config
     setRouterConfig({
       mode: localRouterMode,
@@ -274,6 +278,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </span>
             <button
               onClick={onClose}
+              aria-label="Close settings"
               style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', transition: 'color 0.12s' }}
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
@@ -391,7 +396,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             className="placeholder-[var(--tx-muted)]"
                           />
                           {modelSearch && (
-                            <button type="button" onClick={() => setModelSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
+                            <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
                               <Pxi name="times" size={9} />
                             </button>
                           )}
@@ -507,6 +512,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               onExecutionModeChange={setLocalExecutionMode}
               e2bKey={localE2bKey}
               onE2bKeyChange={setLocalE2bKey}
+              enableVerification={localEnableVerification}
+              onEnableVerificationChange={setLocalEnableVerification}
               sandboxStatus={sandboxStatus}
               sandboxStatusMessage={sandboxStatusMessage}
             />
@@ -786,6 +793,7 @@ function SearchSection({
 // ─── ExecutionSection ─────────────────────────────────────────────────────────
 
 const EXECUTION_MODES = [
+  { id: 'docker',   label: 'Docker',   desc: 'Local containers — free, private, offline (recommended)' },
   { id: 'e2b',      label: 'E2B',      desc: 'Cloud sandbox — full Linux + all packages' },
   { id: 'pyodide',  label: 'Pyodide',  desc: 'Browser WebAssembly — no keys required, Python only' },
   { id: 'disabled', label: 'Disabled', desc: 'Code execution is turned off' },
@@ -796,12 +804,15 @@ type ExecutionModeId = (typeof EXECUTION_MODES)[number]['id']
 function ExecutionSection({
   executionMode, onExecutionModeChange,
   e2bKey, onE2bKeyChange,
+  enableVerification, onEnableVerificationChange,
   sandboxStatus, sandboxStatusMessage,
 }: {
   executionMode: string
   onExecutionModeChange: (v: string) => void
   e2bKey: string
   onE2bKeyChange: (v: string) => void
+  enableVerification: boolean
+  onEnableVerificationChange: (v: boolean) => void
   sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
   sandboxStatusMessage: string
 }) {
@@ -833,6 +844,7 @@ function ExecutionSection({
     sandboxStatus === 'ready' ? 'Sandbox ready' :
     sandboxStatus === 'starting' ? (sandboxStatusMessage || 'Starting sandbox…') :
     sandboxStatus === 'error' ? (sandboxStatusMessage || 'Sandbox error') :
+    executionMode === 'docker' ? 'Idle — will start on first use' :
     e2bKey.trim() ? 'Idle — will start on first use' : 'No API key'
 
   return (
@@ -911,6 +923,42 @@ function ExecutionSection({
           </div>
         </Field>
       )}
+
+      {/* Verification toggle */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+        border: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
+            Enable verification
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
+            Automatically verify execution results and self-correct if needed
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onEnableVerificationChange(!enableVerification)}
+          style={{
+            width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+            border: 'none', cursor: 'pointer', position: 'relative',
+            background: enableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
+            transition: 'background 0.15s',
+            padding: 0,
+          }}
+        >
+          <span style={{
+            position: 'absolute', top: 2, borderRadius: '50%',
+            width: 18, height: 18,
+            background: '#fff',
+            left: enableVerification ? 'calc(100% - 20px)' : 2,
+            transition: 'left 0.15s',
+            display: 'block',
+          }} />
+        </button>
+      </div>
     </div>
   )
 }

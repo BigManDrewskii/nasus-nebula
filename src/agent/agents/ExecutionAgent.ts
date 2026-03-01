@@ -744,11 +744,13 @@ export class ExecutionAgent extends BaseAgent {
   private emitToolCall(taskId: string, messageId: string, tool: string, input: Record<string, unknown>, callId: string): void {
     const step: AgentStep = { kind: 'tool_call', tool, input, callId }
     useAppStore.getState().addStep(taskId, messageId, step)
+    window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
   }
 
   private emitToolResult(taskId: string, messageId: string, callId: string, output: string, isError: boolean): void {
     const step: AgentStep = { kind: 'tool_result', callId, output, isError }
     useAppStore.getState().updateStep(taskId, messageId, step)
+    window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
   }
 
   private emitStrikeEscalation(taskId: string, messageId: string, tool: string, attempts: string[]): void {

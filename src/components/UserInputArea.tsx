@@ -41,8 +41,11 @@ function ModelDropdown({
   const { openRouterModels, modelsLastFetched } = useAppStore()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [focusedIndex, setFocusedIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const listboxRef = useRef<HTMLDivElement>(null)
 
   const isLive = openRouterModels.length > 0
 
@@ -71,8 +74,21 @@ function ModelDropdown({
     grouped.get(m.group)!.push(m)
   }
 
-    const selected = allModels.find((m) => m.value === value)
-    const displayLabel = selected?.label ?? shortModelLabel(value)
+  // Flatten for keyboard navigation
+  const flatOptions = filtered
+
+  const selected = allModels.find((m) => m.value === value)
+  const displayLabel = selected?.label ?? shortModelLabel(value)
+
+  // Get the id of the currently focused option
+  const focusedOptionId = focusedIndex >= 0 && focusedIndex < flatOptions.length
+    ? `model-option-${flatOptions[focusedIndex].value.replace(/[^a-zA-Z0-9]/g, '-')}`
+    : undefined
+
+  // Reset focused index when options change
+  useEffect(() => {
+    setFocusedIndex(-1)
+  }, [search])
 
   // Close on outside click
   useEffect(() => {
@@ -81,6 +97,7 @@ function ModelDropdown({
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false)
         setSearch('')
+        setFocusedIndex(-1)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -89,8 +106,65 @@ function ModelDropdown({
 
   // Focus search on open
   useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 30)
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 30)
+      // Focus the first option after the selected one, or first option
+      const selectedIndex = flatOptions.findIndex((m) => m.value === value)
+      setFocusedIndex(selectedIndex >= 0 ? selectedIndex : 0)
+    }
   }, [open])
+
+  // Keyboard navigation for the trigger button
+  const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+    if (disabled) return
+
+    switch (e.key) {
+      case 'Enter':
+      case ' ':
+        e.preventDefault()
+        setOpen((o) => !o)
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        if (!open) {
+          setOpen(true)
+        } else {
+          setFocusedIndex((i) => Math.min(i + 1, flatOptions.length - 1))
+        }
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        if (open) {
+          setFocusedIndex((i) => Math.max(i - 1, 0))
+        }
+        break
+      case 'Home':
+        e.preventDefault()
+        if (open) setFocusedIndex(0)
+        break
+      case 'End':
+        e.preventDefault()
+        if (open) setFocusedIndex(flatOptions.length - 1)
+        break
+      case 'Escape':
+        e.preventDefault()
+        setOpen(false)
+        setFocusedIndex(-1)
+        triggerRef.current?.focus()
+        break
+    }
+  }
+
+  // Select an option by index
+  const selectOption = (index: number) => {
+    if (index >= 0 && index < flatOptions.length) {
+      onChange(flatOptions[index].value)
+      setOpen(false)
+      setSearch('')
+      setFocusedIndex(-1)
+      triggerRef.current?.focus()
+    }
+  }
 
   // Human-readable "last fetched" label
   const freshLabel = (() => {
@@ -105,9 +179,17 @@ function ModelDropdown({
     <div ref={containerRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', minWidth: 0 }}>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => { if (!disabled) setOpen((o) => !o) }}
+        onKeyDown={handleTriggerKeyDown}
         disabled={disabled}
+        aria-label="Select model"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls="model-listbox"
+        aria-activedescendant={focusedOptionId}
+        id="model-dropdown-trigger"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -153,6 +235,11 @@ function ModelDropdown({
       {/* Dropdown panel */}
       {open && (
         <div
+          ref={listboxRef}
+          id="model-listbox"
+          role="listbox"
+          aria-labelledby="model-dropdown-trigger"
+          tabIndex={-1}
           style={{
             position: 'absolute',
             bottom: 'calc(100% + 8px)',
@@ -168,6 +255,37 @@ function ModelDropdown({
             maxHeight: 320,
             overflow: 'hidden',
             animation: 'dropUp 0.14s ease',
+          }}
+          onKeyDown={(e) => {
+            switch (e.key) {
+              case 'ArrowDown':
+                e.preventDefault()
+                setFocusedIndex((i) => Math.min(i + 1, flatOptions.length - 1))
+                break
+              case 'ArrowUp':
+                e.preventDefault()
+                setFocusedIndex((i) => Math.max(i - 1, 0))
+                break
+              case 'Home':
+                e.preventDefault()
+                setFocusedIndex(0)
+                break
+              case 'End':
+                e.preventDefault()
+                setFocusedIndex(flatOptions.length - 1)
+                break
+              case 'Enter':
+              case ' ':
+                e.preventDefault()
+                if (focusedIndex >= 0) selectOption(focusedIndex)
+                break
+              case 'Escape':
+                e.preventDefault()
+                setOpen(false)
+                setFocusedIndex(-1)
+                triggerRef.current?.focus()
+                break
+            }
           }}
         >
           {/* Search bar */}
@@ -192,7 +310,6 @@ function ModelDropdown({
                   flex: 1,
                   background: 'transparent',
                   border: 'none',
-                  outline: 'none',
                   fontSize: 12,
                   color: 'var(--tx-primary)',
                   fontFamily: 'inherit',
@@ -203,6 +320,7 @@ function ModelDropdown({
                 <button
                   type="button"
                   onClick={() => setSearch('')}
+                  aria-label="Clear model search"
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}
                 >
                   <Pxi name="times" size={9} />
@@ -231,17 +349,24 @@ function ModelDropdown({
                 }}>
                   {group}
                 </div>
-                {models.map((m) => {
+                {models.map((m, idx) => {
                   const isSel = m.value === value
+                  const globalIndex = flatOptions.findIndex((opt) => opt.value === m.value)
+                  const isFocused = globalIndex === focusedIndex
+                  const optionId = `model-option-${m.value.replace(/[^a-zA-Z0-9]/g, '-')}`
                   return (
                     <button
                       key={m.value}
+                      id={optionId}
                       type="button"
+                      role="option"
+                      aria-selected={isSel}
                       onClick={() => {
                         onChange(m.value)
                         setOpen(false)
                         setSearch('')
                       }}
+                      onMouseEnter={() => setFocusedIndex(globalIndex)}
                       style={{
                         width: '100%',
                         display: 'flex',
@@ -255,11 +380,9 @@ function ModelDropdown({
                         fontSize: 12,
                         fontFamily: 'inherit',
                         color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                        background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                        background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : isFocused ? 'rgba(255,255,255,0.08)' : 'transparent',
                         transition: 'background 0.08s',
                       }}
-                      onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                      onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
                     >
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         {m.label}
@@ -493,7 +616,6 @@ function ModelDropdown({
               resize: 'none',
               background: 'transparent',
               border: 'none',
-              outline: 'none',
               fontSize: 13,
               color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
               fontStyle: inputState === 'processing' ? 'italic' : 'normal',
@@ -530,8 +652,8 @@ function ModelDropdown({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 26,
-                  height: 26,
+                  width: 44,
+                  height: 44,
                   borderRadius: 7,
                   border: 'none',
                   background: 'transparent',
@@ -620,12 +742,13 @@ function ModelDropdown({
                 onClick={handleSend}
                 disabled={!canSend}
                 title="Send (Enter)"
+                aria-label="Send message"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 28,
-                  height: 28,
+                  width: 44,
+                  height: 44,
                   borderRadius: 8,
                   border: 'none',
                   cursor: !canSend ? 'not-allowed' : 'pointer',

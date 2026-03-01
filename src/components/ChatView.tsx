@@ -15,6 +15,7 @@ import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
+import { PlanConfirmationModal } from './PlanConfirmationModal'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -36,46 +37,59 @@ interface ChatViewProps {
 }
 
 export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed: _leftCollapsed = false, rightCollapsed: _rightCollapsed = false, onToggleLeft: _onToggleLeft, onToggleRight: _onToggleRight }: ChatViewProps) {
-  const {
-    getMessages,
-    getRawHistory,
-    addMessage,
-    appendChunk,
-    setStreaming,
-    setError,
-    addStep,
-    updateStep,
-    appendRawHistory,
-    updateTaskTitle,
-    updateTaskStatus,
-    apiKey,
-    model,
-    workspacePath,
-    apiBase,
-    provider,
-    braveSearchKey,
-    googleCseKey,
-    googleCseId,
-    serperKey,
-    tavilyKey,
-    searxngUrl,
-    searchProvider,
-    maxIterations,
-    setWorkspacePath,
-    setApiKey,
-    setModel,
-    setApiBase,
-    setProvider,
-    addRecentWorkspacePath,
-    e2bApiKey,
-    executionMode,
-    routerConfig,
-    setTaskRouterState,
-  } = useAppStore()
+    const {
+      messages: allMessages,
+      getMessages,
+      getRawHistory,
+      addMessage,
+      appendChunk,
+      setStreaming,
+      setError,
+      addStep,
+      updateStep,
+      appendRawHistory,
+      updateTaskTitle,
+      updateTaskStatus,
+      apiKey,
+      model,
+      workspacePath,
+      apiBase,
+      provider,
+      braveSearchKey,
+      googleCseKey,
+      googleCseId,
+      serperKey,
+      tavilyKey,
+      searxngUrl,
+      searchProvider,
+      maxIterations,
+      setWorkspacePath,
+      setApiKey,
+      setModel,
+      setApiBase,
+      setProvider,
+      addRecentWorkspacePath,
+      e2bApiKey,
+      executionMode,
+      enableVerification,
+      routerConfig,
+      setTaskRouterState,
+      pendingPlan,
+      approvePlan,
+      rejectPlan,
+      setSandboxStatus,
+      sandboxStatus: globalSandboxStatus,
+    } = useAppStore()
+
+    const runningRef = useRef(false)
+    const queuedMsgRef = useRef<string | null>(null)
+    const sendTimestamps = useRef<number[]>([])
+    const inputRef = useRef<UserInputAreaHandle>(null)
+    const messageListRef = useRef<HTMLDivElement>(null)
+    const bottomRef = useRef<HTMLDivElement>(null)
 
     const [iteration, setIteration] = useState(0)
     const [tokenCount, setTokenCount] = useState(0)
-    const [sandboxStatus, setSandboxStatus] = useState<'idle' | 'starting' | 'ready' | 'stopped'>('idle')
     const [showMemory, setShowMemory] = useState(false)
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
     // Track whether the agent is actively running (used for correct isActive state)
@@ -98,7 +112,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null)
   const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
 
-    // Attachments
+  const sandboxStatus = (globalSandboxStatus === 'error' ? 'stopped' : globalSandboxStatus) as 'idle' | 'starting' | 'ready' | 'stopped'
+  const isActive = agentRunning
+  const messages = task ? (allMessages[task.id] ?? getMessages(task.id)) : []
+  const taskWorkspacePath = workspacePath || (task?.id ? `workspace-${task.id}` : null)
+
+  const inputState: InputState = agentRunning
+    ? (processingPhase ? 'processing' : 'streaming')
+    : 'idle'
+
+  const updateRoutingPreview = useCallback((_content: string) => {
+    // No-op for now, can be implemented to show auto-routing changes in real-time
+  }, [])
+
+
+  // Attachments
   const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
 
   // When a folder is dropped, set it as the workspace path
@@ -121,391 +149,51 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-      const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig })
-      useEffect(() => {
-        configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig }
-      }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, routerConfig])
-
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig })
   useEffect(() => {
-    tauriInvoke<{ api_key: string; model: string; workspace_path: string; api_base: string; provider: string }>('get_config')
-      .then((cfg) => {
-        if (cfg?.workspace_path) setWorkspacePath(cfg.workspace_path)
-        if (cfg?.api_key) setApiKey(cfg.api_key)
-        if (cfg?.model) setModel(cfg.model)
-        if (cfg?.api_base) setApiBase(cfg.api_base)
-        if (cfg?.provider) setProvider(cfg.provider)
-      })
-      .catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig }
+  }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig])
 
-  const messages = task ? getMessages(task.id) : []
-  // isActive is driven by agentRunning state (set when we kick off, cleared on done/error)
-  const isActive = agentRunning
-
-    const [taskWorkspacePath, setTaskWorkspacePath] = useState<string | null>(null)
-
-    useEffect(() => {
-      if (task?.id) {
-        workspaceManager.getWorkspacePath(task.id).then(setTaskWorkspacePath)
-      } else {
-        setTaskWorkspacePath(null)
-      }
-    }, [task?.id, workspacePath, task?.title])
-
-    // Derive 4-state input machine from running states
-
-  const inputState: InputState = processingPhase
-    ? 'processing'
-    : agentRunning
-    ? 'streaming'
-    : 'idle'
-
-  const messageListRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const runningRef = useRef<boolean>(false)
-  const queuedMsgRef = useRef<string | null>(null)
-  const inputRef = useRef<UserInputAreaHandle>(null)
-  // Rate limiting: track recent send timestamps (max 10 sends per 60s)
-  // Persisted in sessionStorage so it survives React remounts/HMR but resets on tab close.
-  const sendTimestamps = useRef<number[]>(
-    (() => {
-      try {
-        const raw = sessionStorage.getItem('nasus-send-ts')
-        if (raw) {
-          const parsed: number[] = JSON.parse(raw)
-          const now = Date.now()
-          return parsed.filter((t) => now - t < 60_000)
-        }
-      } catch { /* ignore */ }
-      return []
-    })()
-  )
-
-  // ── Scroll-lock detection ───────────────────────────────────────────────────
-  useEffect(() => {
-    const el = messageListRef.current
-    if (!el) return
-    function onScroll() {
-      if (!el) return
-      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      // Within 80px of bottom = auto-scroll territory
-      if (distFromBottom < 80) {
-          setScrollLocked(false)
-          hidePill()
-        } else {
-        setScrollLocked(true)
-      }
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [task?.id])
-
-  // ── Auto-scroll: only follow if not locked ──────────────────────────────────
-  useEffect(() => {
-    if (scrollLocked && agentRunning) {
-        // New message arrived while user scrolled up — show pill
-        showPill()
-      } else if (!scrollLocked) {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-        hidePill()
-      }
-  }, [messages]) // eslint-disable-line react-hooks/exhaustive-deps
-
-    const prevTaskIdRef = useRef<string | undefined>(undefined)
-  useEffect(() => {
-    // Stop any running agent for the previous task when switching tasks
-    if (prevTaskIdRef.current && prevTaskIdRef.current !== task?.id && !isTauri) {
-      stopWebAgent(prevTaskIdRef.current)
-      disposeSandbox().catch(() => {})
-    }
-    
-    // Sync task title to workspace manager for descriptive folder naming
-    if (task && task.id && task.title) {
-      workspaceManager.setTaskTitle(task.id, task.title)
-    }
-
-    prevTaskIdRef.current = task?.id
-      setIteration(0)
-        setTokenCount(0)
-        setSandboxStatus('idle')
-        setAgentRunning(false)
-        setProcessingPhase(false)
-        setScrollLocked(false)
-      setPillVisible(false)
-      setShowNewMsgPill(false)
-      queuedMsgRef.current = null
-      setQueuedMsg(null)
-      clearAttachments()
-    setActiveModelBadge(null)
-    setTaskCostBadge(null)
-  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Web-agent custom events (browser mode only) ────────────────────────────
-  useEffect(() => {
-    if (isTauri || !task) return
-    const taskId = task.id
-
-    function onIteration(e: Event) {
-      const { taskId: tid, iteration: iter } = (e as CustomEvent).detail
-      if (tid === taskId) setIteration(iter)
-    }
-    function onTokens(e: Event) {
-      const { taskId: tid, total_tokens } = (e as CustomEvent).detail
-      if (tid === taskId) setTokenCount(total_tokens)
-    }
-    function onAgentStarted(e: Event) {
-      const { taskId: tid } = (e as CustomEvent).detail
-      if (tid === taskId) {
-        setAgentRunning(true)
-        setProcessingPhase(true)
-      }
-    }
-    function onAgentDone(e: Event) {
-      const { taskId: tid } = (e as CustomEvent).detail
-      if (tid === taskId) {
-        runningRef.current = false
-        setAgentRunning(false)
-        setProcessingPhase(false)
-      }
-    }
-    function onProcessingEnd(e: Event) {
-      const { taskId: tid } = (e as CustomEvent).detail
-      if (tid === taskId) setProcessingPhase(false)
-    }
-
-    window.addEventListener('nasus:iteration', onIteration)
-    window.addEventListener('nasus:tokens', onTokens)
-    window.addEventListener('nasus:agent-started', onAgentStarted)
-    window.addEventListener('nasus:agent-done', onAgentDone)
-    window.addEventListener('nasus:processing-end', onProcessingEnd)
-    return () => {
-      window.removeEventListener('nasus:iteration', onIteration)
-      window.removeEventListener('nasus:tokens', onTokens)
-      window.removeEventListener('nasus:agent-started', onAgentStarted)
-      window.removeEventListener('nasus:agent-done', onAgentDone)
-      window.removeEventListener('nasus:processing-end', onProcessingEnd)
-    }
-  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!task) return
-    let active = true
-    const cleanups: Array<() => void> = []
-
-    tauriListen<AgentEventPayload>('agent-event', (payload) => {
-      if (!active || payload.task_id !== task.id) return
-
-      switch (payload.kind) {
-        case 'thinking': {
-            const content = payload.content ?? ''
-            if (content.includes('Starting sandbox') || content.includes('Pulling image') || content.includes('Pulling Docker image') || content.includes('[Docker pull]')) {
-              setSandboxStatus('starting')
-            } else if (content.includes('Sandbox ready') || content.includes('Image') && content.includes('ready')) {
-              setSandboxStatus('ready')
-            }
-            setProcessingPhase(false)
-            const step: AgentStep = { kind: 'thinking', content }
-            addStep(task.id, payload.message_id, step)
-            break
-          }
-          case 'tool_call': {
-            setProcessingPhase(false)
-            const step: AgentStep = {
-            kind: 'tool_call',
-            tool: payload.tool ?? '',
-            input: payload.input ?? {},
-            callId: payload.call_id ?? '',
-          }
-          addStep(task.id, payload.message_id, step)
-          break
-        }
-          case 'tool_result': {
-            const step: AgentStep = {
-              kind: 'tool_result',
-              callId: payload.call_id ?? '',
-              output: payload.output ?? '',
-              isError: payload.is_error ?? false,
-            }
-            updateStep(task.id, payload.message_id, step)
-            // Desktop mode sync: force workspace refresh on tool results
-            if (isTauri) {
-              workspaceManager.refresh(task.id).catch(() => {})
-            }
-            break
-          }
-
-          case 'stream_chunk': {
-            setProcessingPhase(false)
-            if (!payload.done && payload.delta) {
-            appendChunk(task.id, payload.message_id, payload.delta)
-          }
-          if (payload.done) {
-            setStreaming(task.id, payload.message_id, false)
-            runningRef.current = false
-            setAgentRunning(false)
-          }
-          break
-        }
-          case 'done': {
-            setProcessingPhase(false)
-            runningRef.current = false
-          setAgentRunning(false)
-          updateTaskStatus(task.id, 'completed')
-          setStreaming(task.id, payload.message_id, false)
-          setSandboxStatus('stopped')
-          break
-        }
-          case 'error': {
-            setProcessingPhase(false)
-            runningRef.current = false
-          setAgentRunning(false)
-          setError(task.id, payload.message_id, payload.error ?? 'Unknown error')
-          updateTaskStatus(task.id, 'failed')
-          break
-        }
-        case 'strike_escalation': {
-          const step: AgentStep = {
-            kind: 'strike_escalation',
-            tool: payload.tool ?? '',
-            attempts: payload.attempts ?? [],
-          }
-          addStep(task.id, payload.message_id, step)
-          break
-        }
-        case 'context_compressed': {
-          const step: AgentStep = {
-            kind: 'context_compressed',
-            removedCount: payload.removed_count ?? 0,
-          }
-          addStep(task.id, payload.message_id, step)
-          break
-        }
-        case 'iteration_tick': {
-          setIteration(payload.iteration ?? 0)
-          break
-        }
-        case 'token_usage': {
-          setTokenCount(payload.total_tokens ?? 0)
-          break
-        }
-        case 'auto_title': {
-          if (payload.title) updateTaskTitle(task.id, payload.title)
-          break
-        }
-          case 'raw_messages': {
-            if (payload.messages && payload.messages.length > 0) {
-              appendRawHistory(task.id, payload.messages)
-            }
-            break
-          }
-          case 'model_selected': {
-            if (payload.model_id) {
-              setActiveModelBadge({
-                modelId: payload.model_id,
-                displayName: payload.display_name ?? payload.model_id,
-                reason: payload.reason ?? '',
+  const runAgent = useCallback(async (
+            taskId: string,
+            agentMsgId: string,
+            history: LlmMessage[],
+            taskTitle: string,
+          ) => {
+            const cfg = configRef.current
+            
+            try {
+              // Now using tauriInvoke even for agent execution.
+              // This is routed through invokeWebAgent (TS) in both environments.
+              // In Tauri, it ALSO registers the task with the Rust backend for state tracking.
+              await tauriInvoke('run_agent', {
+                taskId,
+                messageId: agentMsgId,
+                userMessages: history,
+                apiKey: cfg.apiKey || '',
+                model: cfg.model || 'anthropic/claude-3.7-sonnet',
+                apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+                provider: cfg.provider || 'openrouter',
+                searchConfig: {
+                  provider: cfg.searchProvider || 'auto',
+                  apiKey: cfg.braveSearchKey || undefined,
+                  serperKey: cfg.serperKey || undefined,
+                  tavilyKey: cfg.tavilyKey || undefined,
+                },
+                executionConfig: {
+                  executionMode: (cfg.executionMode || 'docker') as 'docker' | 'e2b' | 'pyodide' | 'disabled',
+                  e2bApiKey: cfg.e2bApiKey || undefined,
+                  taskId: taskId,
+                  workspacePath: cfg.workspacePath,
+                },
+                maxIterations: cfg.maxIterations ?? 50,
+                taskTitle,
+                usePlanning: true, // Enable the Orchestrator (Planning Agent)
+                orchestratorConfig: {
+                  enableVerification: cfg.enableVerification ?? true,
+                },
               })
-              setTaskRouterState(task.id, {
-                modelId: payload.model_id,
-                displayName: payload.display_name ?? payload.model_id,
-                reason: payload.reason ?? '',
-              })
-            }
-            break
-          }
-          case 'task_cost': {
-            if (typeof payload.total_cost_usd === 'number') {
-              setTaskCostBadge({
-                costUsd: payload.total_cost_usd,
-                isFree: payload.is_free ?? false,
-                callCount: payload.call_count ?? 0,
-              })
-              setTaskRouterState(task.id, {
-                totalCostUsd: payload.total_cost_usd,
-                totalInputTokens: payload.total_input_tokens ?? 0,
-                totalOutputTokens: payload.total_output_tokens ?? 0,
-                callCount: payload.call_count ?? 0,
-                isFree: payload.is_free ?? false,
-              })
-            }
-            break
-          }
-          case 'free_limit_warning': {
-            const remaining = payload.remaining ?? 0
-            setRateLimitWarning(
-              remaining === 0
-                ? 'Free model daily limit reached. Switch to a paid model to continue.'
-                : `Free model limit: ${remaining} requests remaining today.`,
-            )
-            break
-          }
-      }
-    }).then((fn) => cleanups.push(fn))
-
-    return () => {
-      active = false
-      cleanups.forEach((fn) => fn())
-    }
-  }, [task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const updateRoutingPreview = useCallback(async (content: string) => {
-    if (!isTauri || !content.trim() || routerConfig.mode !== 'auto' || isActive) {
-      setRoutingPreview(null)
-      return
-    }
-    try {
-      const preview = await tauriInvoke<any>('preview_routing', {
-        message: content,
-        mode: routerConfig.mode,
-        budget: routerConfig.budget,
-        modelOverrides: routerConfig.modelOverrides,
-      })
-      if (preview) {
-        setRoutingPreview({
-          modelId: preview.model_id,
-          displayName: preview.display_name,
-          reason: preview.reason,
-        })
-      }
-    } catch {
-      setRoutingPreview(null)
-    }
-  }, [routerConfig, isActive])
-
-        const runAgent = useCallback(async (
-          taskId: string,
-          agentMsgId: string,
-          history: LlmMessage[],
-          _taskTitle: string,
-        ) => {
-          const cfg = configRef.current
-          // const taskWorkspace = await workspaceManager.getWorkspacePath(taskId)
-          
-          try {
-            // runWebAgent manages its own AbortController per taskId
-            // and cancels any previous run for the same task on start.
-            // We use this even in Tauri mode because the Rust agent is a mockup.
-            await runWebAgent({
-              taskId,
-              messageId: agentMsgId,
-              userMessages: history,
-              apiKey: cfg.apiKey || '',
-              model: cfg.model || 'anthropic/claude-3.7-sonnet',
-              apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-              provider: cfg.provider || 'openrouter',
-              searchConfig: {
-                provider: cfg.searchProvider || 'auto',
-                apiKey: cfg.braveSearchKey || undefined,
-                serperKey: cfg.serperKey || undefined,
-                tavilyKey: cfg.tavilyKey || undefined,
-              },
-              executionConfig: {
-                executionMode: (cfg.executionMode || 'e2b') as 'e2b' | 'pyodide' | 'disabled',
-                e2bApiKey: cfg.e2bApiKey || undefined,
-              },
-              maxIterations: cfg.maxIterations ?? 50,
-            })
-      } catch (err) {
+        } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
         setError(taskId, agentMsgId, `Agent error: ${msg}`)
@@ -787,6 +475,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                       </label>
                       <button
                         onClick={() => setShowWorkspacePicker(false)}
+                        aria-label="Close workspace picker"
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 2 }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
@@ -946,6 +635,14 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                   hidePill()
                   bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
                 }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setScrollLocked(false)
+                    hidePill()
+                    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+                  }
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1051,6 +748,13 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 </div>
               </div>
         </>
+      )}
+      {pendingPlan && (
+        <PlanConfirmationModal
+          plan={pendingPlan}
+          onApprove={approvePlan}
+          onReject={rejectPlan}
+        />
       )}
     </div>
   )

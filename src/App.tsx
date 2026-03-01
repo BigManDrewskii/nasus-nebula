@@ -186,6 +186,10 @@ function App() {
 
     return (
       <ErrorBoundary>
+        {/* Skip link for keyboard users */}
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
         <div className="app-root">
           {isTauri && (
             <>
@@ -207,7 +211,7 @@ function App() {
         </div>
 
         {/* ── Chat ── */}
-        <main className="app-chat">
+        <main id="main-content" className="app-chat">
           <ChatView
             task={activeTask}
             onNewTask={handleNewTask}
@@ -244,116 +248,6 @@ function App() {
         )}
 
         {showSettings && <SettingsPanel onClose={closeSettings} />}
-
-        {/* Docker unavailable modal */}
-        {dockerStatus && !dockerStatus.available && (
-          <div
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 500,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'rgba(0,0,0,0.72)',
-              backdropFilter: 'blur(12px)',
-            }}
-          >
-            <div
-              style={{
-                width: 420,
-                borderRadius: 16,
-                background: '#111',
-                border: '1px solid rgba(255,255,255,0.09)',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-                padding: '32px 32px 28px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 20,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 10,
-                    background: 'rgba(239,68,68,0.12)',
-                    border: '1px solid rgba(239,68,68,0.25)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Pxi name="exclamation-triangle" size={18} style={{ color: '#f87171' }} />
-                </div>
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: 'var(--tx-primary)', letterSpacing: '-0.01em' }}>
-                    Docker Required
-                  </div>
-                  <div style={{ fontSize: 12, color: 'var(--tx-tertiary)', marginTop: 2 }}>
-                    Nasus runs code in a secure Docker sandbox
-                  </div>
-                </div>
-              </div>
-
-              <p style={{ fontSize: 13, color: 'var(--tx-secondary)', lineHeight: 1.6, margin: 0 }}>
-                {dockerStatus.message}
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <a
-                  href={dockerStatus.download_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '10px 16px',
-                    borderRadius: 10,
-                    background: 'var(--accent)',
-                    color: '#000',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    fontFamily: 'var(--font-display)',
-                    textDecoration: 'none',
-                    letterSpacing: '-0.01em',
-                  }}
-                >
-                  <Pxi name="external-link" size={12} />
-                  Download Docker Desktop
-                </a>
-                <button
-                  onClick={() =>
-                    invoke<DockerStatus>('check_docker')
-                      .then(setDockerStatus)
-                      .catch(() => {})
-                  }
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 8,
-                    padding: '9px 16px',
-                    borderRadius: 10,
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    color: 'var(--tx-secondary)',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Pxi name="refresh" size={12} />
-                  Try again
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Offline banner */}
         {isOffline && (

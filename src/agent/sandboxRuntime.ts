@@ -1,9 +1,9 @@
 /**
  * Unified sandbox dispatcher.
  *
- * E2B is the only supported cloud sandbox backend.
- * Pyodide (browser WebAssembly) is the local-only fallback for Python.
- * Daytona has been removed.
+ * Docker is the recommended local backend (free, private, offline).
+ * E2B is the cloud sandbox fallback.
+ * Pyodide (browser WebAssembly) is the last-resort fallback for Python only.
  */
 
 import { runPython } from './pythonRuntime'
@@ -13,11 +13,22 @@ import {
   disposeE2bSandbox,
   type SandboxStatusCallback,
 } from './e2bRuntime'
+import {
+  dockerRunPython,
+  dockerRunBash,
+  disposeDockerSandbox,
+  type DockerStatusCallback,
+} from './dockerRuntime'
+import { tauriInvoke } from '../tauri'
 
 export interface ExecutionConfig {
   /** Execution mode selected in Settings */
-  executionMode: 'e2b' | 'pyodide' | 'disabled'
+  executionMode: 'docker' | 'e2b' | 'pyodide' | 'disabled'
   e2bApiKey?: string
+  /** Task ID for workspace tracking */
+  taskId?: string
+  /** Workspace path for mounting into containers */
+  workspacePath?: string
   /** Called during sandbox cold-start so the UI can show a spinner */
   onSandboxStatus?: SandboxStatusCallback
 }
@@ -28,13 +39,24 @@ export interface SandboxResult {
 }
 
 /** Resolve which backend to use for the given config and capability. */
-function resolveBackend(
+async function resolveBackend(
   cfg: ExecutionConfig,
   capability: 'python' | 'bash',
-): 'e2b' | 'pyodide' | 'disabled' {
+): Promise<'docker' | 'e2b' | 'pyodide' | 'disabled'> {
   const { executionMode, e2bApiKey } = cfg
 
   if (executionMode === 'disabled') return 'disabled'
+
+  if (executionMode === 'docker') {
+    // Check if Docker is available
+    try {
+      const isAvailable = await tauriInvoke<boolean>('docker_check_status')
+      return isAvailable ? 'docker' : 'e2b'
+    } catch {
+      // Fallback to E2B if Docker check fails
+      return 'e2b'
+    }
+  }
 
   if (executionMode === 'e2b') {
     return e2bApiKey?.trim() ? 'e2b' : 'disabled'
@@ -44,7 +66,13 @@ function resolveBackend(
     return capability === 'bash' ? 'disabled' : 'pyodide'
   }
 
-  // Fallback: e2b if key present, else pyodide for python, disabled for bash
+  // Fallback: Docker first, then e2b if key present, else pyodide for python, disabled for bash
+  try {
+    const isAvailable = await tauriInvoke<boolean>('docker_check_status')
+    if (isAvailable) return 'docker'
+  } catch {
+    // Docker not available, continue to fallback
+  }
   if (e2bApiKey?.trim()) return 'e2b'
   if (capability === 'python') return 'pyodide'
   return 'disabled'
@@ -53,12 +81,39 @@ function resolveBackend(
 const NO_E2B_KEY_MSG =
   '[No E2B API key configured. Add your key in Settings → Code Execution → E2B API Key.]'
 
+const NO_DOCKER_MSG =
+  '[Docker is not available. Make sure Docker Desktop is running, or add an E2B API key in Settings.]'
+
 /** Execute Python code using the best available runtime. */
 export async function executePython(
   code: string,
   cfg: ExecutionConfig,
 ): Promise<SandboxResult> {
-  const backend = resolveBackend(cfg, 'python')
+  const backend = await resolveBackend(cfg, 'python')
+
+  if (backend === 'docker') {
+    try {
+      const res = await dockerRunPython(
+        code,
+        cfg.taskId ?? 'unknown',
+        cfg.workspacePath ?? '',
+        cfg.onSandboxStatus as DockerStatusCallback,
+      )
+      const parts: string[] = []
+      if (res.stdout) parts.push(res.stdout)
+      if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
+      if (res.error) {
+        parts.push(`[error]\n${res.error}`)
+        return { output: parts.join('\n').trim() || res.error, isError: true }
+      }
+      return { output: parts.join('\n').trim() || '(no output)', isError: false }
+    } catch (err) {
+      return {
+        output: `Docker error: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
+      }
+    }
+  }
 
   if (backend === 'e2b') {
     try {
@@ -107,15 +162,39 @@ export async function executePython(
   if (cfg.executionMode === 'disabled') {
     return { output: '[Code execution is disabled. Enable it in Settings → Code Execution.]', isError: false }
   }
-  return { output: NO_E2B_KEY_MSG, isError: false }
+  return { output: NO_DOCKER_MSG, isError: false }
 }
 
-/** Execute a shell command using E2B cloud sandbox. */
+/** Execute a shell command using Docker or E2B cloud sandbox. */
 export async function executeBash(
   command: string,
   cfg: ExecutionConfig,
 ): Promise<SandboxResult> {
-  const backend = resolveBackend(cfg, 'bash')
+  const backend = await resolveBackend(cfg, 'bash')
+
+  if (backend === 'docker') {
+    try {
+      const res = await dockerRunBash(
+        command,
+        cfg.taskId ?? 'unknown',
+        cfg.workspacePath ?? '',
+        cfg.onSandboxStatus as DockerStatusCallback,
+      )
+      const parts: string[] = []
+      if (res.stdout) parts.push(res.stdout)
+      if (res.stderr) parts.push(`[stderr]\n${res.stderr}`)
+      if (res.error) {
+        parts.push(`[error]\n${res.error}`)
+        return { output: parts.join('\n').trim() || res.error, isError: true }
+      }
+      return { output: parts.join('\n').trim() || '(no output)', isError: false }
+    } catch (err) {
+      return {
+        output: `Docker bash error: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
+      }
+    }
+  }
 
   if (backend === 'e2b') {
     try {
@@ -140,12 +219,15 @@ export async function executeBash(
     return { output: '[Code execution is disabled. Enable it in Settings → Code Execution.]', isError: false }
   }
   return {
-    output: '[bash_execute requires E2B. Add your E2B API key in Settings → Code Execution.]',
+    output: '[bash_execute requires Docker or E2B. Configure one in Settings → Code Execution.]',
     isError: false,
   }
 }
 
-/** Kill any active E2B sandbox. Call on task stop/switch. */
+/** Kill any active sandbox containers. Call on task stop/switch. */
 export async function disposeSandbox(): Promise<void> {
-  await disposeE2bSandbox()
+  await Promise.all([
+    disposeE2bSandbox(),
+    disposeDockerSandbox(),
+  ])
 }

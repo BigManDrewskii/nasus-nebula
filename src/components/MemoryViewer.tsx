@@ -145,6 +145,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             <button
               onClick={loadFiles}
               title="Refresh"
+              aria-label="Refresh memory files"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 28, height: 28,
@@ -213,6 +214,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             )}
             <button
               onClick={onClose}
+              aria-label="Close memory viewer"
               style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', transition: 'color 0.12s' }}
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
@@ -224,6 +226,8 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
 
         {/* Tabs */}
         <div
+          role="tablist"
+          aria-label="Memory file tabs"
           style={{ display: 'flex', flexShrink: 0, padding: '8px 12px 0', gap: 2, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
         >
           {TABS.map((tab) => {
@@ -231,7 +235,11 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             return (
               <button
                 key={tab.id}
+                id={`tab-${tab.id}`}
                 onClick={() => setActiveTab(tab.id)}
+                role="tab"
+                aria-selected={isActiveTab}
+                aria-controls={`panel-${tab.id}`}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '7px 12px',
@@ -257,7 +265,12 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: 16 }}>
+        <div
+          role="tabpanel"
+          id={`panel-${activeTab}`}
+          aria-labelledby={`tab-${activeTab}`}
+          style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: 16 }}
+        >
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 128, color: 'var(--tx-tertiary)' }}>
               <Pxi name="spinner-third" size={13} />

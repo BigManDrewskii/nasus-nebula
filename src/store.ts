@@ -95,6 +95,8 @@ interface AppState {
         e2bApiKey: string
         /** 'e2b' | 'pyodide' | 'disabled' */
         executionMode: string
+        /** Enable verification after execution */
+        enableVerification: boolean
         /** Live sandbox status shown in UI */
         sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
         sandboxStatusMessage: string
@@ -139,6 +141,7 @@ interface AppState {
       setOnboardingComplete: () => void
         setE2bApiKey: (key: string) => void
         setExecutionMode: (mode: string) => void
+        setEnableVerification: (enabled: boolean) => void
         setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
@@ -194,7 +197,8 @@ export const useAppStore = create<AppState>()(
               maxIterations: 50,
               onboardingComplete: false,
               e2bApiKey: '',
-                  executionMode: 'e2b',
+                  executionMode: 'docker',
+                  enableVerification: true,
                   sandboxStatus: 'idle',
                   sandboxStatusMessage: '',
           routerConfig: {
@@ -457,6 +461,7 @@ export const useAppStore = create<AppState>()(
               setOnboardingComplete: () => set({ onboardingComplete: true }),
                 setE2bApiKey: (key) => set({ e2bApiKey: key }),
                 setExecutionMode: (mode) => set({ executionMode: mode }),
+                setEnableVerification: (enabled) => set({ enableVerification: enabled }),
                 setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
         setRouterConfig: (config) =>
           set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),
@@ -531,6 +536,7 @@ export const useAppStore = create<AppState>()(
                 onboardingComplete: state.onboardingComplete,
                   e2bApiKey: state.e2bApiKey,
                   executionMode: state.executionMode,
+                  enableVerification: state.enableVerification,
               // openRouterModels is persisted so the dropdown is populated immediately on reload.
               // It will be refreshed in the background on startup if the key is present.
                 openRouterModels: state.openRouterModels,

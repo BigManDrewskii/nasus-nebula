@@ -1161,3 +1161,62 @@ html, body, #root {
 .output-card {
   animation: card-slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* ── Focus-visible styles for keyboard accessibility ─────────────────────────────────── */
+
+/* Show focus ring only for keyboard navigation (not mouse clicks) */
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid oklch(64% 0.214 40.1 / 0.5);
+  outline-offset: 2px;
+}
+
+/* Remove outline for mouse users while keeping it for keyboard */
+button:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Special focus styles for rail buttons */
+.rail-toggle-btn:focus-visible,
+.output-rail-btn:focus-visible,
+.sidebar-rail-btn:focus-visible {
+  outline: 2px solid oklch(64% 0.214 40.1 / 0.6);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px oklch(64% 0.214 40.1 / 0.15);
+}
+
+/* Focus styles for tabs */
+.output-tab:focus-visible,
+.output-file-tab:focus-visible {
+  outline: 2px solid oklch(64% 0.214 40.1 / 0.5);
+  outline-offset: -2px;
+}
+
+/* Focus styles for header buttons */
+.header-sidebar-toggle:focus-visible,
+.header-action-btn:focus-visible,
+.header-stop-btn:focus-visible {
+  outline: 2px solid oklch(64% 0.214 40.1 / 0.5);
+  outline-offset: 2px;
+}
+
+/* Skip link for keyboard users */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: oklch(64% 0.214 40.1);
+  color: #000;
+  padding: 8px 16px;
+  z-index: 9999;
+  transition: top 0.3s;
+}
+
+.skip-link:focus {
+  top: 0;
+}

@@ -70,10 +70,12 @@ export function OutputPanel({
         {tabs.map((t) => (
           <button
             key={t.id}
+            id={`tab-${t.id}`}
             onClick={() => setTab(t.id)}
             className={`output-tab${effectiveTab === t.id ? ' output-tab--active' : ''}`}
             role="tab"
             aria-selected={effectiveTab === t.id}
+            aria-controls={`panel-${t.id}`}
           >
             <Pxi name={t.icon} size={10} />
             <span>{t.label}</span>
@@ -97,7 +99,7 @@ export function OutputPanel({
           )}
       </div>
 
-      <div className="output-panel-body">
+      <div className="output-panel-body" role="tabpanel" aria-labelledby={`tab-${effectiveTab}`}>
         {effectiveTab === 'preview' && <PreviewPane files={files} />}
         {effectiveTab === 'code'    && <CodePane files={files} />}
         {effectiveTab === 'files'   && <FilesPane files={files} />}
