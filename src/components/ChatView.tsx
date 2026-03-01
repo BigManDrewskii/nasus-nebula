@@ -419,25 +419,40 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         />
       )}
 
-          <ChatHeader
-              task={task}
-              isActive={isActive}
-              iteration={iteration}
-              tokenCount={tokenCount}
-              model={model}
-              provider={provider}
-              routerConfig={routerConfig}
-              sandboxStatus={sandboxStatus}
-              outputVisible={outputVisible}
-              workspaceFileCount={workspaceFileCount}
-              onShowOutput={onShowOutput}
-              onShowMemory={() => setShowMemory(true)}
-              onStop={handleStop}
-            />
+            <ChatHeader
+                task={task}
+                isActive={isActive}
+                iteration={iteration}
+                tokenCount={tokenCount}
+                model={model}
+                provider={provider}
+                routerConfig={routerConfig}
+                sandboxStatus={sandboxStatus}
+                outputVisible={outputVisible}
+                workspaceFileCount={workspaceFileCount}
+                onShowOutput={onShowOutput}
+                onShowMemory={() => setShowMemory(true)}
+                onStop={handleStop}
+              />
+
+          {/* Planning Board HUD (Collapsible) — always visible at top when active */}
+          {(pendingPlan || currentPlan) && (
+            <div className="flex-shrink-0 px-5 pt-3 pb-2 border-b border-white/[0.03] bg-gradient-to-b from-black/40 to-transparent">
+              <div className="max-w-[780px] mx-auto">
+                <PlanView
+                  plan={pendingPlan || currentPlan!}
+                  onApprove={pendingPlan ? approvePlan : undefined}
+                  onReject={pendingPlan ? rejectPlan : undefined}
+                  currentPhase={currentPhase}
+                  currentStep={currentStep}
+                />
+              </div>
+            </div>
+          )}
 
 
 
-      {/* Empty state */}
+        {/* Empty state */}
       {showEmptyState ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6">
           <div className="w-full max-w-lg flex flex-col items-center gap-8">
@@ -614,31 +629,18 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             id="message-list"
           >
             <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-6">
-                {visibleMessages.map((msg, i) => (
-                  <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
-                    <ChatMessage
-                      message={msg}
-                      onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
-                    />
-                  </div>
-                ))}
-                
-                {/* Inline Plan (Approval or Progress) — only for the current task */}
-                {(pendingPlan || currentPlan) && (
-                  <div className="msg-in" style={{ animationDelay: '100ms' }}>
-                    <PlanView
-                      plan={pendingPlan || currentPlan!}
-                      onApprove={pendingPlan ? approvePlan : undefined}
-                      onReject={pendingPlan ? rejectPlan : undefined}
-                      currentPhase={currentPhase}
-                      currentStep={currentStep}
-                    />
-                  </div>
-                )}
+                  {visibleMessages.map((msg, i) => (
+                    <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
+                      <ChatMessage
+                        message={msg}
+                        onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
+                      />
+                    </div>
+                  ))}
 
-                <div ref={bottomRef} />
+                  <div ref={bottomRef} />
+                </div>
               </div>
-            </div>
 
           {/* New messages pill — shown when scrolled up during active run */}
           {showNewMsgPill && (
