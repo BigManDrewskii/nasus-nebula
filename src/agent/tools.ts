@@ -398,6 +398,61 @@ export async function executeTool(
       case 'browser_navigate': {
         const url = String(args.url ?? '')
         if (!url) return { output: 'Missing url', isError: true }
+        
+        // --- Stealth Mode in Docker Sandbox ---
+        if (args.stealth === true) {
+          const cfg: ExecutionConfig = executionConfig ?? { executionMode: 'docker' }
+          const pythonCode = `
+import asyncio
+from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        await stealth_async(context)
+        page = await context.new_page()
+        try:
+            # Navigate with 30s timeout
+            response = await page.goto("${url}", wait_until="domcontentloaded", timeout=30000)
+            if not response:
+                print("Error: No response from ${url}")
+                return
+                
+            title = await page.title()
+            content = await page.content()
+            
+            print(f"--- TITLE ---\\n{title}")
+            print(f"--- URL ---\\n{page.url}")
+            print(f"--- CONTENT ---\\n{content}")
+        except Exception as e:
+            print(f"Error navigating to ${url}: {str(e)}")
+        finally:
+            await browser.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+`
+          const result = await executePython(pythonCode, cfg)
+          if (result.isError) return result
+          
+          // Parse title and content from stdout if possible, or just return the whole thing
+          const output = result.output
+          if (output.includes('--- CONTENT ---')) {
+              const [header, fullContent] = output.split('--- CONTENT ---\n')
+              // Extract readable content from the raw HTML
+              const readable = extractReadableContent(fullContent, url)
+              return { 
+                  output: `[Stealth Sandbox Mode]\n${header.replace(/--- /g, '').trim()}\n\n${readable.content}`, 
+                  isError: false 
+              }
+          }
+          return result
+        }
+
         try {
           const result = await browserNavigate(url, Boolean(args.new_tab))
           return { output: `Navigated to: ${result.url}\nTitle: ${result.title}\nTab ID: ${result.tabId}`, isError: false }

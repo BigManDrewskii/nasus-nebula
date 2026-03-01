@@ -2,8 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path};
 use std::sync::Arc;
-use tauri::{AppHandle, State, Emitter};
+use tauri::{AppHandle, State, Emitter, Manager};
 use tokio::sync::Mutex;
+use rusqlite::{params, Connection};
 
 pub mod models;
 pub mod search;
@@ -316,6 +317,97 @@ async fn stop_agent(state: State<'_, AppState>, taskId: String) -> Result<(), St
     Ok(())
 }
 
+// --- Persistence Commands ---
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn save_task_history(app: AppHandle, taskId: String, rawHistory: String) -> Result<(), String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    
+    // Ensure parent dir exists
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS history (task_id TEXT PRIMARY KEY, raw_history TEXT)",
+        [],
+    ).map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO history (task_id, raw_history) VALUES (?1, ?2)",
+        params![taskId, rawHistory],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn load_task_history(app: AppHandle, taskId: String) -> Result<Option<String>, String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    
+    if !db_path.exists() {
+        return Ok(None);
+    }
+
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    
+    // Check if table exists
+    let table_exists: bool = conn.query_row(
+        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='history'",
+        [],
+        |row| row.get(0),
+    ).map_err(|_| false);
+
+    if !table_exists {
+        return Ok(None);
+    }
+
+    let mut stmt = conn.prepare("SELECT raw_history FROM history WHERE task_id = ?1")
+        .map_err(|e| e.to_string())?;
+    
+    let result = stmt.query_row(params![taskId], |row| row.get(0));
+    
+    match result {
+        Ok(history) => Ok(Some(history)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn delete_task_history(app: AppHandle, taskId: String) -> Result<(), String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    
+    if !db_path.exists() {
+        return Ok(());
+    }
+
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM history WHERE task_id = ?1", params![taskId])
+        .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn is_ollama_running() -> bool {
+    match reqwest::get("http://localhost:11434/api/tags").await {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -350,7 +442,11 @@ pub fn run() {
         workspace_delete_all,
         run_agent,
         stop_agent,
+        save_task_history,
+        load_task_history,
+        delete_task_history,
         check_docker,
+        is_ollama_running,
         docker::commands::docker_create_container,
         docker::commands::docker_execute_python,
         docker::commands::docker_execute_bash,

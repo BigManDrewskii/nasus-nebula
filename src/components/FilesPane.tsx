@@ -43,6 +43,7 @@ function guessMime(ext: string): string {
 export function FilesPane({ files }: FilesPaneProps) {
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [zipping, setZipping] = useState(false)
+  const [previewing, setPreviewing] = useState<string | null>(null)
 
   const allChecked = files.length > 0 && files.every((f) => checked.has(f.name))
 
@@ -130,6 +131,8 @@ export function FilesPane({ files }: FilesPaneProps) {
       <div className="output-files-list">
         {files.map((f) => {
           const isChecked = checked.has(f.name)
+          const isPreviewing = previewing === f.name
+          const canPreview = ['html', 'svg'].includes(f.ext)
           const bytes = new TextEncoder().encode(f.content).length
           return (
             <div key={f.name} className={`output-file-row${isChecked ? ' output-file-row--selected' : ''}`}>
@@ -148,6 +151,17 @@ export function FilesPane({ files }: FilesPaneProps) {
 
               <span className="output-file-row-size">{formatBytes(bytes)}</span>
 
+              {canPreview && (
+                <button
+                  onClick={() => setPreviewing(isPreviewing ? null : f.name)}
+                  className={`output-file-row-preview${isPreviewing ? ' output-file-row-preview--active' : ''}`}
+                  title={isPreviewing ? 'Close Preview' : 'Preview Artifact'}
+                >
+                  <Pxi name={isPreviewing ? 'eye-slash' : 'eye'} size={11} />
+                  {isPreviewing ? 'Hide' : 'Preview'}
+                </button>
+              )}
+
               <button
                 onClick={() => downloadSingle(f)}
                 title={`Download ${f.name}`}
@@ -155,6 +169,17 @@ export function FilesPane({ files }: FilesPaneProps) {
               >
                 <Pxi name="download" size={11} />
               </button>
+
+              {isPreviewing && (
+                <div className="artifact-preview-container">
+                  <iframe
+                    srcDoc={f.content}
+                    sandbox="allow-scripts allow-forms"
+                    className="artifact-preview-iframe"
+                    title={`Preview of ${f.name}`}
+                  />
+                </div>
+              )}
             </div>
           )
         })}

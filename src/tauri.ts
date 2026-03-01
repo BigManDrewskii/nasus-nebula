@@ -111,6 +111,55 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
   return undefined
 }
 
+// ── Persistence Helpers ───────────────────────────────────────────────────────
+
+/**
+ * Persist a task's full message history to the SQLite database.
+ * This is called by the store to avoid bloating localStorage.
+ */
+export async function persistTaskHistory(taskId: string, rawHistory: LlmMessage[]): Promise<void> {
+  const rawHistoryStr = JSON.stringify(rawHistory)
+  await tauriInvoke('save_task_history', { taskId, rawHistory: rawHistoryStr })
+}
+
+/**
+ * Load a task's full message history from the SQLite database.
+ */
+export async function getPersistedTaskHistory(taskId: string): Promise<LlmMessage[] | undefined> {
+  const historyStr = await tauriInvoke<string | null>('load_task_history', { taskId })
+  if (historyStr) {
+    try {
+      return JSON.parse(historyStr) as LlmMessage[]
+    } catch (e) {
+      console.error(`[tauri] Failed to parse history for task ${taskId}:`, e)
+    }
+  }
+  return undefined
+}
+
+/**
+ * Delete a task's message history from the SQLite database.
+ */
+export async function deletePersistedTaskHistory(taskId: string): Promise<void> {
+  await tauriInvoke('delete_task_history', { taskId })
+}
+
+/**
+ * Check if a local Ollama instance is running at http://localhost:11434.
+ */
+export async function checkOllama(): Promise<boolean> {
+  if (!isTauri) {
+    // In browser mode, we'd need to handle CORS, but let's assume no for now.
+    try {
+      const resp = await fetch('http://localhost:11434/api/tags', { method: 'GET', mode: 'no-cors' })
+      return resp.type === 'opaque' || resp.ok
+    } catch {
+      return false
+    }
+  }
+  return (await tauriInvoke<boolean>('is_ollama_running')) ?? false
+}
+
 export async function tauriListen<T>(
   event: string,
   handler: (payload: T) => void,

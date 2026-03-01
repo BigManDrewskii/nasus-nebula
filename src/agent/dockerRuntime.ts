@@ -38,7 +38,7 @@ interface DockerExecResultRaw {
 let activeContainerId: string | null = null
 
 /** Image to use for Docker sandbox */
-const SANDBOX_IMAGE = 'python:3.12-slim'
+const SANDBOX_IMAGE = 'nasus-sandbox:latest'
 
 /** Default container resource limits */
 const CONTAINER_CONFIG = {

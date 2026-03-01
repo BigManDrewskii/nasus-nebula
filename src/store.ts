@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { Task, Message, AgentStep, LlmMessage } from './types'
 import { clearWorkspace, copyWorkspace } from './agent/tools'
 import type { ExecutionPlan } from './agent/core/Agent'
+import { persistTaskHistory, deletePersistedTaskHistory, getPersistedTaskHistory } from './tauri'
 
 // NOTE: clearWorkspace is now async - we call it without await in state updates
 // The workspace cleanup happens in the background
@@ -210,8 +211,21 @@ export const useAppStore = create<AppState>()(
           pendingPlan: null,
           planApprovalStatus: null,
 
-        setActiveTaskId: (id) => set({ activeTaskId: id }),
+          setActiveTaskId: (id) => {
+            set({ activeTaskId: id })
+            // If selecting a task that doesn't have history in memory, try to load from DB
+            if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
+              getPersistedTaskHistory(id).then(history => {
+                if (history && history.length > 0) {
+                  set(state => ({
+                    rawHistory: { ...state.rawHistory, [id]: history }
+                  }))
+                }
+              }).catch(() => {})
+            }
+          },
           setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
+
         setDynamicModels: (models) => set({ dynamicModels: models }),
 
         addTask: (task) =>
@@ -248,9 +262,12 @@ export const useAppStore = create<AppState>()(
           const messages = { ...state.messages }
           const rawHistory = { ...state.rawHistory }
           delete messages[id]
-          delete rawHistory[id]
-          // Async workspace cleanup - fire and forget
-          clearWorkspace(id).catch(() => {})
+            delete rawHistory[id]
+            // Async workspace cleanup - fire and forget
+            clearWorkspace(id).catch(() => {})
+            // Async history cleanup in DB
+            deletePersistedTaskHistory(id).catch(() => {})
+
           // If we deleted the active task, select the next one
           const activeTaskId =
             state.activeTaskId === id
@@ -289,9 +306,13 @@ export const useAppStore = create<AppState>()(
             }
             const tasks = [newTask, ...state.tasks].slice(0, MAX_TASKS)
             const messages = { ...state.messages, [newId]: [WELCOME_MESSAGE] }
-            const rawHistory = { ...state.rawHistory, [newId]: [] }
+            const rawHistory = { ...state.rawHistory, [newId]: state.rawHistory[id] ?? [] }
             // Copy workspace files from source to new task
             copyWorkspace(id, newId)
+            // Persist duplicated history to DB in background
+            if (rawHistory[newId].length > 0) {
+              persistTaskHistory(newId, rawHistory[newId]).catch(() => {})
+            }
             return { tasks, messages, rawHistory, activeTaskId: newId }
           }),
 
@@ -421,21 +442,25 @@ export const useAppStore = create<AppState>()(
             },
           })),
 
-        appendRawHistory: (taskId, msgs) =>
-          set((state) => {
-            const current = state.rawHistory[taskId] ?? []
-            const appended = [...current, ...msgs]
-            // Cap in-memory size to prevent OOM on very long runs
-            const capped = appended.length > MAX_RAW_HISTORY_LIVE
-              ? appended.slice(-MAX_RAW_HISTORY_LIVE)
-              : appended
-            return {
-              rawHistory: {
-                ...state.rawHistory,
-                [taskId]: capped,
-              },
-            }
-          }),
+          appendRawHistory: (taskId, msgs) =>
+            set((state) => {
+              const current = state.rawHistory[taskId] ?? []
+              const appended = [...current, ...msgs]
+              // Persist full history to SQLite in the background
+              persistTaskHistory(taskId, appended).catch(() => {})
+              
+              // Cap in-memory size to prevent OOM on very long runs
+              const capped = appended.length > MAX_RAW_HISTORY_LIVE
+                ? appended.slice(-MAX_RAW_HISTORY_LIVE)
+                : appended
+              return {
+                rawHistory: {
+                  ...state.rawHistory,
+                  [taskId]: capped,
+                },
+              }
+            }),
+
 
             setApiKey: (key) => set({ apiKey: key }),
             setModel: (model) => set({ model }),
@@ -514,9 +539,10 @@ export const useAppStore = create<AppState>()(
           return {
             tasks: state.tasks,
             messages: trimmedMessages,
-            // Trim rawHistory to last 60 messages per task to avoid localStorage bloat
+            // Only keep last 5 messages in rawHistory in localStorage for immediate reload
+            // Full history is loaded from SQLite on demand
             rawHistory: Object.fromEntries(
-              Object.entries(state.rawHistory).map(([tid, msgs]) => [tid, msgs.slice(-60)])
+              Object.entries(state.rawHistory).map(([tid, msgs]) => [tid, msgs.slice(-5)])
             ),
             apiKey: state.apiKey,
           model: state.model,
@@ -556,8 +582,20 @@ export const useAppStore = create<AppState>()(
           }
           // Use setState to update rather than direct mutation (safer with zustand persist)
           useAppStore.setState({ messages: fixedMessages })
-
+  
+          // Trigger history load for active task from DB for full context
+          if (state.activeTaskId) {
+            getPersistedTaskHistory(state.activeTaskId).then(history => {
+              if (history && history.length > 0) {
+                useAppStore.setState(s => ({
+                  rawHistory: { ...s.rawHistory, [state.activeTaskId!]: history }
+                }))
+              }
+            }).catch(() => {})
+          }
+  
           // Seed workspaceVersions for any tasks that have persisted workspace data,
+
           // so getWorkspaceVersion() returns > 0 and components re-render correctly.
           import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
             for (const task of state.tasks ?? []) {

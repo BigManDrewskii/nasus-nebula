@@ -184,22 +184,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
     },
   },
-  {
+    {
     type: 'function',
     function: {
       name: 'browser_navigate',
       description:
-        'Navigate the user\'s real browser to a URL. Requires the Nasus Browser Bridge extension. Use to open websites, web apps, or any URL in the user\'s actual browser session (with their real cookies/logins). Returns the page title and final URL.',
+        'Navigate to a URL. By default, this uses the user\'s real browser (requires Nasus extension). If stealth=true, it uses an isolated Docker sandbox with Playwright + bot-detection bypass (stealth mode) — use this for sites that block bots (Cloudflare, etc.). Note: stealth mode does NOT share cookies/logins with the user\'s real browser.',
       parameters: {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'Full URL to navigate to (include https://).' },
           new_tab: { type: 'boolean', description: 'Open in a new tab (default false).', default: false },
+          stealth: { type: 'boolean', description: 'Use isolated stealth sandbox to bypass bot detection (default false).', default: false },
         },
         required: ['url'],
       },
     },
   },
+
   {
     type: 'function',
     function: {

@@ -2,10 +2,10 @@
 # Nasus Sandbox — Pre-built web development environment
 # =============================================================
 # Build:  docker build -t nasus-sandbox:latest -f docker/Dockerfile.sandbox docker/
-# Size:   ~800MB (Node 20 + pre-installed templates)
+# Size:   ~1.2GB (Playwright + Node 20 + pre-installed templates)
 # =============================================================
 
-FROM node:20-slim AS base
+FROM mcr.microsoft.com/playwright:v1.50.0-noble AS base
 
 # System packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,6 +20,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     lsof \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Stealth Plugins for Node and Python
+RUN npm install -g playwright-extra puppeteer-extra-plugin-stealth
+RUN pip3 install playwright-stealth --break-system-packages
 
 # Global Node tools
 RUN npm install -g pnpm@latest serve@latest

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { tauriInvoke } from '../tauri'
+import { tauriInvoke, checkOllama } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
@@ -84,11 +84,27 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localExecutionMode, setLocalExecutionMode] = useState(executionMode || 'e2b')
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
 
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [errors, setErrors] = useState<ValidationErrors>({})
+    const [saving, setSaving] = useState(false)
+    const [saved, setSaved] = useState(false)
+    const [errors, setErrors] = useState<ValidationErrors>({})
 
-  // Local router config state
+    // Local Provider State
+    const [ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
+    const [checkingOllama, setCheckingOllama] = useState(false)
+    const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'openrouter')
+
+    useEffect(() => {
+      async function init() {
+        setCheckingOllama(true)
+        const ok = await checkOllama()
+        setOllamaRunning(ok)
+        setCheckingOllama(false)
+      }
+      init()
+    }, [])
+
+    // Local router config state
+
   const [localRouterMode, setLocalRouterMode] = useState(routerConfig.mode)
   const [localRouterBudget, setLocalRouterBudget] = useState(routerConfig.budget)
   const [localModelOverrides, setLocalModelOverrides] = useState<Record<string, boolean>>(routerConfig.modelOverrides)
@@ -207,52 +223,59 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setErrors({})
   }
 
-  async function checkAndSave() {
-    const errs = validate()
-    if (Object.keys(errs).length > 0) { setErrors(errs); return }
-    setErrors({})
-    setSaving(true)
-    const OR_BASE = 'https://openrouter.ai/api/v1'
-    setApiKey(localKey.trim())
-    setModel(localModel)
-    setWorkspacePath(localWorkspace.trim())
-    if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
-    setApiBase(OR_BASE)
-    setProvider('openrouter')
-    setBraveSearchKey(localBraveKey.trim())
-    setGoogleCseKey(localGoogleCseKey.trim())
-    setGoogleCseId(localGoogleCseId.trim())
-    setSerperKey(localSerperKey.trim())
-    setTavilyKey(localTavilyKey.trim())
-    setSearxngUrl(localSearxngUrl.trim())
-    setSearchProvider(localSearchProvider)
-    const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
-    setMaxIterations(parsedIter)
-    setE2bApiKey(localE2bKey.trim())
-    setExecutionMode(localExecutionMode)
-    setEnableVerification(localEnableVerification)
-    // Save router config
-    setRouterConfig({
-      mode: localRouterMode,
-      budget: localRouterBudget,
-      modelOverrides: localModelOverrides,
-    })
-    await tauriInvoke('save_router_settings', {
-      mode: localRouterMode,
-      budget: localRouterBudget,
-      modelOverrides: localModelOverrides,
-    }).catch(() => { /* non-blocking */ })
-    await tauriInvoke('save_config', {
-      apiKey: localKey.trim(),
-      model: localModel,
-      workspacePath: localWorkspace.trim(),
-      apiBase: OR_BASE,
-      provider: 'openrouter',
-    })
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => { setSaved(false); onClose() }, 900)
-  }
+    async function checkAndSave() {
+      const errs = validate()
+      if (activeProvider === 'openrouter' && Object.keys(errs).length > 0) { setErrors(errs); return }
+      setErrors({})
+      setSaving(true)
+      
+      const isOllama = activeProvider === 'ollama'
+      const OR_BASE = 'https://openrouter.ai/api/v1'
+      const OLLAMA_BASE = 'http://localhost:11434/v1'
+      const finalApiBase = isOllama ? OLLAMA_BASE : OR_BASE
+      const finalProvider = isOllama ? 'ollama' : 'openrouter'
+
+      setApiKey(isOllama ? '' : localKey.trim())
+      setModel(localModel)
+      setWorkspacePath(localWorkspace.trim())
+      if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
+      setApiBase(finalApiBase)
+      setProvider(finalProvider)
+      setBraveSearchKey(localBraveKey.trim())
+      setGoogleCseKey(localGoogleCseKey.trim())
+      setGoogleCseId(localGoogleCseId.trim())
+      setSerperKey(localSerperKey.trim())
+      setTavilyKey(localTavilyKey.trim())
+      setSearxngUrl(localSearxngUrl.trim())
+      setSearchProvider(localSearchProvider)
+      const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
+      setMaxIterations(parsedIter)
+      setE2bApiKey(localE2bKey.trim())
+      setExecutionMode(localExecutionMode)
+      setEnableVerification(localEnableVerification)
+      // Save router config
+      setRouterConfig({
+        mode: isOllama ? 'manual' : localRouterMode, // Force manual if Ollama for now
+        budget: localRouterBudget,
+        modelOverrides: localModelOverrides,
+      })
+      await tauriInvoke('save_router_settings', {
+        mode: isOllama ? 'manual' : localRouterMode,
+        budget: localRouterBudget,
+        modelOverrides: localModelOverrides,
+      }).catch(() => { /* non-blocking */ })
+      await tauriInvoke('save_config', {
+        apiKey: isOllama ? '' : localKey.trim(),
+        model: localModel,
+        workspacePath: localWorkspace.trim(),
+        apiBase: finalApiBase,
+        provider: finalProvider,
+      })
+      setSaving(false)
+      setSaved(true)
+      setTimeout(() => { setSaved(false); onClose() }, 900)
+    }
+
 
   const busy = saving
 
@@ -273,8 +296,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
           {/* OpenRouter badge */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: 'oklch(64% 0.214 40.1 / 0.12)', color: 'var(--amber-soft)', fontWeight: 500, letterSpacing: '0.04em' }}>
-              OpenRouter
+            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 6, background: activeProvider === 'openrouter' ? 'oklch(64% 0.214 40.1 / 0.12)' : 'rgba(255,255,255,0.08)', color: activeProvider === 'openrouter' ? 'var(--amber-soft)' : 'var(--tx-tertiary)', fontWeight: 500, letterSpacing: '0.04em' }}>
+              {activeProvider === 'openrouter' ? 'OpenRouter' : 'Local (Ollama)'}
             </span>
             <button
               onClick={onClose}
@@ -292,7 +315,83 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         <div style={{ overflowY: 'auto', flex: 1, padding: '0 24px', minHeight: 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 4 }}>
 
-            {/* ── API Key ── */}
+            {/* ── Provider Switcher ── */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              {[
+                { id: 'openrouter', label: 'Cloud', icon: 'cloud', desc: 'OpenRouter' },
+                { id: 'ollama', label: 'Local', icon: 'server', desc: 'Ollama' }
+              ].map(p => {
+                const isSel = activeProvider === p.id
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setActiveProvider(p.id)}
+                    style={{
+                      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                      padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
+                      background: isSel ? 'rgba(255,255,255,0.06)' : 'transparent',
+                      border: `1px solid ${isSel ? 'var(--amber-soft)' : 'rgba(255,255,255,0.08)'}`,
+                      transition: 'all 0.12s'
+                    }}
+                  >
+                    <Pxi name={p.icon as any} size={14} style={{ color: isSel ? 'var(--amber)' : 'var(--tx-tertiary)' }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)' }}>{p.label}</span>
+                    <span style={{ fontSize: 9, color: 'var(--tx-muted)' }}>{p.desc}</span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {activeProvider === 'ollama' && (
+              <div style={{ padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: ollamaRunning ? '#22c55e' : ollamaRunning === false ? '#f87171' : 'var(--tx-muted)' }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-primary)' }}>Ollama Status</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setCheckingOllama(true)
+                      const ok = await checkOllama()
+                      setOllamaRunning(ok)
+                      setCheckingOllama(false)
+                    }}
+                    disabled={checkingOllama}
+                    style={{ padding: '4px 8px', fontSize: 10, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', color: 'var(--tx-secondary)' }}
+                  >
+                    {checkingOllama ? 'Detecting...' : 'Detect'}
+                  </button>
+                </div>
+                {ollamaRunning === false && (
+                  <div style={{ fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.5 }}>
+                    Ollama not found at <code style={{ color: 'var(--tx-secondary)' }}>localhost:11434</code>. 
+                    <a href="https://ollama.com" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', marginLeft: 4 }}>Download Ollama</a>
+                  </div>
+                )}
+                {ollamaRunning && (
+                   <div style={{ fontSize: 11, color: '#22c55e' }}>
+                     Ollama is running. Ready to use local models!
+                   </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Local Model Name</label>
+                  <input
+                    type="text"
+                    value={localModel.includes('/') ? 'llama3.1' : localModel}
+                    onChange={(e) => setLocalModel(e.target.value)}
+                    placeholder="e.g. llama3.1, deepseek-r1:7b"
+                    style={{
+                      width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                      color: 'var(--tx-primary)', background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)'
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeProvider === 'openrouter' && (
+              <>
+                {/* ── API Key ── */}
             <Field label="OpenRouter API Key" icon="lock"
               hint={<>Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>openrouter.ai/keys</a></>}
               error={errors.apiKey}
@@ -460,11 +559,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       </div>
                     </div>
                   )}
+                  </div>
                 </div>
-              </div>
-            </Field>
+              </Field>
+              </>
+            )}
 
-              {/* ── Model Router ── */}
+            {/* ── Model Router ── */}
+            {activeProvider === 'openrouter' && (
               <ModelRouterSection
                 mode={localRouterMode}
                 onModeChange={setLocalRouterMode}
@@ -473,8 +575,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 modelOverrides={localModelOverrides}
                 onModelOverridesChange={setLocalModelOverrides}
               />
+            )}
 
-              {/* ── Workspace Path ── */}
+            {/* ── Workspace Path ── */}
             <Field
               label="Workspace Path"
               icon="folder-open"
