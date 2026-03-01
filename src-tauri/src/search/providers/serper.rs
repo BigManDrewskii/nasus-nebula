@@ -26,11 +26,7 @@ impl SearchProvider for SerperProvider {
             .await
             .map_err(|e| SearchError::Network(e.to_string()))?;
 
-        if !resp.status().is_success() {
-            return Err(SearchError::Api(format!("Serper API returned status {}", resp.status())));
-        }
-
-        let json: serde_json::Value = resp.json().await.map_err(|e| SearchError::Api(e.to_string()))?;
+        let json = crate::search::handle_response(resp, "Serper").await?;
         let mut results = Vec::new();
 
         if let Some(organic) = json["organic"].as_array() {

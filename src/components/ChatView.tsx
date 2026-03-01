@@ -14,7 +14,7 @@ import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
-import { PlanConfirmationModal } from './PlanConfirmationModal'
+import { PlanView } from './PlanConfirmationModal'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -69,6 +69,9 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       pendingPlan,
       approvePlan,
       rejectPlan,
+      currentPlan,
+      currentPhase,
+      currentStep,
       setSandboxStatus,
       sandboxStatus: globalSandboxStatus,
     } = useAppStore()
@@ -359,6 +362,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
   }
 
   useEffect(() => {
+    if (pendingPlan || currentPlan) {
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    }
+  }, [pendingPlan, currentPlan])
+
+  useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'n') { e.preventDefault(); onNewTask() }
@@ -605,17 +614,31 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             id="message-list"
           >
             <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-6">
-              {visibleMessages.map((msg, i) => (
-                <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
-                  <ChatMessage
-                    message={msg}
-                    onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
-                  />
-                </div>
-              ))}
-              <div ref={bottomRef} />
+                {visibleMessages.map((msg, i) => (
+                  <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
+                    <ChatMessage
+                      message={msg}
+                      onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
+                    />
+                  </div>
+                ))}
+                
+                {/* Inline Plan (Approval or Progress) — only for the current task */}
+                {(pendingPlan || currentPlan) && (
+                  <div className="msg-in" style={{ animationDelay: '100ms' }}>
+                    <PlanView
+                      plan={pendingPlan || currentPlan!}
+                      onApprove={pendingPlan ? approvePlan : undefined}
+                      onReject={pendingPlan ? rejectPlan : undefined}
+                      currentPhase={currentPhase}
+                      currentStep={currentStep}
+                    />
+                  </div>
+                )}
+
+                <div ref={bottomRef} />
+              </div>
             </div>
-          </div>
 
           {/* New messages pill — shown when scrolled up during active run */}
           {showNewMsgPill && (
@@ -762,13 +785,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 </div>
               </div>
         </>
-      )}
-      {pendingPlan && (
-        <PlanConfirmationModal
-          plan={pendingPlan}
-          onApprove={approvePlan}
-          onReject={rejectPlan}
-        />
       )}
     </div>
   )

@@ -105,6 +105,9 @@ interface AppState {
   // Planning state
   pendingPlan: ExecutionPlan | null
   planApprovalStatus: 'pending' | 'approved' | 'rejected' | null
+  currentPlan: ExecutionPlan | null
+  currentPhase: number
+  currentStep: number
 
   setActiveTaskId: (id: string | null) => void
   setOpenRouterModels: (models: OpenRouterModel[]) => void
@@ -148,6 +151,9 @@ interface AppState {
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
   setPendingPlan: (plan: ExecutionPlan | null) => void
   setPlanApprovalStatus: (status: 'pending' | 'approved' | 'rejected' | null) => void
+  setCurrentPlan: (plan: ExecutionPlan | null) => void
+  setCurrentPhase: (phase: number) => void
+  setCurrentStep: (step: number) => void
   approvePlan: () => void
   rejectPlan: () => void
 }
@@ -207,9 +213,12 @@ export const useAppStore = create<AppState>()(
             budget: 'paid',
             modelOverrides: {},
           },
-          taskRouterState: {},
-          pendingPlan: null,
-          planApprovalStatus: null,
+            taskRouterState: {},
+            pendingPlan: null,
+            planApprovalStatus: null,
+            currentPlan: null,
+            currentPhase: 0,
+            currentStep: 0,
 
           setActiveTaskId: (id) => {
             set({ activeTaskId: id })
@@ -499,9 +508,16 @@ export const useAppStore = create<AppState>()(
           })),
         setPendingPlan: (plan) => set({ pendingPlan: plan }),
         setPlanApprovalStatus: (status) => set({ planApprovalStatus: status }),
+        setCurrentPlan: (plan) => set({ currentPlan: plan }),
+        setCurrentPhase: (phase) => set({ currentPhase: phase }),
+        setCurrentStep: (step) => set({ currentStep: step }),
         approvePlan: () => {
           const state = useAppStore.getState()
           set({ planApprovalStatus: 'approved' })
+          // If we approved, set current plan
+          if (state.pendingPlan) {
+            set({ currentPlan: state.pendingPlan, currentPhase: 0, currentStep: 0 })
+          }
           // Emit approval event for orchestrator
           if (state.activeTaskId) {
             window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${state.activeTaskId}`))
@@ -509,7 +525,7 @@ export const useAppStore = create<AppState>()(
         },
         rejectPlan: () => {
           const state = useAppStore.getState()
-          set({ planApprovalStatus: 'rejected', pendingPlan: null })
+          set({ planApprovalStatus: 'rejected', pendingPlan: null, currentPlan: null })
           // Emit rejection event for orchestrator
           if (state.activeTaskId) {
             window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${state.activeTaskId}`))

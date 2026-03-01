@@ -20,19 +20,16 @@ impl SearchCache {
         Ok(Self { db_path })
     }
 
-    pub fn get(&self, query: &str, _ttl_secs: i64) -> Result<Option<Vec<SearchResult>>, String> {
+    pub fn get(&self, query: &str, ttl_secs: i64) -> Result<Option<Vec<SearchResult>>, String> {
         let conn = Connection::open(&self.db_path).map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT results_json, timestamp FROM search_cache WHERE query = ?")
+            .prepare("SELECT results_json, timestamp FROM search_cache WHERE query = ? AND (strftime('%s', 'now') - strftime('%s', timestamp)) < ?")
             .map_err(|e| e.to_string())?;
 
-        let mut rows = stmt.query(params![query]).map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![query, ttl_secs]).map_err(|e| e.to_string())?;
 
         if let Some(row) = rows.next().map_err(|e| e.to_string())? {
             let json: String = row.get(0).map_err(|e| e.to_string())?;
-            let _timestamp_str: String = row.get(1).map_err(|e| e.to_string())?;
-            
-            // Basic TTL check (simplified for now)
             let results: Vec<SearchResult> = serde_json::from_str(&json).map_err(|e| e.to_string())?;
             return Ok(Some(results));
         }

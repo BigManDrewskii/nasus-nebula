@@ -306,10 +306,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Pxi name="cog" size={13} style={{ color: 'var(--tx-tertiary)' }} />
-            <h2 style={{ fontSize: 14, fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '-0.01em', color: 'var(--tx-primary)', margin: 0 }}>Settings</h2>
-          </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Pxi name="cog" size={12} style={{ color: 'var(--amber)' }} />
+              <h2 style={{ fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
+            </div>
             {/* OpenRouter badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{
@@ -726,7 +726,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 // ─── SearchSection ────────────────────────────────────────────────────────────
 
 const SEARCH_PROVIDERS = [
-  { id: 'auto',      label: 'Auto',         desc: 'Best available: Serper → Tavily → Brave → Google CSE → SearXNG → DuckDuckGo' },
+  { id: 'auto',      label: 'Auto',         desc: 'Best available: Serper → Tavily → Brave → Google CSE → SearXNG → Wikipedia → DuckDuckGo' },
   { id: 'serper',    label: 'Serper',        desc: 'Google results via Serper API — 2,500 free queries, then $1/1K' },
   { id: 'tavily',    label: 'Tavily',        desc: 'AI-optimized results with direct answers — 1,000 free credits/month' },
   { id: 'brave',     label: 'Brave Search',  desc: '2,000 req/mo free — real web index' },
@@ -783,7 +783,7 @@ function SearchSection({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Provider row */}
-      <Field label="Web Search" icon="search"
+      <Field label="Intelligence Retrieval" icon="search"
         hint={<span style={{ color: 'var(--tx-tertiary)' }}>{selected.desc}</span>}
       >
         <div style={{ position: 'relative' }} ref={ref}>
@@ -975,7 +975,7 @@ function ExecutionSection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Field label="Code Execution" icon="terminal"
+      <Field label="Environment Execution" icon="terminal"
         hint={<span style={{ color: 'var(--tx-tertiary)' }}>{selected.desc}</span>}
       >
         <div style={{ position: 'relative' }} ref={ref}>

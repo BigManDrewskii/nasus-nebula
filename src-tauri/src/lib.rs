@@ -218,8 +218,36 @@ async fn search(
         }));
     }
 
+    if let Some(key) = config.brave_key.filter(|k| !k.is_empty()) {
+        providers.push(Box::new(search::providers::brave::BraveProvider {
+            api_key: key,
+            client: client.clone(),
+        }));
+    }
+
+    if let (Some(key), Some(id)) = (config.google_cse_key.filter(|k| !k.is_empty()), config.google_cse_id.filter(|k| !k.is_empty())) {
+        providers.push(Box::new(search::providers::google::GoogleCSEProvider {
+            api_key: key,
+            cse_id: id,
+            client: client.clone(),
+        }));
+    }
+
+    if let Some(url) = config.searxng_url.filter(|u| !u.is_empty()) {
+        providers.push(Box::new(search::providers::searxng::SearxngProvider {
+            url,
+            client: client.clone(),
+        }));
+    }
+
+    if config.provider == "wikipedia" || config.provider == "auto" {
+        providers.push(Box::new(search::providers::wikipedia::WikipediaProvider {
+            client: client.clone(),
+        }));
+    }
+
     // DuckDuckGo is free and requires no key
-    if config.provider == "ddg" || providers.is_empty() {
+    if config.provider == "ddg" || config.provider == "auto" || (config.provider != "auto" && providers.is_empty()) {
         providers.push(Box::new(search::providers::ddg::DuckDuckGoProvider {
             client: client.clone(),
         }));
@@ -484,25 +512,32 @@ async fn is_ollama_running() -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
-    .plugin(tauri_plugin_log::Builder::new().build())
-    .plugin(tauri_plugin_store::Builder::new().build())
-    .plugin(tauri_plugin_shell::init())
-    .plugin(tauri_plugin_dialog::init())
-    .manage(AppState {
-        config: Mutex::new(Config {
-            api_key: "".into(),
-            model: "anthropic/claude-3.7-sonnet".into(),
-            workspace_path: "".into(),
-            api_base: "https://openrouter.ai/api/v1".into(),
-            provider: "openrouter".into(),
-        }),
-        router_config: Mutex::new(RouterConfig::default()),
-        search_config: Mutex::new(SearchConfig::default()),
-        search_service: Arc::new(SearchService::new(None)),
-        active_tasks: Mutex::new(HashMap::new()),
-    })
-    .invoke_handler(tauri::generate_handler![
+    tauri::Builder::default()
+      .plugin(tauri_plugin_log::Builder::new().build())
+      .plugin(tauri_plugin_store::Builder::new().build())
+      .plugin(tauri_plugin_shell::init())
+      .plugin(tauri_plugin_dialog::init())
+      .setup(|app| {
+          let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+          let cache_path = app_data_dir.join("search_cache.db");
+          let _ = std::fs::create_dir_all(&app_data_dir);
+
+          app.manage(AppState {
+              config: Mutex::new(Config {
+                  api_key: "".into(),
+                  model: "anthropic/claude-3.7-sonnet".into(),
+                  workspace_path: "".into(),
+                  api_base: "https://openrouter.ai/api/v1".into(),
+                  provider: "openrouter".into(),
+              }),
+              router_config: Mutex::new(RouterConfig::default()),
+              search_config: Mutex::new(SearchConfig::default()),
+              search_service: Arc::new(SearchService::new(Some(cache_path))),
+              active_tasks: Mutex::new(HashMap::new()),
+          });
+          Ok(())
+      })
+      .invoke_handler(tauri::generate_handler![
         get_config,
         save_config,
         validate_path,
