@@ -125,6 +125,8 @@ Output a structured plan with phases and steps. Use this EXACT JSON format:
 {
   "title": "Brief 3-6 word title",
   "description": "One sentence overview",
+  "rationale": "Why this approach was chosen",
+  "complexity": "low|medium|high",
   "estimatedSteps": 5,
   "phases": [
     {
@@ -198,6 +200,8 @@ Respond ONLY with the JSON, no other text.`
         id: crypto.randomUUID(),
         title: parsed.title || 'Task Execution Plan',
         description: parsed.description || userMessage.slice(0, 200),
+        rationale: parsed.rationale,
+        complexity: (parsed.complexity as 'low' | 'medium' | 'high') || 'medium',
         estimatedSteps: phases.reduce((sum, p) => sum + p.steps.length, 0),
         phases,
         dependencies: [],
@@ -209,6 +213,8 @@ Respond ONLY with the JSON, no other text.`
         id: crypto.randomUUID(),
         title: 'Task Execution',
         description: userMessage.slice(0, 200),
+        rationale: 'Direct execution of the user request.',
+        complexity: 'low',
         estimatedSteps: 1,
         phases: [{
           id: 'phase-1',
@@ -291,6 +297,8 @@ export async function generatePlan(
     id: crypto.randomUUID(),
     title: 'Task Execution',
     description: userInput.slice(0, 200),
+    rationale: 'Direct execution of the user request.',
+    complexity: 'low',
     estimatedSteps: 1,
     phases: [{
       id: 'phase-1',

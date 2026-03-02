@@ -101,6 +101,8 @@ export interface ExecutionPlan {
   id: string
   title: string
   description: string
+  rationale?: string
+  complexity?: 'low' | 'medium' | 'high'
   estimatedSteps: number
   phases: PlanPhase[]
   dependencies: string[]
