@@ -1,7 +1,15 @@
+/**
+ * SearchWebTool — Web search tool for the agent system.
+ *
+ * Delegates to the unified search module (which calls the Rust backend).
+ * Does NOT import from the store or call Tauri directly — keeps tools pure.
+ */
+
 import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
-import type { SearchResult as ApiSearchResult } from '../../../types'
+import { runSearch } from '../../search'
+import type { SearchConfig, SearchStatusCallback } from '../../search'
 
 /**
  * Tool for searching the web for current information.
@@ -9,68 +17,57 @@ import type { SearchResult as ApiSearchResult } from '../../../types'
 export class SearchWebTool extends BaseTool {
   readonly name = 'search_web'
   readonly description =
-    'Search the web for current information. Use this tool when you need: real-time data, recent events, facts you are unsure about, current prices/stats, or anything that may have changed after your training cutoff. Do NOT use for general knowledge you are already confident about, coding syntax, math, or creative writing. Do NOT search again if results are already in context for the same topic.'
+    'Search the web for current information. Use when you need: real-time data, ' +
+    'recent events, facts you are unsure about, current prices/stats, or anything ' +
+    'that may have changed after your training cutoff. Do NOT use for general ' +
+    'knowledge you are already confident about.'
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
     properties: {
       query: {
         type: 'string',
-        description: 'A concise, specific search query written like you would type into Google — use keywords, not full sentences.',
+        description:
+          'A concise, specific search query — use keywords, not full sentences.',
       },
       num_results: {
         type: 'integer',
-        description: 'Number of results to return. Use 3 for simple factual lookups, 5 (default) for general research, 10 for comprehensive research.',
+        description:
+          'Number of results: 3 for simple lookups, 5 (default) for research, 10 for comprehensive.',
         default: 5,
       },
     },
     required: ['query'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const query = args.query as string
-    const numResults = (args.num_results as number) || 5
+  /** Optional: injected by the execution layer for UI status updates */
+  private searchConfig?: SearchConfig
+  private onStatus?: SearchStatusCallback
 
-    if (!query) {
-      return toolFailure('query is required')
+  /**
+   * Configure search options before execution.
+   * Called by the tool executor, not by the agent directly.
+   */
+  withConfig(config?: SearchConfig, onStatus?: SearchStatusCallback): this {
+    this.searchConfig = config
+    this.onStatus = onStatus
+    return this
+  }
+
+  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+    const query = args.query as string | undefined
+    const numResults = Math.min(Math.max((args.num_results as number) || 5, 1), 10)
+
+    if (!query?.trim()) {
+      return toolFailure('query is required and must be non-empty')
     }
 
     try {
-      // Call the Tauri command for search
-      const { invoke } = await import('@tauri-apps/api/core')
-      
-      // Get search config from the store
-      const { useAppStore } = await import('../../../store')
-      const state = useAppStore.getState()
-      
-      const searchConfig = {
-        provider: state.searchProvider,
-        serperKey: state.serperKey,
-        tavilyKey: state.tavilyKey,
-        braveKey: state.braveSearchKey,
-        googleCseKey: state.googleCseKey,
-        googleCseId: state.googleCseId,
-        searxngUrl: state.searxngUrl,
-      }
-
-      const results = await invoke<ApiSearchResult[]>('search', {
-        query,
-        numResults,
-        searchConfig,
-      })
-
-      if (!results || results.length === 0) {
-        return toolSuccess('No results found.')
-      }
-
-      // Format results
-      const output = results.map((r, i) => {
-        return `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}\n`
-      }).join('\n')
-
+      const output = await runSearch(query, numResults, this.searchConfig, this.onStatus)
       return toolSuccess(output)
-    } catch (error) {
-      return toolFailure(`Search failed: ${error}`)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return toolFailure(`Search failed: ${message}`)
     }
   }
 }

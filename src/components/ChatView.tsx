@@ -435,21 +435,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 onStop={handleStop}
               />
 
-          {/* Planning Board HUD (Collapsible) — always visible at top when active */}
-          {(pendingPlan || currentPlan) && (
-            <div className="flex-shrink-0 px-5 pt-3 pb-2 border-b border-white/[0.03] bg-gradient-to-b from-black/40 to-transparent">
-              <div className="max-w-[780px] mx-auto">
-                <PlanView
-                  plan={pendingPlan || currentPlan!}
-                  onApprove={pendingPlan ? approvePlan : undefined}
-                  onReject={pendingPlan ? rejectPlan : undefined}
-                  currentPhase={currentPhase}
-                  currentStep={currentStep}
-                />
-              </div>
-            </div>
-          )}
-
 
 
         {/* Empty state */}
@@ -622,25 +607,38 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         </div>
       ) : (
         <>
-          {/* Message list */}
-          <div
-            ref={messageListRef}
-            className="flex-1 overflow-y-auto"
-            id="message-list"
-          >
-            <div className="max-w-[780px] mx-auto px-5 py-6 flex flex-col gap-6">
-                  {visibleMessages.map((msg, i) => (
-                    <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
-                      <ChatMessage
-                        message={msg}
-                        onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
-                      />
-                    </div>
-                  ))}
+            {/* Message list */}
+            <div
+              ref={messageListRef}
+              className="flex-1 overflow-y-auto custom-scrollbar"
+              id="message-list"
+            >
+              <div className="max-w-[780px] mx-auto px-5 py-8 flex flex-col gap-8">
+                    {visibleMessages.map((msg, i) => (
+                      <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
+                        <ChatMessage
+                          message={msg}
+                          onRetry={msg.error ? () => handleRetry(msg.id) : undefined}
+                        />
+                      </div>
+                    ))}
 
-                  <div ref={bottomRef} />
+                    {/* Planning View integrated inline */}
+                    {(pendingPlan || currentPlan) && (
+                      <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
+                        <PlanView
+                          plan={pendingPlan || currentPlan!}
+                          onApprove={pendingPlan ? approvePlan : undefined}
+                          onReject={pendingPlan ? rejectPlan : undefined}
+                          currentPhase={currentPhase}
+                          currentStep={currentStep}
+                        />
+                      </div>
+                    )}
+
+                    <div ref={bottomRef} />
+                  </div>
                 </div>
-              </div>
 
           {/* New messages pill — shown when scrolled up during active run */}
           {showNewMsgPill && (
