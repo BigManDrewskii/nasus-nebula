@@ -203,6 +203,100 @@ async function handleExtract(session, { selector }) {
 }
 
 /**
+ * Handle file upload
+ */
+async function handleUploadFile(session, { selector, filePath }) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+
+  const element = session.page.locator(selector).first();
+  await element.setInputFiles(filePath);
+
+  return {
+    uploaded: filePath,
+  };
+}
+
+/**
+ * Handle cookie management
+ */
+async function handleCookies(session, { action, domain, name, value }) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+
+  const context = session.context;
+
+  switch (action) {
+    case 'get': {
+      const cookies = await context.cookies();
+      let filtered = cookies;
+
+      if (domain) {
+        filtered = cookies.filter(c => c.domain.includes(domain));
+      }
+      if (name) {
+        filtered = filtered.filter(c => c.name === name);
+      }
+
+      return { cookies: filtered };
+    }
+
+    case 'set': {
+      if (!domain || !name || value === undefined) {
+        throw new Error('Set action requires domain, name, and value');
+      }
+
+      await context.addCookies([{
+        domain,
+        name,
+        value,
+        path: '/',
+      }]);
+
+      return { set: true };
+    }
+
+    case 'delete': {
+      const cookies = await context.cookies();
+      let filtered = cookies;
+
+      if (domain) {
+        filtered = filtered.filter(c => c.domain.includes(domain));
+      }
+      if (name) {
+        filtered = filtered.filter(c => c.name === name);
+      }
+
+      for (const cookie of filtered) {
+        await context.removeCookies([{ name: cookie.name, domain: cookie.domain }]);
+      }
+
+      return { deleted: filtered.length };
+    }
+
+    default:
+      throw new Error(`Unknown cookie action: ${action}`);
+  }
+}
+
+/**
+ * Handle stealth mode toggle
+ */
+async function handleSetStealth(session, { enabled }) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+
+  // Stealth mode is configured at browser launch, but we can update context
+  // For now, just acknowledge the setting
+  session.stealthMode = enabled;
+
+  return { stealth: enabled };
+}
+
+/**
  * Handle incoming WebSocket messages
  */
 async function handleMessage(ws, sessionId, message) {
@@ -249,6 +343,18 @@ async function handleMessage(ws, sessionId, message) {
 
       case 'extract':
         send(ws, 'extract_result', await handleExtract(session, params));
+        break;
+
+      case 'upload_file':
+        send(ws, 'upload_file_result', await handleUploadFile(session, params));
+        break;
+
+      case 'cookies':
+        send(ws, 'cookies_result', await handleCookies(session, params));
+        break;
+
+      case 'set_stealth':
+        send(ws, 'set_stealth_result', await handleSetStealth(session, params));
         break;
 
       case 'ping':

@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 use tokio::io::AsyncReadExt;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+use futures_util::{StreamExt, SinkExt};
 
 /// Active browser session
 #[derive(Debug, Clone)]
@@ -78,6 +80,92 @@ pub enum SidecarError {
 
 /// Result type for sidecar operations
 pub type SidecarResult<T> = Result<T, SidecarError>;
+
+// ─── WebSocket Message Types ─────────────────────────────────────────────
+
+/// WebSocket request message sent to sidecar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidecarRequest {
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+}
+
+/// WebSocket response message from sidecar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidecarResponse {
+    #[serde(rename = "type")]
+    pub msg_type: String,
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+// ─── WebSocket Client Functions ───────────────────────────────────────────
+
+/// Send a command to the sidecar via WebSocket and wait for response
+pub async fn send_sidecar_command(
+    session_id: &str,
+    command: &str,
+    params: Option<serde_json::Value>,
+) -> SidecarResult<serde_json::Value> {
+    let ws_url = format!("ws://localhost:4750/ws/{}", session_id);
+
+    // Connect to sidecar WebSocket
+    let (ws_stream, _) = connect_async(&ws_url)
+        .await
+        .map_err(|e| SidecarError::ProcessError(format!("WebSocket connection failed: {}", e)))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send command
+    let request = SidecarRequest {
+        msg_type: command.to_string(),
+        params,
+    };
+
+    let request_json = serde_json::to_string(&request)
+        .map_err(|e| SidecarError::JsonError(e))?;
+
+    write.send(Message::Text(request_json.into()))
+        .await
+        .map_err(|e| SidecarError::ProcessError(format!("Failed to send message: {}", e)))?;
+
+    // Wait for response with timeout
+    let response_future = async {
+        while let Some(msg) = read.next().await {
+            match msg {
+                Ok(Message::Text(text)) => {
+                    if let Ok(response) = serde_json::from_str::<serde_json::Value>(&text) {
+                        return Some(response);
+                    }
+                }
+                Ok(Message::Close(_)) => return None,
+                Err(e) => {
+                    eprintln!("[Sidecar] WebSocket error: {}", e);
+                    return None;
+                }
+                _ => {}
+            }
+        }
+        None
+    };
+
+    match timeout(Duration::from_secs(30), response_future).await {
+        Ok(Some(response)) => {
+            // Check if response is an error
+            if response.get("type").and_then(|v| v.as_str()) == Some("error") {
+                let message = response.get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error");
+                return Err(SidecarError::ProcessError(message.to_string()));
+            }
+            Ok(response)
+        }
+        Ok(None) => Err(SidecarError::ProcessError("Connection closed without response".into())),
+        Err(_) => Err(SidecarError::ProcessError("Timeout waiting for response".into())),
+    }
+}
 
 impl SidecarState {
     /// Start the Node.js sidecar process
@@ -356,28 +444,281 @@ pub async fn browser_stop_session(
     sidecar.remove_session(&session_id).map_err(|e| e.to_string())
 }
 
-/// Navigate to a URL (basic implementation - will be expanded)
+/// Navigate to a URL
 #[tauri::command]
 pub async fn browser_navigate(
     _state: State<'_, AppState>,
     session_id: String,
     url: String,
 ) -> Result<String, String> {
-    // For now, return success. In Phase 2, this will communicate with
-    // the sidecar via WebSocket to perform actual navigation.
     println!("[Browser] Navigate session {} to {}", session_id, url);
-    Ok(url)
+
+    let params = serde_json::json!({ "url": url.clone() });
+    let response = send_sidecar_command(&session_id, "navigate", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("url")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
 }
 
-/// Take a screenshot (basic implementation - will be expanded)
+/// Take a screenshot
 #[tauri::command]
 pub async fn browser_screenshot(
     _state: State<'_, AppState>,
     session_id: String,
     full_page: bool,
 ) -> Result<String, String> {
-    // For now, return a placeholder. In Phase 2, this will communicate with
-    // the sidecar via WebSocket to get actual screenshot data.
     println!("[Browser] Screenshot session {} (full_page={})", session_id, full_page);
-    Ok("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==".to_string())
+
+    let params = serde_json::json!({ "fullPage": full_page });
+    let response = send_sidecar_command(&session_id, "screenshot", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("dataUrl")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Click an element
+#[tauri::command]
+pub async fn browser_click(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: String,
+) -> Result<(), String> {
+    println!("[Browser] Click session {} selector {}", session_id, selector);
+
+    let params = serde_json::json!({ "selector": selector });
+    send_sidecar_command(&session_id, "click", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Type text into an element
+#[tauri::command]
+pub async fn browser_type(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: Option<String>,
+    text: String,
+    clear_first: Option<bool>,
+) -> Result<usize, String> {
+    println!("[Browser] Type session {} text: {}", session_id, text);
+
+    let mut params = serde_json::Map::new();
+    if let Some(sel) = selector {
+        params.insert("selector".into(), serde_json::Value::String(sel));
+    }
+    params.insert("text".into(), serde_json::Value::String(text.clone()));
+    if let Some(clear) = clear_first {
+        params.insert("clearFirst".into(), serde_json::Value::Bool(clear));
+    }
+
+    let response = send_sidecar_command(&session_id, "type", Some(serde_json::Value::Object(params)))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("typed")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Scroll the page
+#[tauri::command]
+pub async fn browser_scroll(
+    _state: State<'_, AppState>,
+    session_id: String,
+    direction: Option<String>,
+    amount: Option<u32>,
+) -> Result<i32, String> {
+    println!("[Browser] Scroll session {} direction {:?}", session_id, direction);
+
+    let dir = direction.unwrap_or_else(|| "down".to_string());
+    let amt = amount.unwrap_or(400);
+
+    let params = serde_json::json!({
+        "direction": dir,
+        "amount": amt
+    });
+
+    let response = send_sidecar_command(&session_id, "scroll", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("scrolled")
+        .and_then(|v| v.as_i64())
+        .map(|v| v as i32)
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Wait for a condition
+#[tauri::command]
+pub async fn browser_wait_for(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: Option<String>,
+    url_pattern: Option<String>,
+    timeout_ms: Option<u64>,
+) -> Result<String, String> {
+    println!("[Browser] Wait for session {} selector {:?}", session_id, selector);
+
+    let mut params = serde_json::Map::new();
+    if let Some(sel) = selector {
+        params.insert("selector".into(), serde_json::Value::String(sel));
+    }
+    if let Some(pattern) = url_pattern {
+        params.insert("urlPattern".into(), serde_json::Value::String(pattern));
+    }
+    if let Some(to) = timeout_ms {
+        params.insert("timeoutMs".into(), serde_json::Value::Number(to.into()));
+    }
+
+    let response = send_sidecar_command(&session_id, "wait_for", Some(serde_json::Value::Object(params)))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("matched")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Execute JavaScript
+#[tauri::command]
+pub async fn browser_execute(
+    _state: State<'_, AppState>,
+    session_id: String,
+    expression: String,
+    await_promise: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    println!("[Browser] Execute session {}", session_id);
+
+    let params = serde_json::json!({
+        "expression": expression,
+        "awaitPromise": await_promise.unwrap_or(false)
+    });
+
+    let response = send_sidecar_command(&session_id, "execute", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("result")
+        .cloned()
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Extract content from page
+#[tauri::command]
+pub async fn browser_extract(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: Option<String>,
+) -> Result<ExtractResult, String> {
+    println!("[Browser] Extract session {} selector {:?}", session_id, selector);
+
+    let params = if let Some(sel) = selector {
+        serde_json::json!({ "selector": sel })
+    } else {
+        serde_json::Value::Object(serde_json::Map::new())
+    };
+
+    let response = send_sidecar_command(&session_id, "extract", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(ExtractResult {
+        url: response.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        title: response.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        content: response.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        length: response.get("length").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtractResult {
+    pub url: String,
+    pub title: String,
+    pub content: String,
+    pub length: usize,
+}
+
+/// Upload a file to an input element
+#[tauri::command]
+pub async fn browser_upload_file(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: String,
+    file_path: String,
+) -> Result<String, String> {
+    println!("[Browser] Upload file session {} selector {} file {}", session_id, selector, file_path);
+
+    let params = serde_json::json!({
+        "selector": selector,
+        "filePath": file_path
+    });
+
+    let response = send_sidecar_command(&session_id, "upload_file", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("uploaded")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Manage cookies
+#[tauri::command]
+pub async fn browser_cookies(
+    _state: State<'_, AppState>,
+    session_id: String,
+    action: String,
+    domain: Option<String>,
+    name: Option<String>,
+    value: Option<String>,
+) -> Result<serde_json::Value, String> {
+    println!("[Browser] Cookies session {} action {}", session_id, action);
+
+    let mut params = serde_json::Map::new();
+    params.insert("action".into(), serde_json::Value::String(action));
+    if let Some(d) = domain {
+        params.insert("domain".into(), serde_json::Value::String(d));
+    }
+    if let Some(n) = name {
+        params.insert("name".into(), serde_json::Value::String(n));
+    }
+    if let Some(v) = value {
+        params.insert("value".into(), serde_json::Value::String(v));
+    }
+
+    send_sidecar_command(&session_id, "cookies", Some(serde_json::Value::Object(params)))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Set stealth mode
+#[tauri::command]
+pub async fn browser_set_stealth(
+    _state: State<'_, AppState>,
+    session_id: String,
+    enabled: bool,
+) -> Result<bool, String> {
+    println!("[Browser] Set stealth session {} enabled {}", session_id, enabled);
+
+    let params = serde_json::json!({ "enabled": enabled });
+    let response = send_sidecar_command(&session_id, "set_stealth", Some(params))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    response.get("stealth")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| "Invalid response from sidecar".to_string())
 }

@@ -596,6 +596,15 @@ pub fn run() {
         sidecar::browser_stop_session,
         sidecar::browser_navigate,
         sidecar::browser_screenshot,
+        sidecar::browser_click,
+        sidecar::browser_type,
+        sidecar::browser_scroll,
+        sidecar::browser_wait_for,
+        sidecar::browser_execute,
+        sidecar::browser_extract,
+        sidecar::browser_upload_file,
+        sidecar::browser_cookies,
+        sidecar::browser_set_stealth,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

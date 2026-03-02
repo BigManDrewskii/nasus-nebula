@@ -19,6 +19,12 @@ interface SessionInfo {
   websocket_url: string
 }
 
+interface HistoryEntry {
+  url: string
+  title: string
+  timestamp: number
+}
+
 type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error'
 
 export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
@@ -26,14 +32,20 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [currentUrl, setCurrentUrl] = useState<string>('')
-  const [_currentTitle, setCurrentTitle] = useState<string>('')
+  const [currentTitle, setCurrentTitle] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [agentDriving, setAgentDriving] = useState(false)
   const [userInControl, setUserInControl] = useState(false)
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [stealthMode, setStealthMode] = useState(false)
+  const [highlightedElement, setHighlightedElement] = useState<{ selector: string; until: number } | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const screenshotIntervalRef = useRef<number | null>(null)
+  const highlightTimeoutRef = useRef<number | null>(null)
 
   // Check initial sidecar status
   useEffect(() => {
@@ -169,6 +181,48 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         setCurrentUrl(message.url)
         setCurrentTitle(message.title)
         setIsLoading(false)
+
+        // Add to history
+        const newEntry: HistoryEntry = {
+          url: message.url,
+          title: message.title || message.url,
+          timestamp: Date.now(),
+        }
+
+        setHistory((prev) => {
+          // Remove any entries after current index if we navigated from history
+          const newHistory = historyIndex >= 0
+            ? prev.slice(0, historyIndex + 1)
+            : [...prev]
+
+          // Don't duplicate the last entry
+          if (newHistory.length > 0 && newHistory[newHistory.length - 1].url === message.url) {
+            return newHistory
+          }
+
+          return [...newHistory, newEntry]
+        })
+        setHistoryIndex((prev) => prev === -1 ? history.length : prev + 1)
+        break
+
+      case 'click_result':
+        // Show element highlighting
+        if (message.selector) {
+          setHighlightedElement({
+            selector: message.selector,
+            until: Date.now() + 2000, // Highlight for 2 seconds
+          })
+
+          // Clear previous timeout
+          if (highlightTimeoutRef.current) {
+            clearTimeout(highlightTimeoutRef.current)
+          }
+
+          // Set new timeout
+          highlightTimeoutRef.current = window.setTimeout(() => {
+            setHighlightedElement(null)
+          }, 2000)
+        }
         break
 
       case 'error':
@@ -183,7 +237,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       default:
         console.log('[BrowserPreview] Unhandled message type:', message.type)
     }
-  }, [])
+  }, [history.length, historyIndex])
 
   // Navigate to a URL
   const navigate = useCallback(async (url: string) => {
@@ -214,6 +268,40 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       }
     }
   }, [session])
+
+  // Navigate back in history
+  const goBack = useCallback(() => {
+    if (historyIndex > 0) {
+      const entry = history[historyIndex - 1]
+      navigate(entry.url)
+      setHistoryIndex(historyIndex - 1)
+    }
+  }, [history, historyIndex, navigate])
+
+  // Navigate forward in history
+  const goForward = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const entry = history[historyIndex + 1]
+      navigate(entry.url)
+      setHistoryIndex(historyIndex + 1)
+    }
+  }, [history, historyIndex, navigate])
+
+  // Toggle stealth mode
+  const toggleStealth = useCallback(async () => {
+    if (!isTauri || !session) return
+
+    const newStealthMode = !stealthMode
+    try {
+      await tauriInvoke('browser_set_stealth', {
+        sessionId: session.session_id,
+        enabled: newStealthMode,
+      })
+      setStealthMode(newStealthMode)
+    } catch (err) {
+      setError(err as string)
+    }
+  }, [session, stealthMode])
 
   // Take control (switch from agent to user)
   const takeControl = useCallback(() => {
@@ -313,6 +401,44 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
           <>
             {session && (
               <>
+                {/* Back/Forward buttons */}
+                <div style={{ display: 'flex', gap: 2 }}>
+                  <button
+                    onClick={goBack}
+                    disabled={historyIndex <= 0}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      borderRadius: 4,
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-default)',
+                      color: historyIndex > 0 ? 'var(--tx-primary)' : 'var(--tx-dim)',
+                      cursor: historyIndex > 0 ? 'pointer' : 'not-allowed',
+                      opacity: historyIndex > 0 ? 1 : 0.5,
+                    }}
+                    title="Back"
+                  >
+                    ←
+                  </button>
+                  <button
+                    onClick={goForward}
+                    disabled={historyIndex >= history.length - 1}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: 12,
+                      borderRadius: 4,
+                      border: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-default)',
+                      color: historyIndex < history.length - 1 ? 'var(--tx-primary)' : 'var(--tx-dim)',
+                      cursor: historyIndex < history.length - 1 ? 'pointer' : 'not-allowed',
+                      opacity: historyIndex < history.length - 1 ? 1 : 0.5,
+                    }}
+                    title="Forward"
+                  >
+                    →
+                  </button>
+                </div>
+
                 {/* URL bar */}
                 <input
                   type="text"
@@ -353,6 +479,49 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                   }}
                 >
                   Go
+                </button>
+
+                {/* History toggle */}
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 12,
+                    borderRadius: 4,
+                    border: showHistory ? '1px solid var(--accent)' : '1px solid var(--border-default)',
+                    background: showHistory ? 'var(--accent-container)' : 'var(--bg-default)',
+                    color: showHistory ? 'var(--accent)' : 'var(--tx-primary)',
+                    cursor: 'pointer',
+                  }}
+                  title="Browse history"
+                >
+                  History
+                </button>
+
+                {/* Stealth mode indicator/toggle */}
+                <button
+                  onClick={toggleStealth}
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: 11,
+                    borderRadius: 4,
+                    border: stealthMode ? '1px solid #a855f7' : '1px solid var(--border-subtle)',
+                    background: stealthMode ? 'rgba(168, 85, 247, 0.1)' : 'var(--bg-default)',
+                    color: stealthMode ? '#a855f7' : 'var(--tx-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title={stealthMode ? 'Stealth mode enabled' : 'Enable stealth mode'}
+                >
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: stealthMode ? '#a855f7' : 'var(--tx-dim)',
+                  }} />
+                  {stealthMode ? 'Stealth' : 'Normal'}
                 </button>
 
                 {/* Refresh button */}
@@ -452,71 +621,198 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       <div style={{
         flex: 1,
         position: 'relative',
+        display: 'flex',
         overflow: 'hidden',
         background: '#000',
       }}>
-        {screenshot ? (
-          <>
-            <img
-              src={screenshot}
-              alt="Browser preview"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-              }}
-            />
+        {/* Browser preview area */}
+        <div style={{
+          flex: 1,
+          position: 'relative',
+          overflow: 'hidden',
+        }}>
+          {screenshot ? (
+            <>
+              <img
+                src={screenshot}
+                alt="Browser preview"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                }}
+              />
 
-            {/* Agent driving overlay */}
-            {agentDriving && (
-              <div style={{
-                position: 'absolute',
-                top: 12,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                padding: '6px 12px',
-                borderRadius: 20,
-                background: 'rgba(0, 0, 0, 0.8)',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}>
-                <span style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: '#22c55e',
+              {/* Element highlighting overlay */}
+              {highlightedElement && Date.now() < highlightedElement.until && (
+                <div style={{
+                  position: 'absolute',
+                  top: 12,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  padding: '6px 12px',
+                  borderRadius: 20,
+                  background: 'rgba(168, 85, 247, 0.9)',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                   animation: 'pulse 1s infinite',
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#fff',
+                  }} />
+                  Clicked: {highlightedElement.selector}
+                </div>
+              )}
+
+              {/* Agent driving overlay */}
+              {agentDriving && (
+                <div style={{
+                  position: 'absolute',
+                  top: highlightedElement ? 48 : 12,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  padding: '6px 12px',
+                  borderRadius: 20,
+                  background: 'rgba(0, 0, 0, 0.8)',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}>
+                  <span style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                    animation: 'pulse 1s infinite',
+                  }} />
+                  Agent is driving
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              color: 'var(--tx-dim)',
+            }}>
+              <p style={{ marginBottom: 8, fontSize: 13 }}>
+                {sidecarStatus === 'running' ? 'Enter a URL to begin browsing' : 'Start the browser to begin'}
+              </p>
+              {isLoading && (
+                <div style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  border: '2px solid var(--border-subtle)',
+                  borderTopColor: 'var(--accent)',
+                  animation: 'spin 1s linear infinite',
                 }} />
-                Agent is driving
-              </div>
-            )}
-          </>
-        ) : (
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* History sidebar */}
+        {showHistory && (
           <div style={{
+            width: 240,
+            background: 'var(--bg-elevated)',
+            borderLeft: '1px solid var(--border-subtle)',
             display: 'flex',
             flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            color: 'var(--tx-dim)',
+            overflow: 'hidden',
           }}>
-            <p style={{ marginBottom: 8, fontSize: 13 }}>
-              {sidecarStatus === 'running' ? 'Enter a URL to begin browsing' : 'Start the browser to begin'}
-            </p>
-            {isLoading && (
-              <div style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                border: '2px solid var(--border-subtle)',
-                borderTopColor: 'var(--accent)',
-                animation: 'spin 1s linear infinite',
-              }} />
-            )}
+            <div style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid var(--border-subtle)',
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--tx-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}>
+              Browse History
+            </div>
+            <div style={{
+              flex: 1,
+              overflowY: 'auto',
+            }}>
+              {history.length === 0 ? (
+                <div style={{
+                  padding: 12,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  color: 'var(--tx-dim)',
+                }}>
+                  No history yet
+                </div>
+              ) : (
+                history.map((entry, index) => (
+                  <button
+                    key={entry.timestamp}
+                    onClick={() => {
+                      navigate(entry.url)
+                      setHistoryIndex(index)
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      textAlign: 'left',
+                      border: 'none',
+                      background: index === historyIndex ? 'var(--accent-container)' : 'transparent',
+                      color: index === historyIndex ? 'var(--accent)' : 'var(--tx-secondary)',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                      borderBottom: '1px solid var(--border-subtle)',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (index !== historyIndex) {
+                        e.currentTarget.style.background = 'var(--bg-hover)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (index !== historyIndex) {
+                        e.currentTarget.style.background = 'transparent'
+                      }
+                    }}
+                  >
+                    <span style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontWeight: index === historyIndex ? 500 : 400,
+                    }}>
+                      {entry.title}
+                    </span>
+                    <span style={{
+                      fontSize: 11,
+                      opacity: 0.7,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {entry.url}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         )}
       </div>
