@@ -64,6 +64,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
+  // Preserve custom API base (e.g. proxy URL) — only reset to OR_BASE when switching back to openrouter
+  const { apiBase: storedApiBase } = useAppStore()
+  const OR_BASE = 'https://openrouter.ai/api/v1'
+  const OLLAMA_BASE = 'http://localhost:11434/v1'
+  const [localApiBase, setLocalApiBase] = useState(
+    storedApiBase && storedApiBase !== OLLAMA_BASE ? storedApiBase : OR_BASE
+  )
 
   // Code execution state
   const {
@@ -100,6 +107,27 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localRouterMode, setLocalRouterMode] = useState(routerConfig.mode)
   const [localRouterBudget, setLocalRouterBudget] = useState(routerConfig.budget)
   const [localModelOverrides, setLocalModelOverrides] = useState<Record<string, boolean>>(routerConfig.modelOverrides)
+
+  // Paid mode confirmation state
+  const [pendingPaidMode, setPendingPaidMode] = useState(false)
+
+  // Wrapped budget change handler with confirmation for paid mode
+  const handleBudgetChange = (newBudget: string) => {
+    if (newBudget === 'paid' && localRouterBudget !== 'paid') {
+      setPendingPaidMode(true)
+    } else {
+      setLocalRouterBudget(newBudget)
+    }
+  }
+
+  const confirmPaidMode = () => {
+    setLocalRouterBudget('paid')
+    setPendingPaidMode(false)
+  }
+
+  const cancelPaidMode = () => {
+    setPendingPaidMode(false)
+  }
 
   const [modelOpen, setModelOpen] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
@@ -202,8 +230,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalExecutionMode('e2b')
     setLocalEnableVerification(true)
     setLocalRouterMode('auto')
-    setLocalRouterBudget('paid')
+    setLocalRouterBudget('free')
     setLocalModelOverrides({})
+    setLocalApiBase(OR_BASE)
     setExtensionId('')
     try { localStorage.removeItem('nasus_extension_id') } catch { /* ignore */ }
     setErrors({})
@@ -216,9 +245,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setSaving(true)
       
       const isOllama = activeProvider === 'ollama'
-      const OR_BASE = 'https://openrouter.ai/api/v1'
-      const OLLAMA_BASE = 'http://localhost:11434/v1'
-      const finalApiBase = isOllama ? OLLAMA_BASE : OR_BASE
+      const finalApiBase = isOllama ? OLLAMA_BASE : localApiBase
       const finalProvider = isOllama ? 'ollama' : 'openrouter'
 
       setApiKey(isOllama ? '' : localKey.trim())
@@ -265,8 +292,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
 
   const busy = saving
-  const isPaid = isPaidRoute(activeProvider, { mode: localRouterMode, budget: localRouterBudget })
-  const label = getRouteLabel(activeProvider, { mode: localRouterMode, budget: localRouterBudget })
+  const isPaid = isPaidRoute(activeProvider, { mode: localRouterMode, budget: localRouterBudget }, localModel)
+  const label = getRouteLabel(activeProvider, { mode: localRouterMode, budget: localRouterBudget }, localModel)
 
   return (
     <div
@@ -567,7 +594,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 mode={localRouterMode}
                 onModeChange={setLocalRouterMode}
                 budget={localRouterBudget}
-                onBudgetChange={setLocalRouterBudget}
+                onBudgetChange={handleBudgetChange}
                 modelOverrides={localModelOverrides}
                 onModelOverridesChange={setLocalModelOverrides}
               />
@@ -679,6 +706,69 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </button>
           </div>
         </div>
+
+        {/* Paid mode confirmation dialog */}
+        {pendingPaidMode && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.8)',
+          }}>
+            <div style={{
+              width: '100%', maxWidth: 360,
+              borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+              background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)',
+              padding: 24, display: 'flex', flexDirection: 'column', gap: 16,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                  background: 'rgba(234,179,8,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Pxi name="triangle-exclamation" size={16} style={{ color: 'var(--amber)' }} />
+                </div>
+                <h3 style={{
+                  fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--tx-primary)',
+                }}>
+                  Confirm Paid Mode
+                </h3>
+              </div>
+
+              <p style={{
+                fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--tx-secondary)',
+              }}>
+                Paid mode will use your OpenRouter API credits for each request. Make sure you have credits available at <a href="https://openrouter.ai/credits" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)' }}>openrouter.ai/credits</a>.
+              </p>
+
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={cancelPaidMode}
+                  style={{
+                    padding: '8px 16px', fontSize: 12, borderRadius: 8,
+                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                    cursor: 'pointer', color: 'var(--tx-secondary)', transition: 'all 0.12s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmPaidMode}
+                  style={{
+                    padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8,
+                    background: 'var(--amber)', border: 'none', cursor: 'pointer',
+                    color: '#000', transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--amber-soft)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--amber)' }}
+                >
+                  Continue to Paid
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -736,7 +826,7 @@ function ExecutionSection({
   onE2bKeyChange: (v: string) => void
   enableVerification: boolean
   onEnableVerificationChange: (v: boolean) => void
-  sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
+  sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
   sandboxStatusMessage: string
 }) {
   const [open, setOpen] = useState(false)
@@ -761,12 +851,14 @@ function ExecutionSection({
     sandboxStatus === 'ready' ? '#22c55e' :
     sandboxStatus === 'starting' ? 'var(--amber)' :
     sandboxStatus === 'error' ? '#f87171' :
+    sandboxStatus === 'stopped' ? 'rgba(255,255,255,0.3)' :
     'rgba(255,255,255,0.2)'
 
   const statusLabel =
     sandboxStatus === 'ready' ? 'Sandbox ready' :
     sandboxStatus === 'starting' ? (sandboxStatusMessage || 'Starting sandbox…') :
     sandboxStatus === 'error' ? (sandboxStatusMessage || 'Sandbox error') :
+    sandboxStatus === 'stopped' ? 'Sandbox stopped' :
     executionMode === 'docker' ? 'Idle — will start on first use' :
     e2bKey.trim() ? 'Idle — will start on first use' : 'No API key'
 
@@ -1101,18 +1193,36 @@ function ModelRouterSection({
   onModelOverridesChange: (v: Record<string, boolean>) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const { routerConfig } = useAppStore()
+  const { routerConfig, openRouterModels } = useAppStore()
 
-  // Use registry from store if available, else fallback to empty
+  // Use registry from Tauri backend if available; fall back to openRouterModels from the store,
+  // then to the curated FALLBACK_MODELS list so the section is never empty in browser mode.
   const registry = routerConfig.registry || []
 
-  // Map backend ModelInfo to UI format
-  const allModels = registry.map((m) => ({
-    id: m.id,
-    name: m.display_name,
-    tier: m.cost_tier.toLowerCase() as 'premium' | 'standard' | 'budget' | 'free',
-    provider: m.provider as string,
-  }))
+  type UIModel = { id: string; name: string; tier: 'premium' | 'standard' | 'budget' | 'free'; provider: string }
+
+  const allModels: UIModel[] = registry.length > 0
+    ? registry.map((m) => ({
+        id: m.id,
+        name: m.display_name,
+        tier: m.cost_tier.toLowerCase() as UIModel['tier'],
+        provider: m.provider as string,
+      }))
+    : (openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS).map((m) => {
+        const pricing = parseFloat(m.pricing?.completion ?? '0')
+        const tier: UIModel['tier'] =
+          m.id.endsWith(':free') ? 'free'
+          : pricing === 0 ? 'free'
+          : pricing < 0.0000005 ? 'budget'
+          : pricing < 0.000005 ? 'standard'
+          : 'premium'
+        return {
+          id: m.id,
+          name: m.name,
+          tier,
+          provider: m.id.split('/')[0] ?? 'unknown',
+        }
+      })
 
   // Which models to show based on budget
   const visibleModels = budget === 'free'
@@ -1131,17 +1241,86 @@ function ModelRouterSection({
 
   const isAutoMode = mode === 'auto'
 
+  // Refresh models state
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState('')
+
+  async function handleRefreshModels() {
+    setRefreshing(true)
+    setRefreshMessage('')
+    try {
+      if (isTauri) {
+        const models = await tauriInvoke<{ id: string; display_name: string }[]>('refresh_models')
+        // Tauri command updates the backend registry; re-read it from store state
+        // The registry update comes via a Tauri event listener — trigger a no-op
+        // state touch so ModelRouterSection re-renders with the new registry.
+        const state = useAppStore.getState()
+        state.setRouterConfig({ ...state.routerConfig })
+        setRefreshMessage(`Updated: ${models?.length ?? 0} models from OpenRouter`)
+      } else {
+        // Browser mode: fetch from OpenRouter directly and update the store
+        const { apiKey } = useAppStore.getState()
+        if (!apiKey.trim()) {
+          setRefreshMessage('Enter your API key first')
+          setTimeout(() => setRefreshMessage(''), 3000)
+          return
+        }
+        const models = await fetchOpenRouterModels(apiKey.trim())
+        useAppStore.getState().setOpenRouterModels(models)
+        setRefreshMessage(`Updated: ${models.length} models from OpenRouter`)
+      }
+      setTimeout(() => setRefreshMessage(''), 3000)
+    } catch (e) {
+      setRefreshMessage(`Failed: ${e instanceof Error ? e.message : String(e)}`)
+      setTimeout(() => setRefreshMessage(''), 5000)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* Header row */}
-      <label style={{
-        display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2,
-        fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
-        textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
-      }}>
-        <Pxi name="route" size={10} style={{ color: 'var(--tx-tertiary)' }} />
-        Model Router
-      </label>
+      {/* Header row with refresh button */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <label style={{
+          display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2,
+          fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
+          textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
+        }}>
+          <Pxi name="route" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+          Model Router
+        </label>
+        <button
+          type="button"
+          onClick={handleRefreshModels}
+          disabled={refreshing}
+          title="Fetch latest models from OpenRouter"
+          style={{
+            padding: '4px 8px', borderRadius: 6, fontSize: 10,
+            background: refreshing ? 'rgba(255,255,255,0.05)' : 'transparent',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: refreshing ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
+            cursor: refreshing ? 'wait' : 'pointer',
+            display: 'flex', alignItems: 'center', gap: 4,
+            transition: 'all 0.12s',
+          }}
+          onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          onMouseLeave={(e) => { if (!refreshing) e.currentTarget.style.background = 'transparent' }}
+        >
+          <Pxi name={refreshing ? 'spinner-third' : 'refresh-cw'} size={10} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} />
+          {refreshing ? 'Fetching...' : 'Refresh'}
+        </button>
+      </div>
+      {refreshMessage && (
+        <div style={{
+          fontSize: 10, padding: '6px 8px', borderRadius: 6,
+          background: refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
+          color: refreshMessage.startsWith('Failed') ? '#fca5a5' : '#86efac',
+          border: `1px solid ${refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`,
+        }}>
+          {refreshMessage}
+        </div>
+      )}
 
       {/* Mode: Auto vs Manual */}
       <div style={{ display: 'flex', gap: 6 }}>

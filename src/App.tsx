@@ -37,7 +37,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig } = useAppStore(
     useShallow((s) => ({
       tasks: s.tasks,
       activeTaskId: s.activeTaskId,
@@ -45,6 +45,7 @@ function App() {
       addTask: s.addTask,
       onboardingComplete: s.onboardingComplete,
       workspacePath: s.workspacePath,
+      routerConfig: s.routerConfig,
     })),
   )
   
@@ -160,10 +161,11 @@ function App() {
       title: 'New task',
       status: 'pending',
       createdAt: new Date(),
+      budgetMode: routerConfig.budget === 'free' ? 'free' : 'paid',
     }
     addTask(task)
     setActiveTaskId(task.id)
-  }, [addTask, setActiveTaskId])
+  }, [addTask, setActiveTaskId, routerConfig.budget])
 
   const openSettings  = useCallback(() => setShowSettings(true),  [])
   const closeSettings = useCallback(() => setShowSettings(false), [])

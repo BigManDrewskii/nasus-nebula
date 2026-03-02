@@ -240,6 +240,33 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             {task.title}
           </span>
 
+          {/* Budget mode badge — shows for tasks that have budgetMode set */}
+          {task.budgetMode && (
+            <span
+              style={{
+                flexShrink: 0,
+                fontSize: 9,
+                padding: '1px 5px',
+                borderRadius: 4,
+                fontWeight: 500,
+                letterSpacing: '0.02em',
+                background: task.budgetMode === 'free'
+                  ? 'rgba(99,102,241,0.12)'
+                  : 'rgba(234,179,8,0.12)',
+                color: task.budgetMode === 'free'
+                  ? '#818cf8'
+                  : 'var(--amber-soft)',
+                border: `1px solid ${
+                  task.budgetMode === 'free'
+                    ? 'rgba(99,102,241,0.25)'
+                    : 'rgba(234,179,8,0.25)'
+                }`,
+              }}
+            >
+              {task.budgetMode === 'free' ? 'FREE' : 'PAID'}
+            </span>
+          )}
+
           {/* Status indicator — only when not hovered */}
           {!hovered && <StatusDot status={task.status} />}
         </button>

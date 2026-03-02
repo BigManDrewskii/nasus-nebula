@@ -26,6 +26,13 @@ export function useAgentStatus(taskId?: string | null): AgentStatusState {
   const [currentTool, setCurrentTool] = useState<string | null>(null)
   const [iteration, setIteration] = useState(0)
 
+  // Reset to idle whenever the tracked task changes
+  useEffect(() => {
+    setStatus('idle')
+    setCurrentTool(null)
+    setIteration(0)
+  }, [taskId])
+
   useEffect(() => {
     const handleAgentStarted = (e: Event) => {
       const detail = (e as CustomEvent<AgentStatusDetail>).detail

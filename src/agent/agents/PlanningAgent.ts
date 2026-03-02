@@ -11,8 +11,9 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../core/Agent'
-import { chatOnce } from '../llm'
+import { chatOnce, cheapestModel } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
+import { useAppStore } from '../../store'
 
 /**
  * Planning context parameters.
@@ -65,8 +66,9 @@ export class PlanningAgent extends BaseAgent {
     const params = context as PlanningContext
     const { userInput, apiKey, model, apiBase, provider, useMemory } = params
 
-    // Use cheapest model for planning (it's just text generation)
-    const planModel = model || 'anthropic/claude-3-haiku'
+      // Use cheapest available model for planning to avoid burning premium tokens
+      const openRouterModels = useAppStore.getState().openRouterModels
+      const planModel = cheapestModel(openRouterModels) || model || 'anthropic/claude-3-haiku'
 
     // Build planning prompt (now async for memory lookup)
     const prompt = await this.buildPlanningPrompt(userInput, useMemory)

@@ -38,7 +38,7 @@ function ModelDropdown({
   onChange: (v: string) => void
   disabled: boolean
 }) {
-  const { openRouterModels, modelsLastFetched } = useAppStore()
+  const { openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -78,7 +78,24 @@ function ModelDropdown({
   const flatOptions = filtered
 
   const selected = allModels.find((m) => m.value === value)
-  const displayLabel = selected?.label ?? shortModelLabel(value)
+
+  // Determine display label based on routing mode and preview
+  let displayLabel: string
+
+  if (routerConfig?.mode === 'auto') {
+    if (routingPreview?.displayName) {
+      // Show the routing preview result
+      const budgetLabel = routerConfig.budget === 'free' ? 'free' : 'paid'
+      displayLabel = `Auto: ${routingPreview.displayName} (${budgetLabel})`
+    } else {
+      // No preview yet, show generic auto mode label
+      const budgetLabel = routerConfig.budget === 'free' ? 'free' : 'paid'
+      displayLabel = `Auto (${budgetLabel} models)`
+    }
+  } else {
+    // Manual mode - show selected model
+    displayLabel = selected?.label ?? shortModelLabel(value)
+  }
 
   // Get the id of the currently focused option
   const focusedOptionId = focusedIndex >= 0 && focusedIndex < flatOptions.length
@@ -206,7 +223,7 @@ function ModelDropdown({
         }}
         onMouseEnter={(e) => { if (!disabled && !open) e.currentTarget.style.color = 'var(--amber-soft)' }}
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.color = 'var(--tx-secondary)' }}
-        title={value}
+        title={routerConfig?.mode === 'auto' && routingPreview?.reason ? routingPreview.reason : value}
       >
           <span style={{
           fontSize: 11,
@@ -436,7 +453,7 @@ function ModelDropdown({
       attachments = [], onAddFiles, onRemoveAttachment, isOverLimit = false, totalAttachmentSize = 0,
     }, ref) {
 
-    const { model, setModel } = useAppStore()
+    const { model, setModel, routerConfig, setRouterConfig } = useAppStore()
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -683,11 +700,17 @@ function ModelDropdown({
             <div style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.07)', flexShrink: 0, margin: '0 2px' }} />
 
             {/* Model dropdown */}
-            <ModelDropdown
-              value={model}
-              onChange={setModel}
-              disabled={isWorking}
-            />
+              <ModelDropdown
+                value={model}
+                onChange={(v) => {
+                  setModel(v)
+                  // Explicitly picking a model from the dropdown switches to manual mode
+                  if (routerConfig.mode === 'auto') {
+                    setRouterConfig({ mode: 'manual' })
+                  }
+                }}
+                disabled={isWorking}
+              />
           </div>
 
           {/* Right: hint + send/stop */}

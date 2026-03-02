@@ -22,6 +22,8 @@ export interface Task {
   pinned?: boolean
   /** Inferred task type used for the sidebar icon */
   taskType?: 'research' | 'code' | 'document' | 'web' | 'data' | 'general'
+  /** Budget mode used for this task ('free' or 'paid') */
+  budgetMode?: 'free' | 'paid'
 }
 
 /**

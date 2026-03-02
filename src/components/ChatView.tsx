@@ -13,7 +13,7 @@ import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 import { PlanView } from './PlanConfirmationModal'
-import { isPaidRoute, getRouteLabel } from '../lib/routing'
+import { isPaidRoute, getRouteLabel, resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
 
@@ -75,9 +75,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     // Use the agent status hook to track agent state
     const { status: agentStatus, iteration } = useAgentStatus(task?.id)
 
-    const runningRef = useRef(false)
-    const queuedMsgRef = useRef<string | null>(null)
-    const sendTimestamps = useRef<number[]>([])
+  const runningRef = useRef(false)
+  const queuedMsgRef = useRef<string | null>(null)
+  const handleSendRef = useRef<((content: string) => void) | null>(null)
+  const sendTimestamps = useRef<number[]>([])
     const inputRef = useRef<UserInputAreaHandle>(null)
     const messageListRef = useRef<HTMLDivElement>(null)
     const bottomRef = useRef<HTMLDivElement>(null)
@@ -85,11 +86,14 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [tokenCount, setTokenCount] = useState(0)
     const [showMemory, setShowMemory] = useState(false)
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
-    const [activeModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
-    // Routing preview state
-    const [routingPreview, setRoutingPreview] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
-    // Cost badge for completed tasks
-    const [taskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
+    const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+    // Routing preview from store
+    const { routingPreview, setRoutingPreview, taskRouterState } = useAppStore()
+    // Cost badge derived from live task router state
+    const taskRouterEntry = task ? (taskRouterState[task.id] ?? null) : null
+    const taskCostBadge = taskRouterEntry && taskRouterEntry.callCount > 0
+      ? { costUsd: taskRouterEntry.totalCostUsd, isFree: taskRouterEntry.isFree, callCount: taskRouterEntry.callCount }
+      : null
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
     const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
@@ -102,10 +106,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const agentRunning = agentStatus === 'processing' || agentStatus === 'streaming'
     const processingPhase = agentStatus === 'processing'
 
-  const sandboxStatus = (globalSandboxStatus === 'error' ? 'stopped' : globalSandboxStatus) as 'idle' | 'starting' | 'ready' | 'stopped'
+  const sandboxStatus = globalSandboxStatus
   const isActive = agentRunning
-  const isPaid = isPaidRoute(provider, routerConfig)
-  const routeLabel = getRouteLabel(provider, routerConfig)
+  const isPaid = isPaidRoute(provider, routerConfig, model)
+  const routeLabel = getRouteLabel(provider, routerConfig, model)
   const messages = task ? (allMessages[task.id] ?? getMessages(task.id)) : []
   const taskWorkspacePath = workspacePath || (task?.id ? `workspace-${task.id}` : null)
 
@@ -113,9 +117,94 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     ? (processingPhase ? 'processing' : 'streaming')
     : 'idle'
 
-  const updateRoutingPreview = useCallback((_content: string) => {
-    // No-op for now, can be implemented to show auto-routing changes in real-time
+  // Ref to store debounce timeout
+  const routingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const updateRoutingPreview = useCallback((content: string) => {
+    // Only preview in auto mode
+    if (routerConfig.mode !== 'auto') {
+      setRoutingPreview(null)
+      return
+    }
+
+    // Clear existing timeout
+    if (routingTimeoutRef.current) {
+      clearTimeout(routingTimeoutRef.current)
+    }
+
+    // Don't call API for empty or very short input
+    if (content.trim().length < 5) {
+      setRoutingPreview(null)
+      return
+    }
+
+    // Set loading state
+    setRoutingPreview({
+      modelId: '',
+      displayName: 'Routing...',
+      reason: 'Determining best model',
+    })
+
+    // Debounce the API call / heuristic
+    routingTimeoutRef.current = setTimeout(async () => {
+      if (isTauri) {
+        try {
+          const result = await tauriInvoke<{
+            model_id: string
+            display_name: string
+            reason: string
+          }>('preview_routing', {
+            message: content,
+            mode: routerConfig.mode,
+            budget: routerConfig.budget,
+            modelOverrides: routerConfig.modelOverrides ?? {},
+          })
+
+          if (result) {
+            setRoutingPreview({
+              modelId: result.model_id,
+              displayName: result.display_name,
+              reason: result.reason,
+            })
+            return
+          }
+        } catch {
+          // Fall through to local heuristic
+        }
+      }
+
+      // Browser mode or Tauri fallback: use local heuristic
+      const local = resolveModelLocally(content, routerConfig, model)
+      setRoutingPreview({
+        modelId: local.modelId,
+        displayName: local.displayName,
+        reason: local.reason,
+      })
+    }, 300) // 300ms debounce
+  }, [routerConfig, model, setRoutingPreview])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (routingTimeoutRef.current) {
+        clearTimeout(routingTimeoutRef.current)
+      }
+    }
   }, [])
+
+  // Listen for token usage events to update the live token counter
+  useEffect(() => {
+    if (!task) return
+    const taskId = task.id
+    const handleTokens = (e: Event) => {
+      const detail = (e as CustomEvent<{ taskId: string; total_tokens: number }>).detail
+      if (detail?.taskId === taskId) {
+        setTokenCount(detail.total_tokens)
+      }
+    }
+    window.addEventListener('nasus:tokens', handleTokens)
+    return () => window.removeEventListener('nasus:tokens', handleTokens)
+  }, [task])
 
 
   // Attachments
@@ -128,7 +217,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setLocalWorkspace(path)
     setFolderDropConfirm(path)
     setTimeout(() => setFolderDropConfirm(null), 3000)
-  }, [setWorkspacePath, addRecentWorkspacePath]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setWorkspacePath, addRecentWorkspacePath, setLocalWorkspace])
 
   const { isDragOver, dragMode, handlers: dragHandlers } = useDragDrop(addFiles, handleFolderDropped)
 
@@ -149,17 +238,56 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             taskTitle: string,
           ) => {
             const cfg = configRef.current
-            
+
+            // Determine the model to use based on routing mode.
+            // In auto mode we resolve once here (Tauri backend if available, local heuristic otherwise).
+            // In manual mode we always use cfg.model directly.
+            let modelToUse = cfg.model || 'anthropic/claude-3.7-sonnet'
+
+              if (cfg.routerConfig.mode === 'auto') {
+                const lastMsg = history[history.length - 1]
+                const msgText = typeof lastMsg?.content === 'string' ? lastMsg.content : ''
+
+                if (isTauri) {
+                  try {
+                    const routing = await tauriInvoke<{
+                      model_id: string
+                      display_name: string
+                      reason: string
+                    }>('preview_routing', {
+                      message: msgText,
+                      mode: 'auto',
+                      budget: cfg.routerConfig.budget,
+                      modelOverrides: cfg.routerConfig.modelOverrides ?? {},
+                    })
+                    if (routing?.model_id) {
+                      modelToUse = routing.model_id
+                      setActiveModelBadge({ modelId: routing.model_id, displayName: routing.display_name, reason: routing.reason })
+                    }
+                  } catch {
+                    // Fall back to local heuristic on Tauri routing error
+                    const local = resolveModelLocally(msgText, cfg.routerConfig, cfg.model)
+                    modelToUse = local.modelId
+                    setActiveModelBadge({ modelId: local.modelId, displayName: local.displayName, reason: local.reason })
+                  }
+                } else {
+                  // Browser mode: use local heuristic (no Tauri backend available)
+                  const local = resolveModelLocally(msgText, cfg.routerConfig, cfg.model)
+                  modelToUse = local.modelId
+                  setActiveModelBadge({ modelId: local.modelId, displayName: local.displayName, reason: local.reason })
+                }
+              } else {
+                // Manual mode — show the selected model as the active badge
+                setActiveModelBadge(null)
+              }
+
             try {
-              // Now using tauriInvoke even for agent execution.
-              // This is routed through invokeWebAgent (TS) in both environments.
-              // In Tauri, it ALSO registers the task with the Rust backend for state tracking.
               await tauriInvoke('run_agent', {
                 taskId,
                 messageId: agentMsgId,
                 userMessages: history,
                 apiKey: cfg.apiKey || '',
-                model: cfg.model || 'anthropic/claude-3.7-sonnet',
+                model: modelToUse,
                 apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
                 provider: cfg.provider || 'openrouter',
                 workspacePath: cfg.workspacePath || '',
@@ -171,17 +299,17 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                   e2bApiKey: cfg.e2bApiKey || undefined,
                   taskId: taskId,
                 },
-                routerMode: 'auto' as const,
-                routerBudget: 'balanced' as const,
-                routerModelOverrides: {},
+                routerMode: cfg.routerConfig.mode === 'auto' ? ('auto' as const) : ('manual' as const),
+                routerBudget: cfg.routerConfig.budget === 'free' ? ('free' as const) : ('paid' as const),
+                routerModelOverrides: cfg.routerConfig.modelOverrides ?? {},
                 maxIterations: cfg.maxIterations ?? 50,
                 taskTitle,
-                usePlanning: true, // Enable the Orchestrator (Planning Agent)
+                usePlanning: true,
                 orchestratorConfig: {
                   enableVerification: cfg.enableVerification ?? true,
                 },
               })
-        } catch (err) {
+          } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
         setError(taskId, agentMsgId, `Agent error: ${msg}`)
@@ -189,15 +317,19 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         useAppStore.getState().updateTaskStatus(taskId, 'stopped')
         useAppStore.getState().setStreaming(taskId, agentMsgId, false)
       }
-      runningRef.current = false
-    }
-    // Drain queued message if one arrived while running
-    const queued = queuedMsgRef.current
-    if (queued) {
-      queuedMsgRef.current = null
-      setQueuedMsg(null)
-      handleSend(queued)
-    }
+          } finally {
+        // Always reset running flag — whether success, error, or abort
+        runningRef.current = false
+        // Clear active model badge when run finishes
+        setActiveModelBadge(null)
+        // Drain queued message via ref to avoid stale closure
+        const queued = queuedMsgRef.current
+        if (queued) {
+          queuedMsgRef.current = null
+          setQueuedMsg(null)
+          handleSendRef.current?.(queued)
+        }
+      }
   }, [setError]) // eslint-disable-line react-hooks/exhaustive-deps
 
     async function handleSend(content: string) {
@@ -318,6 +450,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       // This ensures the agent actually functions in desktop mode.
       await runAgent(task.id, agentMsgId, history, task.title)
     }
+  // Keep ref always pointing to the latest handleSend to avoid stale closures
+  handleSendRef.current = handleSend
 
   async function handleRetry(failedMsgId: string) {
     if (!task || runningRef.current) return
@@ -473,7 +607,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
                     {/* Planning View integrated inline */}
                     {(pendingPlan || currentPlan) && (
-                      <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200">
+                      <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
                         <PlanView
                           plan={pendingPlan || currentPlan!}
                           onApprove={pendingPlan ? approvePlan : undefined}

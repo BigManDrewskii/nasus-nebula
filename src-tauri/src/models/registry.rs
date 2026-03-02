@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum ToolCallingSupport {
     Strong,
     Moderate,
@@ -28,7 +28,7 @@ pub enum Provider {
     Other,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ModelCapabilities {
     pub reasoning: f32,
     pub coding: f32,

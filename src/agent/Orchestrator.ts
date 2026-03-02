@@ -35,6 +35,7 @@ export interface OrchestratorConfig {
  */
 export interface OrchestratorTaskParams {
   taskId: string
+  taskTitle?: string
   messageId: string
   userMessages: LlmMessage[]
   userMessage: string // First user message for planning
@@ -68,7 +69,12 @@ export class AgentOrchestrator {
   private config: OrchestratorConfig = {}
 
   setConfig(config: OrchestratorConfig): void {
-    this.config = { ...this.config, ...config }
+    // Full replace (not merge) so stale config from previous tasks doesn't leak
+    this.config = { ...config }
+    // Propagate autoApproveSimple into the planning agent's own config
+    if (typeof config.autoApproveSimple === 'boolean') {
+      this.planningAgent.setConfig({ autoApproveSimple: config.autoApproveSimple })
+    }
   }
 
   /**
@@ -124,7 +130,7 @@ export class AgentOrchestrator {
    */
   private async executeDirectly(params: OrchestratorTaskParams): Promise<void> {
     const executionParams: ExecutionConfigParams = {
-      task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+      task: { id: params.taskId, title: params.taskTitle || params.userMessage.slice(0, 60), status: 'in_progress', createdAt: new Date() },
       userInput: params.userMessage,
       messages: params.userMessages,
       tools: [],
@@ -151,19 +157,21 @@ export class AgentOrchestrator {
   private async executeWithPlan(params: OrchestratorTaskParams, plan: ExecutionPlan): Promise<void> {
     this.emitPlanApproved(params.taskId, params.messageId, plan)
 
-    // Add plan context to messages
+    // Inject plan context into the final user message (not as a system role,
+    // which breaks Anthropic providers that reject mid-conversation system messages)
     const planContext = this.buildPlanContext(plan)
+    const lastMsg = params.userMessages[params.userMessages.length - 1]
+    const augmentedLastMsg: LlmMessage = {
+      role: 'user',
+      content: (typeof lastMsg?.content === 'string' ? lastMsg.content : '') + '\n\n' + planContext,
+    }
     const messagesWithPlan: LlmMessage[] = [
       ...params.userMessages.slice(0, -1),
-      {
-        role: 'system',
-        content: planContext,
-      },
-      params.userMessages[params.userMessages.length - 1],
+      augmentedLastMsg,
     ]
 
     const executionParams: ExecutionConfigParams = {
-      task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+      task: { id: params.taskId, title: params.taskTitle || params.userMessage.slice(0, 60), status: 'in_progress', createdAt: new Date() },
       userInput: params.userMessage,
       messages: messagesWithPlan,
       tools: [],

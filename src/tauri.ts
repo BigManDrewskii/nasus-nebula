@@ -61,12 +61,12 @@ async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Prom
  * This wrapper catches all errors and returns undefined to prevent crashes.
  */
 export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
-  // Always route agent commands through the TS Orchestrator
+  // Always route agent commands through the TS Orchestrator (web agent).
+  // Do NOT fall through to the Rust backend — the Rust agent is a placeholder
+  // and invoking it would run the agent twice.
   if (cmd === 'run_agent' || cmd === 'stop_agent') {
     await invokeWebAgent(cmd, args)
-    // If not in Tauri, we're done.
-    // If in Tauri, we fall through to ALSO invoke the Rust backend (for state tracking).
-    if (!isTauri) return undefined
+    return undefined
   }
 
   if (!isTauri) {

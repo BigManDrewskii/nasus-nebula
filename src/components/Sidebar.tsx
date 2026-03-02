@@ -650,14 +650,17 @@ function SidebarFooter({ model, fullModel, onSettings }: {
   fullModel: string
   onSettings: () => void
 }) {
-  const { setModel, openRouterModels, modelsLastFetched } = useAppStore()
+  const { setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore()
   const [open, setOpen]         = useState(false)
   const [search, setSearch]     = useState('')
   const [gearHov, setGearHov]   = useState(false)
   const containerRef            = useRef<HTMLDivElement>(null)
   const searchRef               = useRef<HTMLInputElement>(null)
 
-  const meta = familyMeta(fullModel)
+  // Dynamic meta based on routing mode
+  const meta = routerConfig?.mode === 'auto'
+    ? { label: 'AUTO', color: 'var(--amber)' }
+    : familyMeta(fullModel)
 
   // ── Build model list ──────────────────────────────────────────────────────
   const isLive = openRouterModels.length > 0
@@ -909,7 +912,11 @@ function SidebarFooter({ model, fullModel, onSettings }: {
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           transition: 'color 0.1s', letterSpacing: '-0.01em',
         }}>
-          {model}
+          {routerConfig?.mode === 'auto'
+            ? routingPreview?.displayName
+              ? `Auto: ${routingPreview.displayName}`
+              : `Auto (${routerConfig.budget === 'free' ? 'free' : 'paid'} models)`
+            : model}
         </span>
 
         {/* Chevron */}

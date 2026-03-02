@@ -143,6 +143,30 @@ async fn get_model_registry(state: State<'_, AppState>) -> Result<Vec<models::re
     Ok(router_config.registry.clone())
 }
 
+/// Fetch latest models from OpenRouter and update the registry
+#[tauri::command]
+async fn refresh_models(state: State<'_, AppState>) -> Result<Vec<models::registry::ModelInfo>, String> {
+    // Get API key from config
+    let api_key = {
+        let config = state.config.lock().await;
+        if config.api_key.is_empty() {
+            return Err("No API key configured".to_string());
+        }
+        config.api_key.clone()
+    };
+
+    // Fetch models from OpenRouter
+    let models = models::fetch_openrouter_models(&api_key).await?;
+
+    // Update the router config registry
+    {
+        let mut router_config = state.router_config.lock().await;
+        router_config.registry = models.clone();
+    }
+
+    Ok(models)
+}
+
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn save_router_settings(
@@ -566,6 +590,7 @@ pub fn run() {
         save_config,
         validate_path,
         get_model_registry,
+        refresh_models,
         save_router_settings,
         preview_routing,
         search,

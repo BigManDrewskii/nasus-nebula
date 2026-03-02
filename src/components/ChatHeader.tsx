@@ -37,13 +37,14 @@ export function StatusDot({ status }: { status: Task['status'] }) {
 
 // ─── Sandbox pill ──────────────────────────────────────────────────────────────
 
-export function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stopped' }) {
+export function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error' }) {
   if (status === 'idle') return null
 
   const cfg = {
     starting: { icon: 'circle-notch', label: 'Starting',      color: 'var(--amber)' },
     ready:    { icon: 'check-circle', label: 'Sandbox ready', color: '#34d399' },
     stopped:  { icon: 'times-circle', label: 'Stopped',       color: 'var(--tx-secondary)' },
+    error:    { icon: 'triangle-exclamation', label: 'Sandbox error', color: '#f87171' },
   }[status]
 
   if (!cfg) return null
@@ -129,7 +130,7 @@ interface ChatHeaderProps {
   model: string
   provider: string
   routerConfig?: { mode: string; budget: string }
-  sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped'
+  sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
   outputVisible?: boolean
   workspaceFileCount?: number
   onShowOutput?: () => void
@@ -152,8 +153,8 @@ export function ChatHeader({
   onShowMemory,
   onStop,
 }: ChatHeaderProps) {
-  const isPaid = isPaidRoute(provider, routerConfig)
-  const label = getRouteLabel(provider, routerConfig)
+  const isPaid = isPaidRoute(provider, routerConfig, model)
+  const label = getRouteLabel(provider, routerConfig, model)
   return (
     <header
       className="flex-shrink-0 flex items-center justify-between"

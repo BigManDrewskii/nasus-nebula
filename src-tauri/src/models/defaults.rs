@@ -153,8 +153,8 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
         },
         // ── Free ─────────────────────────────────────────────────────────────
         ModelInfo {
-            id: "google/gemini-2.0-flash-exp:free".into(),
-            display_name: "Gemini 2.0 Flash (Free)".into(),
+            id: "google/gemini-2.5-flash:free".into(),
+            display_name: "Gemini 2.5 Flash (Free)".into(),
             provider: Provider::Google,
             capabilities: ModelCapabilities {
                 reasoning: 0.78,
@@ -166,22 +166,6 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
             tool_calling: ToolCallingSupport::Moderate,
             cost_tier: CostTier::Free,
             context_window: 1_000_000,
-            enabled: true,
-        },
-        ModelInfo {
-            id: "deepseek/deepseek-chat:free".into(),
-            display_name: "DeepSeek V3 (Free)".into(),
-            provider: Provider::DeepSeek,
-            capabilities: ModelCapabilities {
-                reasoning: 0.85,
-                coding: 0.87,
-                writing: 0.80,
-                speed: 0.75,
-                instruction_following: 0.82,
-            },
-            tool_calling: ToolCallingSupport::Moderate,
-            cost_tier: CostTier::Free,
-            context_window: 128_000,
             enabled: true,
         },
         ModelInfo {

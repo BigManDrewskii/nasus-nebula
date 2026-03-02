@@ -18,6 +18,7 @@ const controllers: Map<string, AbortController> = new Map()
 
 export interface RunWebAgentParams {
   taskId: string
+  taskTitle?: string
   messageId: string
   userMessages: LlmMessage[]
   apiKey: string
@@ -46,15 +47,23 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
 
     // Use orchestrator if planning is enabled
     if (params.usePlanning) {
-      // Extract first user message for planning
-      const firstUserMessage = params.userMessages.find(m => m.role === 'user')
-      const userMessage = typeof firstUserMessage?.content === 'string'
-        ? firstUserMessage.content
+      // Use the LAST user message for planning context (not always the first)
+      const lastUserMessage = [...params.userMessages].reverse().find(m => m.role === 'user')
+      const userMessage = typeof lastUserMessage?.content === 'string'
+        ? lastUserMessage.content
         : ''
+
+      // Skip planning for:
+      // 1. Short messages (< 80 chars) — unlikely to need a multi-phase plan
+      // 2. Follow-up turns (> 2 messages) — already have context/plan from previous turns
+      const isShortMessage = userMessage.trim().length < 80
+      const isFollowUp = params.userMessages.filter(m => m.role === 'user').length > 1
+      const shouldSkipPlanning = isShortMessage || isFollowUp
 
       await processTaskWithOrchestrator(
         {
           taskId: params.taskId,
+          taskTitle: params.taskTitle,
           messageId: params.messageId,
           userMessages: params.userMessages,
           userMessage,
@@ -67,12 +76,16 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
           signal: controller.signal,
           maxIterations: params.maxIterations,
         },
-        params.orchestratorConfig,
+        {
+          ...params.orchestratorConfig,
+          skipPlanning: shouldSkipPlanning || params.orchestratorConfig?.skipPlanning,
+          autoApproveSimple: true, // always auto-approve single-step plans
+        },
       )
       } else {
         // Original behavior: direct execution
         await runExecutionAgent({
-          task: { id: params.taskId, title: params.taskId, status: 'in_progress', createdAt: new Date() },
+          task: { id: params.taskId, title: params.taskTitle || (params.userMessages[params.userMessages.length - 1]?.content as string || '').slice(0, 60), status: 'in_progress', createdAt: new Date() },
           userInput: params.userMessages[params.userMessages.length - 1]?.content as string || '',
           messages: params.userMessages,
           tools: [],

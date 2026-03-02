@@ -155,6 +155,10 @@ export class ExecutionAgent extends BaseAgent {
     const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, signal } = params
     const maxIter = params.maxIterations ?? MAX_ITERATIONS
 
+    // Reset per-task counters at the start of each execution
+    this.searchBrowseCount = 0
+    this.completedCheckboxes = 0
+
     // Validate API key
     if (!apiKey) {
       this.emitError(taskId, messageId, 'No API key configured. Open Settings (⌘,) and enter your OpenRouter API key (sk-or-…).')
@@ -755,13 +759,21 @@ export class ExecutionAgent extends BaseAgent {
     userMessage: string,
     taskId: string,
   ): Promise<void> {
-    const { openRouterModels } = useAppStore.getState()
-    const titleModel = openRouterModels.length > 0
-      ? cheapestModel(openRouterModels)
-      : 'anthropic/claude-3-haiku'
+    const { openRouterModels, routerConfig } = useAppStore.getState()
+    const isFreeMode = routerConfig.budget === 'free' && routerConfig.mode === 'auto'
+
+    let titleModel: string
+    if (isFreeMode) {
+      // In free budget mode, use a free model for auto-titling to avoid spending credits
+      titleModel = 'deepseek/deepseek-chat:free'
+    } else if (openRouterModels.length > 0) {
+      titleModel = cheapestModel(openRouterModels)
+    } else {
+      titleModel = 'anthropic/claude-3-haiku'
+    }
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
-    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 20)
+    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 60)
     if (title) {
       const clean = title.replace(/^["']|["']$/g, '').trim()
       if (clean) useAppStore.getState().updateTaskTitle(taskId, clean)
@@ -791,7 +803,7 @@ export class ExecutionAgent extends BaseAgent {
 
   private emitChunk(taskId: string, messageId: string, delta: string): void {
     useAppStore.getState().appendChunk(taskId, messageId, delta)
-    window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+    window.dispatchEvent(new CustomEvent('nasus:stream-chunk', { detail: { taskId, messageId } }))
   }
 
   private emitTokenUsage(taskId: string, prompt: number, completion: number, total: number): void {
@@ -861,8 +873,10 @@ export class ExecutionAgent extends BaseAgent {
 /**
  * Convenience function to run the execution agent with the given parameters.
  * This maintains the same API as the original runAgentLoop function.
+ * Uses a module-level instance so the errorTracker persists across calls within a session.
  */
+const _sharedExecutionAgent = new ExecutionAgent('execution', 'executor')
+
 export async function runExecutionAgent(params: ExecutionConfigParams): Promise<void> {
-  const agent = new ExecutionAgent('execution', 'executor')
-  await agent.execute(params)
+  await _sharedExecutionAgent.execute(params)
 }

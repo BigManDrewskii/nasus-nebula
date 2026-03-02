@@ -73,6 +73,8 @@ interface AppState {
     provider: string
   // Router config
   routerConfig: RouterConfig
+  // Routing preview (model that will be selected for current input)
+  routingPreview: { modelId: string; displayName: string; reason: string } | null
   // Per-task router state (model used, cost, etc.) keyed by taskId
   taskRouterState: Record<string, TaskRouterState>
       /** Full rich model list fetched from OpenRouter /models */
@@ -92,8 +94,8 @@ interface AppState {
         executionMode: string
         /** Enable verification after execution */
         enableVerification: boolean
-        /** Live sandbox status shown in UI */
-        sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
+          /** Live sandbox status shown in UI */
+          sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
         sandboxStatusMessage: string
     // Browser extension connection
     extensionConnected: boolean
@@ -137,9 +139,10 @@ interface AppState {
         setE2bApiKey: (key: string) => void
         setExecutionMode: (mode: string) => void
         setEnableVerification: (enabled: boolean) => void
-        setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
+          setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error', message?: string) => void
     setExtensionConnected: (connected: boolean, version?: string | null) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
+  setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
   setPendingPlan: (plan: ExecutionPlan | null) => void
   setPlanApprovalStatus: (status: 'pending' | 'approved' | 'rejected' | null) => void
@@ -199,9 +202,10 @@ export const useAppStore = create<AppState>()(
               extensionVersion: null,
           routerConfig: {
             mode: 'auto',
-            budget: 'paid',
+            budget: 'free',
             modelOverrides: {},
           },
+          routingPreview: null,
             taskRouterState: {},
             pendingPlan: null,
             planApprovalStatus: null,
@@ -210,7 +214,15 @@ export const useAppStore = create<AppState>()(
             currentStep: 0,
 
           setActiveTaskId: (id) => {
-            set({ activeTaskId: id })
+            // Clear plan state from the previous task so the new task starts clean
+            set({
+              activeTaskId: id,
+              pendingPlan: null,
+              currentPlan: null,
+              planApprovalStatus: null,
+              currentPhase: 0,
+              currentStep: 0,
+            })
             // If selecting a task that doesn't have history in memory, try to load from DB
             if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
               getPersistedTaskHistory(id).then(history => {
@@ -483,6 +495,7 @@ export const useAppStore = create<AppState>()(
                 setExtensionConnected: (connected, version = null) => set({ extensionConnected: connected, extensionVersion: version }),
         setRouterConfig: (config) =>
           set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),
+        setRoutingPreview: (preview) => set({ routingPreview: preview }),
         setTaskRouterState: (taskId, state) =>
           set((s) => ({
             taskRouterState: {
@@ -591,11 +604,11 @@ export const useAppStore = create<AppState>()(
           }
   
           // Seed workspaceVersions for any tasks that have persisted workspace data,
-
           // so getWorkspaceVersion() returns > 0 and components re-render correctly.
           import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
-            for (const task of state.tasks ?? []) {
-              // Initialize workspace for each task - this loads file metadata
+            const tasks = state.tasks ?? []
+            // Fire all workspace loads in parallel, silently ignore individual failures
+            for (const task of tasks) {
               workspaceManager.getWorkspace(task.id).catch(() => {})
             }
           }).catch(() => {})
