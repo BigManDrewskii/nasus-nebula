@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nasus Browser Bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Gives Nasus AI agent permission to control your browser tabs.",
   "permissions": [
     "debugger",
@@ -21,9 +21,17 @@
   "externally_connectable": {
     "matches": [
       "http://localhost/*",
+      "http://localhost:5173/*",
+      "http://localhost:3000/*",
       "https://localhost/*",
+      "https://localhost:5173/*",
+      "https://localhost:3000/*",
       "http://127.0.0.1/*",
+      "http://127.0.0.1:5173/*",
+      "http://127.0.0.1:3000/*",
       "https://127.0.0.1/*",
+      "https://127.0.0.1:5173/*",
+      "https://127.0.0.1:3000/*",
       "https://nasus.app/*",
       "https://*.nasus.app/*"
     ]

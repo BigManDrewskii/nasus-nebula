@@ -160,6 +160,13 @@ export async function checkOllama(): Promise<boolean> {
   return (await tauriInvoke<boolean>('is_ollama_running')) ?? false
 }
 
+/**
+ * Get the current search config from Rust state (for debugging).
+ */
+export async function getSearchConfig(): Promise<{ exaKey: string } | undefined> {
+  return await tauriInvoke<{ exaKey: string }>('get_search_config')
+}
+
 export async function tauriListen<T>(
   event: string,
   handler: (payload: T) => void,

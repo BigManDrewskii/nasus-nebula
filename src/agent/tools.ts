@@ -16,8 +16,15 @@ import {
 import { runSearch } from './search'
 import type { SearchConfig, SearchStatusCallback } from './search'
 export type { SearchConfig, SearchStatusCallback }
-
+import { tauriInvoke } from '../tauri'
 import { workspaceManager } from './workspace/WorkspaceManager'
+
+/**
+ * Check if running in Tauri environment.
+ */
+function isTauriMode(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
 
 /**
  * Browser-safe tool execution for the web agent.
@@ -83,7 +90,6 @@ export async function executeTool(
   taskId: string,
   toolName: string,
   args: Record<string, unknown>,
-  searchConfig?: SearchConfig,
   onSearchStatus?: SearchStatusCallback,
   executionConfig?: ExecutionConfig,
 ): Promise<{ output: string; isError: boolean }> {
@@ -233,21 +239,47 @@ export async function executeTool(
         const rawMode = args.raw === true  // Opt-in to skip HTML extraction
 
         try {
-          const res = await fetch(url, {
-            method,
-            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Nasus/1.0)', ...headersArg },
-            body: method === 'POST' ? body : undefined,
-          })
-          const text = await res.text()
+          let text: string
+          let status: number
+
+          if (isTauriMode()) {
+            // Use Rust backend to bypass CORS
+            const result = await tauriInvoke<string>('http_fetch', {
+              url,
+              method,
+              headers: Object.keys(headersArg).length > 0
+                ? Object.entries(headersArg).flat()
+                : undefined,
+              body: method === 'POST' ? body : undefined,
+            })
+
+            if (!result) {
+              return { output: 'fetch error: No response from backend', isError: true }
+            }
+
+            // Result format: "STATUS_CODE\nCONTENT"
+            const newlineIdx = result.indexOf('\n')
+            status = parseInt(result.slice(0, newlineIdx))
+            text = result.slice(newlineIdx + 1)
+          } else {
+            // Regular browser fetch for web version
+            const res = await fetch(url, {
+              method,
+              headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Nasus/1.0)', ...headersArg },
+              body: method === 'POST' ? body : undefined,
+            })
+            status = res.status
+            text = await res.text()
+          }
 
           // Detect content type: only extract HTML pages, pass JSON/text as-is
-          const ct = res.headers.get('content-type') ?? ''
-          const isHtml = ct.includes('text/html') || (ct === '' && text.trimStart().startsWith('<'))
-          const isJson = ct.includes('application/json') || ct.includes('text/json')
+          // In Tauri mode, we don't have content-type headers, so detect from content
+          const isHtml = text.trimStart().startsWith('<')
+          const isJson = text.trimStart().startsWith('{') || text.trimStart().startsWith('[')
 
           if (!rawMode && isHtml) {
             const extracted = extractReadableContent(text, url)
-            let output = `HTTP ${res.status} — ${url}\n`
+            let output = `HTTP ${status} — ${url}\n`
             if (extracted.title) output += `Title: ${extracted.title}\n`
             if (extracted.description) output += `Description: ${extracted.description}\n`
             output += `\n${extracted.content}`
@@ -259,12 +291,12 @@ export async function executeTool(
             let pretty = text
             try { pretty = JSON.stringify(JSON.parse(text), null, 2) } catch { /* keep raw */ }
             const preview = pretty.length > 8000 ? pretty.slice(0, 8000) + '\n[...truncated]' : pretty
-            return { output: `HTTP ${res.status}\n${preview}`, isError: false }
+            return { output: `HTTP ${status}\n${preview}`, isError: false }
           }
 
           // Plain text / CSV / other — return as-is with truncation
           const preview = text.length > 8000 ? text.slice(0, 8000) + '\n[...truncated]' : text
-          return { output: `HTTP ${res.status}\n${preview}`, isError: false }
+          return { output: `HTTP ${status}\n${preview}`, isError: false }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
@@ -288,10 +320,11 @@ export async function executeTool(
           }
         }
         const num = Math.min(Number(args.num_results ?? 5), 10)
-        const cfg: SearchConfig = searchConfig ?? { provider: 'auto' }
+        // Exa key comes from backend state, don't pass frontend config
 
         try {
-          const output = await runSearch(query, num, cfg, onSearchStatus)
+          // Exa key comes from backend state, no frontend config needed
+          const output = await runSearch(query, num, undefined, onSearchStatus)
           return { output, isError: false }
         } catch (err) {
           return { output: `search error: ${err instanceof Error ? err.message : String(err)}`, isError: true }

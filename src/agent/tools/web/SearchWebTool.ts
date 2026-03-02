@@ -65,9 +65,9 @@ export class SearchWebTool extends BaseTool {
     try {
       const output = await runSearch(query, numResults, this.searchConfig, this.onStatus)
       return toolSuccess(output)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return toolFailure(`Search failed: ${message}`)
-      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      return toolFailure(`Search failed: ${message}`)
     }
   }
+}

@@ -4,28 +4,97 @@
  * and executes them against real browser tabs via the Chrome Debugger API (CDP).
  */
 
-const NASUS_ORIGINS = [
+// Use Set for exact origin matching (more secure than startsWith)
+// Note: origins include ports (e.g., http://localhost:5173), so we match base origin
+const ALLOWED_ORIGINS = new Set([
   "http://localhost",
   "https://localhost",
   "http://127.0.0.1",
   "https://127.0.0.1",
   "https://nasus.app",
   "https://www.nasus.app",
-];
+]);
 
-// Track which tabs we have the debugger attached to
+// Check if origin matches any allowed base (including port variations)
+function isOriginAllowed(origin) {
+  if (!origin) return false;
+
+  // First try exact match
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+
+  // Then try matching base origin (strip port and path)
+  try {
+    const url = new URL(origin);
+    const baseOrigin = `${url.protocol}//${url.hostname}`;
+    return ALLOWED_ORIGINS.has(baseOrigin);
+  } catch {
+    return false;
+  }
+}
+
+// Track which tabs we have the debugger attached to (also persisted to storage)
 const attachedTabs = new Set();
+
+// ─── Storage-backed state persistence ────────────────────────────────────────
+// Service workers can be terminated after ~30s of inactivity, losing all in-memory state.
+// We use chrome.storage.session to persist attached tabs across restarts.
+
+async function addAttachedTab(tabId) {
+  const { attachedTabs: stored = [] } = await chrome.storage.session.get("attachedTabs");
+  if (!stored.includes(tabId)) {
+    stored.push(tabId);
+    await chrome.storage.session.set({ attachedTabs: stored });
+  }
+  attachedTabs.add(tabId);
+}
+
+async function removeAttachedTab(tabId) {
+  const { attachedTabs: stored = [] } = await chrome.storage.session.get("attachedTabs");
+  const filtered = stored.filter((id) => id !== tabId);
+  await chrome.storage.session.set({ attachedTabs: filtered });
+  attachedTabs.delete(tabId);
+}
+
+// Restore state on service worker startup
+chrome.runtime.onStartup.addListener(async () => {
+  const { attachedTabs: stored = [] } = await chrome.storage.session.get("attachedTabs");
+  for (const tabId of stored) {
+    try {
+      // Verify tab still exists before trying to attach
+      await chrome.tabs.get(tabId);
+      await chrome.debugger.attach({ tabId }, "1.3");
+      attachedTabs.add(tabId);
+    } catch {
+      // Tab no longer exists or couldn't attach, clean up
+      await removeAttachedTab(tabId);
+    }
+  }
+});
+
+// Also restore on install (for first load or updates)
+chrome.runtime.onInstalled.addListener(async () => {
+  const { attachedTabs: stored = [] } = await chrome.storage.session.get("attachedTabs");
+  for (const tabId of stored) {
+    try {
+      await chrome.tabs.get(tabId);
+      await chrome.debugger.attach({ tabId }, "1.3");
+      attachedTabs.add(tabId);
+    } catch {
+      await removeAttachedTab(tabId);
+    }
+  }
+});
 
 // ─── CDP helpers ─────────────────────────────────────────────────────────────
 
 async function ensureAttached(tabId) {
   if (!attachedTabs.has(tabId)) {
     await chrome.debugger.attach({ tabId }, "1.3");
-    attachedTabs.add(tabId);
+    await addAttachedTab(tabId);
     // Register detach listener only once per tab
     chrome.debugger.onDetach.addListener(function onDetach(src) {
       if (src.tabId === tabId) {
-        attachedTabs.delete(tabId);
+        removeAttachedTab(tabId);
         chrome.debugger.onDetach.removeListener(onDetach);
       }
     });
@@ -34,7 +103,15 @@ async function ensureAttached(tabId) {
 
 async function cdp(tabId, method, params = {}) {
   await ensureAttached(tabId);
-  return chrome.debugger.sendCommand({ tabId }, method, params);
+  try {
+    return await chrome.debugger.sendCommand({ tabId }, method, params);
+  } catch (err) {
+    // Handle "Target closed" errors gracefully
+    if (err?.message?.includes("Target closed") || err?.message?.includes("Unable to send message")) {
+      await removeAttachedTab(tabId);
+    }
+    throw err;
+  }
 }
 
 // ─── Get or create a Nasus-controlled tab ────────────────────────────────────
@@ -341,16 +418,104 @@ async function browserSelect({ tabId, selector, value, label }) {
   return result?.result?.value ?? { error: "evaluate failed" };
 }
 
+// ─── Message validation schema ─────────────────────────────────────────────────
+// Prevent malformed requests from reaching the browser automation functions
+
+const SCHEMAS = {
+  browser_navigate: {
+    required: ["url"],
+    validate: ({ url }) => typeof url === "string" && url.length > 0 && URL.canParse(url)
+  },
+  browser_click: {
+    validate: ({ selector, x, y }) =>
+      (typeof selector === "string" && selector.length > 0) ||
+      (typeof x === "number" && typeof y === "number")
+  },
+  browser_type: {
+    required: ["text"],
+    validate: ({ text }) => typeof text === "string"
+  },
+  browser_extract: {
+    validate: ({ selector }) =>
+      !selector || typeof selector === "string"
+  },
+  browser_screenshot: {
+    validate: ({ fullPage }) =>
+      fullPage === undefined || typeof fullPage === "boolean"
+  },
+  browser_scroll: {
+    required: ["direction"],
+    validate: ({ direction, amount }) =>
+      ["up", "down"].includes(direction) &&
+      (amount === undefined || typeof amount === "number")
+  },
+  browser_get_tabs: {},
+  browser_wait_for: {
+    validate: ({ selector, urlPattern, timeoutMs }) =>
+      (!selector || typeof selector === "string") &&
+      (!urlPattern || typeof urlPattern === "string") &&
+      (!timeoutMs || typeof timeoutMs === "number")
+  },
+  browser_eval: {
+    required: ["expression"],
+    validate: ({ expression }) => typeof expression === "string"
+  },
+  browser_select: {
+    required: ["selector"],
+    validate: ({ selector, value, label }) =>
+      typeof selector === "string" &&
+      ((value !== undefined) || (label !== undefined))
+  },
+  ping: {},
+  status: {},
+};
+
+function validateMessage(action, params) {
+  const schema = SCHEMAS[action];
+  if (!schema) return { valid: true }; // Unknown actions pass through (will be caught by handler lookup)
+
+  if (schema.required) {
+    for (const field of schema.required) {
+      if (!(field in params)) {
+        return { valid: false, error: `Missing required field: ${field}` };
+      }
+    }
+  }
+
+  if (schema.validate && !schema.validate(params)) {
+    return { valid: false, error: `Invalid parameters for ${action}` };
+  }
+
+  return { valid: true };
+}
+
 // ─── Message router ───────────────────────────────────────────────────────────
 
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  // Validate origin
-  if (!NASUS_ORIGINS.some((o) => sender.origin?.startsWith(o))) {
-    sendResponse({ error: "Unauthorized origin: " + sender.origin });
-    return true;
+  // Debug logging
+  console.log("[Nasus Extension] Received message:", {
+    action: message?.action,
+    origin: sender.origin,
+    url: sender.url,
+    hasId: !!sender.id,
+  });
+
+  // Validate origin using the isOriginAllowed function (handles ports correctly)
+  if (!sender.origin || !isOriginAllowed(sender.origin)) {
+    console.log("[Nasus Extension] Origin rejected:", sender.origin);
+    sendResponse({ error: "Unauthorized origin: " + (sender.origin || "null") });
+    return false; // Don't keep channel open for unauthorized origins
   }
 
   const { action, params = {} } = message;
+  console.log("[Nasus Extension] Action:", action, "Params:", params);
+
+  // Validate message parameters
+  const validation = validateMessage(action, params);
+  if (!validation.valid) {
+    sendResponse({ error: validation.error });
+    return false;
+  }
 
   const handlers = {
     browser_navigate:  browserNavigate,
@@ -364,6 +529,23 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
     browser_eval:      browserEval,
     browser_select:    browserSelect,
     ping: async () => ({ pong: true, version: "1.1.0" }),
+    status: async () => ({
+      status: "healthy",
+      version: "1.1.0",
+      attachedTabs: Array.from(attachedTabs),
+      availableActions: Object.keys({
+        browser_navigate:  browserNavigate,
+        browser_click:     browserClick,
+        browser_type:      browserType,
+        browser_extract:   browserExtract,
+        browser_screenshot: browserScreenshot,
+        browser_scroll:    browserScroll,
+        browser_get_tabs:  browserGetTabs,
+        browser_wait_for:  browserWaitFor,
+        browser_eval:      browserEval,
+        browser_select:    browserSelect,
+      }),
+    }),
   };
 
   const handler = handlers[action];
@@ -380,9 +562,9 @@ chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => 
 });
 
 // Detach debugger when tab closes
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.tabs.onRemoved.addListener(async (tabId) => {
   if (attachedTabs.has(tabId)) {
     chrome.debugger.detach({ tabId }).catch(() => {});
-    attachedTabs.delete(tabId);
+    await removeAttachedTab(tabId);
   }
 });

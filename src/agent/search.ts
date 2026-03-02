@@ -1,9 +1,9 @@
 /**
  * Unified Web Search Module
  *
- * All search requests go through the Rust backend via Tauri invoke.
- * The Rust backend handles: provider cascade, caching, rate limiting,
- * deduplication, and RRF ranking.
+ * Search requests route through either:
+ * - Tauri mode: Rust backend via Tauri invoke (caching, rate limiting)
+ * - Browser mode: Direct Exa API call (fallback for development)
  *
  * This module provides:
  * 1. `runSearch()` — formatted string output for the agent loop
@@ -12,18 +12,13 @@
  */
 
 import { tauriInvoke } from '../tauri'
+import { useAppStore } from '../store'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface SearchConfig {
-  /** Provider preference: 'auto' lets the backend cascade, or force a specific one */
-  provider: string
-  serperKey?: string
-  tavilyKey?: string
-  braveKey?: string
-  googleCseKey?: string
-  googleCseId?: string
-  searxngUrl?: string
+  /** Exa AI API key */
+  exaKey: string
 }
 
 export interface SearchResult {
@@ -45,21 +40,99 @@ export interface SearchStatusEvent {
 
 export type SearchStatusCallback = (event: SearchStatusEvent) => void
 
+// ─── Browser-mode search (direct Exa API call) ─────────────────────────────
+
+/**
+ * Check if running in Tauri environment.
+ */
+function isTauriMode(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+/**
+ * Browser-only search using Exa API directly.
+ * Fallback for when not running in Tauri mode.
+ */
+async function searchBrowser(query: string, numResults: number): Promise<SearchResult[]> {
+  const apiKey = useAppStore.getState().exaKey
+
+  if (!apiKey) {
+    throw new Error(
+      'Exa API key not configured. Please add it in Settings:\n' +
+      '1. Go to https://dashboard.exa.ai to get your free API key\n' +
+      '2. Paste it in Settings > Search > Exa API Key'
+    )
+  }
+
+  console.log('[search] Browser mode: calling Exa API directly', { query, numResults })
+
+  const response = await fetch('https://api.exa.ai/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      query,
+      numResults,
+      type: 'auto',
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unknown error')
+    throw new Error(`Exa API error (${response.status}): ${errorText}`)
+  }
+
+  const data = await response.json()
+
+  if (!data.results || !Array.isArray(data.results)) {
+    throw new Error('Invalid response from Exa API')
+  }
+
+  console.log(`[search] Browser mode: got ${data.results.length} results from Exa`)
+
+  return data.results.map((r: ExaResult) => ({
+    title: r.title ?? 'Untitled',
+    url: r.url,
+    snippet: r.highlights?.join(' ') ?? r.text ?? '',
+    provider: 'exa',
+    score: r.score ?? 0,
+  }))
+}
+
+interface ExaResult {
+  title: string | null
+  url: string
+  score: number | null
+  highlights?: string[] | null
+  text?: string | null
+}
+
 // ─── Raw search (returns typed results) ─────────────────────────────────────
 
 /**
- * Execute a search via the Rust backend and return typed results.
- * This is the low-level function — use `runSearch` for agent-formatted output.
+ * Execute a search and return typed results.
+ * Uses Rust backend when in Tauri mode, or calls Exa API directly in browser mode.
  */
 export async function searchRaw(
   query: string,
   numResults = 5,
 ): Promise<SearchResult[]> {
-  const results = await tauriInvoke<SearchResult[]>('search', {
-    query,
-    numResults,
-  })
-  return results ?? []
+  if (isTauriMode()) {
+    console.log('[search] Tauri mode: using Rust backend')
+    const results = await tauriInvoke<SearchResult[]>('search', {
+      query,
+      numResults,
+      searchConfig: {
+        exaKey: useAppStore.getState().exaKey,
+      },
+    })
+    return results ?? []
+  } else {
+    // Browser mode: call Exa directly
+    return searchBrowser(query, numResults)
+  }
 }
 
 // ─── Formatted search (returns string for agent context) ────────────────────

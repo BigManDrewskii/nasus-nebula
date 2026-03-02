@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import type { WorkspaceFile } from '../hooks/useWorkspaceFiles'
 import { Pxi } from './Pxi'
 
@@ -57,10 +57,43 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
 export function PreviewPane({ files }: PreviewPaneProps) {
   const htmlFile = pickHtmlEntry(files)
 
+  // Auto-refresh preview when files are modified by agent tools
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    const handleToolComplete = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        taskId: string
+        tool: string
+        input: Record<string, unknown>
+        output: string
+      }>).detail
+
+      if (!detail) return
+
+      const { tool, input } = detail
+      const path = String(input.path ?? '')
+
+      // Refresh preview when HTML or related assets are written/patched
+      if (tool === 'write_file' || tool === 'patch_file') {
+        const isHtmlFile = path.endsWith('.html')
+        const isCssFile = path.endsWith('.css')
+        const isJsFile = path.endsWith('.js') || path.endsWith('.ts') || path.endsWith('.tsx')
+
+        if (isHtmlFile || isCssFile || isJsFile) {
+          setRefreshKey(k => k + 1)
+        }
+      }
+    }
+
+    window.addEventListener('nasus:tool-complete', handleToolComplete)
+    return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
+  }, [])
+
   const srcDoc = useMemo(() => {
     if (!htmlFile) return null
     return inlineAssets(htmlFile.content, files)
-  }, [htmlFile, files])
+  }, [htmlFile, files, refreshKey])
 
   if (!htmlFile || !srcDoc) {
     return (

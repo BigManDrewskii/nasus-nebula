@@ -27,34 +27,76 @@ interface PlanStepItemProps {
 
 const PlanStepItem = memo(({ step, stepNumber, isCurrent, isCompleted }: PlanStepItemProps) => {
   return (
-    <div className={`group flex items-start gap-3 py-2.5 px-3.5 rounded-xl transition-all duration-300 ${
-      isCurrent ? 'bg-amber-500/10 border border-amber-500/20 shadow-[0_0_15px_rgba(234,179,8,0.05)]' : 'hover:bg-white/[0.03] border border-transparent'
-    }`}>
-      <span className={`flex-shrink-0 w-5.5 h-5.5 mt-0.5 flex items-center justify-center text-[10px] font-bold rounded-lg font-numeric transition-all duration-300 ${
-        isCompleted 
-          ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' 
-          : isCurrent 
-          ? 'bg-amber-500 text-black shadow-[0_0_10px_rgba(234,179,8,0.3)]' 
-          : 'bg-white/5 text-white/30 border border-white/10'
-      }`}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: '6px 8px',
+        borderRadius: 6,
+        background: isCurrent ? 'rgba(255,255,255,0.03)' : 'transparent',
+        border: isCurrent ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+        transition: 'background 0.12s, border-color 0.12s',
+      }}
+    >
+      <span
+        className="font-numeric"
+        style={{
+          flexShrink: 0,
+          width: 20,
+          height: 20,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 10,
+          fontWeight: 600,
+          borderRadius: 4,
+          background: isCompleted
+            ? 'rgba(234,179,8,0.15)'
+            : isCurrent
+            ? 'rgba(234,179,8,0.9)'
+            : 'rgba(255,255,255,0.04)',
+          color: isCompleted || isCurrent ? '#000' : 'var(--tx-muted)',
+          transition: 'background 0.12s',
+        }}
+      >
         {isCompleted ? <Pxi name="check" size={8} /> : stepNumber}
       </span>
-      
-      <div className="flex-1 min-w-0">
-        <span className={`text-[12px] leading-relaxed block transition-all duration-300 ${
-          isCompleted ? 'text-white/30 line-through' : isCurrent ? 'text-white font-medium' : 'text-white/60'
-        }`}>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span
+          style={{
+            fontSize: 12,
+            display: 'block',
+            color: isCompleted
+              ? 'var(--tx-tertiary)'
+              : isCurrent
+              ? 'var(--tx-primary)'
+              : 'var(--tx-secondary)',
+            textDecoration: isCompleted ? 'line-through' : 'none',
+          }}
+        >
           {step.description}
         </span>
-        
+
         {step.tools && step.tools.length > 0 && !isCompleted && (
-          <div className="flex gap-1.5 mt-2 flex-wrap">
+          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
             {step.tools.map((tool) => (
               <span
                 key={tool}
-                className={`px-1.5 py-0.5 text-[9px] font-black tracking-widest uppercase rounded-md transition-colors duration-300 ${
-                    isCurrent ? 'bg-amber-500/10 text-amber-500/70 border border-amber-500/20' : 'bg-white/5 border border-white/10 text-white/30'
-                }`}
+                className="font-numeric"
+                style={{
+                  padding: '2px 5px',
+                  fontSize: 9,
+                  fontWeight: 500,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  borderRadius: 4,
+                  background: isCurrent
+                    ? 'rgba(234,179,8,0.1)'
+                    : 'rgba(255,255,255,0.04)',
+                  color: isCurrent ? 'var(--amber)' : 'var(--tx-muted)',
+                }}
               >
                 {tool}
               </span>
@@ -78,48 +120,105 @@ interface PlanPhaseItemProps {
 
 const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, currentStep }: PlanPhaseItemProps) => {
   return (
-    <div className={`rounded-2xl border transition-all duration-500 ${
-      isCurrent 
-        ? 'bg-white/[0.04] border-white/10 shadow-2xl shadow-black/40 ring-1 ring-white/5' 
-        : isCompleted 
-        ? 'bg-white/[0.01] border-white/5 opacity-50' 
-        : 'bg-white/[0.02] border-white/5'
-    }`}>
-      <div className="flex items-center gap-3.5 px-4.5 py-4">
-        <div className={`flex-shrink-0 w-8.5 h-8.5 flex items-center justify-center rounded-xl font-bold font-numeric text-xs transition-all duration-500 ${
-          isCompleted 
-            ? 'bg-amber-500/10 text-amber-500' 
-            : isCurrent 
-            ? 'bg-amber-500 text-black shadow-[0_0_20px_rgba(234,179,8,0.3)] ring-2 ring-amber-500/20' 
-            : 'bg-white/5 text-white/30 border border-white/5'
-        }`}>
-          {isCompleted ? <Pxi name="check" size={14} /> : phaseNumber}
+    <div
+      style={{
+        borderRadius: 8,
+        border: '1px solid',
+        borderColor: isCurrent ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
+        background: isCurrent ? 'rgba(255,255,255,0.02)' : 'transparent',
+        transition: 'opacity 0.2s ease',
+        opacity: isCompleted ? 0.4 : 1,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '12px 14px',
+        }}
+      >
+        <div
+          className="font-numeric"
+          style={{
+            flexShrink: 0,
+            width: 26,
+            height: 26,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 5,
+            fontSize: 11,
+            fontWeight: 600,
+            background: isCompleted
+              ? 'rgba(234,179,8,0.12)'
+              : isCurrent
+              ? 'rgba(234,179,8,0.9)'
+              : 'rgba(255,255,255,0.04)',
+            color: isCompleted ? 'rgba(234,179,8,0.8)' : isCurrent ? '#000' : 'var(--tx-muted)',
+          }}
+        >
+          {isCompleted ? <Pxi name="check" size={11} /> : phaseNumber}
         </div>
-        
-        <div className="flex-1 min-w-0">
-          <h4 className={`text-[13px] font-black font-display tracking-[0.1em] transition-colors duration-500 uppercase ${
-            isCurrent ? 'text-white' : 'text-white/50'
-          }`}>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h4
+            className="font-display"
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              color: isCurrent ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
+            }}
+          >
             {phase.title}
           </h4>
           {isCurrent && phase.description && (
-            <p className="text-[11px] text-white/40 mt-1.5 line-clamp-1 italic font-medium tracking-wide">
+            <p
+              style={{
+                fontSize: 11,
+                color: 'var(--tx-tertiary)',
+                marginTop: 2,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {phase.description}
             </p>
           )}
         </div>
-        
-        <div className={`text-[10px] font-black font-numeric uppercase tracking-[0.2em] px-2.5 py-1 rounded-lg transition-all duration-500 ${
-            isCurrent ? 'bg-amber-500/10 text-amber-500/60 border border-amber-500/20' : 'bg-white/5 text-white/20'
-        }`}>
-          {phase.steps.length} {phase.steps.length === 1 ? 'STEP' : 'STEPS'}
+
+        <div
+          className="font-numeric"
+          style={{
+            fontSize: 9,
+            fontWeight: 500,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            padding: '3px 7px',
+            borderRadius: 4,
+            background: isCurrent
+              ? 'rgba(234,179,8,0.1)'
+              : 'rgba(255,255,255,0.03)',
+            color: isCurrent ? 'var(--amber)' : 'var(--tx-muted)',
+          }}
+        >
+          {phase.steps.length}
         </div>
       </div>
-      
+
       {isCurrent && (
-        <div className="px-3 pb-3.5 pt-0.5 space-y-1 animate-in fade-in slide-in-from-top-3 duration-500">
-          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mx-4 mb-3" />
-          <div className="space-y-0.5 px-1.5">
+        <div style={{ padding: '0 10px 12px' }}>
+          <div
+            style={{
+              height: 1,
+              background: 'rgba(255,255,255,0.06)',
+              margin: '0 0 10px',
+            }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {phase.steps.map((step, idx) => (
               <PlanStepItem
                 key={step.id}
@@ -142,85 +241,184 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
   const [isCollapsed, setIsCollapsed] = useState(false)
   const isApprovalMode = !!onApprove && !!onReject && !isReadOnly
   const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0)
-  const progressPercent = currentPhase !== undefined 
+  const progressPercent = currentPhase !== undefined
     ? Math.round(((currentPhase + (currentStep !== undefined ? currentStep / plan.phases[currentPhase].steps.length : 0)) / plan.phases.length) * 100)
     : 0
 
   return (
-    <div className={`w-full overflow-hidden rounded-[24px] border transition-all duration-700 animate-in fade-in slide-in-from-bottom-8 ${
-      isApprovalMode 
-        ? 'border-amber-500/40 bg-black/60 shadow-[0_0_60px_rgba(0,0,0,0.6),0_0_30px_rgba(234,179,8,0.08)]' 
-        : 'border-white/10 bg-white/[0.04] shadow-2xl shadow-black/80'
-    } backdrop-blur-3xl relative group`}>
-      {/* Decorative scanline for "Mission Control" look */}
-      {!isCollapsed && (
-        <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] z-50 bg-[length:100%_2px,3px_100%]" />
-      )}
-
+    <div
+      className="fade-in"
+      style={{
+        width: '100%',
+        overflow: 'hidden',
+        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(13,13,13,0.95)',
+        backdropFilter: 'blur(16px)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      }}
+    >
       {/* Header */}
-      <div 
-        className={`relative px-6 py-5 border-b overflow-hidden cursor-pointer flex items-center justify-between gap-6 ${
-          isApprovalMode ? 'bg-amber-500/[0.04] border-amber-500/20' : 'bg-white/[0.04] border-white/10'
-        }`}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          padding: '14px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
-        {/* Decorative background pulse for approval mode */}
-        {isApprovalMode && (
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-[50px] rounded-full -mr-16 -mt-16 animate-pulse" />
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          <Pxi
+            name={isApprovalMode ? 'shield-check' : 'cpu'}
+            size={16}
+            style={{ color: isApprovalMode ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
+          />
 
-        <div className="flex items-center gap-5 relative z-10 flex-1">
-          <div className={`p-3 rounded-2xl transition-all duration-500 ${
-            isApprovalMode ? 'bg-amber-500 shadow-[0_0_25px_rgba(234,179,8,0.3)]' : 'bg-white/10 shadow-inner ring-1 ring-white/5'
-          }`}>
-            <Pxi name={isApprovalMode ? 'shield-check' : 'cpu'} className={`w-6 h-6 ${
-              isApprovalMode ? 'text-black' : 'text-white/80'
-            }`} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-3.5">
-              <h2 className="text-[14px] font-black font-display text-white tracking-[0.25em] uppercase">
-                  {isApprovalMode ? 'Mission Strategy' : 'Execution Engine'}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h2
+                className="font-display"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: 'var(--tx-primary)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {isApprovalMode ? 'Execution Plan' : 'In Progress'}
               </h2>
+
               {isApprovalMode && (
-                  <span className="bg-amber-500/20 text-amber-500 text-[9px] font-black px-2 py-0.5 rounded-md border border-amber-500/30 tracking-widest animate-pulse">
-                      PENDING APPROVAL
-                  </span>
+                <span
+                  className="font-numeric"
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 500,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    background: 'rgba(234,179,8,0.12)',
+                    color: 'var(--amber)',
+                    letterSpacing: '0.05em',
+                  }}
+                >
+                  PENDING
+                </span>
               )}
+
               {!isApprovalMode && !isCollapsed && (
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50 shadow-[0_0_8px_rgba(234,179,8,0.5)]" />
-                  <span className="text-[10px] font-black text-amber-500/60 uppercase tracking-[0.2em]">Operational</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: '50%',
+                      background: 'var(--amber)',
+                    }}
+                  />
+                  <span
+                    className="font-numeric"
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 500,
+                      color: 'var(--amber)',
+                      letterSpacing: '0.1em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Active
+                  </span>
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-white/40 font-bold uppercase tracking-[0.3em] mt-1.5 line-clamp-1">
+            <p
+              className="font-numeric"
+              style={{
+                fontSize: 11,
+                color: 'var(--tx-tertiary)',
+                fontWeight: 400,
+                letterSpacing: '0.05em',
+                marginTop: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
               {plan.title}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-7 relative z-10">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {!isCollapsed && (
-            <div className="text-right hidden sm:block">
-              <div className={`text-2xl font-black font-numeric leading-none tracking-tighter ${
-                isApprovalMode ? 'text-amber-500' : 'text-white/90'
-              }`}>{plan.phases.length}</div>
-              <div className="text-[9px] font-black text-white/20 uppercase tracking-[0.25em] mt-1">PHASES</div>
+            <div style={{ textAlign: 'right' }} className="hide-below-sm">
+              <div
+                className="font-numeric"
+                style={{
+                  fontSize: 18,
+                  fontWeight: 600,
+                  lineHeight: 1,
+                  color: isApprovalMode ? 'var(--amber)' : 'var(--tx-primary)',
+                }}
+              >
+                {plan.phases.length}
+              </div>
+              <div
+                style={{
+                  fontSize: 8,
+                  fontWeight: 500,
+                  color: 'var(--tx-muted)',
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  marginTop: 1,
+                }}
+              >
+                phases
+              </div>
             </div>
           )}
 
-          <div className={`p-2.5 rounded-xl transition-all duration-300 ${isCollapsed ? 'bg-white/5' : 'bg-transparent'}`}>
-            <Pxi name={isCollapsed ? 'chevron-down' : 'chevron-up'} className="w-4 h-4 text-white/30" />
+          <div
+            style={{
+              padding: 6,
+              borderRadius: 4,
+              background: isCollapsed ? 'rgba(255,255,255,0.04)' : 'transparent',
+              transition: 'background 0.12s',
+            }}
+          >
+            <Pxi
+              name={isCollapsed ? 'chevron-down' : 'chevron-up'}
+              size={12}
+              style={{ color: 'var(--tx-tertiary)' }}
+            />
           </div>
         </div>
-        
-        {/* Progress bar (top) — always visible when not approval mode */}
+
+        {/* Progress bar (execution mode only) */}
         {!isApprovalMode && (
-          <div className="absolute bottom-0 left-0 h-[3px] bg-amber-500/10 w-full overflow-hidden">
-            <div 
-              className="h-full bg-amber-500 transition-all duration-1000 ease-out shadow-[0_0_12px_rgba(234,179,8,0.6)]"
-              style={{ width: `${progressPercent}%` }}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 1,
+              background: 'rgba(234,179,8,0.15)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                background: 'var(--amber)',
+                transition: 'width 0.6s ease-out',
+                width: `${progressPercent}%`,
+              }}
             />
           </div>
         )}
@@ -229,24 +427,39 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
       {!isCollapsed && (
         <>
           {isApprovalMode && plan.description && (
-            <div className="px-7 pt-6">
-              <p className="text-[13px] text-white/80 leading-relaxed font-medium bg-black/50 p-5 rounded-2xl border border-white/10 shadow-inner">
-                <span className="text-amber-500/60 mr-2.5 text-xl leading-none font-serif opacity-50">“</span>
+            <div style={{ padding: '0 16px', paddingTop: 14 }}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: 'var(--tx-secondary)',
+                  lineHeight: 1.5,
+                  padding: '12px 14px',
+                  borderRadius: 6,
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}
+              >
                 {plan.description}
-                <span className="text-amber-500/60 ml-1.5 text-xl leading-none font-serif opacity-50">”</span>
               </p>
             </div>
           )}
 
-          {/* Plan Content */}
-          <div className={`max-h-[450px] overflow-y-auto p-6 space-y-5 custom-scrollbar transition-colors duration-700 ${
-            isApprovalMode ? 'bg-amber-500/[0.01]' : 'bg-black/20'
-          }`}>
+          <div
+            className="custom-scrollbar"
+            style={{
+              maxHeight: 400,
+              overflowY: 'auto',
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
             {plan.phases.map((phase, idx) => (
-              <PlanPhaseItem 
-                key={phase.id} 
-                phase={phase} 
-                phaseNumber={idx + 1} 
+              <PlanPhaseItem
+                key={phase.id}
+                phase={phase}
+                phaseNumber={idx + 1}
                 isCurrent={idx === (currentPhase ?? 0)}
                 isCompleted={idx < (currentPhase ?? 0)}
                 currentStep={idx === (currentPhase ?? 0) ? currentStep : undefined}
@@ -255,56 +468,146 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
           </div>
 
           {/* Footer / Actions */}
-          <div className={`px-7 py-6 border-t transition-all duration-700 ${
-            isApprovalMode ? 'bg-amber-500/[0.06] border-amber-500/30' : 'bg-white/[0.03] border-white/10'
-          }`}>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-7">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em] mb-1.5">System Metrics</span>
-                  <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Pxi name="zap" className="w-3.5 h-3.5 text-amber-500/50" />
-                        <span className="text-[11px] font-black text-white font-numeric tracking-widest">{totalSteps} NODES</span>
-                      </div>
-                      <div className="w-1 h-1 rounded-full bg-white/10" />
-                      {plan.estimatedSteps > 0 && (
-                        <div className="flex items-center gap-2">
-                          <Pxi name="timer" className="w-3.5 h-3.5 text-amber-500/50" />
-                          <span className="text-[11px] font-black text-amber-500/80 font-numeric tracking-widest">~{plan.estimatedSteps}SEC</span>
-                        </div>
-                      )}
-                  </div>
-                </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 16,
+              padding: '14px 16px',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              background: 'rgba(0,0,0,0.2)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Pxi name="zap" size={11} style={{ color: 'var(--amber)' }} />
+                <span
+                  className="font-numeric"
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: 'var(--tx-primary)',
+                  }}
+                >
+                  {totalSteps} steps
+                </span>
               </div>
-
-              {isApprovalMode ? (
-                <div className="flex gap-3.5 w-full sm:w-auto">
-                  <button
-                    onClick={onReject}
-                    className="flex-1 sm:flex-none group relative px-7 py-3 text-[11px] font-black uppercase tracking-[0.3em] rounded-xl border border-white/10 text-white/50 hover:text-white/90 hover:bg-white/[0.05] hover:border-white/20 transition-all active:scale-95 overflow-hidden"
+              {plan.estimatedSteps > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Pxi name="timer" size={11} style={{ color: 'var(--amber)' }} />
+                  <span
+                    className="font-numeric"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 500,
+                      color: 'var(--amber)',
+                    }}
                   >
-                    <span className="relative z-10">REJECT</span>
-                  </button>
-                  <button
-                    onClick={onApprove}
-                    className="flex-1 sm:flex-none group relative px-9 py-3 text-[11px] font-black uppercase tracking-[0.3em] rounded-xl bg-amber-500 text-black hover:bg-amber-400 transition-all active:scale-[0.98] shadow-[0_15px_40px_rgba(234,179,8,0.25)] hover:shadow-[0_20px_50px_rgba(234,179,8,0.45)] flex items-center justify-center gap-3 overflow-hidden"
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/40 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-[1.5s]" />
-                    <Pxi name="play" className="w-4 h-4" />
-                    <span className="relative z-10">INITIATE MISSION</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-4 py-2.5 px-6 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-[inset_0_0_20px_rgba(234,179,8,0.1)]">
-                  <div className="flex gap-2">
-                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shadow-[0_0_8px_rgba(234,179,8,0.6)]" />
-                    <div className="w-2 h-2 rounded-full bg-amber-500/30" />
-                  </div>
-                  <span className="text-[11px] font-black text-amber-500 uppercase tracking-[0.5em] translate-y-px">DEPLOYED</span>
+                    ~{plan.estimatedSteps}s
+                  </span>
                 </div>
               )}
             </div>
+
+            {isApprovalMode ? (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={onReject}
+                  className="font-display"
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    borderRadius: 6,
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'transparent',
+                    color: 'var(--tx-secondary)',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                    e.currentTarget.style.color = 'var(--tx-primary)'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = 'var(--tx-secondary)'
+                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                  }}
+                >
+                  Reject
+                </button>
+
+                <button
+                  onClick={onApprove}
+                  className="font-display"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    padding: '8px 16px',
+                    fontSize: 11,
+                    fontWeight: 500,
+                    letterSpacing: '0.05em',
+                    textTransform: 'uppercase',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: 'var(--amber)',
+                    color: '#000',
+                    cursor: 'pointer',
+                    transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(234,179,8,0.85)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--amber)'
+                  }}
+                >
+                  <Pxi name="play" size={10} />
+                  <span>Approve</span>
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(234,179,8,0.1)',
+                  border: '1px solid rgba(234,179,8,0.2)',
+                }}
+              >
+                <div
+                  style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: '50%',
+                    background: 'var(--amber)',
+                  }}
+                />
+                <span
+                  className="font-display"
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 500,
+                    color: 'var(--amber)',
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Running
+                </span>
+              </div>
+            )}
           </div>
         </>
       )}

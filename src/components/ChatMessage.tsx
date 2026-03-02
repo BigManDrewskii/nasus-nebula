@@ -6,6 +6,7 @@ import { Pxi } from './Pxi'
 import { ThinkingIndicator } from './ThinkingIndicator'
 import { formatBytes } from '../hooks/useAttachments'
 import { OutputCardRenderer } from './OutputCards'
+import { useDebouncedStreaming } from '../hooks/useStreaming'
 
 // ─── Copy button ──────────────────────────────────────────────────────────────
 
@@ -473,9 +474,12 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   const hasError    = !!message.error
   const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
 
+  // Debounce streaming content to reduce re-renders during rapid token updates
+  const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
+
   const renderedContent = useMemo(
-    () => hasContent ? renderMarkdown(message.content) : null,
-    [message.content, hasContent],
+    () => hasContent ? renderMarkdown(debouncedContent) : null,
+    [debouncedContent, hasContent],
   )
 
   const outputCardFiles = useMemo<OutputCardFile[]>(() => {
@@ -538,7 +542,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
                   verticalAlign: 'text-bottom',
                   background: 'var(--amber)',
                   opacity: 0.8,
-                  animation: 'cursor-blink 1s step-start infinite',
+                  animation: 'cursorPulse 1.2s ease-in-out infinite',
                 }}
               />
             )}
@@ -565,7 +569,54 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
+/**
+ * Memoized ChatMessage with custom comparison to prevent unnecessary re-renders.
+ * Only re-renders when:
+ * - Message ID changes (different message)
+ * - Content changes (for user messages or final agent response)
+ * - Streaming state changes (toggles cursor, typing indicator)
+ * - Error state changes
+ * - Steps array length changes (new tool calls)
+ *
+ * During streaming, we avoid re-rendering on every content chunk by only
+ * checking if streaming state toggles on/off, not the content itself.
+ */
 export const ChatMessage = memo(function ChatMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
   if (message.author === 'user') return <UserBubble content={message.content} attachments={message.attachments} />
   return <AgentMessage message={message} onRetry={onRetry} />
+}, (prevProps, nextProps) => {
+  const prev = prevProps.message
+  const next = nextProps.message
+
+  // Different message entirely
+  if (prev.id !== next.id) return false
+
+  // Author changed (shouldn't happen but handle it)
+  if (prev.author !== next.author) return false
+
+  // Streaming state toggled
+  if (prev.streaming !== next.streaming) return false
+
+  // Error state changed
+  if (prev.error !== next.error) return false
+
+  // Steps array length changed (new/removed tool calls)
+  const prevStepsLen = prev.steps?.length ?? 0
+  const nextStepsLen = next.steps?.length ?? 0
+  if (prevStepsLen !== nextStepsLen) return false
+
+  // For user messages: content change triggers re-render
+  if (prev.author === 'user' && prev.content !== next.content) return false
+
+  // For agent messages: only re-render content when NOT streaming
+  // This prevents janky re-renders during content streaming
+  if (prev.author === 'agent' && !prev.streaming && !next.streaming && prev.content !== next.content) {
+    return false
+  }
+
+  // Attachments changed
+  if (prev.attachments?.length !== next.attachments?.length) return false
+
+  // Props are equivalent - skip re-render
+  return true
 })

@@ -5,17 +5,17 @@ import type { Task, Message, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
 import { UserInputArea, type UserInputAreaHandle, type InputState } from './UserInputArea'
-import { ActionChips } from './ActionChips'
 import { MemoryViewer } from './MemoryViewer'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
 import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
-import { WorkspacePicker } from './WorkspacePicker'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 import { PlanView } from './PlanConfirmationModal'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
+import { useAgentStatus } from './chat/hooks/useAgentStatus'
+import { ChatEmptyState } from './chat/ChatEmptyState'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -52,13 +52,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       workspacePath,
       apiBase,
       provider,
-      braveSearchKey,
-      googleCseKey,
-      googleCseId,
-      serperKey,
-      tavilyKey,
-      searxngUrl,
-      searchProvider,
+      exaKey,
       maxIterations,
       setWorkspacePath,
       addRecentWorkspacePath,
@@ -74,7 +68,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       currentStep,
       setSandboxStatus,
       sandboxStatus: globalSandboxStatus,
+      extensionConnected,
+      extensionVersion,
     } = useAppStore()
+
+    // Use the agent status hook to track agent state
+    const { status: agentStatus, iteration } = useAgentStatus(task?.id)
 
     const runningRef = useRef(false)
     const queuedMsgRef = useRef<string | null>(null)
@@ -83,26 +82,25 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const messageListRef = useRef<HTMLDivElement>(null)
     const bottomRef = useRef<HTMLDivElement>(null)
 
-    const [iteration, setIteration] = useState(0)
     const [tokenCount, setTokenCount] = useState(0)
     const [showMemory, setShowMemory] = useState(false)
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
-    // Track whether the agent is actively running (used for correct isActive state)
-    const [agentRunning, setAgentRunning] = useState(false)
-  const [activeModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
-  // Routing preview state
-  const [routingPreview, setRoutingPreview] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
-  // Cost badge for completed tasks
-  const [taskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
-    // processingPhase: true from Send until first token/tool — drives "thinking" input state
-    const [processingPhase, setProcessingPhase] = useState(false)
+    const [activeModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+    // Routing preview state
+    const [routingPreview, setRoutingPreview] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
+    // Cost badge for completed tasks
+    const [taskCostBadge] = useState<{ costUsd: number; isFree: boolean; callCount: number } | null>(null)
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
     const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
-  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
+    const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
     const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
     const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null)
-  const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
+    const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
+
+    // Derived state from agentStatus hook
+    const agentRunning = agentStatus === 'processing' || agentStatus === 'streaming'
+    const processingPhase = agentStatus === 'processing'
 
   const sandboxStatus = (globalSandboxStatus === 'error' ? 'stopped' : globalSandboxStatus) as 'idle' | 'starting' | 'ready' | 'stopped'
   const isActive = agentRunning
@@ -139,10 +137,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig })
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig })
   useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig }
-  }, [apiKey, model, workspacePath, apiBase, provider, braveSearchKey, googleCseKey, googleCseId, serperKey, tavilyKey, searxngUrl, searchProvider, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig])
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig }
+  }, [apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig])
 
   const runAgent = useCallback(async (
             taskId: string,
@@ -164,18 +162,18 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 model: cfg.model || 'anthropic/claude-3.7-sonnet',
                 apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
                 provider: cfg.provider || 'openrouter',
+                workspacePath: cfg.workspacePath || '',
                 searchConfig: {
-                  provider: cfg.searchProvider || 'auto',
-                  apiKey: cfg.braveSearchKey || undefined,
-                  serperKey: cfg.serperKey || undefined,
-                  tavilyKey: cfg.tavilyKey || undefined,
+                  exaKey: cfg.exaKey || '',
                 },
                 executionConfig: {
                   executionMode: (cfg.executionMode || 'docker') as 'docker' | 'e2b' | 'pyodide' | 'disabled',
                   e2bApiKey: cfg.e2bApiKey || undefined,
                   taskId: taskId,
-                  workspacePath: cfg.workspacePath,
                 },
+                routerMode: 'auto' as const,
+                routerBudget: 'balanced' as const,
+                routerModelOverrides: {},
                 maxIterations: cfg.maxIterations ?? 50,
                 taskTitle,
                 usePlanning: true, // Enable the Orchestrator (Planning Agent)
@@ -192,7 +190,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
         useAppStore.getState().setStreaming(taskId, agentMsgId, false)
       }
       runningRef.current = false
-      setAgentRunning(false)
     }
     // Drain queued message if one arrived while running
     const queued = queuedMsgRef.current
@@ -299,9 +296,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       }
       addMessage(task.id, agentMsg)
       runningRef.current = true
-      setAgentRunning(true)
-      setProcessingPhase(true)
-      setIteration(0)
       setTokenCount(0)
       setSandboxStatus(isTauri ? 'starting' : 'idle')
       updateTaskStatus(task.id, 'in_progress')
@@ -332,8 +326,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setError(task.id, failedMsgId, '')
     setStreaming(task.id, failedMsgId, true)
     runningRef.current = true
-    setAgentRunning(true)
-    setIteration(0)
     setTokenCount(0)
     setSandboxStatus(isTauri ? 'starting' : 'idle')
     updateTaskStatus(task.id, 'in_progress')
@@ -344,14 +336,12 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       if (!task) return
       queuedMsgRef.current = null
       setQueuedMsg(null)
-      setProcessingPhase(false)
       // Always call stopWebAgent even in Tauri mode since we're using runWebAgent
       stopWebAgent(task.id)
       if (isTauri) {
         try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
       }
       runningRef.current = false
-      setAgentRunning(false)
       updateTaskStatus(task.id, 'stopped')
     }
 
@@ -439,172 +429,30 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
         {/* Empty state */}
       {showEmptyState ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6">
-          <div className="w-full max-w-lg flex flex-col items-center gap-8">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <h3 className="font-display font-bold tracking-tight" style={{ fontSize: 20, color: 'var(--tx-primary)', marginBottom: 8 }}>
-                  What would you like to accomplish?
-                </h3>
-                <p className="max-w-sm leading-relaxed mx-auto" style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
-                  Autonomous agent with a real sandbox — browses the web, writes &amp; runs code, manages files.
-                </p>
-              </div>
-            </div>
-              <ActionChips onSend={handleSend} onPrefill={(p) => inputRef.current?.prefill(p)} centered />
-
-              {/* Workspace indicator */}
-              <div className="w-full">
-                {showWorkspacePicker ? (
-                  <div
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 12,
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.07)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 8,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.11em', color: 'var(--tx-tertiary)' }}>
-                        <Pxi name="folder-open" size={9} style={{ color: 'var(--tx-tertiary)' }} />
-                        Workspace
-                      </label>
-                      <button
-                        onClick={() => setShowWorkspacePicker(false)}
-                        aria-label="Close workspace picker"
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 2 }}
-                        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-                      >
-                        <Pxi name="times" size={10} />
-                      </button>
-                    </div>
-                    <WorkspacePicker
-                      value={localWorkspace}
-                      onChange={setLocalWorkspace}
-                    />
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                      <button
-                        onClick={() => setShowWorkspacePicker(false)}
-                        style={{ fontSize: 11, padding: '4px 10px', borderRadius: 7, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--tx-tertiary)' }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          const p = localWorkspace.trim()
-                          setWorkspacePath(p)
-                          if (p) addRecentWorkspacePath(p)
-                          setShowWorkspacePicker(false)
-                        }}
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: '4px 12px',
-                          borderRadius: 7,
-                          border: 'none',
-                          background: 'var(--amber)',
-                          color: '#000',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Set workspace
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setLocalWorkspace(workspacePath); setShowWorkspacePicker(true) }}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 7,
-                      padding: '7px 12px',
-                      borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      background: 'transparent',
-                      cursor: 'pointer',
-                      transition: 'background 0.12s, border-color 0.12s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}
-                  >
-                    <Pxi name="folder" size={10} style={{ color: workspacePath ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }} />
-                    <span
-                      style={{
-                        flex: 1,
-                        fontSize: 11,
-                        fontFamily: 'var(--font-mono)',
-                        color: workspacePath ? 'var(--tx-secondary)' : 'var(--tx-tertiary)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        textAlign: 'left',
-                      }}
-                      >
-                        {workspacePath || '/tmp/nasus-workspace (default)'}
-                      </span>
-                    <Pxi name="pen" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                  </button>
-                )}
-              </div>
-
-                          <div className="w-full relative">
-                            <div style={{
-                              position: 'absolute', top: -18, right: 0,
-                              display: 'flex', alignItems: 'center', gap: 4,
-                              fontSize: 9, fontWeight: 600, color: isPaid ? 'var(--amber)' : '#4ade80',
-                              opacity: 0.6, letterSpacing: '0.02em'
-                            }}>
-                              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
-                              USING {routeLabel} ROUTE
-                            </div>
-
-
-                        <UserInputArea
-                          ref={inputRef}
-                          onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
-                          onContentChange={updateRoutingPreview}
-                          disabled={false}
-                          autoFocus
-                          inputState={inputState}
-                          attachments={attachments}
-                          onAddFiles={addFiles}
-                          onRemoveAttachment={removeAttachment}
-                          isOverLimit={isOverLimit}
-                          totalAttachmentSize={totalSize}
-                        />
-                      </div>
-
-
-                  {/* Keyboard shortcut legend */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.6 }}>
-                    {[
-                      { key: '⌘N', label: 'New task' },
-                      { key: '⌘K', label: 'Search' },
-                      { key: '⌘,', label: 'Settings' },
-                      { key: 'Esc', label: 'Stop' },
-                    ].map(({ key, label }) => (
-                      <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <kbd style={{
-                          fontSize: 9,
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--tx-secondary)',
-                          background: 'rgba(255,255,255,0.08)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: 4,
-                          padding: '1px 4px',
-                        }}>{key}</kbd>
-                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontWeight: 500 }}>{label}</span>
-                      </span>
-                    ))}
-                  </div>
-          </div>
-        </div>
+        <ChatEmptyState
+          workspacePath={workspacePath}
+          localWorkspace={localWorkspace}
+          showWorkspacePicker={showWorkspacePicker}
+          setShowWorkspacePicker={setShowWorkspacePicker}
+          setLocalWorkspace={setLocalWorkspace}
+          setWorkspacePath={setWorkspacePath}
+          addRecentWorkspacePath={addRecentWorkspacePath}
+          onSend={handleSend}
+          onPrefill={(p) => inputRef.current?.prefill(p)}
+          inputRef={inputRef}
+          attachments={attachments}
+          onAddFiles={addFiles}
+          onRemoveAttachment={removeAttachment}
+          isOverLimit={isOverLimit}
+          totalAttachmentSize={totalSize}
+          provider={provider}
+          routerConfig={routerConfig}
+          extensionConnected={extensionConnected}
+          extensionVersion={extensionVersion}
+          isPaid={isPaid}
+          routeLabel={routeLabel}
+          onContentChange={updateRoutingPreview}
+        />
       ) : (
         <>
             {/* Message list */}

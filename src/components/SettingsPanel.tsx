@@ -5,7 +5,10 @@ import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
-import { getExtensionId, setExtensionId, pingExtension } from '../agent/browserBridge'
+import { getExtensionId, setExtensionId, pingExtension, autoDetectExtensionId, getConnectionStatus } from '../agent/browserBridge'
+
+// Detect if running in Tauri desktop app
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
 
@@ -50,13 +53,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       apiKey, model, workspacePath,
       setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
       openRouterModels, setOpenRouterModels,
-      braveSearchKey, setBraveSearchKey,
-      googleCseKey, setGoogleCseKey,
-      googleCseId, setGoogleCseId,
-      serperKey, setSerperKey,
-      tavilyKey, setTavilyKey,
-      searxngUrl, setSearxngUrl,
-      searchProvider, setSearchProvider,
+      exaKey, setExaKey,
       maxIterations, setMaxIterations,
       addRecentWorkspacePath,
       routerConfig, setRouterConfig,
@@ -65,13 +62,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localKey, setLocalKey] = useState(apiKey)
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
-  const [localBraveKey, setLocalBraveKey] = useState(braveSearchKey || '')
-  const [localGoogleCseKey, setLocalGoogleCseKey] = useState(googleCseKey || '')
-  const [localGoogleCseId, setLocalGoogleCseId] = useState(googleCseId || '')
-  const [localSerperKey, setLocalSerperKey] = useState(serperKey || '')
-  const [localTavilyKey, setLocalTavilyKey] = useState(tavilyKey || '')
-  const [localSearxngUrl, setLocalSearxngUrl] = useState(searxngUrl || '')
-  const [localSearchProvider, setLocalSearchProvider] = useState(searchProvider || 'auto')
+  const [localExaKey, setLocalExaKey] = useState(exaKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
 
   // Code execution state
@@ -205,13 +196,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalKey('')
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
-    setLocalBraveKey('')
-    setLocalGoogleCseKey('')
-    setLocalGoogleCseId('')
-    setLocalSerperKey('')
-    setLocalTavilyKey('')
-    setLocalSearxngUrl('')
-    setLocalSearchProvider('auto')
+    setLocalExaKey('')
     setLocalMaxIterations('50')
     setLocalE2bKey('')
     setLocalExecutionMode('e2b')
@@ -242,24 +227,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
       setApiBase(finalApiBase)
       setProvider(finalProvider)
-      setBraveSearchKey(localBraveKey.trim())
-      setGoogleCseKey(localGoogleCseKey.trim())
-      setGoogleCseId(localGoogleCseId.trim())
-      setSerperKey(localSerperKey.trim())
-      setTavilyKey(localTavilyKey.trim())
-      setSearxngUrl(localSearxngUrl.trim())
-      setSearchProvider(localSearchProvider)
-      
+      setExaKey(localExaKey.trim())
+
       const searchConfig = {
-        provider: localSearchProvider,
-        serperKey: localSerperKey.trim(),
-        tavilyKey: localTavilyKey.trim(),
-        braveKey: localBraveKey.trim(),
-        googleCseKey: localGoogleCseKey.trim(),
-        googleCseId: localGoogleCseId.trim(),
-        searxngUrl: localSearxngUrl.trim(),
+        exaKey: localExaKey.trim(),
       }
-      
+
       await tauriInvoke('save_search_config', { searchConfig }).catch(() => {})
 
       const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
@@ -616,20 +589,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
               {/* ── Web Search ── */}
               <SearchSection
-                searchProvider={localSearchProvider}
-                onSearchProviderChange={setLocalSearchProvider}
-                braveKey={localBraveKey}
-                onBraveKeyChange={setLocalBraveKey}
-                googleCseKey={localGoogleCseKey}
-                onGoogleCseKeyChange={setLocalGoogleCseKey}
-                googleCseId={localGoogleCseId}
-                onGoogleCseIdChange={setLocalGoogleCseId}
-                serperKey={localSerperKey}
-                onSerperKeyChange={setLocalSerperKey}
-                tavilyKey={localTavilyKey}
-                onTavilyKeyChange={setLocalTavilyKey}
-                searxngUrl={localSearxngUrl}
-                onSearxngUrlChange={setLocalSearxngUrl}
+                exaKey={localExaKey}
+                onExaKeyChange={setLocalExaKey}
               />
 
             {/* ── Code Execution ── */}
@@ -645,7 +606,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             />
 
             {/* ── Browser Access ── */}
-            <BrowserAccessSection />
+            {!isTauri && <BrowserAccessSection />}
 
             {/* ── Max Iterations ── */}
             <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
@@ -725,55 +686,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
 // ─── SearchSection ────────────────────────────────────────────────────────────
 
-const SEARCH_PROVIDERS = [
-  { id: 'auto',      label: 'Auto',         desc: 'Best available: Serper → Tavily → Brave → Google CSE → SearXNG → Wikipedia → DuckDuckGo' },
-  { id: 'serper',    label: 'Serper',        desc: 'Google results via Serper API — 2,500 free queries, then $1/1K' },
-  { id: 'tavily',    label: 'Tavily',        desc: 'AI-optimized results with direct answers — 1,000 free credits/month' },
-  { id: 'brave',     label: 'Brave Search',  desc: '2,000 req/mo free — real web index' },
-  { id: 'google',    label: 'Google CSE',    desc: '100 req/day free — Google results via Custom Search' },
-  { id: 'searxng',   label: 'SearXNG',       desc: 'Free, no key — public meta-search instances (or self-hosted)' },
-  { id: 'wikipedia', label: 'Wikipedia',     desc: 'Free, no key — encyclopedic facts only' },
-  { id: 'ddg',       label: 'DuckDuckGo',   desc: 'Free, no key — Instant Answers only (limited)' },
-] as const
-
-type SearchProviderId = (typeof SEARCH_PROVIDERS)[number]['id']
-
 function SearchSection({
-  searchProvider, onSearchProviderChange,
-  braveKey, onBraveKeyChange,
-  googleCseKey, onGoogleCseKeyChange,
-  googleCseId, onGoogleCseIdChange,
-  serperKey, onSerperKeyChange,
-  tavilyKey, onTavilyKeyChange,
-  searxngUrl, onSearxngUrlChange,
+  exaKey, onExaKeyChange,
 }: {
-  searchProvider: string
-  onSearchProviderChange: (v: string) => void
-  braveKey: string
-  onBraveKeyChange: (v: string) => void
-  googleCseKey: string
-  onGoogleCseKeyChange: (v: string) => void
-  googleCseId: string
-  onGoogleCseIdChange: (v: string) => void
-  serperKey: string
-  onSerperKeyChange: (v: string) => void
-  tavilyKey: string
-  onTavilyKeyChange: (v: string) => void
-  searxngUrl: string
-  onSearxngUrlChange: (v: string) => void
+  exaKey: string
+  onExaKeyChange: (v: string) => void
 }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const selected = SEARCH_PROVIDERS.find((p) => p.id === searchProvider) ?? SEARCH_PROVIDERS[0]
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
     color: 'var(--tx-primary)', background: '#0d0d0d',
@@ -782,136 +700,15 @@ function SearchSection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Provider row */}
-      <Field label="Intelligence Retrieval" icon="search"
-        hint={<span style={{ color: 'var(--tx-tertiary)' }}>{selected.desc}</span>}
+      <Field label="Exa API Key" icon="key"
+        hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>dashboard.exa.ai</a></>}
       >
-        <div style={{ position: 'relative' }} ref={ref}>
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
-              background: '#0d0d0d',
-              border: `1px solid ${open ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
-              color: 'var(--tx-primary)', transition: 'border-color 0.12s',
-            }}
-          >
-            <span>{selected.label}</span>
-            <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
-          </button>
-          {open && (
-            <div style={{
-              position: 'absolute', zIndex: 10, width: '100%', marginTop: 4, borderRadius: 12,
-              overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
-              background: '#161616', border: '1px solid rgba(255,255,255,0.08)',
-            }}>
-              {SEARCH_PROVIDERS.map((p) => {
-                const isSel = p.id === (searchProvider as SearchProviderId)
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => { onSearchProviderChange(p.id); setOpen(false) }}
-                    style={{
-                      width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                      padding: '8px 12px', textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
-                      color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                      background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                      transition: 'background 0.1s', gap: 2,
-                    }}
-                    onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                    onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                      <span>{p.label}</span>
-                      {isSel && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
-                    </div>
-                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{p.desc}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <input type="password" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
+          placeholder="exa_…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
+          onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+        />
       </Field>
-
-      {/* Serper key — show when provider is 'serper' or 'auto' */}
-      {(searchProvider === 'serper' || searchProvider === 'auto') && (
-        <Field label="Serper API Key" icon="key"
-          hint={<>2,500 free queries, then $1/1K. Get a key at <a href="https://serper.dev" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>serper.dev</a>{searchProvider === 'auto' ? ' (optional — used first in Auto mode)' : ''}</>}
-        >
-          <input type="password" value={serperKey} onChange={(e) => onSerperKeyChange(e.target.value)}
-            placeholder="serper API key…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-        </Field>
-      )}
-
-      {/* Tavily key — show when provider is 'tavily' or 'auto' */}
-      {(searchProvider === 'tavily' || searchProvider === 'auto') && (
-        <Field label="Tavily API Key" icon="key"
-          hint={<>1,000 free credits/month, $0.008/credit after. Get a key at <a href="https://tavily.com" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>tavily.com</a>{searchProvider === 'auto' ? ' (optional — used second in Auto mode)' : ''}</>}
-        >
-          <input type="password" value={tavilyKey} onChange={(e) => onTavilyKeyChange(e.target.value)}
-            placeholder="tvly-…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-        </Field>
-      )}
-
-      {/* Brave key — show when provider is 'brave' or 'auto' */}
-      {(searchProvider === 'brave' || searchProvider === 'auto') && (
-        <Field label="Brave Search API Key" icon="key"
-          hint={<>2,000 req/mo free. Get a key at <a href="https://brave.com/search/api/" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>brave.com/search/api</a>{searchProvider === 'auto' ? ' (optional — used as fallback)' : ''}</>}
-        >
-          <input type="password" value={braveKey} onChange={(e) => onBraveKeyChange(e.target.value)}
-            placeholder="BSA…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-        </Field>
-      )}
-
-      {/* Google CSE — show when provider is 'google' or 'auto' */}
-      {(searchProvider === 'google' || searchProvider === 'auto') && (
-        <>
-          <Field label="Google CSE API Key" icon="key"
-            hint={<>100 req/day free. Get a key at <a href="https://developers.google.com/custom-search/v1/introduction" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>developers.google.com/custom-search</a>{searchProvider === 'auto' ? ' (optional — used as fallback)' : ''}</>}
-          >
-            <input type="password" value={googleCseKey} onChange={(e) => onGoogleCseKeyChange(e.target.value)}
-              placeholder="AIza…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-            />
-          </Field>
-          <Field label="Google CSE Engine ID" icon="magnifying-glass"
-            hint="The 'cx' search engine ID from your Programmable Search Engine dashboard."
-          >
-            <input type="text" value={googleCseId} onChange={(e) => onGoogleCseIdChange(e.target.value)}
-              placeholder="017576662512468239146:omuauf_lfve" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-              onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-            />
-          </Field>
-          </>
-        )}
-
-      {/* SearXNG URL — show when provider is 'searxng' or 'auto' */}
-      {(searchProvider === 'searxng' || searchProvider === 'auto') && (
-        <Field label="SearXNG Instance URL" icon="server"
-          hint={<>Optional. Your self-hosted or private SearXNG instance URL (e.g. <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--tx-secondary)' }}>http://localhost:8080</code>). Leave blank to use public instances.</>}
-        >
-          <input type="text" value={searxngUrl} onChange={(e) => onSearxngUrlChange(e.target.value)}
-            placeholder="http://localhost:8080" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-        </Field>
-      )}
     </div>
     )
 }
@@ -1095,13 +892,50 @@ function BrowserAccessSection() {
   const [extId, setExtId] = useState(() => getExtensionId())
   const [status, setStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
   const [localId, setLocalId] = useState(extId)
+  const [showTroubleshoot, setShowTroubleshoot] = useState(false)
+  const { setExtensionConnected } = useAppStore()
 
   async function handleTest() {
     setStatus('checking')
     setExtensionId(localId)
     setExtId(localId)
     const ok = await pingExtension()
+
+    // Update global store state
+    if (ok) {
+      try {
+        const extStatus = await getConnectionStatus()
+        setExtensionConnected(true, extStatus.version)
+      } catch {
+        setExtensionConnected(true)
+      }
+    } else {
+      setExtensionConnected(false)
+    }
+
     setStatus(ok ? 'connected' : 'error')
+  }
+
+  async function handleAutoDetect() {
+    setStatus('checking')
+    const detected = await autoDetectExtensionId()
+    if (detected) {
+      setLocalId(detected)
+      setExtId(detected)
+      setStatus('connected')
+
+      // Update global store state
+      try {
+        const extStatus = await getConnectionStatus()
+        setExtensionConnected(true, extStatus.version)
+      } catch {
+        setExtensionConnected(true, '1.1.0')
+      }
+    } else {
+      setStatus('error')
+      setShowTroubleshoot(true)
+      setExtensionConnected(false)
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -1138,6 +972,24 @@ function BrowserAccessSection() {
           />
           <button
             type="button"
+            onClick={handleAutoDetect}
+            disabled={status === 'checking'}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '8px 12px',
+              borderRadius: 8, fontSize: 12, border: 'none', cursor: status === 'checking' ? 'not-allowed' : 'pointer',
+              background: 'rgba(34,197,94,0.15)', color: '#4ade80',
+              opacity: status === 'checking' ? 0.45 : 1,
+              transition: 'color 0.12s', flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.25)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.15)' }}
+            title="Try to find the extension automatically"
+          >
+            <Pxi name={status === 'checking' ? 'spinner-third' : 'search'} size={10} />
+            Auto-detect
+          </button>
+          <button
+            type="button"
             onClick={handleTest}
             disabled={!localId.trim() || status === 'checking'}
             style={{
@@ -1154,22 +1006,75 @@ function BrowserAccessSection() {
             Test
           </button>
         </div>
+
+        {/* Troubleshooting toggle */}
+        <button
+          type="button"
+          onClick={() => setShowTroubleshoot(!showTroubleshoot)}
+          style={{
+            fontSize: 11, color: 'var(--tx-tertiary)', background: 'none', border: 'none',
+            cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+        >
+          <Pxi name={showTroubleshoot ? 'chevron-up' : 'chevron-down'} size={8} />
+          {showTroubleshoot ? 'Hide' : 'Show'} troubleshooting
+        </button>
       </Field>
 
       {/* Install instructions */}
-      <div style={{
-        padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-        border: '1px solid rgba(255,255,255,0.06)',
-        fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
-        display: 'flex', flexDirection: 'column', gap: 4,
-      }}>
-        <div style={{ color: 'var(--tx-secondary)', fontWeight: 500, marginBottom: 2 }}>How to install:</div>
-        <div>1. Open Chrome → <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>chrome://extensions</code></div>
-        <div>2. Enable <strong style={{ color: 'var(--tx-secondary)' }}>Developer mode</strong> (top right toggle)</div>
-        <div>3. Click <strong style={{ color: 'var(--tx-secondary)' }}>Load unpacked</strong> → select the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>browser-extension/</code> folder in the Nasus project</div>
-        <div>4. Copy the Extension ID shown on the card and paste it above</div>
-        <div>5. Click <strong style={{ color: 'var(--tx-secondary)' }}>Test</strong> to verify the connection</div>
-      </div>
+      {!showTroubleshoot ? (
+        <div style={{
+          padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+          border: '1px solid rgba(255,255,255,0.06)',
+          fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          <div style={{ color: 'var(--tx-secondary)', fontWeight: 500, marginBottom: 2 }}>How to install:</div>
+          <div>1. Open Chrome → <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>chrome://extensions</code></div>
+          <div>2. Enable <strong style={{ color: 'var(--tx-secondary)' }}>Developer mode</strong> (top right toggle)</div>
+          <div>3. Click <strong style={{ color: 'var(--tx-secondary)' }}>Load unpacked</strong> → select the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>browser-extension/</code> folder in the Nasus project</div>
+          <div>4. Copy the Extension ID shown on the card and paste it above</div>
+          <div>5. Click <strong style={{ color: 'var(--tx-secondary)' }}>Test</strong> to verify the connection</div>
+        </div>
+      ) : (
+        <div style={{
+          padding: '10px 12px', borderRadius: 10, background: 'rgba(248,113,113,0.08)',
+          border: '1px solid rgba(248,113,113,0.2)',
+          fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
+          display: 'flex', flexDirection: 'column', gap: 6,
+        }}>
+          <div style={{ color: '#f87171', fontWeight: 500, marginBottom: 2 }}>Troubleshooting:</div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div><strong style={{ color: 'var(--tx-secondary)' }}>Extension not found?</strong></div>
+            <div style={{ marginLeft: 12 }}>
+              • Make sure Developer mode is enabled at chrome://extensions<br/>
+              • The extension card should be visible and enabled<br/>
+              • Try reloading the extension and clicking Test again
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div><strong style={{ color: 'var(--tx-secondary)' }}>Connection timeout?</strong></div>
+            <div style={{ marginLeft: 12 }}>
+              • Refresh this page after installing the extension<br/>
+              • Check that the Extension ID matches exactly (32 characters)<br/>
+              • Try clicking Auto-detect if you've loaded the extension unpacked
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div><strong style={{ color: 'var(--tx-secondary)' }}>Still not working?</strong></div>
+            <div style={{ marginLeft: 12 }}>
+              • Open browser DevTools Console (F12) and check for errors<br/>
+              • Make sure you're using Chrome (not Safari/Firefox)<br/>
+              • Try removing and re-loading the extension unpacked
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

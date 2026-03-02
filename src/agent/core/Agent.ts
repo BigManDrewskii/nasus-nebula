@@ -53,10 +53,7 @@ export interface AgentContext {
   /** Execution config for sandbox */
   executionConfig?: ExecutionConfig
   /** Search configuration */
-  searchConfig?: {
-    provider: string
-    apiKey?: string
-  }
+  searchConfig?: { exaKey: string }
   /** Optional plan for execution agents */
   plan?: ExecutionPlan
   /** Optional correction hints from verification */

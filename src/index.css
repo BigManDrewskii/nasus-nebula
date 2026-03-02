@@ -193,6 +193,9 @@ html, body, #root {
 .msg-in {
   animation: msg-in 0.2s cubic-bezier(0.22,1,0.36,1) forwards;
   will-change: transform, opacity;
+  /* Performance: skip rendering off-screen messages */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
 }
 
 /* Shimmer */
@@ -214,6 +217,22 @@ html, body, #root {
 .fade-in {
   animation: fadeIn 0.18s ease-out forwards;
   will-change: transform, opacity;
+}
+
+/* Streaming cursor pulse - smooth breathing animation */
+@keyframes cursorPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Streaming text fade-in - for paragraphs appearing during stream */
+@keyframes streamFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.para-in {
+  animation: streamFadeIn 0.3s ease-out forwards;
 }
 
 /* Pulse glow — amber */
@@ -692,6 +711,14 @@ html, body, #root {
 @media (max-width: 980px) {
   .output-pane-meta {
     padding: 7px 10px;
+  }
+}
+
+/* ── Responsive utilities ───────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .hide-below-sm {
+    display: none !important;
   }
 }
 

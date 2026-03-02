@@ -1,0 +1,19 @@
+{
+  "name": "nasus-browser-sidecar",
+  "version": "1.0.0",
+  "description": "Playwright-based browser automation sidecar for Nasus",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "install": "node install.js"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

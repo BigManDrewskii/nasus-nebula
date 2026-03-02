@@ -11,7 +11,7 @@ import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
 import { streamCompletion, chatOnce, cheapestModel } from '../llm'
-import { executeTool, startTurnTracking, flushTurnFiles, getWorkspace, type SearchConfig, type SearchStatusCallback } from '../tools'
+import { executeTool, startTurnTracking, flushTurnFiles, getWorkspace, type SearchStatusCallback } from '../tools'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
 import type { AgentStep, Task } from '../../types'
@@ -117,6 +117,8 @@ export class ExecutionAgent extends BaseAgent {
 
   private errorTracker = new ErrorTracker()
   private searchBrowseCount = 0
+  // Track progress for auto-updating task_plan.md
+  private completedCheckboxes = 0
 
   constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
     super(name, type)
@@ -268,7 +270,6 @@ export class ExecutionAgent extends BaseAgent {
         messages,
         taskId,
         messageId,
-        params.searchConfig,
         params.executionConfig,
         signal,
         iteration,
@@ -477,7 +478,6 @@ export class ExecutionAgent extends BaseAgent {
     messages: LlmMessage[],
     taskId: string,
     messageId: string,
-    searchConfig?: SearchConfig,
     executionConfig?: ExecutionConfig,
     signal?: AbortSignal,
     iteration = 0,
@@ -518,7 +518,7 @@ export class ExecutionAgent extends BaseAgent {
       }
 
       const { output: rawOutput, isError } = await executeTool(
-        taskId, fnName, args, searchConfig,
+        taskId, fnName, args,
         fnName === 'search_web'
           ? (evt: Parameters<SearchStatusCallback>[0]) => this.emitSearchStatus(taskId, messageId, callId, evt)
           : undefined,
@@ -551,6 +551,9 @@ export class ExecutionAgent extends BaseAgent {
       } else {
         this.errorTracker.reset(fnName)
         output = rawOutput
+
+        // Auto-update task_plan.md after successful tool execution
+        this.updateTaskPlanProgress(taskId)
       }
 
       this.emitToolResult(taskId, messageId, callId, output, isError)
@@ -686,6 +689,62 @@ export class ExecutionAgent extends BaseAgent {
     useAppStore.getState().addStep(taskId, messageId, step)
 
     return removed
+  }
+
+  /**
+   * Auto-update task_plan.md with progress checkboxes.
+   * Marks the next unchecked item as complete after successful tool execution.
+   */
+  private updateTaskPlanProgress(taskId: string): void {
+    try {
+      const ws = getWorkspace(taskId)
+      if (!ws) return
+
+      const planContent = ws.get('task_plan.md')
+      if (!planContent) return
+
+      const lines = planContent.split('\n')
+      let updated = false
+      let checkCount = 0
+
+      // Find and update the next unchecked checkbox
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+
+        // Match checkbox formats: [ ] or [?] or ☐
+        const hasUnchecked = /\[?\s*\]|☐/.test(line)
+        if (hasUnchecked && (line.includes('[ ]') || line.includes('[?]') || line.includes('☐'))) {
+          if (checkCount === this.completedCheckboxes) {
+            // Mark this checkbox as complete
+            if (line.includes('[ ]')) {
+              lines[i] = line.replace('[ ]', '[x]')
+            } else if (line.includes('[?]')) {
+              lines[i] = line.replace('[?]', '[x]')
+            } else if (line.includes('☐')) {
+              lines[i] = line.replace('☐', '☑')
+            }
+            updated = true
+            this.completedCheckboxes++
+            break
+          }
+          checkCount++
+        }
+      }
+
+      if (updated) {
+        ws.set('task_plan.md', lines.join('\n'))
+      }
+    } catch (e) {
+      // Silently fail - if we can't update the plan, execution continues
+      console.debug('Failed to update task_plan.md:', e)
+    }
+  }
+
+  /**
+   * Reset progress tracking when starting a new task.
+   */
+  resetProgressTracking(): void {
+    this.completedCheckboxes = 0
   }
 
   private async autoTitle(

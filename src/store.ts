@@ -81,14 +81,8 @@ interface AppState {
       dynamicModels: string[]
       /** Unix ms timestamp of last successful models fetch — used to decide when to refresh */
       modelsLastFetched: number
-        braveSearchKey: string
-        googleCseKey: string
-        googleCseId: string
-        serperKey: string
-        tavilyKey: string
-        searxngUrl: string
-        // 'auto' | 'brave' | 'google' | 'searxng' | 'ddg' | 'serper' | 'tavily'
-        searchProvider: string
+        /** Exa AI API key for web search */
+        exaKey: string
       maxIterations: number
       /** Set to true after the user completes onboarding */
       onboardingComplete: boolean
@@ -101,6 +95,9 @@ interface AppState {
         /** Live sandbox status shown in UI */
         sandboxStatus: 'idle' | 'starting' | 'ready' | 'error'
         sandboxStatusMessage: string
+    // Browser extension connection
+    extensionConnected: boolean
+    extensionVersion: string | null
 
   // Planning state
   pendingPlan: ExecutionPlan | null
@@ -134,19 +131,14 @@ interface AppState {
   addRecentWorkspacePath: (path: string) => void
   setApiBase: (base: string) => void
   setProvider: (provider: string) => void
-    setBraveSearchKey: (key: string) => void
-    setGoogleCseKey: (key: string) => void
-    setGoogleCseId: (id: string) => void
-    setSerperKey: (key: string) => void
-    setTavilyKey: (key: string) => void
-    setSearxngUrl: (url: string) => void
-      setSearchProvider: (provider: string) => void
+    setExaKey: (key: string) => void
       setMaxIterations: (n: number) => void
       setOnboardingComplete: () => void
         setE2bApiKey: (key: string) => void
         setExecutionMode: (mode: string) => void
         setEnableVerification: (enabled: boolean) => void
         setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'error', message?: string) => void
+    setExtensionConnected: (connected: boolean, version?: string | null) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
   setPendingPlan: (plan: ExecutionPlan | null) => void
@@ -194,20 +186,17 @@ export const useAppStore = create<AppState>()(
           openRouterModels: [],
           dynamicModels: [],
           modelsLastFetched: 0,
-            braveSearchKey: '',
-            googleCseKey: '',
-            googleCseId: '',
-            serperKey: '',
-            tavilyKey: '',
-            searxngUrl: '',
-              searchProvider: 'auto',
-              maxIterations: 50,
+            exaKey: '',
+            maxIterations: 50,
               onboardingComplete: false,
               e2bApiKey: '',
                   executionMode: 'docker',
                   enableVerification: true,
                   sandboxStatus: 'idle',
                   sandboxStatusMessage: '',
+              // Browser extension connection
+              extensionConnected: false,
+              extensionVersion: null,
           routerConfig: {
             mode: 'auto',
             budget: 'paid',
@@ -484,19 +473,14 @@ export const useAppStore = create<AppState>()(
               }),
             setApiBase: (base) => set({ apiBase: base }),
             setProvider: (provider) => set({ provider }),
-              setBraveSearchKey: (key) => set({ braveSearchKey: key }),
-              setGoogleCseKey: (key) => set({ googleCseKey: key }),
-              setGoogleCseId: (id) => set({ googleCseId: id }),
-              setSerperKey: (key) => set({ serperKey: key }),
-              setTavilyKey: (key) => set({ tavilyKey: key }),
-              setSearxngUrl: (url) => set({ searxngUrl: url }),
-              setSearchProvider: (provider) => set({ searchProvider: provider }),
+              setExaKey: (key) => set({ exaKey: key }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
                 setE2bApiKey: (key) => set({ e2bApiKey: key }),
                 setExecutionMode: (mode) => set({ executionMode: mode }),
                 setEnableVerification: (enabled) => set({ enableVerification: enabled }),
                 setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
+                setExtensionConnected: (connected, version = null) => set({ extensionConnected: connected, extensionVersion: version }),
         setRouterConfig: (config) =>
           set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),
         setTaskRouterState: (taskId, state) =>
@@ -567,13 +551,7 @@ export const useAppStore = create<AppState>()(
             apiBase: state.apiBase,
           provider: state.provider,
           activeTaskId: state.activeTaskId,
-              braveSearchKey: state.braveSearchKey,
-              googleCseKey: state.googleCseKey,
-              googleCseId: state.googleCseId,
-              serperKey: state.serperKey,
-              tavilyKey: state.tavilyKey,
-              searxngUrl: state.searxngUrl,
-              searchProvider: state.searchProvider,
+              exaKey: state.exaKey,
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
                   e2bApiKey: state.e2bApiKey,
@@ -585,6 +563,8 @@ export const useAppStore = create<AppState>()(
                 dynamicModels: state.dynamicModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
+                extensionConnected: state.extensionConnected,
+                extensionVersion: state.extensionVersion,
                 }
       },
         // On rehydration, clear any streaming:true flags left by a previous crashed session

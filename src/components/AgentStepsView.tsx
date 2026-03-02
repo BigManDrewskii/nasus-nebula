@@ -1,6 +1,7 @@
 import { useState, memo, useMemo } from 'react'
 import type { AgentStep } from '../types'
 import { Pxi } from './Pxi'
+import { BashOutput } from './BashOutput'
 
 interface Props {
   steps: AgentStep[]
@@ -399,8 +400,19 @@ function ExpandedDetail({
               padding: '8px 12px',
               borderTop: isError ? '1px solid rgba(239,68,68,0.12)' : '1px solid rgba(255,255,255,0.05)',
             }}>
-              <SectionLabel icon={isError ? 'times' : 'check'} label={isError ? 'Error' : 'Output'} isError={isError} />
-              <ScrollableCode content={result.output || '(no output)'} maxHeight={200} isError={isError} />
+              {call.tool === 'bash' || call.tool === 'bash_execute' ? (
+                <BashOutput
+                  output={result.output || '(no output)'}
+                  command={String(call.input.command ?? '')}
+                  exitCode={(result as { exitCode?: number })?.exitCode}
+                  maxHeight={200}
+                />
+              ) : (
+                <>
+                  <SectionLabel icon={isError ? 'times' : 'check'} label={isError ? 'Error' : 'Output'} isError={isError} />
+                  <ScrollableCode content={result.output || '(no output)'} maxHeight={200} isError={isError} />
+                </>
+              )}
             </div>
           )}
         </div>

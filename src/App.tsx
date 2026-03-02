@@ -5,13 +5,14 @@ import type { Task } from './types'
 import { useAppStore } from './store'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
-import { OutputPanel } from './components/OutputPanel'
+import { OutputPanel, type Tab } from './components/OutputPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { OnboardingScreen } from './components/OnboardingScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
+import { startStatusPolling, stopStatusPolling } from './agent/browserBridge'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
@@ -20,7 +21,7 @@ const LAYOUT_KEY = 'nasus-layout-state'
 interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
-  rightActiveTab: 'preview' | 'code' | 'files'
+  rightActiveTab: Tab
 }
 
 function loadLayout(): LayoutState {
@@ -65,7 +66,7 @@ function App() {
   const [savedLayout] = useState<LayoutState>(loadLayout)
   const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
-  const [rightActiveTab, setRightActiveTab] = useState<'preview' | 'code' | 'files'>(savedLayout.rightActiveTab)
+  const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
   const [outputVisible, setOutputVisible] = useState(true)
 
   // Silently keep the OpenRouter model list fresh in the background
@@ -141,6 +142,17 @@ function App() {
       window.removeEventListener('online',  goOnline)
     }
   }, [])
+
+  // Poll browser extension connection status every 30s
+  const setExtensionConnected = useAppStore((s) => s.setExtensionConnected)
+  useEffect(() => {
+    startStatusPolling((status) => {
+      setExtensionConnected(status.connected, status.version)
+    })
+    return () => {
+      stopStatusPolling()
+    }
+  }, [setExtensionConnected])
 
   const handleNewTask = useCallback(() => {
     const task: Task = {

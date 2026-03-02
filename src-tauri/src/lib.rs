@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path};
 use std::sync::Arc;
-use tauri::{AppHandle, State, Emitter, Manager};
+use tauri::{AppHandle, State, Manager};
 use tokio::sync::Mutex;
 use rusqlite::{params, Connection};
 
 pub mod models;
 pub mod search;
 pub mod docker;
+pub mod sidecar;
 
 use crate::models::classifier::{classify_task};
 use crate::models::router::{BudgetMode, ModelSelectionMode, RouterConfig, RoutingDecision};
@@ -28,25 +29,13 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchConfig {
-    pub provider: String,
-    pub serper_key: Option<String>,
-    pub tavily_key: Option<String>,
-    pub brave_key: Option<String>,
-    pub google_cse_key: Option<String>,
-    pub google_cse_id: Option<String>,
-    pub searxng_url: Option<String>,
+    pub exa_key: String,
 }
 
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
-            provider: "auto".into(),
-            serper_key: None,
-            tavily_key: None,
-            brave_key: None,
-            google_cse_key: None,
-            google_cse_id: None,
-            searxng_url: None,
+            exa_key: String::new(),
         }
     }
 }
@@ -57,6 +46,7 @@ pub struct AppState {
     pub search_config: Mutex<SearchConfig>,
     pub search_service: Arc<SearchService>,
     pub active_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
+    pub sidecar: sidecar::SharedSidecarState,
 }
 
 // --- Agent Events ---
@@ -195,64 +185,29 @@ async fn search(
 ) -> Result<Vec<search::SearchResult>, String> {
     let mut providers: Vec<Box<dyn search::SearchProvider>> = vec![];
     let client = reqwest::Client::new();
-    
+
     // Determine which config to use
     let config = if let Some(c) = searchConfig {
+        println!("[Search] Using provided searchConfig, key_length={}", c.exa_key.len());
         c
     } else {
-        state.search_config.lock().await.clone()
+        let cfg = state.search_config.lock().await.clone();
+        println!("[Search] Using state searchConfig, key_length={}", cfg.exa_key.len());
+        cfg
     };
 
-    // Instantiate providers based on keys
-    if let Some(key) = config.serper_key.filter(|k| !k.is_empty()) {
-        providers.push(Box::new(search::providers::serper::SerperProvider {
-            api_key: key,
+    // Use Exa as the sole search provider
+    if !config.exa_key.is_empty() {
+        println!("[Search] Adding Exa provider");
+        providers.push(Box::new(search::providers::exa::ExaProvider {
+            api_key: config.exa_key,
             client: client.clone(),
         }));
-    }
-    
-    if let Some(key) = config.tavily_key.filter(|k| !k.is_empty()) {
-        providers.push(Box::new(search::providers::tavily::TavilyProvider {
-            api_key: key,
-            client: client.clone(),
-        }));
+    } else {
+        println!("[Search] WARNING: exa_key is empty, no providers added!");
     }
 
-    if let Some(key) = config.brave_key.filter(|k| !k.is_empty()) {
-        providers.push(Box::new(search::providers::brave::BraveProvider {
-            api_key: key,
-            client: client.clone(),
-        }));
-    }
-
-    if let (Some(key), Some(id)) = (config.google_cse_key.filter(|k| !k.is_empty()), config.google_cse_id.filter(|k| !k.is_empty())) {
-        providers.push(Box::new(search::providers::google::GoogleCSEProvider {
-            api_key: key,
-            cse_id: id,
-            client: client.clone(),
-        }));
-    }
-
-    if let Some(url) = config.searxng_url.filter(|u| !u.is_empty()) {
-        providers.push(Box::new(search::providers::searxng::SearxngProvider {
-            url,
-            client: client.clone(),
-        }));
-    }
-
-    if config.provider == "wikipedia" || config.provider == "auto" {
-        providers.push(Box::new(search::providers::wikipedia::WikipediaProvider {
-            client: client.clone(),
-        }));
-    }
-
-    // DuckDuckGo is free and requires no key
-    if config.provider == "ddg" || config.provider == "auto" || (config.provider != "auto" && providers.is_empty()) {
-        providers.push(Box::new(search::providers::ddg::DuckDuckGoProvider {
-            client: client.clone(),
-        }));
-    }
-
+    println!("[Search] Total providers: {}", providers.len());
     state.search_service.search(&query, numResults, providers).await.map_err(|e| e.to_string())
 }
 
@@ -262,9 +217,17 @@ async fn save_search_config(
     state: State<'_, AppState>,
     searchConfig: SearchConfig,
 ) -> Result<(), String> {
+    println!("[save_search_config] Saving config, key_length={}", searchConfig.exa_key.len());
     let mut config = state.search_config.lock().await;
     *config = searchConfig;
     Ok(())
+}
+
+#[tauri::command]
+async fn get_search_config(state: State<'_, AppState>) -> Result<SearchConfig, String> {
+    let config = state.search_config.lock().await;
+    println!("[get_search_config] Returning config, key_length={}", config.exa_key.len());
+    Ok(config.clone())
 }
 
 // --- Workspace Commands ---
@@ -416,6 +379,51 @@ async fn stop_agent(state: State<'_, AppState>, taskId: String) -> Result<(), St
     Ok(())
 }
 
+// --- HTTP Fetch Command (CORS bypass for Tauri) ---
+
+/// HTTP fetch bypassing CORS - for agent use in Tauri mode
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn http_fetch(
+    url: String,
+    method: Option<String>,
+    headers: Option<Vec<String>>,
+    body: Option<String>,
+) -> Result<String, String> {
+    use reqwest::Client;
+
+    let client = Client::builder()
+        .user_agent("Mozilla/5.0 (compatible; Nasus/1.0)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = client.request(
+        method.as_deref().unwrap_or("GET").parse::<reqwest::Method>().map_err(|e| e.to_string())?,
+        &url,
+    );
+
+    // Apply headers if provided (flattened array of key-value pairs)
+    if let Some(h) = headers {
+        for chunk in h.chunks(2) {
+            if chunk.len() == 2 {
+                request = request.header(&chunk[0], &chunk[1]);
+            }
+        }
+    }
+
+    // Apply body for POST requests
+    if let Some(b) = body {
+        request = request.body(b);
+    }
+
+    let response = request.send().await.map_err(|e| e.to_string())?;
+    let status = response.status().as_u16();
+    let text = response.text().await.map_err(|e| e.to_string())?;
+
+    // Include status code in response for frontend handling
+    Ok(format!("{}\n{}", status, text))
+}
+
 // --- Persistence Commands ---
 
 #[allow(non_snake_case)]
@@ -522,6 +530,19 @@ pub fn run() {
           let cache_path = app_data_dir.join("search_cache.db");
           let _ = std::fs::create_dir_all(&app_data_dir);
 
+          // Get the sidecar directory path
+          let mut sidecar_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+          sidecar_dir.push("sidecar");
+          let _ = std::fs::create_dir_all(&sidecar_dir);
+
+          // Note: The actual sidecar files are in src-tauri/sidecar during development
+          // In production, they would be bundled with the app
+          let dev_sidecar_path = std::env::current_dir()
+              .ok()
+              .and_then(|p| p.join("src-tauri").join("sidecar").canonicalize().ok());
+
+          let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
+
           app.manage(AppState {
               config: Mutex::new(Config {
                   api_key: "".into(),
@@ -534,6 +555,9 @@ pub fn run() {
               search_config: Mutex::new(SearchConfig::default()),
               search_service: Arc::new(SearchService::new(Some(cache_path))),
               active_tasks: Mutex::new(HashMap::new()),
+              sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
+                  sidecar::SidecarState::new(sidecar_path)
+              ))),
           });
           Ok(())
       })
@@ -546,6 +570,7 @@ pub fn run() {
         preview_routing,
         search,
         save_search_config,
+        get_search_config,
         workspace_list,
         workspace_read,
         workspace_write,
@@ -553,6 +578,7 @@ pub fn run() {
         workspace_delete_all,
         run_agent,
         stop_agent,
+        http_fetch,
         save_task_history,
         load_task_history,
         delete_task_history,
@@ -563,6 +589,13 @@ pub fn run() {
         docker::commands::docker_execute_bash,
         docker::commands::docker_dispose_container,
         docker::commands::docker_check_status,
+        sidecar::browser_start_sidecar,
+        sidecar::browser_stop_sidecar,
+        sidecar::browser_is_sidecar_running,
+        sidecar::browser_start_session,
+        sidecar::browser_stop_session,
+        sidecar::browser_navigate,
+        sidecar::browser_screenshot,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
