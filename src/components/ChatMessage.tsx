@@ -64,41 +64,57 @@ function CopyButton({ text, style }: { text: string; style?: React.CSSProperties
 // ─── Error banner ─────────────────────────────────────────────────────────────
 
 function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }) {
+  const isAuthError = error.includes('401') || error.includes('Authentication') || error.includes('API key')
+  const isRateLimit = error.includes('429') || error.includes('Rate limit') || error.includes('Too many requests')
+  const isQuotaError = error.includes('402') || error.includes('Payment Required') || error.includes('credits')
+  const isModelUnavailable = error.includes('404') || error.includes('not found') || error.includes('unavailable')
+
+  const errorTitle = isAuthError ? 'Authentication Failed' 
+    : isRateLimit ? 'Rate Limit Reached' 
+    : isQuotaError ? 'Insufficient Credits' 
+    : isModelUnavailable ? 'Model Unavailable' 
+    : 'Generation Error'
+
+  const icon = isAuthError ? 'key' : isRateLimit ? 'clock' : isQuotaError ? 'coin' : 'exclamation-triangle'
+
   return (
     <div
-      className="flex items-start gap-2.5 mt-2 px-3 py-2.5 rounded-xl"
-      style={{ background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)' }}
+      className="flex flex-col gap-3 mt-3 px-4 py-3 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200"
+      style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)' }}
     >
-      <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', flexShrink: 0, marginTop: 2 }} />
-      <div className="flex-1 min-w-0">
-        {/* #fca5a5 on the dark red tint still exceeds 4.5:1 */}
-        <p className="leading-relaxed" style={{ fontSize: 12, color: '#fca5a5' }}>
-          {error}
-        </p>
-        {onRetry && (
+      <div className="flex items-center gap-2">
+        <Pxi name={icon} size={12} style={{ color: '#f87171' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+          {errorTitle}
+        </span>
+      </div>
+      
+      <p className="leading-relaxed" style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
+        {error}
+      </p>
+
+      {onRetry && (
+        <div className="flex items-center gap-2 mt-1">
           <button
             onClick={onRetry}
-            className="flex items-center gap-1.5 mt-2 font-medium px-2.5 py-1 rounded-lg transition-all"
+            className="flex items-center gap-1.5 font-semibold px-3 py-1.5 rounded-lg transition-all active:scale-95"
             style={{
               fontSize: 11,
-              background: 'rgba(239,68,68,0.1)',
-              border: '1px solid rgba(239,68,68,0.2)',
-              color: '#f87171',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'rgba(239,68,68,0.18)'
-              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.35)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'rgba(239,68,68,0.1)'
-              e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
+              background: '#f87171',
+              color: '#000',
             }}
           >
             <Pxi name="refresh" size={10} />
-            Retry
+            Try again
           </button>
-        )}
-      </div>
+          
+          {isQuotaError && (
+            <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontStyle: 'italic' }}>
+              Switching to a free model might help.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -495,7 +511,14 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   }, [message.steps])
 
   if (isWaiting) {
-    return <ThinkingIndicator visible={true} />
+    return <ThinkingIndicator
+      visible={true}
+      activeModel={message.modelId ? {
+        id: message.modelId,
+        displayName: message.modelName || message.modelId,
+        provider: message.provider || 'AI'
+      } : null}
+    />
   }
 
   const showBetweenDots = hasSteps && !hasContent && isStreaming && !hasError && (() => {
@@ -515,9 +538,22 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
         <NasusAvatar />
       </div>
 
-      {/* Content column */}
-      <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
-        {/* Steps (tool calls) */}
+        {/* Content column */}
+        <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
+          {/* Model info badge — shown when content starts appearing or steps are present */}
+          {(hasContent || hasSteps) && message.modelName && (
+            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, opacity: 0.6 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.04)', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.06)' }}>
+                {message.modelName}
+              </span>
+              <span style={{ fontSize: 9, color: 'var(--tx-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                via {message.provider || 'AI'}
+              </span>
+            </div>
+          )}
+
+          {/* Steps (tool calls) */}
+
         {hasSteps && <AgentStepsView steps={message.steps!} isStreaming={isStreaming} />}
 
         {/* Between-turn typing indicator */}

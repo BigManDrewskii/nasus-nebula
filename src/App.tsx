@@ -13,12 +13,14 @@ import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { useSidebarResponsive } from './hooks/useSidebarResponsive'
+import { ContextPanel } from './components/ContextPanel'
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
 interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
+  contextCollapsed: boolean
   rightActiveTab: Tab
   sidebarPreference?: 'auto' | 'always-left' | 'always-right' | 'minimal'
 }
@@ -28,7 +30,7 @@ function loadLayout(): LayoutState {
     const raw = localStorage.getItem(LAYOUT_KEY)
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
-  return { leftCollapsed: false, rightCollapsed: false, rightActiveTab: 'preview', sidebarPreference: 'auto' }
+  return { leftCollapsed: false, rightCollapsed: false, contextCollapsed: false, rightActiveTab: 'preview', sidebarPreference: 'auto' }
 }
 
 function saveLayout(state: LayoutState) {
@@ -82,6 +84,7 @@ function App() {
   const [savedLayout] = useState<LayoutState>(loadLayout)
   const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
+  const [contextCollapsed, setContextCollapsed] = useState(savedLayout.contextCollapsed ?? false)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
   const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
     savedLayout.sidebarPreference ?? 'auto'
@@ -116,8 +119,8 @@ function App() {
 
   // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, sidebarPreference })
-  }, [leftCollapsed, rightCollapsed, rightActiveTab, sidebarPreference])
+    saveLayout({ leftCollapsed, rightCollapsed, contextCollapsed, rightActiveTab, sidebarPreference })
+  }, [leftCollapsed, rightCollapsed, contextCollapsed, rightActiveTab, sidebarPreference])
 
     // Auto-show + expand right panel when the agent creates its first file,
     // or when switching to a task that already has files.
@@ -135,13 +138,15 @@ function App() {
       if (!mod) return
       if (e.key === '\\' && !e.shiftKey) { e.preventDefault(); setLeftCollapsed((v) => !v) }
       if (e.key === '\\' && e.shiftKey)  { e.preventDefault(); setRightCollapsed((v) => !v) }
+      if (e.key === 'j'  && e.shiftKey)  { e.preventDefault(); setContextCollapsed((v) => !v) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const toggleLeft  = useCallback(() => setLeftCollapsed((v) => !v),  [])
-  const toggleRight = useCallback(() => setRightCollapsed((v) => !v), [])
+  const toggleLeft    = useCallback(() => setLeftCollapsed((v) => !v),    [])
+  const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
+  const toggleContext = useCallback(() => setContextCollapsed((v) => !v), [])
 
   useEffect(() => {
     function onPruned(e: Event) {
@@ -219,6 +224,8 @@ function App() {
             onSelectTask={setActiveTaskId}
             onNewTask={handleNewTask}
             onOpenSettings={openSettings}
+            onToggleContext={toggleContext}
+            contextOpen={!contextCollapsed}
             collapsed={leftCollapsed}
             onToggleCollapse={toggleLeft}
           />
@@ -260,6 +267,14 @@ function App() {
             />
           </div>
         )}
+
+        {/* ── Context / Settings Panel ── */}
+        <div className={`app-context-panel${contextCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+          <ContextPanel
+            collapsed={contextCollapsed}
+            onToggle={toggleContext}
+          />
+        </div>
 
         {showSettings && <SettingsPanel onClose={closeSettings} />}
 

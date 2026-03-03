@@ -3,6 +3,9 @@
  * Handles streaming completions, retries, rich model fetching.
  */
 
+import { streamText, generateText, type CoreMessage, type ToolDefinition as SDKToolDefinition } from 'ai';
+import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
+
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
   content: string | null | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>
@@ -63,315 +66,100 @@ function isRetryable(status: number): boolean {
 }
 
 /**
- * Stream a chat completion. Calls onDelta for each text token, calls onToolCalls
- * with fully-assembled tool_calls when the stream ends. Returns the assembled response.
- * Retries on 429 / 5xx with exponential backoff (up to MAX_RETRIES attempts).
- *
- * @param fallbackModels - Optional array of model IDs for OpenRouter server-side fallback
+ * Stream a chat completion using the Vercel AI SDK.
+ * Handles streaming completions, retries, and gateway failover logic.
  */
 export async function streamCompletion(
   apiBase: string,
   apiKey: string,
-  _provider: string,
+  provider: string,
   model: string,
   messages: LlmMessage[],
   tools: ToolDefinition[],
   cb: StreamCallbacks,
   fallbackModels?: string[],
 ): Promise<LlmResponse> {
-  // Build URL with query params (for Vercel provider options)
-  const baseUrl = `${apiBase.replace(/\/$/, '')}/chat/completions`
-  const url = cb.queryParams && Object.keys(cb.queryParams).length > 0
-    ? `${baseUrl}?${new URLSearchParams(cb.queryParams).toString()}`
-    : baseUrl
+  const unifiedModel = getUnifiedModel({
+    provider,
+    apiKey,
+    apiBase,
+    extraHeaders: cb.extraHeaders,
+  }, model);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...cb.extraHeaders,  // Inject gateway-specific headers
+  // Convert LlmMessage to AI SDK CoreMessage
+  const coreMessages: CoreMessage[] = messages.map(m => {
+    if (m.role === 'tool') {
+      return {
+        role: 'tool',
+        content: Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content || '' }],
+        tool_call_id: m.tool_call_id || '',
+      } as any;
+    }
+    return {
+      role: m.role as any,
+      content: m.content || '',
+      tool_calls: m.tool_calls as any,
+    };
+  });
+
+  // Convert ToolDefinition to AI SDK Tool
+  const sdkTools: Record<string, SDKToolDefinition> = {};
+  tools.filter(t => !t.inactive).forEach(t => {
+    sdkTools[t.function.name] = {
+      description: t.function.description,
+      parameters: t.function.parameters as any,
+    };
+  });
+
+  try {
+    const { textStream, toolCalls, usage, finishReason } = await streamText({
+      model: unifiedModel,
+      messages: coreMessages,
+      tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
+      onFinish: async (event) => {
+        if (event.usage) {
+          cb.onUsage(event.usage.promptTokens, event.usage.completionTokens, event.usage.totalTokens);
+        }
+        if (event.toolCalls && event.toolCalls.length > 0) {
+          cb.onToolCalls(event.toolCalls.map(tc => ({
+            id: tc.toolCallId,
+            type: 'function',
+            function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+          })));
+        }
+      },
+      abortSignal: cb.signal,
+    });
+
+    let fullContent = '';
+    for await (const delta of textStream) {
+      fullContent += delta;
+      cb.onDelta(delta);
     }
 
-    // Build request body with OpenRouter fallback support
-    // Omit tools/tool_choice entirely when empty — some models return 400 for an empty array
-    const activeTools = tools.filter(t => !(t as any).inactive)
-    const requestBody: Record<string, unknown> = {
-      model,
-      messages,
-      stream: true,
-      stream_options: { include_usage: true },
-    }
-    if (activeTools.length > 0) {
-      requestBody.tools = activeTools
-      requestBody.tool_choice = 'auto'
-    }
+    const resolvedToolCalls = (await toolCalls).map(tc => ({
+      id: tc.toolCallId,
+      type: 'function' as const,
+      function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+    }));
 
-  // Enable server-side fallback if fallback models provided
-  if (fallbackModels && fallbackModels.length > 0) {
-    requestBody.models = fallbackModels
-    requestBody.route = 'fallback'
+    const resolvedUsage = await usage;
+
+    return {
+      content: fullContent || null,
+      toolCalls: resolvedToolCalls,
+      finishReason: await finishReason,
+      usage: resolvedUsage ? {
+        prompt_tokens: resolvedUsage.promptTokens,
+        completion_tokens: resolvedUsage.completionTokens,
+        total_tokens: resolvedUsage.totalTokens,
+      } : null,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    cb.onError(msg);
+    throw err;
   }
-
-  const body = JSON.stringify(requestBody)
-
-  // ── Retry loop ────────────────────────────────────────────────────────────
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (cb.signal.aborted) throw new DOMException('Aborted', 'AbortError')
-
-    let resp: Response
-    try {
-      resp = await fetch(url, { method: 'POST', headers, body, signal: cb.signal })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (attempt < MAX_RETRIES && !cb.signal.aborted) {
-        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt)
-        try { await sleep(delay, cb.signal) } catch { break }
-        continue
-      }
-      cb.onError(msg)
-      throw new Error(msg)
-    }
-
-    // Handle retryable HTTP status
-    if (!resp.ok) {
-      if (isRetryable(resp.status) && attempt < MAX_RETRIES) {
-        // Respect Retry-After header if present (common on 429)
-        const retryAfter = resp.headers.get('Retry-After')
-        const delay = retryAfter
-          ? Math.max(Number(retryAfter) * 1000, 500)
-          : BASE_RETRY_DELAY_MS * Math.pow(2, attempt)
-        try { await sleep(delay, cb.signal) } catch { break }
-        continue
-      }
-
-            let errMsg = `HTTP ${resp.status}`
-            try {
-              const errJson = await resp.json()
-              // OpenRouter error format: { error: { message, code, metadata } }
-              const orMsg = errJson?.error?.message
-              const orCode = errJson?.error?.code
-              if (orMsg) errMsg = orCode ? `[${orCode}] ${orMsg}` : orMsg
-              if (resp.status === 400) {
-                console.error('[LLM] 400 Bad Request — full error:', JSON.stringify(errJson))
-              }
-            } catch {
-              // Response body isn't JSON — ignore and use the status message
-            }
-          // Make auth errors actionable
-          if (resp.status === 401) {
-            errMsg = `API key invalid or expired. Please update your OpenRouter API key in Settings (⌘,).`
-          } else if (resp.status === 403) {
-            errMsg = `Access denied (403). Check that your API key has the required permissions.`
-          }
-        cb.onError(errMsg)
-        throw new Error(errMsg)
-    }
-
-    // Log rate limit headers for monitoring
-    const rateLimit = {
-      limit: resp.headers.get('X-RateLimit-Limit'),
-      remaining: resp.headers.get('X-RateLimit-Remaining'),
-      reset: resp.headers.get('X-RateLimit-Reset'),
-    }
-    if (rateLimit.remaining !== null) {
-      console.info('[RateLimit]', {
-        limit: rateLimit.limit,
-        remaining: rateLimit.remaining,
-        resetAt: rateLimit.reset,
-      })
-    }
-
-    // Parse Vercel AI Gateway response headers for actual cost tracking
-    const vercelUsage = resp.headers.get('x-vercel-ai-gateway-usage')
-    const vercelGateway = resp.headers.get('x-vercel-ai-gateway')
-    const vercelGenId = resp.headers.get('x-vercel-ai-gateway-generation-id')
-
-    if (vercelUsage || vercelGateway) {
-      let usageData: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost?: number } | undefined
-      let cost: number | undefined
-      let provider: string | undefined
-      let model: string | undefined
-      try {
-        if (vercelUsage) {
-          usageData = JSON.parse(vercelUsage)
-        }
-        if (vercelGateway) {
-          const gatewayData = JSON.parse(vercelGateway)
-          provider = gatewayData.provider
-          model = gatewayData.model
-          cost = gatewayData.cost ?? usageData?.cost
-        }
-      } catch (e) {
-        console.warn('[LLM] Failed to parse Vercel headers:', e)
-      }
-      // Store in state for cost tracking (accessed via onMetadata callback)
-      if (usageData || cost) {
-        console.info('[Vercel Gateway]', {
-          usage: usageData,
-          cost,
-          provider,
-          model,
-          generationId: vercelGenId,
-        })
-      }
-    }
-
-    // ── Stream read with idle timeout ────────────────────────────────────────
-    const IDLE_TIMEOUT_MS = 30_000  // 30s without a chunk = network stall
-    const reader = resp.body!.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-
-    let fullContent = ''
-    let finishReason = ''
-    const tcMap: Map<number, { id: string; name: string; args: string }> = new Map()
-    let usageResult: LlmResponse['usage'] = null
-    let streamError: string | null = null
-
-    let idleTimer: ReturnType<typeof setTimeout> | null = null
-    const abortController = new AbortController()
-
-    function resetIdleTimer() {
-      if (idleTimer) clearTimeout(idleTimer)
-      idleTimer = setTimeout(() => {
-        abortController.abort()
-      }, IDLE_TIMEOUT_MS)
-    }
-
-    // Propagate the caller's abort signal to our internal one
-    cb.signal.addEventListener('abort', () => abortController.abort(), { once: true })
-
-    resetIdleTimer()
-
-    outer: while (true) {
-      // Race: read vs abort
-      let readResult: ReadableStreamReadResult<Uint8Array>
-      try {
-        // AbortController doesn't cancel an in-flight reader.read() natively,
-        // so we race it with a rejected promise on abort.
-        readResult = await Promise.race([
-          reader.read(),
-          new Promise<never>((_, reject) => {
-            if (abortController.signal.aborted) {
-              reject(new DOMException('Aborted', 'AbortError'))
-            } else {
-              abortController.signal.addEventListener('abort', () =>
-                reject(new DOMException('Aborted', 'AbortError')), { once: true })
-            }
-          }),
-        ])
-      } catch (err) {
-        const wasIdleTimeout = !cb.signal.aborted && abortController.signal.aborted
-        if (wasIdleTimeout) {
-          streamError = 'Stream stalled (no data for 30s). The provider may be overloaded — please retry.'
-        }
-        break
-      }
-
-      resetIdleTimer()
-      const { done, value } = readResult
-      if (done) break
-
-      buf += decoder.decode(value, { stream: true })
-
-      let nl: number
-      while ((nl = buf.indexOf('\n')) !== -1) {
-        const line = buf.slice(0, nl).trim()
-        buf = buf.slice(nl + 1)
-
-        if (!line || line === 'data: [DONE]') continue
-        const data = line.startsWith('data: ') ? line.slice(6) : null
-        if (!data) continue
-
-        let chunk: Record<string, unknown>
-        try {
-          chunk = JSON.parse(data)
-        } catch {
-          continue
-        }
-
-        // Usage — sent in final chunk by OpenRouter / LiteLLM
-        if (chunk.usage && typeof chunk.usage === 'object') {
-          const u = chunk.usage as Record<string, number>
-          usageResult = {
-            prompt_tokens: u.prompt_tokens ?? 0,
-            completion_tokens: u.completion_tokens ?? 0,
-            total_tokens: u.total_tokens ?? 0,
-          }
-        }
-
-        const choices = (chunk.choices as unknown[]) ?? []
-        if (choices.length === 0) continue
-        const choice = choices[0] as Record<string, unknown>
-        const delta = (choice.delta ?? {}) as Record<string, unknown>
-
-        if (typeof choice.finish_reason === 'string' && choice.finish_reason) {
-          finishReason = choice.finish_reason
-        }
-
-        // Content delta
-        if (typeof delta.content === 'string' && delta.content) {
-          fullContent += delta.content
-          cb.onDelta(delta.content)
-        }
-
-        // Tool call deltas
-        const tcDeltas = delta.tool_calls as Array<Record<string, unknown>> | undefined
-        if (tcDeltas) {
-          for (const tcd of tcDeltas) {
-            const idx = (tcd.index as number) ?? 0
-            if (!tcMap.has(idx)) tcMap.set(idx, { id: '', name: '', args: '' })
-            const entry = tcMap.get(idx)!
-            if (typeof tcd.id === 'string') entry.id = tcd.id
-            const fn = tcd.function as Record<string, string> | undefined
-            if (fn?.name) entry.name += fn.name
-            if (fn?.arguments) entry.args += fn.arguments
-          }
-        }
-
-        if (cb.signal.aborted) break outer
-      }
-    }
-
-    if (idleTimer) clearTimeout(idleTimer)
-    reader.releaseLock()
-
-    if (streamError) {
-      // Retry on stream stall if we haven't exceeded retries
-      if (attempt < MAX_RETRIES && !cb.signal.aborted) {
-        const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt)
-        try { await sleep(delay, cb.signal) } catch { break }
-        continue
-      }
-      cb.onError(streamError)
-      throw new Error(streamError)
-    }
-
-    if (usageResult) {
-      cb.onUsage(usageResult.prompt_tokens, usageResult.completion_tokens, usageResult.total_tokens)
-    }
-
-    const toolCalls: ToolCall[] = []
-    for (const [, entry] of [...tcMap.entries()].sort(([a], [b]) => a - b)) {
-      if (entry.id) {
-        toolCalls.push({
-          id: entry.id,
-          type: 'function',
-          function: { name: entry.name, arguments: entry.args },
-        })
-      }
-    }
-
-    if (toolCalls.length > 0) {
-      cb.onToolCalls(toolCalls)
-    }
-
-    return { content: fullContent || null, toolCalls, finishReason, usage: usageResult }
-  }
-
-  // Should not reach here; thrown inside the loop
-  const msg = 'Max retries exceeded'
-  cb.onError(msg)
-  throw new Error(msg)
 }
 
 /**
@@ -384,29 +172,25 @@ export async function chatOnce(
   model: string,
   userPrompt: string,
   maxTokens = 20,
+  extraHeaders?: Record<string, string>,
 ): Promise<string> {
-  const url = `${apiBase.replace(/\/$/, '')}/chat/completions`
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-    // Include attribution headers for OpenRouter (free-tier eligibility + rankings)
-    ...(provider === 'openrouter' || apiBase.includes('openrouter.ai') ? getORHeaders() : {}),
-  }
-
-  const body = JSON.stringify({
-    model,
-    messages: [{ role: 'user', content: userPrompt }],
-    max_tokens: maxTokens,
-  })
+  const unifiedModel = getUnifiedModel({
+    provider,
+    apiKey,
+    apiBase,
+    extraHeaders,
+  }, model);
 
   try {
-    const resp = await fetch(url, { method: 'POST', headers, body })
-    if (!resp.ok) return ''
-    const json = await resp.json()
-    return json?.choices?.[0]?.message?.content?.trim() ?? ''
-  } catch {
-    return ''
+    const { text } = await generateText({
+      model: unifiedModel,
+      messages: [{ role: 'user', content: userPrompt }],
+      maxTokens,
+    });
+    return text.trim();
+  } catch (err) {
+    console.error('[LLM] chatOnce failed:', err);
+    return '';
   }
 }
 
@@ -496,6 +280,10 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
       m.name &&
       (m.architecture?.output_modalities ?? ['text']).includes('text'),
   )
+  // Inject an 'is_free' property into the models for easier filtering
+  models.forEach(m => {
+    (m as any).is_free = parseFloat(m.pricing?.prompt ?? '1') === 0;
+  });
   models.sort((a, b) => {
     const fa = a.id.split('/')[0]
     const fb = b.id.split('/')[0]
@@ -521,10 +309,19 @@ export function formatTokenPrice(pricePerToken: string | undefined): string {
 
 /**
  * Return the cheapest model from a list (by completion token price).
- * Falls back to claude-3-haiku if the list is empty.
+ * Prioritizes free models.
+ * Falls back to anthropic/claude-3-haiku if the list is empty.
  */
 export function cheapestModel(models: OpenRouterModel[]): string {
   if (models.length === 0) return 'anthropic/claude-3-haiku'
+  
+  // Try to find a free model first
+  const freeModels = models.filter(m => parseFloat(m.pricing?.completion ?? '1') === 0)
+  if (freeModels.length > 0) {
+    // Prefer models with larger context windows among free ones
+    return freeModels.sort((a, b) => b.context_length - a.context_length)[0].id
+  }
+
   let cheapest = models[0]
   for (const m of models) {
     const price = parseFloat(m.pricing?.completion ?? '999')

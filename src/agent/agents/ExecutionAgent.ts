@@ -460,23 +460,35 @@ export class ExecutionAgent extends BaseAgent {
     let responseContent: string | null = null
     let responseToolCalls: ToolCall[] = []
 
-    try {
-      const store = useAppStore.getState()
-      const gatewayService = store.getGatewayService()
+    const store = useAppStore.getState()
+    const gatewayService = store.getGatewayService()
+    let isAutoFreeFallback = false
 
-      // Use gateway failover - tries each configured gateway until one succeeds
-      const { result } = await gatewayService.callWithFailover(
+    const performCall = async () => {
+      return gatewayService.callWithFailover(
         async (apiBase, apiKey, extraHeaders, queryParams) => {
           // Resolve gateway type from apiBase
           const gateway = store.gateways.find(g => g.apiBase === apiBase)
           const gatewayType = (gateway?.type ?? 'openrouter') as GatewayType
 
           // Use routingMode from gateway store directly (already 'auto-free' | 'auto-paid' | 'manual')
-          const routingMode = store.routingMode
-          const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined)
-          const effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
+          let routingMode = store.routingMode
+          
+          // Auto-fallback check: if we've already hit a 402 this task, or we're doing a manual fallback retry, force auto-free
+          const taskState = store.taskRouterState[taskId]
+          if (isAutoFreeFallback || taskState?.reason?.includes('402') || taskState?.reason?.includes('Payment Required')) {
+            routingMode = 'auto-free'
+          }
 
-          // Get fallback chain for OpenRouter server-side fallback
+            const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined, store.openRouterModels)
+            const effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
+            const effectiveDisplayName = modelSelection?.displayName ?? effectiveModel
+            const effectiveProvider = gatewayType === 'openrouter' ? 'OpenRouter' : 'Vercel'
+
+            this.emitModelSelected(taskId, messageId, effectiveModel, effectiveDisplayName, effectiveProvider)
+
+            // Get fallback chain for OpenRouter server-side fallback
+
           // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
           const budget = routingMode === 'auto-free' ? 'free' : 'paid'
           const fallbackModels = await getFallbackChain(effectiveModel, budget)
@@ -501,19 +513,55 @@ export class ExecutionAgent extends BaseAgent {
           )
         },
       )
+    }
 
+    try {
+      const { result } = await performCall()
       finishReason = result.finishReason
       responseContent = result.content
       responseToolCalls = result.toolCalls
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      
+      // If we hit a 402 Payment Required, record it in task state to trigger auto-fallback
+      if (msg.includes('402') || msg.includes('Payment Required') || msg.includes('insufficient credits')) {
+        const storeState = useAppStore.getState()
+        
+        // If we weren't already in auto-free mode, try one more time with auto-free
+        const taskState = storeState.taskRouterState[taskId]
+        const alreadyFree = storeState.routingMode === 'auto-free' || taskState?.isFree
+        
+        storeState.setTaskRouterState(taskId, { 
+          reason: `Insufficient credits. Falling back to free models. (${msg})`,
+          isFree: true 
+        })
+        
+        // Also immediately switch the global routing mode to auto-free to help the user
+        storeState.setRoutingMode('auto-free')
+
+        if (!alreadyFree && !signal.aborted) {
+          isAutoFreeFallback = true
+          try {
+            const { result } = await performCall()
+            finishReason = result.finishReason
+            responseContent = result.content
+            responseToolCalls = result.toolCalls
+            return { finishReason, responseContent, responseToolCalls }
+          } catch {
+            // Fall through to error emission
+          }
+        }
+      }
+
       if (!signal.aborted) {
-        this.emitError(taskId, messageId, err instanceof Error ? err.message : String(err))
+        this.emitError(taskId, messageId, msg)
       }
       return null
     }
 
     return { finishReason, responseContent, responseToolCalls }
   }
+
 
   // ── Tool Call Processing ───────────────────────────────────────────────────────
 
@@ -814,7 +862,7 @@ export class ExecutionAgent extends BaseAgent {
       : 'anthropic/claude-3-haiku'
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
-    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 60)
+    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 60, resolved.extraHeaders)
     if (title) {
       const clean = title.replace(/^["']|["']$/g, '').trim()
       if (clean) store.updateTaskTitle(taskId, clean)
@@ -882,6 +930,11 @@ export class ExecutionAgent extends BaseAgent {
       durationMs: evt.durationMs,
     }
     useAppStore.getState().updateSearchStatus(taskId, messageId, step)
+  }
+
+  private emitModelSelected(taskId: string, messageId: string, modelId: string, modelName: string, provider: string): void {
+    useAppStore.getState().setMessageModel(taskId, messageId, modelId, modelName, provider)
+    window.dispatchEvent(new CustomEvent('nasus:model-selected', { detail: { taskId, messageId, modelId, modelName, provider } }))
   }
 
   private emitDone(taskId: string, messageId: string): void {

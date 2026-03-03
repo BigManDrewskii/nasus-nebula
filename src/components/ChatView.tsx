@@ -56,6 +56,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       addRecentWorkspacePath,
       enableVerification,
       routerConfig,
+      routingMode,
       pendingPlan,
       approvePlan,
       rejectPlan,
@@ -66,6 +67,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       sandboxStatus: globalSandboxStatus,
       extensionConnected,
       extensionVersion,
+      gatewayHealth,
     } = useAppStore()
 
     // Use the agent status hook to track agent state
@@ -466,11 +468,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       if (!task) return
       queuedMsgRef.current = null
       setQueuedMsg(null)
-      // Always call stopWebAgent even in Tauri mode since we're using runWebAgent
-      stopWebAgent(task.id)
-      try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
+      
+      // Immediately update local state for snappiness
       runningRef.current = false
       updateTaskStatus(task.id, 'stopped')
+      
+      // Find the currently streaming message and stop it
+      const currentMessages = getMessages(task.id)
+      const streamingMsg = currentMessages.find(m => m.streaming)
+      if (streamingMsg) {
+        setStreaming(task.id, streamingMsg.id, false)
+      }
+
+      // Stop the backend
+      stopWebAgent(task.id)
+      try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
     }
 
   function handleResume(progressContent: string) {
@@ -544,13 +556,15 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 tokenCount={tokenCount}
                 model={model}
                 provider={provider}
-                routerConfig={routerConfig}
+                routingMode={routingMode}
                 sandboxStatus={sandboxStatus}
                 outputVisible={outputVisible}
                 workspaceFileCount={workspaceFileCount}
                 onShowOutput={onShowOutput}
                 onShowMemory={() => setShowMemory(true)}
                 onStop={handleStop}
+                taskRouterState={taskRouterEntry}
+                gatewayHealth={gatewayHealth}
               />
 
 

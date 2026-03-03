@@ -231,9 +231,9 @@ html, body, #root {
   100% { background-position:  200% 0; }
 }
 .shimmer {
-  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.8s infinite;
+  animation: shimmer 2s infinite linear;
 }
 
 /* Fade in */
@@ -1318,4 +1318,112 @@ select:focus:not(:focus-visible) {
 
 .skip-link:focus {
   top: 0;
+}
+
+/* ── Sidebar & ContextPanel transitions ──────────────────────────────────── */
+
+/* Left sidebar slide */
+.app-sidebar-left {
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+  will-change: width;
+}
+
+/* Right context panel slide */
+.app-context-panel {
+  width: clamp(220px, 18vw, 280px);
+  min-width: clamp(220px, 18vw, 280px);
+  max-width: clamp(220px, 18vw, 280px);
+  flex-shrink: 0;
+  overflow: hidden;
+  height: 100%;
+  position: relative;
+  background: rgba(9, 9, 9, 0.4);
+  backdrop-filter: var(--glass-blur);
+  transition: width var(--sidebar-transition),
+              min-width var(--sidebar-transition),
+              max-width var(--sidebar-transition);
+  will-change: width;
+}
+
+.app-context-panel.app-sidebar--collapsed {
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+}
+
+/* Context panel slide-in animation for dropdown */
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Range input thumb */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: oklch(64% 0.214 40.1);
+  cursor: pointer;
+  border: 2px solid #090909;
+  box-shadow: 0 0 0 1px oklch(64% 0.214 40.1 / 0.5);
+  transition: box-shadow 0.12s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 3px oklch(64% 0.214 40.1 / 0.25);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: oklch(64% 0.214 40.1);
+  cursor: pointer;
+  border: 2px solid #090909;
+}
+
+/* Mobile: full-width drawers */
+@media (max-width: 768px) {
+  .app-sidebar-left {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 100;
+    box-shadow: 0 0 48px rgba(0,0,0,0.7);
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .app-sidebar-left.app-sidebar--collapsed {
+    transform: translateX(-100%);
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+  }
+  .app-context-panel {
+    position: fixed !important;
+    top: 0;
+    right: 0;
+    height: 100vh;
+    z-index: 100;
+    box-shadow: -8px 0 48px rgba(0,0,0,0.7);
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+    transform: translateX(0);
+    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .app-context-panel.app-sidebar--collapsed {
+    transform: translateX(100%);
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 280px !important;
+  }
 }

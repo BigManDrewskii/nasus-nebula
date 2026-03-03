@@ -39,8 +39,12 @@ export interface GatewaySlice {
   gatewayHealth: GatewayHealth[]
   gatewayService: GatewayService | null
   lastGatewayEvent: GatewayEvent | null
+  openRouterModels: any[]
+  modelsLastFetched: number
 
   // ── Actions ─────────────────────────────────────────────────────────────
+
+  setOpenRouterModels: (models: any[]) => void
 
   /** Initialize the gateway service (call once on app startup) */
   initGatewayService: () => void
@@ -101,8 +105,12 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
   gatewayHealth: [],
   gatewayService: null,
   lastGatewayEvent: null,
+  openRouterModels: [],
+  modelsLastFetched: 0,
 
   // ── Actions ───────────────────────────────────────────────────────────────
+
+  setOpenRouterModels: (models) => set({ openRouterModels: models, modelsLastFetched: Date.now() }),
 
   initGatewayService: () => {
     // Gateways are NOT persisted (not in partialize), so gateways[0].apiKey is always ''
@@ -301,7 +309,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       if (translated !== manualModelId) modelId = translated
     } else {
       // Auto-select based on mode and gateway
-      const selection = selectModel(routingMode, primary.type, manualModelId)
+      const selection = selectModel(routingMode, primary.type, manualModelId, get().openRouterModels)
       modelId = selection?.modelId ?? 'anthropic/claude-sonnet-4-20250514'
     }
 

@@ -278,19 +278,38 @@ export function selectModel(
   mode: RoutingMode,
   gatewayType: GatewayType,
   manualModelId?: string,
-): { modelId: string; model: GatewayModel } | undefined {
+  dynamicModels: any[] = [],
+): { modelId: string; model: any } | undefined {
   if (mode === 'manual' && manualModelId) {
     const model = findModelById(manualModelId)
     if (model) return { modelId: manualModelId, model }
-    // If not found in registry, pass through as-is (custom model)
+    // If not found in registry, check dynamic models
+    const dynamic = dynamicModels.find(m => m.id === manualModelId)
+    if (dynamic) return { modelId: manualModelId, model: dynamic }
+    // Pass through as-is (custom model)
     return undefined
   }
 
-  // For auto modes, only consider models that support tool calling
-  // (models with supportsTools === false return 400 when tools array is sent)
-  const available = getModelsForGateway(gatewayType).filter(
+  // Combine static and dynamic models for auto-selection
+  const staticModels = getModelsForGateway(gatewayType).filter(
     (m) => m.supportsTools !== false,
   )
+  
+  // Map dynamic models to match GatewayModel interface roughly
+  const mappedDynamic = dynamicModels
+    .filter(m => (m as any).architecture?.output_modalities?.includes('text'))
+    .map(m => ({
+      canonicalName: m.name,
+      ids: { [gatewayType]: m.id },
+      freeOn: { [gatewayType]: parseFloat(m.pricing?.prompt ?? '1') === 0 },
+      tier: (m as any).tier || 'general',
+      contextWindow: m.context_length,
+      inputCostPer1M: parseFloat(m.pricing?.prompt ?? '0') * 1_000_000,
+      outputCostPer1M: parseFloat(m.pricing?.completion ?? '0') * 1_000_000,
+      supportsTools: true, // Default to true for dynamic models
+    }))
+
+  const available = [...staticModels, ...mappedDynamic]
   if (available.length === 0) return undefined
 
   if (mode === 'auto-free') {
@@ -303,13 +322,13 @@ export function selectModel(
       return { modelId: pick.ids[gatewayType]!, model: pick }
     }
     // Prefer reasoning tier, then coding, then general, then fast
-    const tierOrder: GatewayModel['tier'][] = ['reasoning', 'coding', 'general', 'fast']
+    const tierOrder: any[] = ['reasoning', 'coding', 'general', 'fast']
     for (const tier of tierOrder) {
       const match = free.find((m) => m.tier === tier)
-      if (match) return { modelId: match.ids[gatewayType]!, model: match }
+      if (match) return { modelId: (match.ids as any)[gatewayType]!, model: match }
     }
     // Fallback: first free tool-capable model
-    return { modelId: free[0].ids[gatewayType]!, model: free[0] }
+    return { modelId: (free[0].ids as any)[gatewayType]!, model: free[0] }
   }
 
   if (mode === 'auto-paid') {
@@ -320,7 +339,7 @@ export function selectModel(
 
     if (reasoning.length > 0) {
       const pick = reasoning[0]
-      return { modelId: pick.ids[gatewayType]!, model: pick }
+      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
     }
 
     // No reasoning models — pick cheapest coding model
@@ -330,12 +349,12 @@ export function selectModel(
 
     if (coding.length > 0) {
       const pick = coding[0]
-      return { modelId: pick.ids[gatewayType]!, model: pick }
+      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
     }
 
     // Fallback: cheapest available
     const cheapest = [...available].sort((a, b) => a.inputCostPer1M - b.inputCostPer1M)
-    return { modelId: cheapest[0].ids[gatewayType]!, model: cheapest[0] }
+    return { modelId: (cheapest[0].ids as any)[gatewayType]!, model: cheapest[0] }
   }
 
   return undefined

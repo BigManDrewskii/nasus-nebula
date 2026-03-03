@@ -86,15 +86,9 @@ interface AppState extends GatewaySlice {
   routingPreview: { modelId: string; displayName: string; reason: string } | null
   // Per-task router state (model used, cost, etc.) keyed by taskId
   taskRouterState: Record<string, TaskRouterState>
-      /** Full rich model list fetched from OpenRouter /models */
-      openRouterModels: OpenRouterModel[]
-      /** Flat sorted ID list — kept for backwards compat */
-      dynamicModels: string[]
-      /** Unix ms timestamp of last successful models fetch — used to decide when to refresh */
-      modelsLastFetched: number
-        /** Exa AI API key for web search */
-        exaKey: string
-      maxIterations: number
+      /** Exa AI API key for web search */
+      exaKey: string
+    maxIterations: number
       /** Set to true after the user completes onboarding */
       onboardingComplete: boolean
         // Code execution (Docker sandbox)
@@ -117,8 +111,6 @@ interface AppState extends GatewaySlice {
   currentStep: number
 
   setActiveTaskId: (id: string | null) => void
-  setOpenRouterModels: (models: OpenRouterModel[]) => void
-  setDynamicModels: (models: string[]) => void
   addTask: (task: Task) => void
   deleteTask: (id: string) => void
   updateTaskTitle: (id: string, title: string) => void
@@ -134,6 +126,7 @@ interface AppState extends GatewaySlice {
   addStep: (taskId: string, messageId: string, step: AgentStep) => void
   updateStep: (taskId: string, messageId: string, step: AgentStep) => void
   updateSearchStatus: (taskId: string, messageId: string, step: AgentStep) => void
+  setMessageModel: (taskId: string, messageId: string, modelId: string, modelName: string, provider: string) => void
   appendRawHistory: (taskId: string, msgs: LlmMessage[]) => void
   setApiKey: (key: string) => void
   setModel: (model: string) => void
@@ -190,9 +183,6 @@ export const useAppStore = create<AppState>()(
         recentWorkspacePaths: [],
         apiBase: 'https://openrouter.ai/api/v1',
         provider: 'openrouter',
-          openRouterModels: [],
-          dynamicModels: [],
-          modelsLastFetched: 0,
             exaKey: '',
             maxIterations: DEFAULT_MAX_ITERATIONS,
               onboardingComplete: false,
@@ -238,13 +228,10 @@ export const useAppStore = create<AppState>()(
                 logger.warn('store', `Failed to load history for task ${id}`, err)
                 // Non-blocking: store stays empty, user can retry
               })
-            }
-          },
-          setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
+              }
+            },
+          addTask: (task) =>
 
-        setDynamicModels: (models) => set({ dynamicModels: models }),
-
-        addTask: (task) =>
           set((state) => {
             const tasks = [task, ...state.tasks]
             const messages = { ...state.messages, [task.id]: [WELCOME_MESSAGE] }
@@ -465,6 +452,16 @@ export const useAppStore = create<AppState>()(
               }),
             },
           })),
+
+          setMessageModel: (taskId, messageId, modelId, modelName, provider) =>
+            set((state) => ({
+              messages: {
+                ...state.messages,
+                [taskId]: (state.messages[taskId] ?? []).map((m) =>
+                  m.id === messageId ? { ...m, modelId, modelName, provider } : m
+                ),
+              },
+            })),
 
           appendRawHistory: (taskId, msgs) =>
             set((state) => {

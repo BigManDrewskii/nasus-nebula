@@ -94,6 +94,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       init()
     }, [])
 
+    // Initialize provider-specific state from gateway configs
+    useEffect(() => {
+      const state = useAppStore.getState()
+      if (state.provider === 'vercel') {
+        const vercelGateway = state.gateways.find((g) => g.id === 'vercel')
+        if (vercelGateway?.apiKey) {
+          setLocalKey(vercelGateway.apiKey)
+        }
+        setActiveProvider('vercel')
+      } else if (state.provider === 'openrouter') {
+        const orGateway = state.gateways.find((g) => g.id === 'openrouter')
+        if (orGateway?.apiKey) {
+          setLocalKey(orGateway.apiKey)
+        }
+        setActiveProvider('openrouter')
+      } else if (state.provider === 'ollama') {
+        setActiveProvider('ollama')
+      }
+    }, [])
+
     // Local router config state
 
   const [localRouterMode, setLocalRouterMode] = useState(routerConfig.mode)
@@ -200,10 +220,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   function validate(): ValidationErrors {
     const errs: ValidationErrors = {}
-    if (!localKey.trim()) {
-      errs.apiKey = 'API key is required'
-    } else if (!localKey.trim().startsWith('sk-or-')) {
-      errs.apiKey = 'OpenRouter keys start with sk-or-… — get one at openrouter.ai/keys'
+    if (activeProvider === 'openrouter') {
+      if (!localKey.trim()) {
+        errs.apiKey = 'API key is required'
+      } else if (!localKey.trim().startsWith('sk-or-')) {
+        errs.apiKey = 'OpenRouter keys start with sk-or-… — get one at openrouter.ai/keys'
+      }
+    } else if (activeProvider === 'vercel') {
+      if (!localKey.trim()) {
+        errs.apiKey = 'API key is required'
+      } else if (!localKey.trim().startsWith('vck_')) {
+        errs.apiKey = 'Vercel AI Gateway keys start with vck_…'
+      }
     }
     if (localWorkspace.trim() && !localWorkspace.trim().startsWith('/')) {
       errs.workspacePath = 'Must be an absolute path (starting with /)'
@@ -228,19 +256,29 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     async function checkAndSave() {
       const errs = validate()
-      if (activeProvider === 'openrouter' && Object.keys(errs).length > 0) { setErrors(errs); return }
+      if ((activeProvider === 'openrouter' || activeProvider === 'vercel') && Object.keys(errs).length > 0) { setErrors(errs); return }
       setErrors({})
       setSaving(true)
       setSaveError(null)
 
       const isOllama = activeProvider === 'ollama'
-      const finalApiBase = isOllama ? OLLAMA_BASE : localApiBase
-      const finalProvider = isOllama ? 'ollama' : 'openrouter'
+      const isVercel = activeProvider === 'vercel'
+      const VERCEL_BASE = 'https://ai-gateway.vercel.sh/v1'
+      const finalApiBase = isOllama ? OLLAMA_BASE
+        : isVercel ? VERCEL_BASE
+        : localApiBase
+      const finalProvider = isOllama ? 'ollama'
+        : isVercel ? 'vercel'
+        : 'openrouter'
 
         const finalApiKey = isOllama ? '' : localKey.trim()
         setApiKey(finalApiKey)
         // Sync the API key into the gateway config so callWithFailover uses the new key immediately
-        updateGateway('openrouter', { apiKey: finalApiKey })
+        if (isVercel) {
+          updateGateway('vercel', { apiKey: finalApiKey })
+        } else if (!isOllama) {
+          updateGateway('openrouter', { apiKey: finalApiKey })
+        }
         setModel(localModel)
         setWorkspacePath(localWorkspace.trim())
       if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
@@ -262,15 +300,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
       setMaxIterations(parsedIter)
       setEnableVerification(localEnableVerification)
-      // Save router config
+      // Save router config (force manual for Ollama and Vercel)
       setRouterConfig({
-        mode: isOllama ? 'manual' : localRouterMode, // Force manual if Ollama for now
+        mode: (isOllama || isVercel) ? 'manual' : localRouterMode,
         budget: localRouterBudget,
         modelOverrides: localModelOverrides,
       })
       try {
         await tauriInvoke('save_router_settings', {
-          mode: isOllama ? 'manual' : localRouterMode,
+          mode: (isOllama || isVercel) ? 'manual' : localRouterMode,
           budget: localRouterBudget,
           modelOverrides: localModelOverrides,
         })
@@ -351,6 +389,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               {[
                 { id: 'openrouter', label: 'Paid (API)', icon: 'cloud', desc: 'OpenRouter Cloud', color: 'var(--amber)' },
+                { id: 'vercel', label: 'Vercel AI', icon: 'triangle', desc: 'Vercel AI Gateway', color: '#818cf8' },
                 { id: 'ollama', label: 'Free (Local)', icon: 'server', desc: 'Ollama Offline', color: '#22c55e' }
               ].map(p => {
                 const isSel = activeProvider === p.id
@@ -594,6 +633,32 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </div>
                 </div>
               </Field>
+              </>
+            )}
+
+            {activeProvider === 'vercel' && (
+              <>
+                {/* ── API Key ── */}
+            <Field label="Vercel AI Gateway API Key" icon="lock"
+              hint={<>Get your key at <a href="https://vercel.com/docs/ai-gateway/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>vercel.com/docs → AI Gateway</a></>}
+              error={errors.apiKey}
+            >
+              <input
+                type="password"
+                value={localKey}
+                onChange={(e) => { setLocalKey(e.target.value); setErrors((p) => ({ ...p, apiKey: undefined })) }}
+                placeholder="vck_…"
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                  color: 'var(--tx-primary)', background: '#0d0d0d',
+                  border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                  transition: 'border-color 0.12s',
+                }}
+                className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
+              />
+            </Field>
               </>
             )}
 

@@ -26,6 +26,10 @@ export interface Message {
   streaming?: boolean
   error?: string
   attachments?: MessageAttachment[]
+  /** Which model generated this response */
+  modelId?: string
+  modelName?: string
+  provider?: string
 }
 
 // One iteration of the Plan → Act → Observe loop

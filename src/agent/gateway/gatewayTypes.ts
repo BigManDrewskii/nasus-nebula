@@ -108,6 +108,10 @@ export interface GatewayModel {
   inputCostPer1M: number
   /** Cost per million output tokens (0 = free) */
   outputCostPer1M: number
+  /** Provider (Anthropic, OpenAI, etc) */
+  provider?: string
+  /** Description */
+  description?: string
   /**
    * Whether this model supports OpenAI-style function/tool calling.
    * Models without tool support (e.g. DeepSeek R1) return 400 when tools are sent.

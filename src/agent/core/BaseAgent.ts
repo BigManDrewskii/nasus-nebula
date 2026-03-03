@@ -4,7 +4,6 @@
  * Inspired by OpenManus BaseAgent pattern.
  */
 
-import { v4 as uuidv4 } from 'uuid'
 import type {
   Agent,
   AgentContext,
@@ -36,7 +35,7 @@ export abstract class BaseAgent implements Agent {
     config: AgentConfig = {},
     specialization?: Agent['specialization'],
   ) {
-    this.id = uuidv4()
+    this.id = crypto.randomUUID()
     this.name = name
     this.type = type
     this.specialization = specialization

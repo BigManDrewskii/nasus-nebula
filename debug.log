@@ -158,3 +158,24 @@ data: {"id"... [truncated]
 2026-03-02T04:30:43.840Z [console][log] [vite] server connection lost. Polling for restart...
 2026-03-01T23:42:46.688Z [network][GET 200] https://openrouter.ai/api/v1/models
   response: {"data":[{"id":"bytedance-seed/seed-2.0-mini","canonical_slug":"bytedance-seed/seed-2.0-mini-20260224","hugging_face_id":"","name":"ByteDance Seed: Seed-2.0-Mini","created":1772131107,"description":"Seed-2.0-mini targets latency-sensitive, high-concurrency, and cost-sensitive scenarios, emphasizing fast response and flexible inference deployment. It delivers performance comparable to ByteDance-Seed-1.6, supports 256k context, four reasoning effort modes (minimal/low/medium/high), multimodal understanding, and is optimized for lightweight tasks where cost and speed take priority.","context_length":262144,"architecture":{"modality":"text+image+video->text","input_modalities":["text","image","video"],"output_modalities":["text"],"tokenizer":"Other","instruct_type":null},"pricing":{"prompt":"0.0000001","completion":"0.0000004"},"top_provider":{"context_length":262144,"max_completion_tokens":131072,"is_moderated":false},"per_request_limits":null,"supported_parameters":["frequency_penalty","include_reasoning","max_tokens","reasoning","response_format","stop","structured_outputs","temperature","tool_choice","tools","top_p"],"default_parameters":{"temperature":null,"top_p":null,"frequency_penalty":null},"expiration_date":null},{"id":"google/gemini-3.1-flash-image-preview","canonical_slug":"google/gemini-3.1-flash-image-preview-20260226","hugging_face_id":"","name":"Google: Nano Banana 2 (Gemini 3.1 Flash Image Preview)","created":1772119558,"description":"Gemini 3.1 Flash Image Preview, a.k.a. \"Nano Banana 2,\" is Google’s latest state of the art image generation and editing model, delivering Pro-level visual quality at Flash speed. It combines advanced contextual understanding with fast, cost-efficient inference, making complex image generation and iterative edits significantly more accessible. Aspect ratios can be controlled with the [image_config API Parameter](https://openrouter.ai/docs/features/multimodal/image-generation#image-aspect-ratio-configuration)","context_le... [truncated]
+2026-03-03T08:21:55.915Z [console][log] [vite] connecting...
+2026-03-03T08:21:55.918Z [console][log] [vite] connected.
+2026-03-03T08:21:55.918Z [console][debug] [vite] connected.
+2026-03-03T08:38:32.781Z [console][log] [vite] connecting...
+2026-03-03T08:38:32.783Z [console][log] [vite] connected.
+2026-03-03T20:53:36.742Z [console][log] [vite] connecting...
+2026-03-03T20:53:36.745Z [console][log] [vite] connected.
+2026-03-03T20:53:36.771Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-03-03T20:53:36.815Z [console][error] [20:53:36.815] [ERROR] [tauri] Error calling get_model_registry TypeError: Cannot read properties of undefined (reading 'invoke') 
+2026-03-03T20:53:36.815Z [console][error] [20:53:36.815] [ERROR] [tauri] Error calling get_config TypeError: Cannot read properties of undefined (reading 'invoke') 
+2026-03-03T20:53:36.964Z [console][error] [20:53:36.964] [ERROR] [tauri] Error calling get_model_registry TypeError: Cannot read properties of undefined (reading 'invoke') 
+2026-03-03T20:53:36.815Z [console][error] [20:53:36.815] [ERROR] [tauri] Error calling get_model_registry TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Module.invoke (http://localhost:5173/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=cff5bd9a:109:37)
+    at tauriInvoke (http://localhost:5173/src/tauri.ts:11:27) 
+2026-03-03T20:53:36.815Z [console][error] [20:53:36.815] [ERROR] [tauri] Error calling get_config TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Module.invoke (http://localhost:5173/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=cff5bd9a:109:37)
+    at tauriInvoke (http://localhost:5173/src/tauri.ts:11:27)
+    at async Object.loadGatewayConfig (http://localhost:5173/src/agent/gateway/gatewayStore.ts?t=1772571130473:78:22) 
+2026-03-03T20:53:36.964Z [console][error] [20:53:36.964] [ERROR] [tauri] Error calling get_model_registry TypeError: Cannot read properties of undefined (reading 'invoke')
+    at Module.invoke (http://localhost:5173/node_modules/.vite/deps/chunk-G7S6KQDI.js?v=cff5bd9a:109:37)
+    at tauriInvoke (http://localhost:5173/src/tauri.ts:11:27) 

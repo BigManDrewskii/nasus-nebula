@@ -122,77 +122,106 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
 
 // ─── Header bar ────────────────────────────────────────────────────────────────
 
-interface ChatHeaderProps {
-  task: Task
-  isActive: boolean
-  iteration: number
-  tokenCount: number
-  model: string
-  provider: string
-  routerConfig?: { mode: string; budget: string }
-  sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
-  outputVisible?: boolean
-  workspaceFileCount?: number
-  onShowOutput?: () => void
-  onShowMemory: () => void
-  onStop: () => void
-}
+  interface ChatHeaderProps {
+    task: Task
+    isActive: boolean
+    iteration: number
+    tokenCount: number
+    model: string
+    provider: string
+    routingMode: string
+    sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
+    outputVisible?: boolean
+    workspaceFileCount?: number
+    onShowOutput?: () => void
+    onShowMemory: () => void
+    onStop: () => void
+    taskRouterState?: any
+    gatewayHealth?: any[]
+  }
 
-export function ChatHeader({
-  task,
-  isActive,
-  iteration,
-  tokenCount,
-  model,
-  provider,
-  routerConfig,
-  sandboxStatus,
-  outputVisible,
-  workspaceFileCount = 0,
-  onShowOutput,
-  onShowMemory,
-  onStop,
-}: ChatHeaderProps) {
-  const isPaid = isPaidRoute(provider, routerConfig, model)
-  const label = getRouteLabel(provider, routerConfig, model)
-  return (
-    <header
-      className="flex-shrink-0 flex items-center justify-between"
-      style={{
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        background: '#0d0d0d',
-        minHeight: 44,
-        padding: '0 12px',
-      }}
-    >
-      {/* Left cluster */}
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-          <h2
-            className="font-display font-medium truncate"
-            style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
-          >
-            {task?.title || 'New Chat'}
-          </h2>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 6,
-              background: isPaid ? 'rgba(234,179,8,0.08)' : 'rgba(34,197,94,0.08)',
-              border: `1px solid ${isPaid ? 'rgba(234,179,8,0.2)' : 'rgba(34,197,94,0.2)'}`,
-              fontSize: 9, fontWeight: 700, color: isPaid ? 'var(--amber)' : '#4ade80',
-              flexShrink: 0
-            }}>
-              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
-              {label}
+  export function ChatHeader({
+    task,
+    isActive,
+    iteration,
+    tokenCount,
+    model: manualModel,
+    provider: manualProvider,
+    routingMode,
+    sandboxStatus,
+    outputVisible,
+    workspaceFileCount = 0,
+    onShowOutput,
+    onShowMemory,
+    onStop,
+    taskRouterState,
+    gatewayHealth = [],
+  }: ChatHeaderProps) {
+    // Current model info from either the live task state or the store defaults
+    const activeModelId = taskRouterState?.modelId || manualModel
+    const activeModelName = taskRouterState?.displayName || (manualModel.split('/').pop() || manualModel)
+    const isAutoFree = routingMode === 'auto-free' || taskRouterState?.isFree
+
+    // Provider info
+    const isVercel = activeModelId.includes('vercel') || manualProvider === 'vercel'
+    const providerLabel = isVercel ? 'Vercel AI' : manualProvider === 'ollama' ? 'Local' : 'OpenRouter'
+    const providerIcon = manualProvider === 'ollama' ? 'server' : 'cloud'
+
+    // Health status for the primary provider
+    const health = gatewayHealth.find(h => h.status !== 'unknown')
+    const healthStatus = health?.status || 'healthy'
+    const healthColor = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }[healthStatus]
+
+    return (
+      <header
+        className="flex-shrink-0 flex items-center justify-between"
+        style={{
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          background: '#0d0d0d',
+          minHeight: 44,
+          padding: '0 12px',
+        }}
+      >
+        {/* Left cluster */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+            <h2
+              className="font-display font-medium truncate"
+              style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
+            >
+              {task?.title || 'New Chat'}
+            </h2>
+
+            {/* Provider + Model Badge */}
+            <div
+              title={taskRouterState?.reason || `Connected to ${providerLabel}`}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6,
+                background: isAutoFree ? 'rgba(34,197,94,0.08)' : 'rgba(234,179,8,0.08)',
+                border: `1px solid ${isAutoFree ? 'rgba(34,197,94,0.18)' : 'rgba(234,179,8,0.18)'}`,
+                color: isAutoFree ? '#4ade80' : 'var(--tx-primary)',
+                flexShrink: 0,
+                cursor: 'default',
+              }}
+            >
+              {/* Health dot */}
+              <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}` }} />
+              <Pxi name={providerIcon} size={8} style={{ opacity: 0.7 }} />
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.02em' }}>{providerLabel}</span>
+              <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-secondary)' }}>{activeModelName}</span>
+              {isAutoFree && <Pxi name="leaf" size={8} style={{ marginLeft: 2, color: '#4ade80' }} />}
             </div>
 
-        {isActive && iteration > 0 && (
-          <span className="flex items-center gap-1 flex-shrink-0">
-            <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
-            <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
-          </span>
-        )}
+          {isActive && iteration > 0 && (
+            <span className="flex items-center gap-1 flex-shrink-0">
+              <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
+              <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
+            </span>
+          )}
+
         {tokenCount > 0 && (
           <span className="font-mono flex-shrink-0" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>
-            {(tokenCount / 1000).toFixed(1)}k · {estimateCost(model, tokenCount)}
+            {(tokenCount / 1000).toFixed(1)}k · {estimateCost(activeModelId, tokenCount)}
           </span>
         )}
       </div>
