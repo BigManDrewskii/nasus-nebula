@@ -86,19 +86,28 @@ export class ToolRegistry {
 
   /**
    * Get all tool definitions for function calling.
+   * Deduplicates by name — constructor-registered tools that were already
+   * instantiated via get() live in both maps; we must not emit them twice
+   * or OpenRouter will return 400 "duplicate function name".
    */
   getToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
+    const seen = new Set<string>()
     const definitions: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> = []
 
-    // Add instantiated tools
-    for (const tool of this.tools.values()) {
-      definitions.push(tool.toFunctionDefinition())
-    }
+    // All unique tool names across both maps
+    const allNames = new Set([...this.tools.keys(), ...this.toolConstructors.keys()])
 
-    // Add constructor tools (instantiate temporarily)
-    for (const Constructor of this.toolConstructors.values()) {
-      const tool = new Constructor()
-      definitions.push(tool.toFunctionDefinition())
+    for (const name of allNames) {
+      if (seen.has(name)) continue
+      seen.add(name)
+
+      // Prefer already-instantiated tool; fall back to constructor
+      let tool = this.tools.get(name)
+      if (!tool) {
+        const Constructor = this.toolConstructors.get(name)
+        if (Constructor) tool = new Constructor()
+      }
+      if (tool) definitions.push(tool.toFunctionDefinition())
     }
 
     return definitions

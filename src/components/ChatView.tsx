@@ -17,8 +17,6 @@ import { isPaidRoute, getRouteLabel, resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
 interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
@@ -56,8 +54,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       maxIterations,
       setWorkspacePath,
       addRecentWorkspacePath,
-      e2bApiKey,
-      executionMode,
       enableVerification,
       routerConfig,
       pendingPlan,
@@ -147,33 +143,31 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
 
     // Debounce the API call / heuristic
     routingTimeoutRef.current = setTimeout(async () => {
-      if (isTauri) {
-        try {
-          const result = await tauriInvoke<{
-            model_id: string
-            display_name: string
-            reason: string
-          }>('preview_routing', {
-            message: content,
-            mode: routerConfig.mode,
-            budget: routerConfig.budget,
-            modelOverrides: routerConfig.modelOverrides ?? {},
-          })
+      try {
+        const result = await tauriInvoke<{
+          model_id: string
+          display_name: string
+          reason: string
+        }>('preview_routing', {
+          message: content,
+          mode: routerConfig.mode,
+          budget: routerConfig.budget,
+          modelOverrides: routerConfig.modelOverrides ?? {},
+        })
 
-          if (result) {
-            setRoutingPreview({
-              modelId: result.model_id,
-              displayName: result.display_name,
-              reason: result.reason,
-            })
-            return
-          }
-        } catch {
-          // Fall through to local heuristic
+        if (result) {
+          setRoutingPreview({
+            modelId: result.model_id,
+            displayName: result.display_name,
+            reason: result.reason,
+          })
+          return
         }
+      } catch {
+        // Fall through to local heuristic
       }
 
-      // Browser mode or Tauri fallback: use local heuristic
+      // Tauri fallback: use local heuristic
       const local = resolveModelLocally(content, routerConfig, model)
       setRoutingPreview({
         modelId: local.modelId,
@@ -226,10 +220,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setTimeout(() => setShowNewMsgPill(false), 200)
   }
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig })
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig })
   useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig }
-  }, [apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, e2bApiKey, executionMode, enableVerification, routerConfig])
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig }
+  }, [apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig])
 
   const runAgent = useCallback(async (
             taskId: string,
@@ -240,7 +234,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             const cfg = configRef.current
 
             // Determine the model to use based on routing mode.
-            // In auto mode we resolve once here (Tauri backend if available, local heuristic otherwise).
+            // In auto mode we resolve once here using Tauri backend.
             // In manual mode we always use cfg.model directly.
             let modelToUse = cfg.model || 'anthropic/claude-3.7-sonnet'
 
@@ -248,30 +242,23 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 const lastMsg = history[history.length - 1]
                 const msgText = typeof lastMsg?.content === 'string' ? lastMsg.content : ''
 
-                if (isTauri) {
-                  try {
-                    const routing = await tauriInvoke<{
-                      model_id: string
-                      display_name: string
-                      reason: string
-                    }>('preview_routing', {
-                      message: msgText,
-                      mode: 'auto',
-                      budget: cfg.routerConfig.budget,
-                      modelOverrides: cfg.routerConfig.modelOverrides ?? {},
-                    })
-                    if (routing?.model_id) {
-                      modelToUse = routing.model_id
-                      setActiveModelBadge({ modelId: routing.model_id, displayName: routing.display_name, reason: routing.reason })
-                    }
-                  } catch {
-                    // Fall back to local heuristic on Tauri routing error
-                    const local = resolveModelLocally(msgText, cfg.routerConfig, cfg.model)
-                    modelToUse = local.modelId
-                    setActiveModelBadge({ modelId: local.modelId, displayName: local.displayName, reason: local.reason })
+                try {
+                  const routing = await tauriInvoke<{
+                    model_id: string
+                    display_name: string
+                    reason: string
+                  }>('preview_routing', {
+                    message: msgText,
+                    mode: 'auto',
+                    budget: cfg.routerConfig.budget,
+                    modelOverrides: cfg.routerConfig.modelOverrides ?? {},
+                  })
+                  if (routing?.model_id) {
+                    modelToUse = routing.model_id
+                    setActiveModelBadge({ modelId: routing.model_id, displayName: routing.display_name, reason: routing.reason })
                   }
-                } else {
-                  // Browser mode: use local heuristic (no Tauri backend available)
+                } catch {
+                  // Fall back to local heuristic on Tauri routing error
                   const local = resolveModelLocally(msgText, cfg.routerConfig, cfg.model)
                   modelToUse = local.modelId
                   setActiveModelBadge({ modelId: local.modelId, displayName: local.displayName, reason: local.reason })
@@ -295,8 +282,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                   exaKey: cfg.exaKey || '',
                 },
                 executionConfig: {
-                  executionMode: (cfg.executionMode || 'docker') as 'docker' | 'e2b' | 'pyodide' | 'disabled',
-                  e2bApiKey: cfg.e2bApiKey || undefined,
+                  executionMode: 'docker' as const,
                   taskId: taskId,
                 },
                 routerMode: cfg.routerConfig.mode === 'auto' ? ('auto' as const) : ('manual' as const),
@@ -332,15 +318,25 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       }
   }, [setError]) // eslint-disable-line react-hooks/exhaustive-deps
 
-    async function handleSend(content: string) {
-      if (!task) return
-      if (runningRef.current) {
-        queuedMsgRef.current = content
-        setQueuedMsg(content)
-        return
-      }
+      async function handleSend(content: string) {
+        if (!task) return
+        if (runningRef.current) {
+          queuedMsgRef.current = content
+          setQueuedMsg(content)
+          return
+        }
 
-      // Rate limit: max 10 new agent runs per 60 seconds
+        // Require an API key for non-Ollama providers before firing any LLM calls
+        const cfg0 = configRef.current
+        const needsKey = cfg0.provider !== 'ollama' && !cfg0.apiKey?.trim()
+        if (needsKey) {
+          setRateLimitWarning('Add your OpenRouter API key in Settings before sending.')
+          setTimeout(() => setRateLimitWarning(null), 5000)
+          onOpenSettings()
+          return
+        }
+
+        // Rate limit: max 10 new agent runs per 60 seconds
       const now = Date.now()
       sendTimestamps.current = sendTimestamps.current.filter((t) => now - t < 60_000)
       if (sendTimestamps.current.length >= 10) {
@@ -429,14 +425,14 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       addMessage(task.id, agentMsg)
       runningRef.current = true
       setTokenCount(0)
-      setSandboxStatus(isTauri ? 'starting' : 'idle')
+      setSandboxStatus('starting')
       updateTaskStatus(task.id, 'in_progress')
         // Unlock scroll and jump to bottom when a new exchange starts
         hidePill()
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
 
-      // Validate workspace path before running (Tauri only)
-      if (isTauri && workspacePath) {
+      // Validate workspace path before running
+      if (workspacePath) {
         try {
           const ok = await tauriInvoke<boolean>('validate_path', { path: workspacePath })
           if (!ok) {
@@ -461,7 +457,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     setStreaming(task.id, failedMsgId, true)
     runningRef.current = true
     setTokenCount(0)
-    setSandboxStatus(isTauri ? 'starting' : 'idle')
+    setSandboxStatus('starting')
     updateTaskStatus(task.id, 'in_progress')
     await runAgent(task.id, failedMsgId, history, task.title)
   }
@@ -472,9 +468,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       setQueuedMsg(null)
       // Always call stopWebAgent even in Tauri mode since we're using runWebAgent
       stopWebAgent(task.id)
-      if (isTauri) {
-        try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
-      }
+      try { await tauriInvoke('stop_agent', { taskId: task.id }) } catch { /* best-effort */ }
       runningRef.current = false
       updateTaskStatus(task.id, 'stopped')
     }

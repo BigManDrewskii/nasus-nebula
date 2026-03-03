@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
+import type { ModelInfo } from '../store'
 import { fetchOpenRouterModels } from '../agent/llm'
 import { tauriInvoke } from '../tauri'
+import { createLogger } from '../lib/logger'
+import { MODEL_REFRESH_INTERVAL_MS } from '../lib/constants'
 
-// Refresh the model list if the cached copy is older than this threshold
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
+const log = createLogger('useModelSync')
 
 /**
  * Drop this hook once in the app root. It silently keeps the OpenRouter model
@@ -25,18 +27,21 @@ export function useModelSync() {
 
   useEffect(() => {
     // Sync backend model registry
-    tauriInvoke<any[]>('get_model_registry')
+    tauriInvoke<ModelInfo[]>('get_model_registry')
       .then((registry) => {
         if (registry && registry.length > 0) {
           useAppStore.getState().setRouterConfig({ registry })
         }
       })
-      .catch(() => { /* non-blocking */ })
+      .catch(err => {
+        log.warn('Failed to sync backend model registry', err)
+        // Non-blocking: stale registry or static fallback remains usable
+      })
 
     if (!apiKey?.trim()) return
 
     const keyChanged = lastFetchedKey.current !== apiKey.trim()
-    const cacheStale = Date.now() - modelsLastFetched > REFRESH_INTERVAL_MS
+    const cacheStale = Date.now() - modelsLastFetched > MODEL_REFRESH_INTERVAL_MS
     const noCache = openRouterModels.length === 0
 
     if (!keyChanged && !cacheStale && !noCache) return
@@ -47,9 +52,9 @@ export function useModelSync() {
       .then((models) => {
         if (models.length > 0) setOpenRouterModels(models)
       })
-      .catch(() => {
+      .catch(err => {
+        log.warn('Failed to fetch OpenRouter models', err)
         // Silent — stale cache or static fallback remains usable
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiKey])
+  }, [apiKey, modelsLastFetched, openRouterModels.length, setOpenRouterModels])
 }

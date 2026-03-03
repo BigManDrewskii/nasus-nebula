@@ -40,7 +40,7 @@ export function isValidTransition(from: AgentState, to: AgentState): boolean {
     [AgentState.RUNNING]: [AgentState.THINKING, AgentState.RUNNING, AgentState.WAITING, AgentState.FINISHED, AgentState.ERROR],
     [AgentState.WAITING]: [AgentState.RUNNING, AgentState.THINKING, AgentState.ERROR],
     [AgentState.FINISHED]: [AgentState.IDLE], // Can restart
-    [AgentState.ERROR]: [AgentState.IDLE, AgentState.THINKING], // Can retry
+    [AgentState.ERROR]: [AgentState.IDLE, AgentState.THINKING, AgentState.RUNNING], // Can retry directly
   }
 
   return validTransitions[from]?.includes(to) ?? false

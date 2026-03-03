@@ -6,6 +6,8 @@
  * Runs entirely in-browser using DOMParser — no backend needed.
  */
 
+import { CONTENT_TRUNCATION_LIMIT } from '../lib/constants'
+
 export interface ExtractedContent {
   title: string
   description: string
@@ -19,11 +21,11 @@ export function extractReadableContent(
   html: string,
   url: string,
   options: {
-    maxLength?: number      // Max chars to return (default 12000 ≈ ~3k tokens)
+    maxLength?: number      // Max chars to return (default CONTENT_TRUNCATION_LIMIT ≈ ~3k tokens)
     includeLinks?: boolean  // Preserve hyperlinks as [text](url)
   } = {},
 ): ExtractedContent {
-  const { maxLength = 12000, includeLinks = true } = options
+  const { maxLength = CONTENT_TRUNCATION_LIMIT, includeLinks = true } = options
 
   try {
     const doc = new DOMParser().parseFromString(html, 'text/html')

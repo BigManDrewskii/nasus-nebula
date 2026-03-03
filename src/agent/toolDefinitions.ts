@@ -1,4 +1,5 @@
 import type { ToolDefinition } from './llm'
+import { DEFAULT_TIMEOUT_MS } from '../lib/constants'
 
 /**
  * Tool schema definitions for the web agent loop.
@@ -130,7 +131,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'python_execute',
       description:
-        'Execute Python code in a sandbox. When a cloud sandbox (E2B) is configured this runs in a full Linux environment with all packages available — use pip install via bash_execute first if needed. Otherwise falls back to Pyodide (WebAssembly) in the browser. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.',
+        'Execute Python code in a Docker sandbox. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.',
       parameters: {
         type: 'object',
         properties: {
@@ -148,7 +149,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'bash_execute',
       description:
-        'Execute a shell command in a cloud sandbox (E2B). Requires an E2B API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.',
+        'Execute a shell command in a Docker sandbox. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts.',
       parameters: {
         type: 'object',
         properties: {
@@ -166,7 +167,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'serve_preview',
       description:
-        'Start a dev server or static file server for a project in the cloud sandbox. Returns a preview URL that renders in the Preview tab. Use this after copying a template to /workspace/project. Examples: serve_preview(command="cd /workspace/project && npm run dev", port=3000) for Next.js/Vite, or serve_preview(command="serve /workspace/project -l 3000", port=3000) for static files. Requires E2B cloud sandbox.',
+        'Start a dev server or static file server for a project in the Docker sandbox. Returns a preview URL that renders in the Preview tab. Use this after copying a template to /workspace/project. Examples: serve_preview(command="cd /workspace/project && npm run dev", port=3000) for Next.js/Vite, or serve_preview(command="serve /workspace/project -l 3000", port=3000) for static files.',
       parameters: {
         type: 'object',
         properties: {
@@ -303,7 +304,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         properties: {
           selector: { type: 'string', description: 'CSS selector to wait for (e.g. "main.content", "#results").' },
           url_pattern: { type: 'string', description: 'Substring to match against the current tab URL (e.g. "/dashboard", "search?q=").' },
-          timeout_ms: { type: 'number', description: 'How long to wait in milliseconds (default 10000).', default: 10000 },
+          timeout_ms: { type: 'number', description: `How long to wait in milliseconds (default ${DEFAULT_TIMEOUT_MS}).`, default: DEFAULT_TIMEOUT_MS },
           tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
         },
       },

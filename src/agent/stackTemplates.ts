@@ -39,14 +39,12 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
     ],
     contextInjection:
       'Stack detected: Next.js + shadcn/ui.\n' +
-      'If a cloud sandbox (E2B) is active: a pre-built template with all dependencies installed is at ' +
+      'A pre-built template with all dependencies installed is at ' +
       '/templates/nextjs-shadcn/. Your workflow:\n' +
       '  1. bash_execute("cp -r /templates/nextjs-shadcn /workspace/project")\n' +
       '  2. serve_preview(command="cd /workspace/project && npm run dev", port=3000)\n' +
       '  3. write_file("/workspace/project/src/app/page.tsx", ...) to build the UI\n' +
-      'NEVER run npx create-next-app, npm init, or npm install from scratch.\n' +
-      'If NO cloud sandbox is active (browser-only): a CDN-based template is pre-loaded at ' +
-      '/workspace/index.html — write component HTML directly into it. No npm needed.',
+      'NEVER run npx create-next-app, npm init, or npm install from scratch.',
   },
   {
     id: 'react-spa',
@@ -58,14 +56,12 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
     ],
     contextInjection:
       'Stack detected: React SPA.\n' +
-      'If a cloud sandbox (E2B) is active: a pre-built Vite + React template is at ' +
+      'A pre-built Vite + React template is at ' +
       '/templates/react-vite/. Your workflow:\n' +
       '  1. bash_execute("cp -r /templates/react-vite /workspace/project")\n' +
       '  2. serve_preview(command="cd /workspace/project && npm run dev", port=3000)\n' +
       '  3. write_file("/workspace/project/src/App.tsx", ...) to build the UI\n' +
-      'NEVER run npx create-react-app or npm init.\n' +
-      'If NO cloud sandbox is active (browser-only): a CDN-based template is pre-loaded at ' +
-      '/workspace/index.html with React + Babel CDN. Write components directly in <script type="text/babel"> blocks.',
+      'NEVER run npx create-react-app or npm init.',
   },
   {
     id: 'html-tailwind',

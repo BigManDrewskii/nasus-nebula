@@ -111,7 +111,7 @@ const backBtnStyle: React.CSSProperties = {
 }
 
 export function OnboardingScreen() {
-  const { setApiKey, setApiBase, setProvider, setWorkspacePath, addRecentWorkspacePath, setOnboardingComplete } = useAppStore()
+  const { setApiKey, setApiBase, setProvider, setWorkspacePath, addRecentWorkspacePath, setOnboardingComplete, updateGateway } = useAppStore()
   const [step, setStep] = useState<Step>('welcome')
 
   // Provider step
@@ -144,6 +144,10 @@ export function OnboardingScreen() {
         provider: selectedProvider.id,
       })
         setApiKey(key)
+        // Sync into gateway config so the GatewayService has the key immediately
+        if (key && selectedProvider.id === 'openrouter') {
+          updateGateway('openrouter', { apiKey: key })
+        }
         setApiBase(effectiveBase)
         setProvider(selectedProvider.id)
         if (path) {

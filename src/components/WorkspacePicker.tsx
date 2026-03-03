@@ -3,8 +3,6 @@ import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
 interface WorkspacePickerProps {
   value: string
   onChange: (path: string) => void
@@ -37,29 +35,23 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     const trimmed = value.trim()
     if (!trimmed || !trimmed.startsWith('/')) { setValid(null); setChecking(false); return }
 
-    if (!isTauri) {
-      setValid(trimmed.length > 1)
-      return
-    }
-
     setChecking(true)
-      checkTimer.current = setTimeout(async () => {
-        try {
-          const ok = await tauriInvoke<boolean>('validate_path', { path: trimmed })
-          setValid(ok ?? null)
-        } catch {
-          setValid(null)
-        } finally {
-          setChecking(false)
-        }
-      }, 500)
+    checkTimer.current = setTimeout(async () => {
+      try {
+        const ok = await tauriInvoke<boolean>('validate_path', { path: trimmed })
+        setValid(ok ?? null)
+      } catch {
+        setValid(null)
+      } finally {
+        setChecking(false)
+      }
+    }, 500)
 
     return () => { if (checkTimer.current) clearTimeout(checkTimer.current) }
   }, [value])
 
   /** Open the native macOS folder picker via Tauri dialog plugin */
   async function handleBrowse() {
-    if (!isTauri) return
     if (picking) return
     setPicking(true)
     try {
@@ -97,36 +89,36 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
         }}
       >
         {/* Browse button — opens native macOS folder picker */}
-          <button
-            type="button"
-            onClick={handleBrowse}
-            disabled={!isTauri || picking}
-            title={isTauri ? 'Browse for folder' : 'Folder picker only available in the desktop app'}
-            style={{
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 5,
-              padding: '0 10px',
-              height: 36,
-              background: 'transparent',
-              border: 'none',
-              borderRight: '1px solid rgba(255,255,255,0.07)',
-              cursor: isTauri && !picking ? 'pointer' : 'default',
-              color: isTauri ? 'var(--amber)' : 'var(--tx-tertiary)',
-              fontSize: 11,
-              fontWeight: 500,
-              transition: 'color 0.12s, background 0.12s',
-              opacity: picking ? 0.6 : 1,
-              whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={(e) => { if (isTauri && !picking) e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-          >
-            <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={10} style={{ color: isTauri ? 'var(--amber)' : 'var(--tx-tertiary)' }} />
-            {picking ? 'Opening…' : 'Browse'}
-          </button>
+        <button
+          type="button"
+          onClick={handleBrowse}
+          disabled={picking}
+          title="Browse for folder"
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 5,
+            padding: '0 10px',
+            height: 36,
+            background: 'transparent',
+            border: 'none',
+            borderRight: '1px solid rgba(255,255,255,0.07)',
+            cursor: !picking ? 'pointer' : 'default',
+            color: 'var(--amber)',
+            fontSize: 11,
+            fontWeight: 500,
+            transition: 'color 0.12s, background 0.12s',
+            opacity: picking ? 0.6 : 1,
+            whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={(e) => { if (!picking) e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={10} style={{ color: 'var(--amber)' }} />
+          {picking ? 'Opening…' : 'Browse'}
+        </button>
 
         <input
           type="text"

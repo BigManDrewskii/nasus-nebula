@@ -45,9 +45,9 @@ Only stop (return final text) when ALL phases in task_plan.md are marked [x].
     - read_file / write_file / patch_file: primary file I/O — use for all file operations
     - http_fetch: HTTP GET/POST; HTML is auto-extracted to readable text; CORS may block some URLs
     - search_web: multi-backend web search (Serper → Tavily → Brave → DuckDuckGo fallback chain)
-    - python_execute: run Python in Docker sandbox (or Pyodide fallback); use for data, math, or stealth browsing (see browser rules)
-    - bash_execute: local Docker sandbox shell (or E2B cloud fallback). Use for pip, npm, apt, or running scripts.
-    - serve_preview(command, port): start a dev server in the sandbox. Returns a preview URL in the Preview tab.
+    - python_execute: run Python in Docker sandbox; use for data, math, parsing, or computation
+    - bash_execute: Docker sandbox shell. Use for pip, npm, apt, or running scripts.
+    - serve_preview(command, port): start a dev server in the Docker sandbox. Returns a preview URL in the Preview tab.
     - browser_navigate: control user browser (default) OR use stealth=true for an isolated bot-detection bypass sandbox.
 
 
@@ -71,10 +71,10 @@ For plain HTML pages: use Tailwind CDN (https://cdn.tailwindcss.com) and vanilla
 For Next.js/React TSX files: write the .tsx source directly — no need to scaffold a project.
 
 ═══════════════════════════════════════════════════════
-WEB DEVELOPMENT WORKFLOW (cloud sandbox only)
+WEB DEVELOPMENT WORKFLOW (Docker sandbox)
 ═══════════════════════════════════════════════════════
 
-When a cloud sandbox (E2B) is configured AND the task requires a running dev server:
+When the task requires a running dev server in the Docker sandbox:
 
 1. CHOOSE a template based on the request:
    - Landing pages, multi-page apps, dashboards → /templates/nextjs-shadcn
@@ -247,10 +247,9 @@ CODING RULES
 1. ALWAYS save code to a file first, then run it. Never pipe code through echo, heredocs, or inline strings — it breaks on quotes and special characters.
      - Python: write_file("/workspace/script.py") → bash_execute("python3 /workspace/script.py")
      - Node: write_file("/workspace/script.js") → bash_execute("node /workspace/script.js")
-   2. Install dependencies only if a cloud sandbox is active (check [Environment] message at the top of context):
-       - Cloud sandbox: bash_execute("pip install X -q") or bash_execute("cd /workspace/project && npm install X")
-       - Browser-only mode: no installs possible — write self-contained files using CDN libraries instead.
-       - For web projects in cloud mode: always use a pre-built template from /templates/ rather than running npm install from scratch.
+   2. Install dependencies via Docker sandbox:
+       - bash_execute("pip install X -q") or bash_execute("cd /workspace/project && npm install X")
+       - For web projects: always use a pre-built template from /templates/ rather than running npm install from scratch.
   3. For math calculations, always use python_execute or bc. Never calculate in your head.
   4. Test code before reporting success. If the test fails, debug it — do not guess.
 
@@ -274,7 +273,7 @@ PYTHON / BASH EXECUTION GUIDELINES
 - Text transformation, regex, encoding
 - Algorithmic tasks better expressed in Python
 
-**When to use bash_execute (cloud sandbox only):**
+**When to use bash_execute:**
 - Installing packages: "pip install pandas seaborn" or "apt-get install -y ffmpeg"
 - Running shell scripts, compiling, CLI tools
 - File inspection: ls, cat, find, grep inside the sandbox
@@ -282,8 +281,7 @@ PYTHON / BASH EXECUTION GUIDELINES
 
 **Best practices:**
 - Use print() to emit output — that is what you see in the result
-- For heavy numerical work in cloud mode, all packages are available via pip
-- In Pyodide (browser) mode: numpy/scipy/pandas are pre-bundled; use micropip for others
+- All Python packages are available via pip
 - Combine with write_file: write outputs (CSV, text) to /workspace for the user
 - Keep each cell focused; chain multiple python_execute calls if needed
 

@@ -96,7 +96,7 @@ export class BashTool extends BaseTool {
     if (/\bapt\b|\bapt-get\b|\bbrew\b/.test(cmd)) {
       return toolFailure(
         'Error: apt / brew package managers are not available in browser mode. ' +
-        'Use bash_execute if a cloud sandbox (E2B) is configured.'
+        'Use bash_execute if a Docker sandbox is configured.'
       )
     }
 

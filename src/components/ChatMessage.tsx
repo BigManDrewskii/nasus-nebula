@@ -7,6 +7,7 @@ import { ThinkingIndicator } from './ThinkingIndicator'
 import { formatBytes } from '../hooks/useAttachments'
 import { OutputCardRenderer } from './OutputCards'
 import { useDebouncedStreaming } from '../hooks/useStreaming'
+import { logger } from '../lib/logger'
 
 // ─── Copy button ──────────────────────────────────────────────────────────────
 
@@ -17,7 +18,9 @@ function CopyButton({ text, style }: { text: string; style?: React.CSSProperties
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    }).catch(() => {})
+    }).catch(err => {
+      logger.warn('ChatMessage', 'Failed to copy to clipboard', err)
+    })
   }
 
   return (

@@ -2,6 +2,7 @@ import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { browserExtract } from '../../browserBridge'
+import { CONTENT_TRUNCATION_LIMIT } from '../../../lib/constants'
 
 /**
  * Tool for extracting readable text content from the browser.
@@ -29,8 +30,8 @@ export class BrowserExtractTool extends BaseTool {
         return toolFailure(result.error)
       }
       const header = `URL: ${result.url}\nTitle: ${result.title}\nLength: ${result.length} chars\n\n`
-      const content = result.content.length > 12000
-        ? result.content.slice(0, 12000) + '\n[...truncated]'
+      const content = result.content.length > CONTENT_TRUNCATION_LIMIT
+        ? result.content.slice(0, CONTENT_TRUNCATION_LIMIT) + '\n[...truncated]'
         : result.content
       return toolSuccess(header + content)
     } catch (err) {

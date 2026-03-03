@@ -1,19 +1,31 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path};
+use std::path::Path;
 use std::sync::Arc;
 use tauri::{AppHandle, State, Manager};
 use tokio::sync::Mutex;
 use rusqlite::{params, Connection};
+use once_cell::sync::Lazy;
 
 pub mod models;
 pub mod search;
 pub mod docker;
 pub mod sidecar;
+pub mod gateway;
 
 use crate::models::classifier::{classify_task};
 use crate::models::router::{BudgetMode, ModelSelectionMode, RouterConfig, RoutingDecision};
 use crate::search::service::SearchService;
+
+// --- Shared HTTP Client ---
+// Uses once_cell::sync::Lazy for thread-safe lazy initialization with connection pooling
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client")
+});
 
 // --- State and Config ---
 
@@ -47,6 +59,7 @@ pub struct AppState {
     pub search_service: Arc<SearchService>,
     pub active_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
     pub sidecar: sidecar::SharedSidecarState,
+    pub gateway_state: gateway::GatewayState,
 }
 
 // --- Agent Events ---
@@ -102,6 +115,29 @@ pub enum AgentEvent {
         message_id: String,
         error: String,
     },
+}
+
+// --- Path Validation ---
+
+/// Validates that a path doesn't escape the base directory (prevents path traversal attacks).
+/// Returns Ok(()) if the path is safe, Err with message if traversal is detected.
+fn validate_path_no_traversal(base: &Path, path: &Path) -> Result<(), String> {
+    // Canonicalize both paths to resolve any ".." or "." components
+    let base_canonical = base
+        .canonicalize()
+        .map_err(|e| format!("Invalid base path: {}", e))?;
+
+    let full_path = base.join(path);
+    let full_canonical = full_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path: {}", e))?;
+
+    // Ensure the full path starts with the base path (no escape)
+    if !full_canonical.starts_with(&base_canonical) {
+        return Err("Path traversal detected: access denied".to_string());
+    }
+
+    Ok(())
 }
 
 // --- Commands ---
@@ -208,7 +244,8 @@ async fn search(
     searchConfig: Option<SearchConfig>,
 ) -> Result<Vec<search::SearchResult>, String> {
     let mut providers: Vec<Box<dyn search::SearchProvider>> = vec![];
-    let client = reqwest::Client::new();
+    // Use shared HTTP client with connection pooling
+    let client = &*HTTP_CLIENT;
 
     // Determine which config to use
     let config = if let Some(c) = searchConfig {
@@ -327,14 +364,26 @@ async fn workspace_list(taskId: String, workspacePath: String) -> Result<Vec<Rus
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn workspace_read(taskId: String, path: String, workspacePath: String) -> Result<String, String> {
-    let full_path = Path::new(&workspacePath).join(format!("task-{}", taskId)).join(path);
+    let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
+    let target = Path::new(&path);
+
+    // Validate path doesn't escape workspace
+    validate_path_no_traversal(&base, target)?;
+
+    let full_path = base.join(target);
     std::fs::read_to_string(full_path).map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn workspace_write(taskId: String, path: String, content: String, workspacePath: String) -> Result<(), String> {
-    let full_path = Path::new(&workspacePath).join(format!("task-{}", taskId)).join(path);
+    let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
+    let target = Path::new(&path);
+
+    // Validate path doesn't escape workspace
+    validate_path_no_traversal(&base, target)?;
+
+    let full_path = base.join(target);
     if let Some(parent) = full_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -344,13 +393,24 @@ async fn workspace_write(taskId: String, path: String, content: String, workspac
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn workspace_delete(taskId: String, path: String, workspacePath: String) -> Result<(), String> {
-    let full_path = Path::new(&workspacePath).join(format!("task-{}", taskId)).join(path);
+    let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
+    let target = Path::new(&path);
+
+    // Validate path doesn't escape workspace
+    validate_path_no_traversal(&base, target)?;
+
+    let full_path = base.join(target);
     std::fs::remove_file(full_path).map_err(|e| e.to_string())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn workspace_delete_all(taskId: String, workspacePath: String) -> Result<(), String> {
+    // Prevent path traversal via taskId (basic check)
+    if taskId.contains("..") || taskId.contains('/') || taskId.contains('\\') {
+        return Err("Invalid taskId: contains path characters".to_string());
+    }
+
     let full_path = Path::new(&workspacePath).join(format!("task-{}", taskId));
     if full_path.exists() {
         std::fs::remove_dir_all(full_path).map_err(|e| e.to_string())?;
@@ -542,6 +602,16 @@ async fn is_ollama_running() -> bool {
     }
 }
 
+/// Get fallback model chain for OpenRouter's server-side fallback routing
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn get_fallback_chain(
+    primaryModel: String,
+    budget: BudgetMode,
+) -> Result<Vec<String>, String> {
+    Ok(models::router::build_fallback_chain(&primaryModel, budget))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -582,6 +652,7 @@ pub fn run() {
               sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
                   sidecar::SidecarState::new(sidecar_path)
               ))),
+              gateway_state: gateway::GatewayState::new(gateway::default_gateways()),
           });
           Ok(())
       })
@@ -609,6 +680,11 @@ pub fn run() {
         delete_task_history,
         check_docker,
         is_ollama_running,
+        get_fallback_chain,
+        gateway::get_gateways,
+        gateway::save_gateways,
+        gateway::get_gateway_health,
+        gateway::test_gateway,
         docker::commands::docker_create_container,
         docker::commands::docker_execute_python,
         docker::commands::docker_execute_bash,

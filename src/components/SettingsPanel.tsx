@@ -5,10 +5,6 @@ import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
-import { getExtensionId, setExtensionId, pingExtension, autoDetectExtensionId, getConnectionStatus } from '../agent/browserBridge'
-
-// Detect if running in Tauri desktop app
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
 
@@ -49,15 +45,16 @@ interface SettingsPanelProps {
 type ValidationErrors = Partial<Record<'apiKey' | 'workspacePath', string>>
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const {
-      apiKey, model, workspacePath,
-      setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
-      openRouterModels, setOpenRouterModels,
-      exaKey, setExaKey,
-      maxIterations, setMaxIterations,
-      addRecentWorkspacePath,
-      routerConfig, setRouterConfig,
-    } = useAppStore()
+    const {
+        apiKey, model, workspacePath,
+        setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
+        openRouterModels, setOpenRouterModels,
+        exaKey, setExaKey,
+        maxIterations, setMaxIterations,
+        addRecentWorkspacePath,
+        routerConfig, setRouterConfig,
+        updateGateway,
+      } = useAppStore()
 
   const [localKey, setLocalKey] = useState(apiKey)
   const [localModel, setLocalModel] = useState(model)
@@ -74,20 +71,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   // Code execution state
   const {
-    e2bApiKey, setE2bApiKey,
-    executionMode, setExecutionMode,
     enableVerification, setEnableVerification,
-    sandboxStatus, sandboxStatusMessage,
   } = useAppStore()
-  const [localE2bKey, setLocalE2bKey] = useState(e2bApiKey || '')
-  const [localExecutionMode, setLocalExecutionMode] = useState(executionMode || 'e2b')
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
 
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
+    const [saveError, setSaveError] = useState<string | null>(null)
     const [errors, setErrors] = useState<ValidationErrors>({})
 
-    // Local Provider State
     const [ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
     const [checkingOllama, setCheckingOllama] = useState(false)
     const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'openrouter')
@@ -226,15 +218,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalWorkspace('')
     setLocalExaKey('')
     setLocalMaxIterations('50')
-    setLocalE2bKey('')
-    setLocalExecutionMode('e2b')
     setLocalEnableVerification(true)
     setLocalRouterMode('auto')
     setLocalRouterBudget('free')
     setLocalModelOverrides({})
     setLocalApiBase(OR_BASE)
-    setExtensionId('')
-    try { localStorage.removeItem('nasus_extension_id') } catch { /* ignore */ }
     setErrors({})
   }
 
@@ -243,14 +231,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       if (activeProvider === 'openrouter' && Object.keys(errs).length > 0) { setErrors(errs); return }
       setErrors({})
       setSaving(true)
-      
+      setSaveError(null)
+
       const isOllama = activeProvider === 'ollama'
       const finalApiBase = isOllama ? OLLAMA_BASE : localApiBase
       const finalProvider = isOllama ? 'ollama' : 'openrouter'
 
-      setApiKey(isOllama ? '' : localKey.trim())
-      setModel(localModel)
-      setWorkspacePath(localWorkspace.trim())
+        const finalApiKey = isOllama ? '' : localKey.trim()
+        setApiKey(finalApiKey)
+        // Sync the API key into the gateway config so callWithFailover uses the new key immediately
+        updateGateway('openrouter', { apiKey: finalApiKey })
+        setModel(localModel)
+        setWorkspacePath(localWorkspace.trim())
       if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
       setApiBase(finalApiBase)
       setProvider(finalProvider)
@@ -260,12 +252,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         exaKey: localExaKey.trim(),
       }
 
-      await tauriInvoke('save_search_config', { searchConfig }).catch(() => {})
+      try {
+        await tauriInvoke('save_search_config', { searchConfig })
+      } catch (e) {
+        console.warn('Failed to save search config:', e)
+        // Non-fatal, continue
+      }
 
       const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
       setMaxIterations(parsedIter)
-      setE2bApiKey(localE2bKey.trim())
-      setExecutionMode(localExecutionMode)
       setEnableVerification(localEnableVerification)
       // Save router config
       setRouterConfig({
@@ -273,18 +268,32 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         budget: localRouterBudget,
         modelOverrides: localModelOverrides,
       })
-      await tauriInvoke('save_router_settings', {
-        mode: isOllama ? 'manual' : localRouterMode,
-        budget: localRouterBudget,
-        modelOverrides: localModelOverrides,
-      }).catch(() => { /* non-blocking */ })
-      await tauriInvoke('save_config', {
-        apiKey: isOllama ? '' : localKey.trim(),
-        model: localModel,
-        workspacePath: localWorkspace.trim(),
-        apiBase: finalApiBase,
-        provider: finalProvider,
-      })
+      try {
+        await tauriInvoke('save_router_settings', {
+          mode: isOllama ? 'manual' : localRouterMode,
+          budget: localRouterBudget,
+          modelOverrides: localModelOverrides,
+        })
+      } catch (e) {
+        console.warn('Failed to save router settings:', e)
+        // Non-fatal, continue
+      }
+
+      // Main config save - this one is critical
+      try {
+        await tauriInvoke('save_config', {
+          apiKey: isOllama ? '' : localKey.trim(),
+          model: localModel,
+          workspacePath: localWorkspace.trim(),
+          apiBase: finalApiBase,
+          provider: finalProvider,
+        })
+      } catch (e) {
+        setSaving(false)
+        setSaveError('Failed to save settings. Please try again.')
+        return
+      }
+
       setSaving(false)
       setSaved(true)
       setTimeout(() => { setSaved(false); onClose() }, 900)
@@ -620,20 +629,41 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 onExaKeyChange={setLocalExaKey}
               />
 
-            {/* ── Code Execution ── */}
-            <ExecutionSection
-              executionMode={localExecutionMode}
-              onExecutionModeChange={setLocalExecutionMode}
-              e2bKey={localE2bKey}
-              onE2bKeyChange={setLocalE2bKey}
-              enableVerification={localEnableVerification}
-              onEnableVerificationChange={setLocalEnableVerification}
-              sandboxStatus={sandboxStatus}
-              sandboxStatusMessage={sandboxStatusMessage}
-            />
-
-            {/* ── Browser Access ── */}
-            {!isTauri && <BrowserAccessSection />}
+            {/* ── Verification Toggle ── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
+                  Enable verification
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
+                  Automatically verify execution results and self-correct if needed
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLocalEnableVerification(!localEnableVerification)}
+                style={{
+                  width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+                  border: 'none', cursor: 'pointer', position: 'relative',
+                  background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
+                  transition: 'background 0.15s',
+                  padding: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, borderRadius: '50%',
+                  width: 18, height: 18,
+                  background: '#fff',
+                  left: localEnableVerification ? 'calc(100% - 20px)' : 2,
+                  transition: 'left 0.15s',
+                  display: 'block',
+                }} />
+              </button>
+            </div>
 
             {/* ── Max Iterations ── */}
             <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
@@ -690,13 +720,21 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
-                background: 'var(--amber)', color: '#000',
+                background: saveError ? 'rgba(239,68,68,0.8)' : 'var(--amber)', color: '#000',
                 opacity: busy ? 0.45 : 1, transition: 'background 0.12s',
               }}
-              onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = 'var(--amber-soft)' }}
-              onMouseLeave={(e) => { if (!busy) e.currentTarget.style.background = 'var(--amber)' }}
+              onMouseEnter={(e) => {
+                if (!busy && !saveError) e.currentTarget.style.background = 'var(--amber-soft)'
+                else if (!busy && saveError) e.currentTarget.style.background = 'rgba(239,68,68,1)'
+              }}
+              onMouseLeave={(e) => {
+                if (!busy && !saveError) e.currentTarget.style.background = 'var(--amber)'
+                else if (!busy && saveError) e.currentTarget.style.background = 'rgba(239,68,68,0.8)'
+              }}
             >
-              {saved ? (
+              {saveError ? (
+                <><Pxi name="exclamation-triangle" size={11} style={{ color: '#000' }} /> Failed to save</>
+              ) : saved ? (
                 <><Pxi name="check" size={11} style={{ color: '#000' }} /> Saved</>
               ) : saving ? (
                 <><Pxi name="spinner-third" size={11} style={{ color: '#000' }} /> Saving…</>
@@ -803,374 +841,6 @@ function SearchSection({
     )
 }
 
-// ─── ExecutionSection ─────────────────────────────────────────────────────────
-
-const EXECUTION_MODES = [
-  { id: 'docker',   label: 'Docker',   desc: 'Local containers — free, private, offline (recommended)' },
-  { id: 'e2b',      label: 'E2B',      desc: 'Cloud sandbox — full Linux + all packages' },
-  { id: 'pyodide',  label: 'Pyodide',  desc: 'Browser WebAssembly — no keys required, Python only' },
-  { id: 'disabled', label: 'Disabled', desc: 'Code execution is turned off' },
-] as const
-
-type ExecutionModeId = (typeof EXECUTION_MODES)[number]['id']
-
-function ExecutionSection({
-  executionMode, onExecutionModeChange,
-  e2bKey, onE2bKeyChange,
-  enableVerification, onEnableVerificationChange,
-  sandboxStatus, sandboxStatusMessage,
-}: {
-  executionMode: string
-  onExecutionModeChange: (v: string) => void
-  e2bKey: string
-  onE2bKeyChange: (v: string) => void
-  enableVerification: boolean
-  onEnableVerificationChange: (v: boolean) => void
-  sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
-  sandboxStatusMessage: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const selected = EXECUTION_MODES.find((m) => m.id === executionMode) ?? EXECUTION_MODES[0]
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-    color: 'var(--tx-primary)', background: '#0d0d0d',
-    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-  }
-
-  const statusColor =
-    sandboxStatus === 'ready' ? '#22c55e' :
-    sandboxStatus === 'starting' ? 'var(--amber)' :
-    sandboxStatus === 'error' ? '#f87171' :
-    sandboxStatus === 'stopped' ? 'rgba(255,255,255,0.3)' :
-    'rgba(255,255,255,0.2)'
-
-  const statusLabel =
-    sandboxStatus === 'ready' ? 'Sandbox ready' :
-    sandboxStatus === 'starting' ? (sandboxStatusMessage || 'Starting sandbox…') :
-    sandboxStatus === 'error' ? (sandboxStatusMessage || 'Sandbox error') :
-    sandboxStatus === 'stopped' ? 'Sandbox stopped' :
-    executionMode === 'docker' ? 'Idle — will start on first use' :
-    e2bKey.trim() ? 'Idle — will start on first use' : 'No API key'
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Field label="Environment Execution" icon="terminal"
-        hint={<span style={{ color: 'var(--tx-tertiary)' }}>{selected.desc}</span>}
-      >
-        <div style={{ position: 'relative' }} ref={ref}>
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
-              background: '#0d0d0d',
-              border: `1px solid ${open ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
-              color: 'var(--tx-primary)', transition: 'border-color 0.12s',
-            }}
-          >
-            <span>{selected.label}</span>
-            <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
-          </button>
-          {open && (
-            <div style={{
-              position: 'absolute', zIndex: 10, width: '100%', marginTop: 4, borderRadius: 12,
-              overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
-              background: '#161616', border: '1px solid rgba(255,255,255,0.08)',
-            }}>
-              {EXECUTION_MODES.map((m) => {
-                const isSel = m.id === (executionMode as ExecutionModeId)
-                return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => { onExecutionModeChange(m.id); setOpen(false) }}
-                    style={{
-                      width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                      padding: '8px 12px', textAlign: 'left', fontSize: 13, border: 'none', cursor: 'pointer',
-                      color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                      background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                      transition: 'background 0.1s', gap: 2,
-                    }}
-                    onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                    onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                      <span>{m.label}</span>
-                      {isSel && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
-                    </div>
-                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{m.desc}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </Field>
-
-      {executionMode === 'e2b' && (
-        <Field label="E2B API Key" icon="key"
-          hint={<>Free $100 credit · No credit card needed · <a href="https://e2b.dev" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>e2b.dev</a></>}
-        >
-          <input type="password" value={e2bKey} onChange={(e) => onE2bKeyChange(e.target.value)}
-            placeholder="e2b_…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-          {/* Sandbox status pill */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-              background: statusColor,
-              boxShadow: sandboxStatus === 'starting' ? `0 0 6px ${statusColor}` : undefined,
-            }} />
-            <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{statusLabel}</span>
-          </div>
-        </Field>
-      )}
-
-      {/* Verification toggle */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-        border: '1px solid rgba(255,255,255,0.06)',
-      }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
-            Enable verification
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
-            Automatically verify execution results and self-correct if needed
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => onEnableVerificationChange(!enableVerification)}
-          style={{
-            width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-            border: 'none', cursor: 'pointer', position: 'relative',
-            background: enableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
-            transition: 'background 0.15s',
-            padding: 0,
-          }}
-        >
-          <span style={{
-            position: 'absolute', top: 2, borderRadius: '50%',
-            width: 18, height: 18,
-            background: '#fff',
-            left: enableVerification ? 'calc(100% - 20px)' : 2,
-            transition: 'left 0.15s',
-            display: 'block',
-          }} />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── BrowserAccessSection ─────────────────────────────────────────────────────
-
-function BrowserAccessSection() {
-  const [extId, setExtId] = useState(() => getExtensionId())
-  const [status, setStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
-  const [localId, setLocalId] = useState(extId)
-  const [showTroubleshoot, setShowTroubleshoot] = useState(false)
-  const { setExtensionConnected } = useAppStore()
-
-  async function handleTest() {
-    setStatus('checking')
-    setExtensionId(localId)
-    setExtId(localId)
-    const ok = await pingExtension()
-
-    // Update global store state
-    if (ok) {
-      try {
-        const extStatus = await getConnectionStatus()
-        setExtensionConnected(true, extStatus.version)
-      } catch {
-        setExtensionConnected(true)
-      }
-    } else {
-      setExtensionConnected(false)
-    }
-
-    setStatus(ok ? 'connected' : 'error')
-  }
-
-  async function handleAutoDetect() {
-    setStatus('checking')
-    const detected = await autoDetectExtensionId()
-    if (detected) {
-      setLocalId(detected)
-      setExtId(detected)
-      setStatus('connected')
-
-      // Update global store state
-      try {
-        const extStatus = await getConnectionStatus()
-        setExtensionConnected(true, extStatus.version)
-      } catch {
-        setExtensionConnected(true, '1.1.0')
-      }
-    } else {
-      setStatus('error')
-      setShowTroubleshoot(true)
-      setExtensionConnected(false)
-    }
-  }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 12, outline: 'none',
-    color: 'var(--tx-primary)', background: '#0d0d0d', fontFamily: 'var(--font-mono)',
-    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-  }
-
-  const statusColor = status === 'connected' ? '#22c55e' : status === 'error' ? '#f87171' : 'var(--tx-tertiary)'
-  const statusLabel = status === 'connected' ? 'Connected' : status === 'error' ? 'Not reachable' : status === 'checking' ? 'Checking…' : extId ? 'Not tested' : 'Not configured'
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Field label="Browser Access" icon="browser"
-        hint="Let Nasus control your real Chrome browser. Requires the Nasus Browser Bridge extension installed in Chrome."
-      >
-        {/* Status pill */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: statusColor }}>{statusLabel}</span>
-        </div>
-
-        {/* Extension ID input */}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="text"
-            value={localId}
-            onChange={(e) => { setLocalId(e.target.value); setStatus('idle') }}
-            placeholder="Extension ID (e.g. abcdefghijklmnopqrstuvwxyzabcdef)"
-            style={{ ...inputStyle, flex: 1 }}
-            className="placeholder-[var(--tx-muted)]"
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-          />
-          <button
-            type="button"
-            onClick={handleAutoDetect}
-            disabled={status === 'checking'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '8px 12px',
-              borderRadius: 8, fontSize: 12, border: 'none', cursor: status === 'checking' ? 'not-allowed' : 'pointer',
-              background: 'rgba(34,197,94,0.15)', color: '#4ade80',
-              opacity: status === 'checking' ? 0.45 : 1,
-              transition: 'color 0.12s', flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.25)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(34,197,94,0.15)' }}
-            title="Try to find the extension automatically"
-          >
-            <Pxi name={status === 'checking' ? 'spinner-third' : 'search'} size={10} />
-            Auto-detect
-          </button>
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={!localId.trim() || status === 'checking'}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5, padding: '8px 12px',
-              borderRadius: 8, fontSize: 12, border: 'none', cursor: (!localId.trim() || status === 'checking') ? 'not-allowed' : 'pointer',
-              background: 'rgba(255,255,255,0.07)', color: 'var(--tx-secondary)',
-              opacity: (!localId.trim() || status === 'checking') ? 0.45 : 1,
-              transition: 'color 0.12s', flexShrink: 0,
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-          >
-            <Pxi name={status === 'checking' ? 'spinner-third' : 'plug'} size={10} />
-            Test
-          </button>
-        </div>
-
-        {/* Troubleshooting toggle */}
-        <button
-          type="button"
-          onClick={() => setShowTroubleshoot(!showTroubleshoot)}
-          style={{
-            fontSize: 11, color: 'var(--tx-tertiary)', background: 'none', border: 'none',
-            cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 4,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-        >
-          <Pxi name={showTroubleshoot ? 'chevron-up' : 'chevron-down'} size={8} />
-          {showTroubleshoot ? 'Hide' : 'Show'} troubleshooting
-        </button>
-      </Field>
-
-      {/* Install instructions */}
-      {!showTroubleshoot ? (
-        <div style={{
-          padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-          border: '1px solid rgba(255,255,255,0.06)',
-          fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
-          display: 'flex', flexDirection: 'column', gap: 4,
-        }}>
-          <div style={{ color: 'var(--tx-secondary)', fontWeight: 500, marginBottom: 2 }}>How to install:</div>
-          <div>1. Open Chrome → <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>chrome://extensions</code></div>
-          <div>2. Enable <strong style={{ color: 'var(--tx-secondary)' }}>Developer mode</strong> (top right toggle)</div>
-          <div>3. Click <strong style={{ color: 'var(--tx-secondary)' }}>Load unpacked</strong> → select the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}>browser-extension/</code> folder in the Nasus project</div>
-          <div>4. Copy the Extension ID shown on the card and paste it above</div>
-          <div>5. Click <strong style={{ color: 'var(--tx-secondary)' }}>Test</strong> to verify the connection</div>
-        </div>
-      ) : (
-        <div style={{
-          padding: '10px 12px', borderRadius: 10, background: 'rgba(248,113,113,0.08)',
-          border: '1px solid rgba(248,113,113,0.2)',
-          fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.6,
-          display: 'flex', flexDirection: 'column', gap: 6,
-        }}>
-          <div style={{ color: '#f87171', fontWeight: 500, marginBottom: 2 }}>Troubleshooting:</div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div><strong style={{ color: 'var(--tx-secondary)' }}>Extension not found?</strong></div>
-            <div style={{ marginLeft: 12 }}>
-              • Make sure Developer mode is enabled at chrome://extensions<br/>
-              • The extension card should be visible and enabled<br/>
-              • Try reloading the extension and clicking Test again
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div><strong style={{ color: 'var(--tx-secondary)' }}>Connection timeout?</strong></div>
-            <div style={{ marginLeft: 12 }}>
-              • Refresh this page after installing the extension<br/>
-              • Check that the Extension ID matches exactly (32 characters)<br/>
-              • Try clicking Auto-detect if you've loaded the extension unpacked
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div><strong style={{ color: 'var(--tx-secondary)' }}>Still not working?</strong></div>
-            <div style={{ marginLeft: 12 }}>
-              • Open browser DevTools Console (F12) and check for errors<br/>
-              • Make sure you're using Chrome (not Safari/Firefox)<br/>
-              • Try removing and re-loading the extension unpacked
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── ModelRouterSection ───────────────────────────────────────────────────────
 
 const TIER_COLORS: Record<string, { bg: string; color: string; label: string }> = {
@@ -1249,26 +919,13 @@ function ModelRouterSection({
     setRefreshing(true)
     setRefreshMessage('')
     try {
-      if (isTauri) {
-        const models = await tauriInvoke<{ id: string; display_name: string }[]>('refresh_models')
-        // Tauri command updates the backend registry; re-read it from store state
-        // The registry update comes via a Tauri event listener — trigger a no-op
-        // state touch so ModelRouterSection re-renders with the new registry.
-        const state = useAppStore.getState()
-        state.setRouterConfig({ ...state.routerConfig })
-        setRefreshMessage(`Updated: ${models?.length ?? 0} models from OpenRouter`)
-      } else {
-        // Browser mode: fetch from OpenRouter directly and update the store
-        const { apiKey } = useAppStore.getState()
-        if (!apiKey.trim()) {
-          setRefreshMessage('Enter your API key first')
-          setTimeout(() => setRefreshMessage(''), 3000)
-          return
-        }
-        const models = await fetchOpenRouterModels(apiKey.trim())
-        useAppStore.getState().setOpenRouterModels(models)
-        setRefreshMessage(`Updated: ${models.length} models from OpenRouter`)
-      }
+      const models = await tauriInvoke<{ id: string; display_name: string }[]>('refresh_models')
+      // Tauri command updates the backend registry; re-read it from store state
+      // The registry update comes via a Tauri event listener — trigger a no-op
+      // state touch so ModelRouterSection re-renders with the new registry.
+      const state = useAppStore.getState()
+      state.setRouterConfig({ ...state.routerConfig })
+      setRefreshMessage(`Updated: ${models?.length ?? 0} models from OpenRouter`)
       setTimeout(() => setRefreshMessage(''), 3000)
     } catch (e) {
       setRefreshMessage(`Failed: ${e instanceof Error ? e.message : String(e)}`)

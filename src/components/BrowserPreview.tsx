@@ -1,14 +1,12 @@
 /**
  * BrowserPreview.tsx
  *
- * Live browser preview panel for Nasus Eye.
+ * Live browser preview panel for Nasus.
  * Shows the browser session with screenshots, URL bar, and controls.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { tauriInvoke } from '../tauri'
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 interface BrowserPreviewProps {
   className?: string
@@ -49,8 +47,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Check initial sidecar status
   useEffect(() => {
-    if (!isTauri) return
-
     tauriInvoke<boolean>('browser_is_sidecar_running')
       .then((running) => setSidecarStatus(running ? 'running' : 'stopped'))
       .catch(() => setSidecarStatus('stopped'))
@@ -58,8 +54,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Start the sidecar
   const startSidecar = useCallback(async () => {
-    if (!isTauri) return
-
     setSidecarStatus('starting')
     setError(null)
 
@@ -79,8 +73,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Stop the sidecar
   const stopSidecar = useCallback(async () => {
-    if (!isTauri) return
-
     try {
       // Close WebSocket connection
       if (wsRef.current) {
@@ -105,8 +97,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Start a new browser session
   const startSession = useCallback(async () => {
-    if (!isTauri) return
-
     try {
       const result = await tauriInvoke<SessionInfo>('browser_start_session')
       if (result) {
@@ -241,7 +231,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Navigate to a URL
   const navigate = useCallback(async (url: string) => {
-    if (!isTauri || !session) return
+    if (!session) return
 
     setIsLoading(true)
     setCurrentUrl(url)
@@ -289,7 +279,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Toggle stealth mode
   const toggleStealth = useCallback(async () => {
-    if (!isTauri || !session) return
+    if (!session) return
 
     const newStealthMode = !stealthMode
     try {
@@ -332,26 +322,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       }
     }
   }, [])
-
-  // Render for non-Tauri (browser)
-  if (!isTauri) {
-    return (
-      <div className={`browser-preview ${className}`}>
-        <div style={{
-          padding: 24,
-          textAlign: 'center',
-          color: 'var(--tx-secondary)',
-        }}>
-          <p style={{ marginBottom: 12, fontSize: 13 }}>
-            Browser automation is only available in the desktop app.
-          </p>
-          <p style={{ fontSize: 12, opacity: 0.7 }}>
-            Download Nasus Desktop to use this feature.
-          </p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className={`browser-preview ${className}`} style={{

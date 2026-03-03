@@ -15,6 +15,7 @@ import type {
 // Value import — AgentState is a const object, not a type-only export
 import { AgentState } from './AgentState'
 import { StateManager } from './AgentState'
+import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 
 /**
  * Abstract base class for all agents.
@@ -41,7 +42,7 @@ export abstract class BaseAgent implements Agent {
     this.specialization = specialization
     this.stateManager = new StateManager()
     this.config = {
-      maxIterations: config.maxIterations ?? 50,
+      maxIterations: config.maxIterations ?? DEFAULT_MAX_ITERATIONS,
       timeoutMs: config.timeoutMs ?? 300_000, // 5 minutes default
       verbose: config.verbose ?? false,
       enableThinking: config.enableThinking ?? true,

@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import JSZip from 'jszip'
 import { tauriInvoke } from '../tauri'
-import { getWorkspace } from '../agent/tools'
 import type { MemoryFiles } from '../types'
 import { Pxi } from './Pxi'
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 interface Props {
   taskId: string
@@ -35,19 +31,6 @@ function triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-async function downloadAllFiles(taskId: string, taskTitle?: string) {
-  const ws = getWorkspace(taskId)
-  if (ws.size === 0) return
-
-  const zip = new JSZip()
-  for (const [path, content] of ws.entries()) {
-    zip.file(path, content)
-  }
-  const blob = await zip.generateAsync({ type: 'blob' })
-  const name = taskTitle ? taskTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase() : `nasus-${taskId.slice(0, 8)}`
-  triggerDownload(blob, `${name}-workspace.zip`)
-}
-
 function downloadSingleFile(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
   triggerDownload(blob, filename)
@@ -57,35 +40,16 @@ function downloadSingleFile(filename: string, content: string) {
 
 export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props) {
   const [files, setFiles] = useState<MemoryFiles | null>(null)
-  const [allFiles, setAllFiles] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('plan')
   const [error, setError] = useState<string | null>(null)
-  const [downloading, setDownloading] = useState(false)
 
   const loadFiles = useCallback(() => {
-    if (isTauri) {
-      setLoading(true)
-      setError(null)
-      tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
-        .then((data) => { setFiles(data ?? null); setLoading(false) })
-        .catch((e) => { setError(String(e)); setLoading(false) })
-    } else {
-      try {
-        const ws = getWorkspace(taskId)
-        setAllFiles(new Map(ws))
-        const data: MemoryFiles = {
-          task_plan: ws.get('task_plan.md') ?? '',
-          findings: ws.get('findings.md') ?? '',
-          progress: ws.get('progress.md') ?? '',
-        }
-        setFiles(data)
-      } catch (e) {
-        setError(String(e))
-      } finally {
-        setLoading(false)
-      }
-    }
+    setLoading(true)
+    setError(null)
+    tauriInvoke<MemoryFiles>('read_memory_files', { taskId, workspacePath })
+      .then((data) => { setFiles(data ?? null); setLoading(false) })
+      .catch((e) => { setError(String(e)); setLoading(false) })
   }, [taskId, workspacePath])
 
   // Initial load
@@ -93,31 +57,9 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
     loadFiles()
   }, [loadFiles])
 
-  // Auto-refresh: listen for workspace writes (browser mode)
-  useEffect(() => {
-    if (isTauri) return
-    function onWorkspaceChange(e: Event) {
-      const { taskId: tid } = (e as CustomEvent).detail
-      if (tid === taskId) loadFiles()
-    }
-    window.addEventListener('nasus:workspace', onWorkspaceChange)
-    return () => window.removeEventListener('nasus:workspace', onWorkspaceChange)
-  }, [taskId, loadFiles])
-
   const currentTab = TABS.find((t) => t.id === activeTab)!
   const currentContent = files ? (files[currentTab.key] as string) : ''
   const isEmpty = !currentContent || !currentContent.trim()
-  const hasFiles = allFiles.size > 0
-
-  async function handleDownloadAll() {
-    if (downloading) return
-    setDownloading(true)
-    try {
-      await downloadAllFiles(taskId)
-    } finally {
-      setDownloading(false)
-    }
-  }
 
   const currentFilename = activeTab === 'plan' ? 'task_plan.md' : activeTab === 'findings' ? 'findings.md' : 'progress.md'
 
@@ -159,31 +101,6 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             >
               <Pxi name="refresh" size={12} />
             </button>
-
-            {/* Download All */}
-            {!isTauri && hasFiles && (
-              <button
-                onClick={handleDownloadAll}
-                disabled={downloading}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 11, fontWeight: 500,
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  cursor: downloading ? 'default' : 'pointer',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'var(--tx-secondary)',
-                  transition: 'background 0.12s',
-                  opacity: downloading ? 0.5 : 1,
-                }}
-                onMouseEnter={(e) => { if (!downloading) e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-                onMouseLeave={(e) => { if (!downloading) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
-              >
-                <Pxi name={downloading ? 'spinner-third' : 'download'} size={10} />
-                {downloading ? 'Zipping…' : `Download all (${allFiles.size})`}
-              </button>
-            )}
 
             {files?.progress && (
               <button
@@ -297,10 +214,10 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
         <div style={{ padding: '8px 20px 10px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx-tertiary)', margin: 0 }}>
             <Pxi name="folder-open" size={9} />
-            <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{isTauri ? workspacePath : '/workspace (in-memory)'}</code>
+            <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{workspacePath}</code>
           </p>
-          {/* Individual file download — only in browser mode when content exists */}
-          {!isTauri && !isEmpty && currentContent && (
+          {/* Individual file download */}
+          {!isEmpty && currentContent && (
             <button
               onClick={() => downloadSingleFile(currentFilename, currentContent)}
               style={{

@@ -1,114 +1,79 @@
-// Tauri API wrappers that gracefully no-op when running outside the Tauri runtime.
-// In browser mode, `run_agent` and `stop_agent` are delegated to the web agent.
+// Tauri API wrappers for the desktop app.
 
 import type { LlmMessage } from './types'
+import { createLogger } from './lib/logger'
 
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+const log = createLogger('tauri')
 
-// ── Web-agent passthrough (browser mode only) ─────────────────────────────────
-
-interface RunAgentArgs {
-  taskId: string
-  messageId: string
-  userMessages: LlmMessage[]
-  apiKey: string
-  model: string
-  workspacePath?: string
-  apiBase: string
-  provider: string
-  searchConfig?: import('./agent/tools').SearchConfig
-  executionConfig?: import('./agent/sandboxRuntime').ExecutionConfig
-  maxIterations?: number
-  usePlanning?: boolean
-  orchestratorConfig?: import('./agent/Orchestrator').OrchestratorConfig
+// Type for Tauri v2 core module
+type TauriCoreModule = {
+  invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>
+  default?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
 }
-
-async function invokeWebAgent(cmd: string, args?: Record<string, unknown>): Promise<void> {
-  try {
-    const { runWebAgent, stopWebAgent } = await import('./agent/index')
-
-    if (cmd === 'run_agent') {
-      const a = args as unknown as RunAgentArgs
-      await runWebAgent({
-        taskId: a.taskId,
-        messageId: a.messageId,
-        userMessages: a.userMessages,
-        apiKey: a.apiKey,
-        model: a.model,
-        apiBase: a.apiBase,
-        provider: a.provider,
-        searchConfig: a.searchConfig,
-        executionConfig: a.executionConfig,
-        maxIterations: a.maxIterations,
-        usePlanning: a.usePlanning,
-        orchestratorConfig: a.orchestratorConfig,
-      })
-    } else if (cmd === 'stop_agent') {
-      const taskId = (args as Record<string, string>).taskId
-      stopWebAgent(taskId)
-    }
-  } catch (err) {
-    console.error(`[tauriInvoke] Web agent fallback failed for ${cmd}:`, err)
-  }
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Invoke a Tauri backend command.
- * 
+ *
  * In v2, arguments must use snake_case to match Rust parameter names.
  * This wrapper catches all errors and returns undefined to prevent crashes.
  */
 export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | undefined> {
-  // Always route agent commands through the TS Orchestrator (web agent).
-  // Do NOT fall through to the Rust backend — the Rust agent is a placeholder
-  // and invoking it would run the agent twice.
+  // Agent commands are routed through the TS Orchestrator, not Rust backend
   if (cmd === 'run_agent' || cmd === 'stop_agent') {
-    await invokeWebAgent(cmd, args)
-    return undefined
-  }
-
-  if (!isTauri) {
     return undefined
   }
 
   try {
     // Tauri v2: try to get invoke from @tauri-apps/api/core
-    const core = await import('@tauri-apps/api/core').catch(() => null)
-    
+    const core = await import('@tauri-apps/api/core').catch(() => null) as TauriCoreModule | null
+
     if (core) {
       // Standard v2 invoke
       if (typeof core.invoke === 'function') {
-        return await core.invoke(cmd, args)
+        return await core.invoke(cmd, args) as T
       }
-      
+
       // Fallback for different v2 build configurations
-      const altInvoke = (core as any).invoke || (core as any).default?.invoke
+      const altInvoke = core.invoke ?? core.default?.invoke
       if (typeof altInvoke === 'function') {
-        return await altInvoke(cmd, args)
+        return await altInvoke(cmd, args) as T
       }
     }
-    
-    // Legacy/global fallback
-    const win = window as any
-    const globalInvoke = win.__TAURI_INTERNALS__?.invoke || win.__TAURI__?.invoke || win.external?.invoke
-    if (typeof globalInvoke === 'function') {
-      return await globalInvoke(cmd, args)
+
+    // Legacy/global fallback (using window global types)
+    const win = window as typeof globalThis & {
+      __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      external?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
     }
-    
-    // If we're here, we're supposedly in Tauri but have no way to invoke
-    console.warn(`tauriInvoke [${cmd}]: isTauri is true but no invoke method found. Fallback to undefined.`)
+    const globalInvoke = win.__TAURI_INTERNALS__?.invoke ?? win.__TAURI__?.invoke ?? win.external?.invoke
+    if (typeof globalInvoke === 'function') {
+      return await globalInvoke(cmd, args) as T
+    }
+
+    log.warn(`No invoke method found for ${cmd}`)
     return undefined
   } catch (e) {
     // Only log "real" errors, not "File not found" which is expected during race conditions
     const errorMsg = String(e)
     if (!errorMsg.includes('No such file') && !errorMsg.includes('os error 2')) {
-      console.error(`[tauriInvoke] Error calling ${cmd}:`, e)
+      log.error(`Error calling ${cmd}`, e)
     }
   }
-  
+
   return undefined
+}
+
+/**
+ * Invoke a Tauri backend command and expect a non-undefined result.
+ * Throws if the command returns undefined or fails.
+ */
+export async function tauriInvokeOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const result = await tauriInvoke<T>(cmd, args)
+  if (result === undefined) {
+    throw new Error(`Tauri command ${cmd} returned undefined`)
+  }
+  return result
 }
 
 // ── Persistence Helpers ───────────────────────────────────────────────────────
@@ -131,7 +96,7 @@ export async function getPersistedTaskHistory(taskId: string): Promise<LlmMessag
     try {
       return JSON.parse(historyStr) as LlmMessage[]
     } catch (e) {
-      console.error(`[tauri] Failed to parse history for task ${taskId}:`, e)
+      log.error(`Failed to parse history for task ${taskId}`, e)
     }
   }
   return undefined
@@ -148,15 +113,6 @@ export async function deletePersistedTaskHistory(taskId: string): Promise<void> 
  * Check if a local Ollama instance is running at http://localhost:11434.
  */
 export async function checkOllama(): Promise<boolean> {
-  if (!isTauri) {
-    // In browser mode, we'd need to handle CORS, but let's assume no for now.
-    try {
-      const resp = await fetch('http://localhost:11434/api/tags', { method: 'GET', mode: 'no-cors' })
-      return resp.type === 'opaque' || resp.ok
-    } catch {
-      return false
-    }
-  }
   return (await tauriInvoke<boolean>('is_ollama_running')) ?? false
 }
 
@@ -167,21 +123,32 @@ export async function getSearchConfig(): Promise<{ exaKey: string } | undefined>
   return await tauriInvoke<{ exaKey: string }>('get_search_config')
 }
 
+/**
+ * Get the fallback model chain for OpenRouter server-side fallback.
+ * @param primaryModel - The primary model ID to use first
+ * @param budget - 'free' or 'paid' budget mode
+ * @returns Array of model IDs for fallback chain
+ */
+export async function getFallbackChain(
+  primaryModel: string,
+  budget: 'free' | 'paid',
+): Promise<string[] | undefined> {
+  return await tauriInvoke<string[]>('get_fallback_chain', {
+    primaryModel,
+    budget,
+  })
+}
+
 export async function tauriListen<T>(
   event: string,
   handler: (payload: T) => void,
 ): Promise<() => void> {
-  if (!isTauri) {
-    // In browser mode the agent writes directly to the store, so no event bus is needed.
-    return () => {}
-  }
-  
   try {
     const { listen } = await import('@tauri-apps/api/event')
     const unlisten = await listen<T>(event, (e) => handler(e.payload))
     return unlisten
   } catch (err) {
-    console.error(`[tauriListen] Failed to subscribe to ${event}:`, err)
+    log.error(`Failed to subscribe to ${event}`, err)
     return () => {}
   }
 }

@@ -2,6 +2,7 @@ import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
 import type { ToolParameterSchema, WaitForResult } from '../core/ToolResult'
 import { browserWaitFor } from '../../browserBridge'
+import { DEFAULT_TIMEOUT_MS } from '../../../lib/constants'
 
 /**
  * Tool for waiting for elements or URL patterns in the browser.
@@ -16,7 +17,7 @@ export class BrowserWaitForTool extends BaseTool {
     properties: {
       selector: { type: 'string', description: "CSS selector to wait for (e.g. 'main.content', '#results')." },
       url_pattern: { type: 'string', description: 'Substring to match against the current tab URL (e.g. "/dashboard", "search?q=").' },
-      timeout_ms: { type: 'number', description: 'How long to wait in milliseconds (default 10000).', default: 10000 },
+      timeout_ms: { type: 'number', description: `How long to wait in milliseconds (default ${DEFAULT_TIMEOUT_MS}).`, default: DEFAULT_TIMEOUT_MS },
       tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
     },
   }

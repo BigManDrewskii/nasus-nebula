@@ -20,8 +20,12 @@ import { SYSTEM_PROMPT } from '../systemPrompt'
 import { getToolDefinitions } from '../tools/index'
 import type { ToolCall } from '../llm'
 import { verifyExecution, type VerificationContext } from './VerificationAgent'
+import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
+import { getFallbackChain } from '../../tauri'
 
-const MAX_ITERATIONS = 50
+// Gateway integration
+import { selectModel, type GatewayType } from '../gateway'
+
 const MAX_CORRECTION_ATTEMPTS = 3
 
 // Context windows (tokens) per model family
@@ -152,8 +156,15 @@ export class ExecutionAgent extends BaseAgent {
    */
   private async executeOnce(context: AgentContext): Promise<AgentResult> {
     const params = context as ExecutionConfigParams
-    const { taskId, messageId, userMessages, apiKey, model, apiBase, provider, signal } = params
-    const maxIter = params.maxIterations ?? MAX_ITERATIONS
+    const { taskId, messageId, userMessages, signal } = params
+
+      // Get connection params from store (gateway resolution)
+      // Prefer the gateway's resolved apiKey as the source of truth
+      const store = useAppStore.getState()
+      const resolvedConnection = store.resolveConnection()
+      const apiKey = params.apiKey || resolvedConnection.apiKey || store.apiKey
+
+    const maxIter = params.maxIterations ?? DEFAULT_MAX_ITERATIONS
 
     // Reset per-task counters at the start of each execution
     this.searchBrowseCount = 0
@@ -172,7 +183,7 @@ export class ExecutionAgent extends BaseAgent {
       if (isFirstMessage) {
         const firstContent = typeof userMessages[0].content === 'string' ? userMessages[0].content : ''
         if (firstContent) {
-          this.autoTitle(apiBase, apiKey, provider, model, firstContent, taskId).catch(() => {})
+          this.autoTitle(firstContent, taskId).catch(() => {})
         }
       }
 
@@ -233,14 +244,15 @@ export class ExecutionAgent extends BaseAgent {
         })
       }
 
-      // Context compression
+      // Get current model for context compression threshold
+      const model = useAppStore.getState().model
       const compressAt = this.compressThreshold(model)
       if (messages.length > compressAt) {
         this.compressContext(messages, taskId, messageId)
       }
 
-      // LLM call
-      const llmResult = await this.callLLM(messages, model, apiBase, apiKey, provider, taskId, messageId, signal!)
+      // LLM call with automatic gateway failover
+      const llmResult = await this.callLLM(messages, taskId, messageId, signal!)
       if (!llmResult) {
         if (signal && !signal.aborted) {
           return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
@@ -378,15 +390,18 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
+    // Get connection params from store (gateway resolution)
+    const store = useAppStore.getState()
+
     const verificationContext: VerificationContext = {
       task: { id: taskId } as Task,
       userInput: '',
       messages: params.userMessages,
       tools: [],
-      apiKey: params.apiKey,
-      model: params.model,
-      apiBase: params.apiBase,
-      provider: params.provider,
+      apiKey: params.apiKey || store.apiKey,
+      model: params.model || store.model,
+      apiBase: params.apiBase || store.apiBase,
+      provider: params.provider || store.provider,
       plan: plan || { id: '', title: '', description: '', estimatedSteps: 0, phases: [], dependencies: [], createdAt: new Date() },
       executionOutput: '', // Will be filled by verification agent
       createdFiles,
@@ -431,12 +446,12 @@ export class ExecutionAgent extends BaseAgent {
 
   // ── LLM Call ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Make an LLM call with automatic gateway failover.
+   * Uses the gateway service to try multiple gateways on failure.
+   */
   private async callLLM(
     messages: LlmMessage[],
-    model: string,
-    apiBase: string,
-    apiKey: string,
-    provider: string,
     taskId: string,
     messageId: string,
     signal: AbortSignal,
@@ -446,21 +461,47 @@ export class ExecutionAgent extends BaseAgent {
     let responseToolCalls: ToolCall[] = []
 
     try {
-      const result = await streamCompletion(
-        apiBase,
-        apiKey,
-        provider,
-        model,
-        messages,
-        getToolDefinitions() as any,
-        {
-          onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
-          onToolCalls: (calls) => { responseToolCalls = calls },
-          onUsage: (prompt, completion, total) => this.emitTokenUsage(taskId, prompt, completion, total),
-          onError: (err) => this.emitError(taskId, messageId, err),
-          signal,
+      const store = useAppStore.getState()
+      const gatewayService = store.getGatewayService()
+
+      // Use gateway failover - tries each configured gateway until one succeeds
+      const { result } = await gatewayService.callWithFailover(
+        async (apiBase, apiKey, extraHeaders, queryParams) => {
+          // Resolve gateway type from apiBase
+          const gateway = store.gateways.find(g => g.apiBase === apiBase)
+          const gatewayType = (gateway?.type ?? 'openrouter') as GatewayType
+
+          // Use routingMode from gateway store directly (already 'auto-free' | 'auto-paid' | 'manual')
+          const routingMode = store.routingMode
+          const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined)
+          const effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
+
+          // Get fallback chain for OpenRouter server-side fallback
+          // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
+          const budget = routingMode === 'auto-free' ? 'free' : 'paid'
+          const fallbackModels = await getFallbackChain(effectiveModel, budget)
+
+          return streamCompletion(
+            apiBase,
+            apiKey,
+            gatewayType,
+            effectiveModel,
+            messages,
+            getToolDefinitions() as any,
+            {
+              onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
+              onToolCalls: (calls) => { responseToolCalls = calls },
+              onUsage: (prompt, completion, total) => this.emitTokenUsage(taskId, prompt, completion, total),
+              onError: (err) => this.emitError(taskId, messageId, err),
+              signal,
+              extraHeaders,
+              queryParams,
+            },
+            fallbackModels,
+          )
         },
       )
+
       finishReason = result.finishReason
       responseContent = result.content
       responseToolCalls = result.toolCalls
@@ -636,10 +677,10 @@ export class ExecutionAgent extends BaseAgent {
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
   private buildEnvSummary(executionConfig?: ExecutionConfig): string {
-    const hasCloudSandbox = executionConfig?.executionMode === 'e2b'
-    return hasCloudSandbox
-      ? `[Environment] Cloud sandbox active (${executionConfig!.executionMode}). Full shell available via bash_execute: npm, node, npx, pip, apt, git, curl, wget all work. Pre-built web templates with all dependencies installed are available at /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html. For web projects: copy a template with bash_execute, then use serve_preview to start the dev server. Do NOT scaffold projects from scratch with npm init or npx create-next-app.`
-      : `[Environment] Browser-only mode. No cloud sandbox configured. Available tools: write_file, read_file, patch_file, list_files, http_fetch, search_web, python_execute, bash (cat/ls/echo/mkdir only). npm, node, npx, pip, curl, wget, apt, git WILL FAIL — do not attempt them. Write files directly with write_file instead.`
+    const hasDockerSandbox = executionConfig?.executionMode === 'docker'
+    return hasDockerSandbox
+      ? `[Environment] Docker sandbox active. Full shell available via bash_execute: npm, node, npx, pip, apt, git, curl, wget all work. Pre-built web templates with all dependencies installed are available at /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html. For web projects: copy a template with bash_execute, then use serve_preview to start the dev server. Do NOT scaffold projects from scratch with npm init or npx create-next-app.`
+      : `[Environment] No sandbox configured. Available tools: write_file, read_file, patch_file, list_files, http_fetch, search_web, python_execute, bash (cat/ls/echo/mkdir only). npm, node, npx, pip, curl, wget, apt, git WILL FAIL — do not attempt them. Write files directly with write_file instead.`
   }
 
   private compressThreshold(model: string): number {
@@ -752,31 +793,31 @@ export class ExecutionAgent extends BaseAgent {
   }
 
   private async autoTitle(
-    apiBase: string,
-    apiKey: string,
-    provider: string,
-    _model: string,
     userMessage: string,
     taskId: string,
   ): Promise<void> {
-    const { openRouterModels, routerConfig } = useAppStore.getState()
-    const isFreeMode = routerConfig.budget === 'free' && routerConfig.mode === 'auto'
+    const store = useAppStore.getState()
 
-    let titleModel: string
-    if (isFreeMode) {
-      // In free budget mode, use a free model for auto-titling to avoid spending credits
-      titleModel = 'deepseek/deepseek-chat:free'
-    } else if (openRouterModels.length > 0) {
-      titleModel = cheapestModel(openRouterModels)
-    } else {
-      titleModel = 'anthropic/claude-3-haiku'
-    }
+    // Use the gateway's resolved connection so we get the correct apiKey, apiBase,
+    // and any extra headers (HTTP-Referer / X-Title) that OpenRouter requires.
+    const resolved = store.resolveConnection()
+    const apiBase = resolved.apiBase || store.apiBase
+    const apiKey  = resolved.apiKey  || store.apiKey
+    const provider = resolved.provider || store.provider
+
+    const { openRouterModels } = store
+
+    // Always use the cheapest available model for titling — no :free suffix,
+    // since OpenRouter `:free` variants are not guaranteed to exist.
+    const titleModel = openRouterModels.length > 0
+      ? cheapestModel(openRouterModels)
+      : 'anthropic/claude-3-haiku'
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
     const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 60)
     if (title) {
       const clean = title.replace(/^["']|["']$/g, '').trim()
-      if (clean) useAppStore.getState().updateTaskTitle(taskId, clean)
+      if (clean) store.updateTaskTitle(taskId, clean)
     }
   }
 

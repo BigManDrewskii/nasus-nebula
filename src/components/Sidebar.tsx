@@ -114,7 +114,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
           <div
             className="rail-header"
             data-tauri-drag-region
-            style={{ paddingTop: isTauri ? 18 : 14 }}
+            style={{ paddingTop: 18 }}
           >
               {/* Logo with ambient glow */}
                 <div style={{ position: 'relative', lineHeight: 0 }}>
@@ -260,9 +260,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 
 // Traffic lights (Close/Minimise/Maximise) on macOS sit at x:16 y:16.
 // When running inside Tauri with titleBarStyle:Overlay we need ~76px left padding
-// to clear them. In web/browser mode no offset is needed.
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-
+// to clear them.
 function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
   return (
     <div
@@ -271,7 +269,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         display: 'flex',
         alignItems: 'center',
         gap: 9,
-        padding: isTauri ? '10px 14px 10px 14px' : '14px 14px 10px',
+        padding: '10px 14px 10px 14px',
         userSelect: 'none',
         background: 'linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 100%)',
       }}

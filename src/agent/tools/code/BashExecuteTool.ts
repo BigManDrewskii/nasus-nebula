@@ -5,14 +5,14 @@ import { executeBash } from '../../sandboxRuntime'
 import type { ExecutionConfig } from '../../sandboxRuntime'
 
 /**
- * Tool for executing shell commands in a cloud sandbox (E2B).
+ * Tool for executing shell commands in a Docker sandbox.
  */
 export class BashExecuteTool extends BaseTool {
   private executionConfig?: ExecutionConfig
 
   readonly name = 'bash_execute'
   readonly description =
-    'Execute a shell command in a cloud sandbox (E2B). Requires an E2B API key in Settings → Code Execution. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts. Not available in Pyodide-only mode.'
+    'Execute a shell command in a Docker sandbox. Requires Docker Desktop to be running. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts, and any shell operations.'
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',

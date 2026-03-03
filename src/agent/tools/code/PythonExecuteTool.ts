@@ -5,14 +5,14 @@ import { executePython } from '../../sandboxRuntime'
 import type { ExecutionConfig } from '../../sandboxRuntime'
 
 /**
- * Tool for executing Python code in a sandbox.
+ * Tool for executing Python code in a Docker sandbox.
  */
 export class PythonExecuteTool extends BaseTool {
   private executionConfig?: ExecutionConfig
 
   readonly name = 'python_execute'
   readonly description =
-    'Execute Python code in a sandbox. When a cloud sandbox (E2B) is configured this runs in a full Linux environment with all packages available — use pip install via bash_execute first if needed. Otherwise falls back to Pyodide (WebAssembly) in the browser. Use for data analysis, math, parsing, text processing, charts (matplotlib), and computation. stdout/stderr are captured and returned.'
+    'Execute Python code in a Docker sandbox. Full Python environment with common packages available. Use pip install via bash_execute first for additional packages. Use for data analysis, math, parsing, text processing, and computation. stdout/stderr are captured and returned.'
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',

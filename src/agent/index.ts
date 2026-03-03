@@ -105,7 +105,9 @@ export function stopWebAgent(taskId: string) {
     controllers.delete(taskId)
   }
   // Best-effort sandbox cleanup on stop
-  disposeSandbox().catch(() => {})
+  disposeSandbox().catch(err => {
+    console.warn('[agent] Failed to dispose sandbox on stop:', err)
+  })
 }
 
 export function isWebAgentRunning(taskId: string): boolean {

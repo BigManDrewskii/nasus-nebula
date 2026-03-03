@@ -12,9 +12,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
-import { startStatusPolling, stopStatusPolling } from './agent/browserBridge'
-
-const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -60,6 +57,22 @@ function App() {
         }).catch(console.error)
       }
     }, [workspacePath])
+
+    // Initialize gateway service on startup
+    useEffect(() => {
+      const store = useAppStore.getState()
+
+      // gateways are NOT persisted, so gateways[0].apiKey = '' on every cold start.
+      // store.apiKey IS persisted via zustand. Seed it in synchronously so the first
+      // LLM call (which may happen before loadGatewayConfig resolves) has a valid key.
+      if (store.apiKey) {
+        store.updateGateway('openrouter', { apiKey: store.apiKey })
+      }
+
+      store.initGatewayService()
+      store.loadGatewayConfig().catch(console.error)
+    }, [])
+
   const [showSettings, setShowSettings] = useState(false)
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
 
@@ -144,17 +157,6 @@ function App() {
     }
   }, [])
 
-  // Poll browser extension connection status every 30s
-  const setExtensionConnected = useAppStore((s) => s.setExtensionConnected)
-  useEffect(() => {
-    startStatusPolling((status) => {
-      setExtensionConnected(status.connected, status.version)
-    })
-    return () => {
-      stopStatusPolling()
-    }
-  }, [setExtensionConnected])
-
   const handleNewTask = useCallback(() => {
     const task: Task = {
       id: crypto.randomUUID(),
@@ -185,12 +187,10 @@ function App() {
           Skip to main content
         </a>
         <div className="app-root">
-          {isTauri && (
-            <>
-              <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
-              <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
-            </>
-          )}
+          {/* Tauri title bar drag region */}
+          <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
+          <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
+
         {/* ── Left Sidebar ── */}
         <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
           <Sidebar

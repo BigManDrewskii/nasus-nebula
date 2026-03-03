@@ -15,16 +15,18 @@ pub struct OpenRouterModelsResponse {
 }
 
 #[derive(Debug, Deserialize)]
-pub(crate) struct OpenRouterModel {
+pub struct OpenRouterModel {
     id: String,
     name: String,
     #[serde(default)]
+    #[allow(dead_code)]
     description: String,
     #[serde(default)]
     context_length: u32,
     #[serde(default)]
     pricing: Option<Pricing>,
     #[serde(default)]
+    #[allow(dead_code)]
     architecture: Option<Architecture>,
     #[serde(default)]
     supported_parameters: Option<Vec<String>>,

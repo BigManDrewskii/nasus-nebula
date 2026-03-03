@@ -12,7 +12,7 @@ export class ServePreviewTool extends BaseTool {
 
   readonly name = 'serve_preview'
   readonly description =
-    'Start a dev server or static file server for a project in the cloud sandbox. Returns a preview URL that renders in the Preview tab. Use this after copying a template to /workspace/project. Examples: serve_preview(command="cd /workspace/project && npm run dev", port=3000) for Next.js/Vite, or serve_preview(command="serve /workspace/project -l 3000", port=3000) for static files. Requires E2B cloud sandbox.'
+    'Start a dev server or static file server for a project in the Docker sandbox. Returns a preview URL that renders in the Preview tab. Use this after copying a template to /workspace/project. Examples: serve_preview(command="cd /workspace/project && npm run dev", port=3000) for Next.js/Vite, or serve_preview(command="serve /workspace/project -l 3000", port=3000) for static files.'
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
@@ -44,10 +44,9 @@ export class ServePreviewTool extends BaseTool {
 
     const cfg: ExecutionConfig = this.executionConfig || { executionMode: 'disabled' }
 
-    if (cfg.executionMode !== 'e2b' || !cfg.e2bApiKey?.trim()) {
+    if (cfg.executionMode === 'disabled') {
       return toolFailure(
-        'serve_preview requires E2B cloud sandbox. Add your E2B API key in Settings → Code Execution. ' +
-        'In browser-only mode, use write_file to create index.html and preview it in the Output panel instead.'
+        'serve_preview requires Docker. Make sure Docker Desktop is running.'
       )
     }
 

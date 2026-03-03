@@ -32,6 +32,10 @@ export interface StreamCallbacks {
   onUsage: (prompt: number, completion: number, total: number) => void
   onError: (err: string) => void
   signal: AbortSignal
+  /** Extra headers to inject (e.g., from gateway config) */
+  extraHeaders?: Record<string, string>
+  /** Query parameters to append to the URL (e.g., Vercel provider options) */
+  queryParams?: Record<string, string>
 }
 
 export interface LlmResponse {
@@ -62,6 +66,8 @@ function isRetryable(status: number): boolean {
  * Stream a chat completion. Calls onDelta for each text token, calls onToolCalls
  * with fully-assembled tool_calls when the stream ends. Returns the assembled response.
  * Retries on 429 / 5xx with exponential backoff (up to MAX_RETRIES attempts).
+ *
+ * @param fallbackModels - Optional array of model IDs for OpenRouter server-side fallback
  */
 export async function streamCompletion(
   apiBase: string,
@@ -71,24 +77,41 @@ export async function streamCompletion(
   messages: LlmMessage[],
   tools: ToolDefinition[],
   cb: StreamCallbacks,
+  fallbackModels?: string[],
 ): Promise<LlmResponse> {
-  const url = `${apiBase.replace(/\/$/, '')}/chat/completions`
+  // Build URL with query params (for Vercel provider options)
+  const baseUrl = `${apiBase.replace(/\/$/, '')}/chat/completions`
+  const url = cb.queryParams && Object.keys(cb.queryParams).length > 0
+    ? `${baseUrl}?${new URLSearchParams(cb.queryParams).toString()}`
+    : baseUrl
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://nasus.app',
-      'X-Title': 'Nasus',
+      ...cb.extraHeaders,  // Inject gateway-specific headers
     }
 
-  const body = JSON.stringify({
-    model,
-    messages,
-    tools,
-    tool_choice: 'auto',
-    stream: true,
-    stream_options: { include_usage: true },
-  })
+    // Build request body with OpenRouter fallback support
+    // Omit tools/tool_choice entirely when empty — some models return 400 for an empty array
+    const activeTools = tools.filter(t => !(t as any).inactive)
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+    }
+    if (activeTools.length > 0) {
+      requestBody.tools = activeTools
+      requestBody.tool_choice = 'auto'
+    }
+
+  // Enable server-side fallback if fallback models provided
+  if (fallbackModels && fallbackModels.length > 0) {
+    requestBody.models = fallbackModels
+    requestBody.route = 'fallback'
+  }
+
+  const body = JSON.stringify(requestBody)
 
   // ── Retry loop ────────────────────────────────────────────────────────────
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -120,16 +143,76 @@ export async function streamCompletion(
         continue
       }
 
-        let errMsg = `HTTP ${resp.status}`
-        try {
-          const errJson = await resp.json()
-          // OpenRouter error format: { error: { message, code, metadata } }
-          const orMsg = errJson?.error?.message
-          const orCode = errJson?.error?.code
-          if (orMsg) errMsg = orCode ? `[${orCode}] ${orMsg}` : orMsg
-        } catch { /* ignore */ }
-      cb.onError(errMsg)
-      throw new Error(errMsg)
+            let errMsg = `HTTP ${resp.status}`
+            try {
+              const errJson = await resp.json()
+              // OpenRouter error format: { error: { message, code, metadata } }
+              const orMsg = errJson?.error?.message
+              const orCode = errJson?.error?.code
+              if (orMsg) errMsg = orCode ? `[${orCode}] ${orMsg}` : orMsg
+              if (resp.status === 400) {
+                console.error('[LLM] 400 Bad Request — full error:', JSON.stringify(errJson))
+              }
+            } catch {
+              // Response body isn't JSON — ignore and use the status message
+            }
+          // Make auth errors actionable
+          if (resp.status === 401) {
+            errMsg = `API key invalid or expired. Please update your OpenRouter API key in Settings (⌘,).`
+          } else if (resp.status === 403) {
+            errMsg = `Access denied (403). Check that your API key has the required permissions.`
+          }
+        cb.onError(errMsg)
+        throw new Error(errMsg)
+    }
+
+    // Log rate limit headers for monitoring
+    const rateLimit = {
+      limit: resp.headers.get('X-RateLimit-Limit'),
+      remaining: resp.headers.get('X-RateLimit-Remaining'),
+      reset: resp.headers.get('X-RateLimit-Reset'),
+    }
+    if (rateLimit.remaining !== null) {
+      console.info('[RateLimit]', {
+        limit: rateLimit.limit,
+        remaining: rateLimit.remaining,
+        resetAt: rateLimit.reset,
+      })
+    }
+
+    // Parse Vercel AI Gateway response headers for actual cost tracking
+    const vercelUsage = resp.headers.get('x-vercel-ai-gateway-usage')
+    const vercelGateway = resp.headers.get('x-vercel-ai-gateway')
+    const vercelGenId = resp.headers.get('x-vercel-ai-gateway-generation-id')
+
+    if (vercelUsage || vercelGateway) {
+      let usageData: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost?: number } | undefined
+      let cost: number | undefined
+      let provider: string | undefined
+      let model: string | undefined
+      try {
+        if (vercelUsage) {
+          usageData = JSON.parse(vercelUsage)
+        }
+        if (vercelGateway) {
+          const gatewayData = JSON.parse(vercelGateway)
+          provider = gatewayData.provider
+          model = gatewayData.model
+          cost = gatewayData.cost ?? usageData?.cost
+        }
+      } catch (e) {
+        console.warn('[LLM] Failed to parse Vercel headers:', e)
+      }
+      // Store in state for cost tracking (accessed via onMetadata callback)
+      if (usageData || cost) {
+        console.info('[Vercel Gateway]', {
+          usage: usageData,
+          cost,
+          provider,
+          model,
+          generationId: vercelGenId,
+        })
+      }
     }
 
     // ── Stream read with idle timeout ────────────────────────────────────────
@@ -297,19 +380,19 @@ export async function streamCompletion(
 export async function chatOnce(
   apiBase: string,
   apiKey: string,
-  _provider: string,
+  provider: string,
   model: string,
   userPrompt: string,
   maxTokens = 20,
 ): Promise<string> {
   const url = `${apiBase.replace(/\/$/, '')}/chat/completions`
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://nasus.app',
-      'X-Title': 'Nasus',
-    }
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    // Include attribution headers for OpenRouter (free-tier eligibility + rankings)
+    ...(provider === 'openrouter' || apiBase.includes('openrouter.ai') ? getORHeaders() : {}),
+  }
 
   const body = JSON.stringify({
     model,
@@ -372,7 +455,15 @@ export interface OpenRouterModel {
 }
 
 const OR_API_BASE = 'https://openrouter.ai/api/v1'
-const OR_HEADERS = { 'HTTP-Referer': 'https://nasus.app', 'X-Title': 'Nasus' }
+
+/**
+ * Get OpenRouter-specific headers.
+ * HTTP-Referer and X-Title are standard/CORS-allowed headers that OpenRouter
+ * uses for attribution and free-tier rate limit eligibility. Always include them.
+ */
+function getORHeaders(): Record<string, string> {
+  return { 'HTTP-Referer': 'https://nasus.app', 'X-Title': 'Nasus' }
+}
 
 /**
  * Fetch rich model metadata from OpenRouter's /models endpoint.
@@ -383,7 +474,7 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    ...OR_HEADERS,
+    ...getORHeaders(),
   }
   const resp = await fetch(url, { headers })
   if (!resp.ok) {
@@ -393,7 +484,9 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
       const orMsg = body?.error?.message
       const orCode = body?.error?.code
       if (orMsg) msg = orCode ? `[${orCode}] ${orMsg}` : orMsg
-    } catch { /* ignore */ }
+    } catch {
+      // Response body isn't JSON — ignore and use the status message
+    }
     throw new Error(msg)
   }
   const json = await resp.json()

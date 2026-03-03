@@ -4,10 +4,15 @@ import type { Task, Message, AgentStep, LlmMessage } from './types'
 import { clearWorkspace, copyWorkspace } from './agent/tools'
 import type { ExecutionPlan } from './agent/core/Agent'
 import { persistTaskHistory, deletePersistedTaskHistory, getPersistedTaskHistory } from './tauri'
+import { logger } from './lib/logger'
+import { MAX_TASKS, MAX_TOOL_RESULT_CHARS, MAX_RAW_HISTORY_LIVE, DEFAULT_MAX_ITERATIONS } from './lib/constants'
 
 // NOTE: clearWorkspace is now async - we call it without await in state updates
 // The workspace cleanup happens in the background
 import type { OpenRouterModel } from './agent/llm'
+
+// Gateway integration
+import { createGatewaySlice, type GatewaySlice } from './agent/gateway'
 
 // ── Router config ──────────────────────────────────────────────────────────────
 export type ToolCallingSupport = 'Strong' | 'Moderate' | 'Weak' | 'Unknown'
@@ -57,9 +62,13 @@ export interface TaskRouterState {
   totalOutputTokens: number
   callCount: number
   isFree: boolean
+  /** Actual cost from Vercel response headers (overrides estimation) */
+  actualCostUsd?: number
+  /** Vercel generation ID for the last request */
+  generationId?: string
 }
 
-interface AppState {
+interface AppState extends GatewaySlice {
   tasks: Task[]
   activeTaskId: string | null
   messages: Record<string, Message[]>
@@ -88,10 +97,9 @@ interface AppState {
       maxIterations: number
       /** Set to true after the user completes onboarding */
       onboardingComplete: boolean
-        // Code execution (BYOK sandboxes)
-        e2bApiKey: string
-        /** 'e2b' | 'pyodide' | 'disabled' */
-        executionMode: string
+        // Code execution (Docker sandbox)
+        /** 'docker' | 'disabled' */
+        executionMode: 'docker' | 'disabled'
         /** Enable verification after execution */
         enableVerification: boolean
           /** Live sandbox status shown in UI */
@@ -136,8 +144,6 @@ interface AppState {
     setExaKey: (key: string) => void
       setMaxIterations: (n: number) => void
       setOnboardingComplete: () => void
-        setE2bApiKey: (key: string) => void
-        setExecutionMode: (mode: string) => void
         setEnableVerification: (enabled: boolean) => void
           setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error', message?: string) => void
     setExtensionConnected: (connected: boolean, version?: string | null) => void
@@ -152,11 +158,6 @@ interface AppState {
   approvePlan: () => void
   rejectPlan: () => void
 }
-
-// ── Constants ────────────────────────────────────────────────────────────────
-const MAX_TASKS = 50
-const MAX_TOOL_RESULT_CHARS = 2000  // Truncate large tool outputs before persisting
-const MAX_RAW_HISTORY_LIVE = 120    // In-memory cap — prevents OOM on very long runs
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
@@ -175,7 +176,10 @@ const INITIAL_TASK: Task = {
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (...a) => {
+      const [set, get] = a
+      return {
+      ...createGatewaySlice(...a),
       tasks: [INITIAL_TASK],
       activeTaskId: 'initial',
       messages: { initial: [WELCOME_MESSAGE] },
@@ -190,9 +194,8 @@ export const useAppStore = create<AppState>()(
           dynamicModels: [],
           modelsLastFetched: 0,
             exaKey: '',
-            maxIterations: 50,
+            maxIterations: DEFAULT_MAX_ITERATIONS,
               onboardingComplete: false,
-              e2bApiKey: '',
                   executionMode: 'docker',
                   enableVerification: true,
                   sandboxStatus: 'idle',
@@ -231,7 +234,10 @@ export const useAppStore = create<AppState>()(
                     rawHistory: { ...state.rawHistory, [id]: history }
                   }))
                 }
-              }).catch(() => {})
+              }).catch(err => {
+                logger.warn('store', `Failed to load history for task ${id}`, err)
+                // Non-blocking: store stays empty, user can retry
+              })
             }
           },
           setOpenRouterModels: (models) => set({ openRouterModels: models, dynamicModels: models.map((m) => m.id), modelsLastFetched: Date.now() }),
@@ -251,7 +257,9 @@ export const useAppStore = create<AppState>()(
                   delete messages[t.id]
                   delete rawHistory[t.id]
                   // Async workspace cleanup - fire and forget
-                  clearWorkspace(t.id).catch(() => {})
+                  clearWorkspace(t.id).catch(err => {
+                    logger.warn('store', `Failed to cleanup workspace for pruned task ${t.id}`, err)
+                  })
                 }
                 // Notify UI that old tasks were pruned
                 window.dispatchEvent(new CustomEvent('nasus:tasks-pruned', {
@@ -274,9 +282,13 @@ export const useAppStore = create<AppState>()(
           delete messages[id]
             delete rawHistory[id]
             // Async workspace cleanup - fire and forget
-            clearWorkspace(id).catch(() => {})
+            clearWorkspace(id).catch(err => {
+              logger.warn('store', `Failed to cleanup workspace for deleted task ${id}`, err)
+            })
             // Async history cleanup in DB
-            deletePersistedTaskHistory(id).catch(() => {})
+            deletePersistedTaskHistory(id).catch(err => {
+              logger.warn('store', `Failed to delete history for task ${id}`, err)
+            })
 
           // If we deleted the active task, select the next one
           const activeTaskId =
@@ -321,7 +333,9 @@ export const useAppStore = create<AppState>()(
             copyWorkspace(id, newId)
             // Persist duplicated history to DB in background
             if (rawHistory[newId].length > 0) {
-              persistTaskHistory(newId, rawHistory[newId]).catch(() => {})
+              persistTaskHistory(newId, rawHistory[newId]).catch(err => {
+                logger.warn('store', `Failed to persist history for duplicated task ${newId}`, err)
+              })
             }
             return { tasks, messages, rawHistory, activeTaskId: newId }
           }),
@@ -456,13 +470,19 @@ export const useAppStore = create<AppState>()(
             set((state) => {
               const current = state.rawHistory[taskId] ?? []
               const appended = [...current, ...msgs]
-              // Persist full history to SQLite in the background
-              persistTaskHistory(taskId, appended).catch(() => {})
-              
+
               // Cap in-memory size to prevent OOM on very long runs
               const capped = appended.length > MAX_RAW_HISTORY_LIVE
                 ? appended.slice(-MAX_RAW_HISTORY_LIVE)
                 : appended
+
+              // Schedule persistence outside state update for atomicity (fixes race condition)
+              queueMicrotask(() => {
+                persistTaskHistory(taskId, capped).catch(err => {
+                  logger.warn('store', `Failed to persist history for task ${taskId}`, err)
+                })
+              })
+
               return {
                 rawHistory: {
                   ...state.rawHistory,
@@ -488,8 +508,6 @@ export const useAppStore = create<AppState>()(
               setExaKey: (key) => set({ exaKey: key }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
-                setE2bApiKey: (key) => set({ e2bApiKey: key }),
-                setExecutionMode: (mode) => set({ executionMode: mode }),
                 setEnableVerification: (enabled) => set({ enableVerification: enabled }),
                 setSandboxStatus: (status, message = '') => set({ sandboxStatus: status, sandboxStatusMessage: message }),
                 setExtensionConnected: (connected, version = null) => set({ extensionConnected: connected, extensionVersion: version }),
@@ -528,7 +546,8 @@ export const useAppStore = create<AppState>()(
             window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${state.activeTaskId}`))
           }
         },
-    }),
+      }
+    },
     {
       name: 'nasus-store-v2',
       partialize: (state) => {
@@ -567,8 +586,6 @@ export const useAppStore = create<AppState>()(
               exaKey: state.exaKey,
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
-                  e2bApiKey: state.e2bApiKey,
-                  executionMode: state.executionMode,
                   enableVerification: state.enableVerification,
               // openRouterModels is persisted so the dropdown is populated immediately on reload.
               // It will be refreshed in the background on startup if the key is present.
@@ -600,18 +617,24 @@ export const useAppStore = create<AppState>()(
                   rawHistory: { ...s.rawHistory, [state.activeTaskId!]: history }
                 }))
               }
-            }).catch(() => {})
+            }).catch(err => {
+              logger.warn('store', `Failed to load history for active task ${state.activeTaskId}`, err)
+            })
           }
   
           // Seed workspaceVersions for any tasks that have persisted workspace data,
           // so getWorkspaceVersion() returns > 0 and components re-render correctly.
           import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
             const tasks = state.tasks ?? []
-            // Fire all workspace loads in parallel, silently ignore individual failures
+            // Fire all workspace loads in parallel, log individual failures
             for (const task of tasks) {
-              workspaceManager.getWorkspace(task.id).catch(() => {})
+              workspaceManager.getWorkspace(task.id).catch(err => {
+                logger.warn('store', `Failed to load workspace for task ${task.id}`, err)
+              })
             }
-          }).catch(() => {})
+          }).catch(err => {
+            logger.warn('store', 'Failed to load WorkspaceManager module', err)
+          })
         },
     },
   ),
