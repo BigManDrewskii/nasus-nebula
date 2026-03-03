@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Pxi } from './Pxi'
 import { tauriInvoke } from '../tauri'
 
 interface BrowserPreviewProps {
@@ -29,7 +30,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const [sidecarStatus, setSidecarStatus] = useState<SidecarStatus>('stopped')
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
-  const [currentUrl, setCurrentUrl] = useState<string>('')
+  const [, setCurrentUrl] = useState<string>('')
   const [, setCurrentTitle] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -40,10 +41,22 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const [stealthMode, setStealthMode] = useState(false)
   const [highlightedElement, setHighlightedElement] = useState<{ selector: string; until: number } | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [urlInputValue, setUrlInputValue] = useState('')
 
   const wsRef = useRef<WebSocket | null>(null)
   const screenshotIntervalRef = useRef<number | null>(null)
   const highlightTimeoutRef = useRef<number | null>(null)
+
+  // Normalize URL - add https:// if missing
+  const normalizeUrl = useCallback((url: string): string => {
+    if (!url) return url
+    const trimmed = url.trim()
+    if (!trimmed) return trimmed
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`
+    }
+    return trimmed
+  }, [])
 
   // Check initial sidecar status
   useEffect(() => {
@@ -90,6 +103,8 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       setSidecarStatus('stopped')
       setSession(null)
       setScreenshot(null)
+      setCurrentUrl('')
+      setUrlInputValue('')
     } catch (err) {
       setError(err as string)
     }
@@ -137,8 +152,8 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       }
     }
 
-    ws.onerror = (event) => {
-      console.error('[BrowserPreview] WebSocket error:', event)
+    ws.onerror = () => {
+      console.error('[BrowserPreview] WebSocket error')
       setError('WebSocket connection error')
     }
 
@@ -169,6 +184,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
       case 'navigate_result':
         setCurrentUrl(message.url)
+        setUrlInputValue(message.url)
         setCurrentTitle(message.title)
         setIsLoading(false)
 
@@ -200,15 +216,13 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         if (message.selector) {
           setHighlightedElement({
             selector: message.selector,
-            until: Date.now() + 2000, // Highlight for 2 seconds
+            until: Date.now() + 2000,
           })
 
-          // Clear previous timeout
           if (highlightTimeoutRef.current) {
             clearTimeout(highlightTimeoutRef.current)
           }
 
-          // Set new timeout
           highlightTimeoutRef.current = window.setTimeout(() => {
             setHighlightedElement(null)
           }, 2000)
@@ -221,7 +235,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         break
 
       case 'heartbeat':
-        // Keep-alive, no action needed
         break
 
       default:
@@ -233,21 +246,23 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const navigate = useCallback(async (url: string) => {
     if (!session) return
 
+    const normalizedUrl = normalizeUrl(url)
     setIsLoading(true)
-    setCurrentUrl(url)
+    setCurrentUrl(normalizedUrl)
+    setUrlInputValue(normalizedUrl)
 
     // Send via WebSocket
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'navigate',
-        params: { url }
+        params: { url: normalizedUrl }
       }))
     } else {
       // Fallback to Tauri command
       try {
         const result = await tauriInvoke<string>('browser_navigate', {
           sessionId: session.session_id,
-          url
+          url: normalizedUrl
         })
         if (result) {
           setCurrentUrl(result)
@@ -257,7 +272,14 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         setIsLoading(false)
       }
     }
-  }, [session])
+  }, [session, normalizeUrl])
+
+  // Handle URL input submission
+  const handleSubmitUrl = useCallback(() => {
+    if (urlInputValue.trim()) {
+      navigate(urlInputValue)
+    }
+  }, [urlInputValue, navigate])
 
   // Navigate back in history
   const goBack = useCallback(() => {
@@ -320,23 +342,65 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       if (screenshotIntervalRef.current) {
         clearInterval(screenshotIntervalRef.current)
       }
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
     }
   }, [])
+
+  // Common button styles
+  const buttonStyles = {
+    base: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 'var(--space-1)',
+      padding: 'var(--space-1) var(--space-2-5)',
+      fontSize: 'var(--text-xs)',
+      fontWeight: 500,
+      borderRadius: '7px',
+      border: '1px solid transparent',
+      cursor: 'pointer',
+      transition: 'all 0.15s ease',
+    } as React.CSSProperties,
+    primary: {
+      background: 'var(--amber)',
+      color: '#000',
+      borderColor: 'var(--amber)',
+    } as React.CSSProperties,
+    secondary: {
+      background: 'rgba(255,255,255,0.06)',
+      borderColor: 'rgba(255,255,255,0.08)',
+      color: 'var(--tx-primary)',
+    } as React.CSSProperties,
+    danger: {
+      background: 'rgba(239,68,68,0.15)',
+      borderColor: 'rgba(239,68,68,0.3)',
+      color: '#f87171',
+    } as React.CSSProperties,
+    ghost: {
+      background: 'transparent',
+      borderColor: 'transparent',
+      color: 'var(--tx-secondary)',
+    } as React.CSSProperties,
+  }
+
+  const isHighlightActive = highlightedElement && Date.now() < highlightedElement.until
 
   return (
     <div className={`browser-preview ${className}`} style={{
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: 'var(--bg-elevated)',
+      background: '#090909',
     }}>
       {/* Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        padding: '8px 12px',
-        borderBottom: '1px solid var(--border-subtle)',
+        gap: 'var(--space-2)',
+        padding: 'var(--space-2) var(--space-2-5)',
+        borderBottom: '1px solid var(--sidebar-border)',
       }}>
         {/* Status indicator */}
         <div style={{
@@ -344,25 +408,19 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
           height: 8,
           borderRadius: '50%',
           background: sidecarStatus === 'running' ? '#22c55e' :
-                      sidecarStatus === 'starting' ? '#f59e0b' :
+                      sidecarStatus === 'starting' ? 'var(--amber)' :
                       sidecarStatus === 'error' ? '#ef4444' :
                       'var(--tx-dim)',
+          flexShrink: 0,
         }} />
 
         {/* Controls */}
         {sidecarStatus === 'stopped' && (
           <button
             onClick={startSidecar}
-            style={{
-              padding: '4px 12px',
-              fontSize: 12,
-              borderRadius: 6,
-              border: '1px solid var(--border-default)',
-              background: 'var(--bg-default)',
-              color: 'var(--tx-primary)',
-              cursor: 'pointer',
-            }}
+            style={{ ...buttonStyles.base, ...buttonStyles.primary }}
           >
+            <Pxi name="globe" size={10} />
             Start Browser
           </button>
         )}
@@ -377,75 +435,84 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     onClick={goBack}
                     disabled={historyIndex <= 0}
                     style={{
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      border: '1px solid var(--border-subtle)',
-                      background: 'var(--bg-default)',
-                      color: historyIndex > 0 ? 'var(--tx-primary)' : 'var(--tx-dim)',
+                      ...buttonStyles.base,
+                      ...buttonStyles.ghost,
+                      opacity: historyIndex > 0 ? 1 : 0.4,
                       cursor: historyIndex > 0 ? 'pointer' : 'not-allowed',
-                      opacity: historyIndex > 0 ? 1 : 0.5,
+                      padding: 'var(--space-1)',
                     }}
                     title="Back"
                   >
-                    ←
+                    <Pxi name="angle-left" size={10} />
                   </button>
                   <button
                     onClick={goForward}
                     disabled={historyIndex >= history.length - 1}
                     style={{
-                      padding: '4px 8px',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      border: '1px solid var(--border-subtle)',
-                      background: 'var(--bg-default)',
-                      color: historyIndex < history.length - 1 ? 'var(--tx-primary)' : 'var(--tx-dim)',
+                      ...buttonStyles.base,
+                      ...buttonStyles.ghost,
+                      opacity: historyIndex < history.length - 1 ? 1 : 0.4,
                       cursor: historyIndex < history.length - 1 ? 'pointer' : 'not-allowed',
-                      opacity: historyIndex < history.length - 1 ? 1 : 0.5,
+                      padding: 'var(--space-1)',
                     }}
                     title="Forward"
                   >
-                    →
+                    <Pxi name="angle-right" size={10} />
                   </button>
                 </div>
 
                 {/* URL bar */}
-                <input
-                  type="text"
-                  value={currentUrl}
-                  onChange={(e) => setCurrentUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      navigate(currentUrl)
-                    }
-                  }}
-                  placeholder="Enter URL..."
-                  disabled={isLoading}
-                  style={{
-                    flex: 1,
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-default)',
-                    color: 'var(--tx-primary)',
-                    minWidth: 0,
-                  }}
-                />
+                <div style={{
+                  flex: 1,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}>
+                  <input
+                    type="text"
+                    value={urlInputValue}
+                    onChange={(e) => setUrlInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSubmitUrl()
+                      }
+                    }}
+                    placeholder="example.com or https://..."
+                    disabled={isLoading}
+                    style={{
+                      flex: 1,
+                      padding: 'var(--space-1) var(--space-2)',
+                      fontSize: 'var(--text-xs)',
+                      borderRadius: '7px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      background: 'rgba(255,255,255,0.03)',
+                      color: 'var(--tx-primary)',
+                      minWidth: 0,
+                    }}
+                  />
+                  {isLoading && (
+                    <div style={{
+                      position: 'absolute',
+                      right: 'var(--space-2)',
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.1)',
+                      borderTopColor: 'var(--amber)',
+                      animation: 'spin 0.8s linear infinite',
+                    }} />
+                  )}
+                </div>
 
                 {/* Navigate button */}
                 <button
-                  onClick={() => navigate(currentUrl)}
-                  disabled={isLoading}
+                  onClick={handleSubmitUrl}
+                  disabled={isLoading || !urlInputValue.trim()}
                   style={{
-                    padding: '4px 12px',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    border: '1px solid var(--border-default)',
-                    background: 'var(--bg-default)',
-                    color: 'var(--tx-primary)',
-                    cursor: isLoading ? 'not-allowed' : 'pointer',
-                    opacity: isLoading ? 0.5 : 1,
+                    ...buttonStyles.base,
+                    ...buttonStyles.secondary,
+                    opacity: (isLoading || !urlInputValue.trim()) ? 0.5 : 1,
+                    cursor: (isLoading || !urlInputValue.trim()) ? 'not-allowed' : 'pointer',
                   }}
                 >
                   Go
@@ -455,35 +522,39 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 <button
                   onClick={() => setShowHistory(!showHistory)}
                   style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    border: showHistory ? '1px solid var(--accent)' : '1px solid var(--border-default)',
-                    background: showHistory ? 'var(--accent-container)' : 'var(--bg-default)',
-                    color: showHistory ? 'var(--accent)' : 'var(--tx-primary)',
-                    cursor: 'pointer',
+                    ...buttonStyles.base,
+                    ...buttonStyles.secondary,
+                    ...(showHistory ? { background: 'var(--sidebar-active-bg)' } : {}),
                   }}
                   title="Browse history"
                 >
+                  <Pxi name="clock" size={10} />
                   History
+                  {history.length > 0 && (
+                    <span style={{
+                      marginLeft: 2,
+                      padding: '0 4px',
+                      borderRadius: 3,
+                      fontSize: 'var(--text-2xs)',
+                      background: 'rgba(255,255,255,0.1)',
+                    }}>
+                      {history.length}
+                    </span>
+                  )}
                 </button>
 
                 {/* Stealth mode indicator/toggle */}
                 <button
                   onClick={toggleStealth}
                   style={{
-                    padding: '4px 8px',
-                    fontSize: 11,
-                    borderRadius: 4,
-                    border: stealthMode ? '1px solid #a855f7' : '1px solid var(--border-subtle)',
-                    background: stealthMode ? 'rgba(168, 85, 247, 0.1)' : 'var(--bg-default)',
-                    color: stealthMode ? '#a855f7' : 'var(--tx-secondary)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
+                    ...buttonStyles.base,
+                    ...buttonStyles.secondary,
+                    ...(stealthMode ? {
+                      borderColor: '#a855f7',
+                      background: 'rgba(168, 85, 247, 0.15)',
+                    } : {}),
                   }}
-                  title={stealthMode ? 'Stealth mode enabled' : 'Enable stealth mode'}
+                  title={stealthMode ? 'Stealth mode enabled - hides automation' : 'Enable stealth mode'}
                 >
                   <span style={{
                     width: 6,
@@ -497,18 +568,10 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 {/* Refresh button */}
                 <button
                   onClick={refreshScreenshot}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 12,
-                    borderRadius: 4,
-                    border: '1px solid var(--border-default)',
-                    background: 'var(--bg-default)',
-                    color: 'var(--tx-primary)',
-                    cursor: 'pointer',
-                  }}
+                  style={{ ...buttonStyles.base, ...buttonStyles.ghost }}
                   title="Refresh screenshot"
                 >
-                  ↻
+                  <Pxi name="refresh" size={10} />
                 </button>
 
                 {/* Control toggle */}
@@ -516,15 +579,13 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                   <button
                     onClick={releaseControl}
                     style={{
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      border: '1px solid #22c55e',
-                      background: 'rgba(34, 197, 94, 0.1)',
-                      color: '#22c55e',
-                      cursor: 'pointer',
+                      ...buttonStyles.base,
+                      ...buttonStyles.primary,
+                      background: '#22c55e',
+                      borderColor: '#22c55e',
                     }}
                   >
+                    <Pxi name="check" size={10} />
                     Release
                   </button>
                 ) : (
@@ -532,16 +593,14 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     onClick={takeControl}
                     disabled={agentDriving}
                     style={{
-                      padding: '4px 12px',
-                      fontSize: 12,
-                      borderRadius: 4,
-                      border: '1px solid var(--border-default)',
-                      background: 'var(--bg-default)',
-                      color: 'var(--tx-primary)',
-                      cursor: agentDriving ? 'not-allowed' : 'pointer',
+                      ...buttonStyles.base,
+                      ...buttonStyles.secondary,
                       opacity: agentDriving ? 0.5 : 1,
+                      cursor: agentDriving ? 'not-allowed' : 'pointer',
                     }}
+                    title="Take manual control of browser"
                   >
+                    <Pxi name="user" size={10} />
                     Take Control
                   </button>
                 )}
@@ -552,38 +611,64 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
             <button
               onClick={stopSidecar}
               style={{
-                padding: '4px 12px',
-                fontSize: 12,
-                borderRadius: 4,
-                border: '1px solid #ef4444',
-                background: 'rgba(239, 68, 68, 0.1)',
-                color: '#ef4444',
-                cursor: 'pointer',
+                ...buttonStyles.base,
+                ...buttonStyles.danger,
                 marginLeft: 'auto',
               }}
             >
+              <Pxi name="times" size={10} />
               Stop
             </button>
           </>
         )}
 
         {sidecarStatus === 'starting' && (
-          <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--tx-secondary)',
+          }}>
+            <div style={{
+              width: 16,
+              height: 16,
+              borderRadius: '50%',
+              border: '2px solid rgba(255,255,255,0.1)',
+              borderTopColor: 'var(--amber)',
+              animation: 'spin 0.8s linear infinite',
+            }} />
             Starting browser...
-          </span>
+          </div>
         )}
       </div>
 
       {/* Error message */}
       {error && (
         <div style={{
-          padding: '8px 12px',
-          background: 'rgba(239, 68, 68, 0.1)',
-          borderBottom: '1px solid rgba(239, 68, 68, 0.2)',
-          color: '#ef4444',
-          fontSize: 12,
+          padding: 'var(--space-2) var(--space-2-5)',
+          background: 'rgba(239, 68, 68, 0.12)',
+          borderBottom: '1px solid rgba(239, 68, 68, 0.25)',
+          color: '#f87171',
+          fontSize: 'var(--text-xs)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-1-5)',
         }}>
-          {error}
+          <Pxi name="times-circle" size={12} />
+          <span style={{ flex: 1 }}>{error}</span>
+          <button
+            onClick={() => setError(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              padding: 'var(--space-1)',
+            }}
+          >
+            <Pxi name="times" size={10} />
+          </button>
         </div>
       )}
 
@@ -614,22 +699,23 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
               />
 
               {/* Element highlighting overlay */}
-              {highlightedElement && Date.now() < highlightedElement.until && (
+              {isHighlightActive && (
                 <div style={{
                   position: 'absolute',
-                  top: 12,
+                  top: 'var(--space-3)',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  padding: '6px 12px',
+                  padding: 'var(--space-1-5) var(--space-3)',
                   borderRadius: 20,
                   background: 'rgba(168, 85, 247, 0.9)',
                   color: '#fff',
-                  fontSize: 12,
+                  fontSize: 'var(--text-xs)',
                   fontWeight: 500,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  gap: 'var(--space-1-5)',
                   animation: 'pulse 1s infinite',
+                  boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)',
                 }}>
                   <span style={{
                     width: 6,
@@ -637,7 +723,17 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     borderRadius: '50%',
                     background: '#fff',
                   }} />
-                  Clicked: {highlightedElement.selector}
+                  <span>Clicked: </span>
+                  <code style={{
+                    fontSize: 'var(--text-2xs)',
+                    opacity: 0.9,
+                    maxWidth: 200,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {highlightedElement.selector}
+                  </code>
                 </div>
               )}
 
@@ -645,18 +741,20 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
               {agentDriving && (
                 <div style={{
                   position: 'absolute',
-                  top: highlightedElement ? 48 : 12,
+                  top: isHighlightActive ? 'var(--space-10)' : 'var(--space-3)',
                   left: '50%',
                   transform: 'translateX(-50%)',
-                  padding: '6px 12px',
+                  padding: 'var(--space-1-5) var(--space-3)',
                   borderRadius: 20,
-                  background: 'rgba(0, 0, 0, 0.8)',
+                  background: 'rgba(0, 0, 0, 0.85)',
                   color: '#fff',
-                  fontSize: 12,
+                  fontSize: 'var(--text-xs)',
                   fontWeight: 500,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
+                  gap: 'var(--space-1-5)',
+                  border: '1px solid ' + 'var(--sidebar-border)',
+                  backdropFilter: 'blur(8px)',
                 }}>
                   <span style={{
                     width: 6,
@@ -676,21 +774,31 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: 'var(--tx-dim)',
+              color: 'var(--tx-tertiary)',
+              gap: 'var(--space-3)',
             }}>
-              <p style={{ marginBottom: 8, fontSize: 13 }}>
-                {sidecarStatus === 'running' ? 'Enter a URL to begin browsing' : 'Start the browser to begin'}
-              </p>
-              {isLoading && (
-                <div style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: '50%',
-                  border: '2px solid var(--border-subtle)',
-                  borderTopColor: 'var(--accent)',
-                  animation: 'spin 1s linear infinite',
-                }} />
-              )}
+              <div style={{
+                width: 48,
+                height: 48,
+                borderRadius: 12,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid var(--sidebar-border)',
+              }}>
+                <Pxi name="globe" size={20} style={{ opacity: 0.4 }} />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 500 }}>
+                  {sidecarStatus === 'running'
+                    ? 'Enter a URL to begin browsing'
+                    : 'Start the browser to begin'}
+                </p>
+                <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)', opacity: 0.7 }}>
+                  The agent can navigate websites and interact with pages
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -698,22 +806,26 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         {/* History sidebar */}
         {showHistory && (
           <div style={{
-            width: 240,
-            background: 'var(--bg-elevated)',
-            borderLeft: '1px solid var(--border-subtle)',
+            width: 260,
+            background: '#090909',
+            borderLeft: '1px solid var(--sidebar-border)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
           }}>
             <div style={{
-              padding: '8px 12px',
-              borderBottom: '1px solid var(--border-subtle)',
-              fontSize: 12,
+              padding: 'var(--space-2) var(--space-3)',
+              borderBottom: '1px solid var(--sidebar-border)',
+              fontSize: 'var(--text-xs)',
               fontWeight: 600,
-              color: 'var(--tx-secondary)',
+              color: 'var(--tx-tertiary)',
               textTransform: 'uppercase',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.08em',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-1-5)',
             }}>
+              <Pxi name="clock" size={10} />
               Browse History
             </div>
             <div style={{
@@ -722,11 +834,12 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
             }}>
               {history.length === 0 ? (
                 <div style={{
-                  padding: 12,
+                  padding: 'var(--space-8)',
                   textAlign: 'center',
-                  fontSize: 12,
-                  color: 'var(--tx-dim)',
+                  fontSize: 'var(--text-xs)',
+                  color: 'var(--tx-tertiary)',
                 }}>
+                  <Pxi name="clock" size={20} style={{ opacity: 0.3, marginBottom: 'var(--space-2)' }} />
                   No history yet
                 </div>
               ) : (
@@ -739,21 +852,22 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     }}
                     style={{
                       width: '100%',
-                      padding: '8px 12px',
+                      padding: 'var(--space-2) var(--space-3)',
                       textAlign: 'left',
                       border: 'none',
-                      background: index === historyIndex ? 'var(--accent-container)' : 'transparent',
-                      color: index === historyIndex ? 'var(--accent)' : 'var(--tx-secondary)',
-                      fontSize: 12,
+                      background: index === historyIndex ? 'var(--sidebar-active-bg)' : 'transparent',
+                      color: index === historyIndex ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                      fontSize: 'var(--text-xs)',
                       cursor: 'pointer',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 2,
-                      borderBottom: '1px solid var(--border-subtle)',
+                      borderBottom: '1px solid var(--sidebar-border)',
+                      transition: 'background 0.1s',
                     }}
                     onMouseEnter={(e) => {
                       if (index !== historyIndex) {
-                        e.currentTarget.style.background = 'var(--bg-hover)'
+                        e.currentTarget.style.background = 'var(--sidebar-hover-bg)'
                       }
                     }}
                     onMouseLeave={(e) => {
@@ -771,8 +885,8 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                       {entry.title}
                     </span>
                     <span style={{
-                      fontSize: 11,
-                      opacity: 0.7,
+                      fontSize: 'var(--text-2xs)',
+                      opacity: 0.6,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',

@@ -44,6 +44,25 @@
   --space-10: 2.5rem;     /* 40px */
   --space-12: 3rem;       /* 48px */
 
+  /* ── Extended spacing for micro-adjustments ── */
+  --space-0-5: 0.125rem;  /* 2px  */
+  --space-1-5: 0.375rem;  /* 6px  */
+  --space-2-5: 0.625rem;  /* 10px */
+  --space-3-5: 0.875rem;  /* 14px */
+  --space-4-5: 1.125rem;  /* 18px */
+
+  /* ── Icon size scale ── */
+  --icon-xs:  8px;
+  --icon-sm: 10px;
+  --icon-md: 12px;
+  --icon-lg: 14px;
+  --icon-xl: 18px;
+
+  /* ── Desktop breakpoints ── */
+  --bp-compact:  1024px;
+  --bp-medium:   1280px;
+  --bp-spacious: 1600px;
+
   /* ── Amber accent ramp ── */
   --color-ana-1: oklch(64% 0.214 40.1);
   --color-ana-1-contrast: #000;
@@ -107,6 +126,14 @@
   --tx-tertiary:  #757575;
   --tx-muted:     #555555;   /* decorative-only — NOT for readable text */
   --tx-ghost:     #3a3a3a;   /* decorative-only — NOT for readable text */
+
+  /* ── Sidebar tokens ── */
+  --sidebar-bg: rgba(9, 9, 9, 0.4);
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.04);
+  --sidebar-active-bg: rgba(255, 255, 255, 0.08);
+  --sidebar-rail-width: 44px;
+  --sidebar-transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -852,19 +879,19 @@ html, body, #root {
   padding-top: 28px;
 }
 
-/* Left sidebar — fixed max-width, collapses to icon rail */
+/* Left sidebar — fluid width, collapses to icon rail */
 .app-sidebar-left {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: clamp(200px, 18vw, 280px);
+  min-width: clamp(200px, 18vw, 280px);
+  max-width: clamp(200px, 18vw, 280px);
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   background: rgba(9, 9, 9, 0.4);
   backdrop-filter: var(--glass-blur);
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--sidebar-transition),
+              min-width var(--sidebar-transition),
+              max-width var(--sidebar-transition);
 }
 
 .app-sidebar-left.app-sidebar--collapsed {
@@ -873,19 +900,19 @@ html, body, #root {
   max-width: 44px;
 }
 
-/* Right output panel — fixed max-width, collapses to icon rail */
+/* Right output panel — fluid width, collapses to icon rail */
 .app-sidebar-right {
-  width: 380px;
-  min-width: 380px;
-  max-width: 380px;
+  width: clamp(320px, 28vw, 480px);
+  min-width: clamp(320px, 28vw, 480px);
+  max-width: clamp(320px, 28vw, 480px);
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   background: rgba(11, 11, 11, 0.4);
   backdrop-filter: var(--glass-blur);
-  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-              max-width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--sidebar-transition),
+              min-width var(--sidebar-transition),
+              max-width var(--sidebar-transition);
 }
 
 .app-sidebar-right.app-sidebar--collapsed {

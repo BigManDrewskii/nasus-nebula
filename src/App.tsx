@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
+import { useSidebarResponsive } from './hooks/useSidebarResponsive'
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -19,6 +20,7 @@ interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
   rightActiveTab: Tab
+  sidebarPreference?: 'auto' | 'always-left' | 'always-right' | 'minimal'
 }
 
 function loadLayout(): LayoutState {
@@ -26,7 +28,7 @@ function loadLayout(): LayoutState {
     const raw = localStorage.getItem(LAYOUT_KEY)
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
-  return { leftCollapsed: false, rightCollapsed: false, rightActiveTab: 'preview' }
+  return { leftCollapsed: false, rightCollapsed: false, rightActiveTab: 'preview', sidebarPreference: 'auto' }
 }
 
 function saveLayout(state: LayoutState) {
@@ -81,7 +83,25 @@ function App() {
   const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
+  const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
+    savedLayout.sidebarPreference ?? 'auto'
+  )
   const [outputVisible, setOutputVisible] = useState(true)
+
+  // Responsive hook for window-size-aware sidebar behavior
+  // Note: Responsive recommendations are available but manual state currently takes precedence
+  const responsive = useSidebarResponsive({
+    leftManual: leftCollapsed,
+    rightManual: rightCollapsed,
+    userPreference: sidebarPreference,
+  })
+
+  // Log responsive state for debugging (can be removed in production)
+  useEffect(() => {
+    if (responsive.shouldAutoCollapse && !leftCollapsed) {
+      // Window is too tight - could auto-collapse here
+    }
+  }, [responsive.shouldAutoCollapse, leftCollapsed, responsive.windowWidth])
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()
@@ -96,8 +116,8 @@ function App() {
 
   // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab })
-  }, [leftCollapsed, rightCollapsed, rightActiveTab])
+    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, sidebarPreference })
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, sidebarPreference])
 
     // Auto-show + expand right panel when the agent creates its first file,
     // or when switching to a task that already has files.

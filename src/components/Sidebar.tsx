@@ -5,6 +5,7 @@ import { useAppStore } from '../store'
 import type { Task } from '../types'
 import { TaskListItem } from './TaskListItem'
 import { STATIC_MODELS, familyMeta } from '../lib/models'
+import { SidebarEmptyState, RailButton } from './sidebar/SidebarComponents'
 
 interface SidebarProps {
   tasks: Task[]
@@ -114,7 +115,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
           <div
             className="rail-header"
             data-tauri-drag-region
-            style={{ paddingTop: 18 }}
+            style={{ paddingTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center' }}
           >
               {/* Logo with ambient glow */}
                 <div style={{ position: 'relative', lineHeight: 0 }}>
@@ -142,14 +143,11 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
                   </svg>
                 </div>
 
-            <button
-              onClick={onToggleCollapse}
+            <RailButton
+              icon="angle-right"
               title="Expand sidebar"
-              aria-label="Expand sidebar"
-              className="rail-toggle-btn"
-            >
-              <Pxi name="angle-right" size={11} />
-            </button>
+              onClick={onToggleCollapse}
+            />
           </div>
         </div>
       ) : (
@@ -157,11 +155,11 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
         <>
           <SidebarBrand onToggleCollapse={onToggleCollapse} />
 
-          <div style={{ padding: '0 10px 8px' }}>
+          <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
             <NewTaskButton onClick={onNewTask} />
           </div>
 
-          <div style={{ padding: '0 10px 10px' }}>
+          <div style={{ padding: '0 var(--space-2-5) var(--space-2-5)' }}>
             <SearchBar
               open={searchOpen}
               value={search}
@@ -172,21 +170,26 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
             />
           </div>
 
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', margin: '0 10px 4px' }} />
+          <div style={{ height: 1, background: 'var(--sidebar-border)', margin: '0 var(--space-2-5) var(--space-1)' }} />
 
           <div
             style={{
               flex: 1,
               overflowY: 'auto',
               overflowX: 'hidden',
-              paddingBottom: 8,
+              paddingBottom: 'var(--space-2)',
               scrollbarWidth: 'thin',
             }}
           >
             {tasks.length === 0 ? (
-              <EmptyState onNewTask={onNewTask} />
+              <SidebarEmptyState
+                icon="sparkles"
+                title="No tasks yet"
+                subtitle="Create your first task to get started"
+                action={{ label: 'New task', onClick: onNewTask }}
+              />
             ) : (
-              <div style={{ padding: '4px 10px 0' }}>
+              <div style={{ padding: 'var(--space-1) var(--space-2-5) 0' }}>
                   {pinnedTasks.length > 0 && (
                     <SidebarSection
                       label="Pinned"
@@ -268,8 +271,8 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 9,
-        padding: '10px 14px 10px 14px',
+        gap: 'var(--space-2-5)',
+        padding: 'var(--space-2-5) var(--space-3-5) var(--space-2-5)',
         userSelect: 'none',
         background: 'linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 100%)',
       }}
@@ -286,7 +289,7 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
           />
           <NasusLogo size={22} fill="var(--amber)" />
         </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1-5)', flex: 1 }}>
         <span
           className="font-display"
           style={{
@@ -317,14 +320,11 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
         </span>
       </div>
       {onToggleCollapse && (
-        <button
-          onClick={onToggleCollapse}
+        <RailButton
+          icon="angle-left"
           title="Collapse sidebar"
-          aria-label="Collapse sidebar"
-          className="rail-toggle-btn"
-        >
-          <Pxi name="angle-left" size={11} />
-        </button>
+          onClick={onToggleCollapse}
+        />
       )}
     </div>
   )
@@ -343,8 +343,8 @@ function NewTaskButton({ onClick }: { onClick: () => void }) {
         width: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: 7,
-        padding: '6px 10px',
+        gap: 'var(--space-1-5)',
+        padding: 'var(--space-1-5) var(--space-2-5)',
         borderRadius: 8,
         fontSize: 12,
         fontWeight: 500,
@@ -396,8 +396,8 @@ function SearchBar({
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '5px 9px',
+          gap: 'var(--space-1-5)',
+          padding: 'var(--space-1) var(--space-2-5)',
           borderRadius: 7,
           background: 'rgba(255,255,255,0.05)',
           border: '1px solid rgba(255,255,255,0.11)',
@@ -444,10 +444,10 @@ function SearchBar({
         width: '100%',
         display: 'flex',
         alignItems: 'center',
-        gap: 6,
-        padding: '5px 9px',
+        gap: 'var(--space-1-5)',
+        padding: 'var(--space-1) var(--space-2-5)',
         borderRadius: 7,
-        background: hov ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+        background: hov ? 'var(--sidebar-hover-bg)' : 'rgba(255,255,255,0.02)',
         border: `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)'}`,
         cursor: 'text',
         transition: 'background 0.1s, border-color 0.1s',
@@ -507,7 +507,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
   }, [collapsed])
 
   return (
-    <div style={{ marginBottom: 10 }}>
+    <div style={{ marginBottom: 'var(--space-2-5)' }}>
 
       {/* Header */}
       <button
@@ -710,11 +710,11 @@ function SidebarFooter({ model, fullModel, onSettings }: {
     <div
       ref={containerRef}
       style={{
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-          padding: '6px 10px 10px',
+        borderTop: '1px solid var(--sidebar-border)',
+          padding: 'var(--space-1-5) var(--space-2-5) var(--space-2-5)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 4,
+        gap: 'var(--space-1)',
         position: 'relative',
       }}
     >
@@ -873,16 +873,16 @@ function SidebarFooter({ model, fullModel, onSettings }: {
         onClick={() => setOpen((o) => !o)}
         title={`Model: ${fullModel}\nClick to switch`}
         style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 6,
-          padding: '5px 8px', borderRadius: 7,
-          background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)',
+          width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--space-1-5)',
+          padding: 'var(--space-1) var(--space-2)', borderRadius: 7,
+          background: open ? 'var(--sidebar-active-bg)' : 'rgba(255,255,255,0.025)',
           border: `1px solid ${open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
           cursor: 'pointer', fontFamily: 'inherit',
           transition: 'background 0.1s, border-color 0.1s', textAlign: 'left',
         }}
         onMouseEnter={(e) => {
           if (!open) {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            e.currentTarget.style.background = 'var(--sidebar-hover-bg)'
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'
           }
         }}
@@ -928,48 +928,3 @@ function SidebarFooter({ model, fullModel, onSettings }: {
   )
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
-function EmptyState({ onNewTask }: { onNewTask: () => void }) {
-  const [hov, setHov] = useState(false)
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 10,
-        marginTop: 40,
-        padding: '0 20px',
-      }}
-    >
-      <NasusLogo size={20} fill="rgba(255,255,255,0.06)" />
-      <p style={{ fontSize: 11, color: 'var(--tx-muted)', textAlign: 'center', lineHeight: 1.5, margin: 0 }}>
-        No tasks yet
-      </p>
-      <button
-        onClick={onNewTask}
-        onMouseEnter={() => setHov(true)}
-        onMouseLeave={() => setHov(false)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 12px',
-          borderRadius: 7,
-          fontSize: 11,
-          fontWeight: 500,
-          fontFamily: 'inherit',
-          cursor: 'pointer',
-          color: 'var(--amber-soft)',
-          background: hov ? 'oklch(64% 0.214 40.1 / 0.12)' : 'oklch(64% 0.214 40.1 / 0.07)',
-          border: `1px solid ${hov ? 'oklch(64% 0.214 40.1 / 0.30)' : 'oklch(64% 0.214 40.1 / 0.16)'}`,
-          transition: 'background 0.12s, border-color 0.12s',
-        }}
-      >
-        <Pxi name="plus" size={10} />
-        Start your first task
-      </button>
-    </div>
-  )
-}

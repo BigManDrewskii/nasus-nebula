@@ -5,6 +5,7 @@ import { CodePane } from './CodePane'
 import { FilesPane } from './FilesPane'
 import { BrowserPreview } from './BrowserPreview'
 import { Pxi } from './Pxi'
+import { RailButton } from './sidebar/SidebarComponents'
 
 export type Tab = 'preview' | 'code' | 'files' | 'browser'
 
@@ -127,15 +128,12 @@ export function OutputPanel({
   if (collapsed) {
     return (
       <div className="output-collapsed-rail" role="complementary" aria-label="Output panel (collapsed)">
-        <div className="rail-header">
-          <button
-            className="rail-toggle-btn"
+        <div className="rail-header" style={{ padding: 'var(--space-2-5)' }}>
+          <RailButton
+            icon="angle-left"
+            title="Expand output panel (⌘⇧\)"
             onClick={() => onExpand?.()}
-            title="Expand output panel (⌘⇧\\)"
-            aria-label="Expand output panel"
-          >
-            <Pxi name="angle-left" size={11} />
-          </button>
+          />
         </div>
       </div>
     )
@@ -190,14 +188,11 @@ export function OutputPanel({
         <div className="output-panel-spacer" />
 
           {onCollapse && (
-            <button
+            <RailButton
+              icon="angle-right"
+              title="Collapse output panel (⌘⇧\)"
               onClick={onCollapse}
-              title="Collapse output panel (⌘⇧\\)"
-              aria-label="Collapse output panel"
-              className="rail-toggle-btn"
-            >
-              <Pxi name="angle-right" size={11} />
-            </button>
+            />
           )}
       </div>
 
