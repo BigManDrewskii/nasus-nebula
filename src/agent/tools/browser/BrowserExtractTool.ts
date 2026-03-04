@@ -17,6 +17,8 @@ export class BrowserExtractTool extends BaseTool {
     properties: {
       selector: { type: 'string', description: 'CSS selector to extract from (default: full page body).' },
       tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+      chunk_index: { type: 'integer', description: 'Zero-indexed chunk to return (default: 0). Use if the page is very long.', default: 0 },
+      chunk_size: { type: 'integer', description: `Maximum characters per chunk (default ${CONTENT_TRUNCATION_LIMIT}).`, default: CONTENT_TRUNCATION_LIMIT },
     },
   }
 
@@ -29,10 +31,22 @@ export class BrowserExtractTool extends BaseTool {
       if (result.error) {
         return toolFailure(result.error)
       }
-      const header = `URL: ${result.url}\nTitle: ${result.title}\nLength: ${result.length} chars\n\n`
-      const content = result.content.length > CONTENT_TRUNCATION_LIMIT
-        ? result.content.slice(0, CONTENT_TRUNCATION_LIMIT) + '\n[...truncated]'
-        : result.content
+
+      const chunkIndex = (args.chunk_index as number) || 0
+      const chunkSize = (args.chunk_size as number) || CONTENT_TRUNCATION_LIMIT
+      const start = chunkIndex * chunkSize
+      const end = start + chunkSize
+      
+      const totalLength = result.content.length
+      const numChunks = Math.ceil(totalLength / chunkSize)
+      
+      const header = `URL: ${result.url}\nTitle: ${result.title}\nChunk: ${chunkIndex + 1}/${numChunks}\nTotal Length: ${totalLength} chars\n\n`
+      
+      let content = result.content.slice(start, end)
+      if (end < totalLength) {
+        content += `\n\n[... truncated. Use chunk_index=${chunkIndex + 1} to see more ...]`
+      }
+      
       return toolSuccess(header + content)
     } catch (err) {
       return toolFailure(err instanceof Error ? err.message : String(err))

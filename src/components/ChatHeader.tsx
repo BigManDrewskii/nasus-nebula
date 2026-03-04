@@ -251,6 +251,19 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
         {tokenCount > 0 && (
           <span className="font-mono flex-shrink-0" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>
             {(tokenCount / 1000).toFixed(1)}k · {estimateCost(activeModelId, tokenCount)}
+            {taskRouterState?.tokenUsage && (
+              <span 
+                style={{ 
+                  marginLeft: 6,
+                  color: taskRouterState.tokenUsage.contextUtilization > 0.85 ? '#f87171' : 
+                         taskRouterState.tokenUsage.contextUtilization > 0.7 ? 'var(--amber)' : 
+                         'var(--tx-muted)'
+                }}
+                title={`Context utilization: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%`}
+              >
+                ctx: {Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%
+              </span>
+            )}
           </span>
         )}
       </div>

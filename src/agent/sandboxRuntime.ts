@@ -14,8 +14,8 @@ import {
 import { tauriInvoke } from '../tauri'
 
 export interface ExecutionConfig {
-  /** Execution mode - 'docker' if available, 'disabled' otherwise */
-  executionMode: 'docker' | 'disabled'
+  /** Execution mode - 'docker' if available, 'webcontainer' as fallback, 'disabled' otherwise */
+  executionMode: 'docker' | 'webcontainer' | 'disabled'
   /** Task ID for workspace tracking */
   taskId?: string
   /** Workspace path for mounting into containers */

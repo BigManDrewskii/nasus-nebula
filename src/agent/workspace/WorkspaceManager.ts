@@ -50,9 +50,57 @@ interface RustWorkspaceFile {
 export class WorkspaceManager {
   private workspaces: Map<string, Workspace> = new Map()
   private contentCache: Map<string, Map<string, string>> = new Map()
+  private history: Map<string, Map<string, string[]>> = new Map()
   private basePath: string | null = null
   private taskTitles: Map<string, string> = new Map()
   private initialized = false
+
+  /**
+   * Get the history for a specific task.
+   */
+  private getHistory(taskId: string): Map<string, string[]> {
+    if (!this.history.has(taskId)) {
+      this.history.set(taskId, new Map())
+    }
+    return this.history.get(taskId)!
+  }
+
+  /**
+   * Push a new version to the history.
+   */
+  private pushHistory(taskId: string, filePath: string, content: string): void {
+    const taskHistory = this.getHistory(taskId)
+    if (!taskHistory.has(filePath)) {
+      taskHistory.set(filePath, [])
+    }
+    const versions = taskHistory.get(filePath)!
+    versions.push(content)
+    // Keep only last 10 versions
+    if (versions.length > 10) {
+      versions.shift()
+    }
+  }
+
+  /**
+   * Pop the last version from history (Undo).
+   */
+  async undoFile(taskId: string, filePath: string): Promise<string | null> {
+    const taskHistory = this.getHistory(taskId)
+    const versions = taskHistory.get(filePath)
+    if (!versions || versions.length === 0) return null
+    
+    // The top of the stack is the CURRENT version, so we need the one before it
+    // Wait, if we just wrote a file, the current version is in the cache.
+    // Let's say we have [v1, v2]. Current is v2. Undo should restore v1.
+    versions.pop() // Remove current
+    const previous = versions.length > 0 ? versions[versions.length - 1] : null
+    
+    if (previous !== null) {
+      await this.writeFile(taskId, filePath, previous, true) // Pass true to skip history push
+      return previous
+    }
+    return null
+  }
 
   /**
    * Ensure workspace files are loaded into memory cache.
@@ -65,6 +113,8 @@ export class WorkspaceManager {
       try {
         const content = await this.readFile(taskId, file.path)
         map.set(file.path, content)
+        // Initialize history with current content
+        this.getHistory(taskId).set(file.path, [content])
       } catch {}
     }
   }
@@ -151,7 +201,7 @@ export class WorkspaceManager {
   /**
    * Write a file to a workspace.
    */
-  async writeFile(taskId: string, filePath: string, content: string): Promise<void> {
+  async writeFile(taskId: string, filePath: string, content: string, skipHistoryPush = false): Promise<void> {
     if (!this.initialized) await this.init()
 
     const workspacePath = await this.getWorkspacePath(taskId)
@@ -170,6 +220,11 @@ export class WorkspaceManager {
 
     // Update content cache
     this.getWorkspaceSync(taskId).set(filePath, content)
+
+    // Update history
+    if (!skipHistoryPush) {
+      this.pushHistory(taskId, filePath, content)
+    }
 
     this.emitWorkspaceEvent(taskId)
   }

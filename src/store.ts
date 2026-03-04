@@ -65,6 +65,16 @@ export interface TaskRouterState {
   actualCostUsd?: number
   /** Vercel generation ID for the last request */
   generationId?: string
+  /** Cumulative token usage for this task */
+  tokenUsage?: TaskTokenUsage
+}
+
+export interface TaskTokenUsage {
+  totalPromptTokens: number
+  totalCompletionTokens: number
+  totalTokens: number
+  estimatedCost: number       // USD, calculated from model pricing
+  contextUtilization: number  // 0-1, current prompt size / model context window
 }
 
 interface AppState extends GatewaySlice {
@@ -117,6 +127,8 @@ interface AppState extends GatewaySlice {
   currentPhase: number
   currentStep: number
 
+  pendingToolApproval: { tool: string; args: Record<string, any>; reason?: string; taskId: string } | null
+
   setActiveTaskId: (id: string | null) => void
   addTask: (task: Task) => void
   deleteTask: (id: string) => void
@@ -150,6 +162,7 @@ interface AppState extends GatewaySlice {
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
+  updateTokenUsage: (taskId: string, usage: { promptTokens: number; completionTokens: number }, modelId: string) => void
   setConfigSection: (section: string, open: boolean) => void
   toggleConfigSection: (section: string) => void
   setRightPanelWidth: (width: number) => void
@@ -164,6 +177,10 @@ interface AppState extends GatewaySlice {
   setCurrentStep: (step: number) => void
   approvePlan: () => void
   rejectPlan: () => void
+
+  setPendingToolApproval: (approval: { tool: string; args: Record<string, any>; reason?: string; taskId: string } | null) => void
+  approveTool: (taskId: string, tool: string) => void
+  rejectTool: (taskId: string, tool: string) => void
 }
 
 const WELCOME_MESSAGE: Message = {
@@ -225,10 +242,13 @@ export const useAppStore = create<AppState>()(
             pendingPlan: null,
             planApprovalStatus: null,
             currentPlan: null,
-            currentPhase: 0,
-            currentStep: 0,
+          currentPhase: 0,
+          currentStep: 0,
+
+          pendingToolApproval: null,
 
           setActiveTaskId: (id) => {
+
             // Clear plan state from the previous task so the new task starts clean
             set({
               activeTaskId: id,
@@ -540,6 +560,53 @@ export const useAppStore = create<AppState>()(
               [taskId]: { ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }), ...state },
             },
           })),
+        updateTokenUsage: (taskId, usage, modelId) =>
+          set((s) => {
+            const current = s.taskRouterState[taskId]?.tokenUsage ?? {
+              totalPromptTokens: 0,
+              totalCompletionTokens: 0,
+              totalTokens: 0,
+              estimatedCost: 0,
+              contextUtilization: 0,
+            }
+            
+            const totalPromptTokens = current.totalPromptTokens + usage.promptTokens
+            const totalCompletionTokens = current.totalCompletionTokens + usage.completionTokens
+            const totalTokens = totalPromptTokens + totalCompletionTokens
+            
+            // Calculate cost
+            const { registry } = s.routerConfig
+            const modelInfo = (registry ?? []).find(m => 
+              Object.values(m.ids || {}).includes(modelId) || m.id === modelId
+            )
+            
+            let estimatedCost = current.estimatedCost
+            if (modelInfo) {
+              estimatedCost += (usage.promptTokens / 1_000_000) * modelInfo.inputCostPer1M
+                             + (usage.completionTokens / 1_000_000) * modelInfo.outputCostPer1M
+            } else {
+              // Fallback to a generic rate if not in registry
+              estimatedCost += (totalTokens / 1_000_000) * 5
+            }
+            
+            const contextUtilization = usage.promptTokens / (modelInfo?.contextWindow ?? 128_000)
+            
+            return {
+              taskRouterState: {
+                ...s.taskRouterState,
+                [taskId]: {
+                  ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }),
+                  tokenUsage: {
+                    totalPromptTokens,
+                    totalCompletionTokens,
+                    totalTokens,
+                    estimatedCost,
+                    contextUtilization,
+                  }
+                }
+              }
+            }
+          }),
         setConfigSection: (section, open) =>
           set((s) => ({
             configSections: { ...s.configSections, [section]: open },
@@ -570,13 +637,23 @@ export const useAppStore = create<AppState>()(
             window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${state.activeTaskId}`))
           }
         },
-        rejectPlan: () => {
-          const state = useAppStore.getState()
-          set({ planApprovalStatus: 'rejected', pendingPlan: null, currentPlan: null })
-          // Emit rejection event for orchestrator
-          if (state.activeTaskId) {
-            window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${state.activeTaskId}`))
-          }
+          rejectPlan: () => {
+            set({ planApprovalStatus: 'rejected', pendingPlan: null })
+          },
+
+          setPendingToolApproval: (approval) => {
+            set({ pendingToolApproval: approval })
+          },
+          approveTool: (taskId, tool) => {
+            set({ pendingToolApproval: null })
+            window.dispatchEvent(new CustomEvent(`nasus:tool-approved-${taskId}`, { detail: { tool } }))
+          },
+          rejectTool: (taskId, tool) => {
+            set({ pendingToolApproval: null })
+            window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { tool } }))
+          },
+        }
+
         },
       }
     },
@@ -625,6 +702,7 @@ export const useAppStore = create<AppState>()(
                 vercelModels: state.vercelModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
+                gateways: state.gateways,
                 extensionConnected: state.extensionConnected,
                 extensionVersion: state.extensionVersion,
                 }

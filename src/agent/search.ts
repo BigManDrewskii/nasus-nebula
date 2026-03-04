@@ -42,21 +42,83 @@ export type SearchStatusCallback = (event: SearchStatusEvent) => void
 // ─── Raw search (returns typed results) ─────────────────────────────────────
 
 /**
+ * Fallback search using DuckDuckGo (no API key required).
+ */
+async function duckduckgoSearch(query: string, numResults = 5): Promise<SearchResult[]> {
+  // Use the HTML version of DuckDuckGo for easier scraping
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  try {
+    // Add a small delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, 1000))
+
+    const response = await tauriInvoke<string>('http_fetch', { 
+      url,
+      headers: [
+        'User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      ]
+    })
+    if (!response) return []
+    
+    // Response format from Tauri http_fetch is "status\nbody"
+    const firstNewline = response.indexOf('\n')
+    if (firstNewline === -1) return []
+    const html = response.slice(firstNewline + 1)
+    
+    const results: SearchResult[] = []
+    // Regex to match DuckDuckGo HTML results
+    // Title and URL: <a class="result__a" href="(url)">(title)</a>
+    // Snippet: <a class="result__snippet" ...>(snippet)</a>
+    const resultRegex = /<div class="result nav-link[\s\S]*?<a class="result__a" href="([^"]+)">([\s\S]*?)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+    
+    let match
+    while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
+      const url = match[1]
+      const title = match[2].replace(/<[^>]*>/g, '').trim()
+      const snippet = match[3].replace(/<[^>]*>/g, '').trim()
+      
+      if (url && title) {
+        results.push({
+          title,
+          url,
+          snippet,
+          provider: 'duckduckgo'
+        })
+      }
+    }
+    return results
+  } catch (e) {
+    console.warn('DuckDuckGo fallback failed:', e)
+    return []
+  }
+}
+
+/**
  * Execute a search and return typed results.
- * Uses the Rust backend.
+ * Uses the Rust backend with a TS fallback for DuckDuckGo.
  */
 export async function searchRaw(
   query: string,
   numResults = 5,
 ): Promise<SearchResult[]> {
-  const results = await tauriInvoke<SearchResult[]>('search', {
-    query,
-    numResults,
-    searchConfig: {
-      exaKey: useAppStore.getState().exaKey,
-    },
-  })
-  return results ?? []
+  const store = useAppStore.getState()
+  const exaKey = store.exaKey
+  
+  // Try Exa first if key is present
+  if (exaKey && exaKey.trim()) {
+    try {
+      const results = await tauriInvoke<SearchResult[]>('search', {
+        query,
+        numResults,
+        searchConfig: { exaKey },
+      })
+      if (results && results.length > 0) return results
+    } catch (e) {
+      console.warn('Exa search failed, trying fallback:', e)
+    }
+  }
+  
+  // Fallback to DuckDuckGo
+  return await duckduckgoSearch(query, numResults)
 }
 
 // ─── Formatted search (returns string for agent context) ────────────────────

@@ -40,6 +40,9 @@ export class SearchWebTool extends BaseTool {
     required: ['query'],
   }
 
+  /** Simple static cache to avoid redundant searches in the same session */
+  private static cache: Map<string, string> = new Map()
+
   /** Optional: injected by the execution layer for UI status updates */
   private searchConfig?: SearchConfig
   private onStatus?: SearchStatusCallback
@@ -62,8 +65,27 @@ export class SearchWebTool extends BaseTool {
       return toolFailure('query is required and must be non-empty')
     }
 
+    // Check cache
+    const cacheKey = `${query.toLowerCase().trim()}::${numResults}`
+    if (SearchWebTool.cache.has(cacheKey)) {
+      const cached = SearchWebTool.cache.get(cacheKey)!
+      return toolSuccess(`[Cached Results]\n${cached}`)
+    }
+
     try {
       const output = await runSearch(query, numResults, this.searchConfig, this.onStatus)
+      
+      // Save to cache
+      if (output && output.length > 0) {
+        SearchWebTool.cache.set(cacheKey, output)
+        
+        // Prune cache if it gets too large
+        if (SearchWebTool.cache.size > 50) {
+          const first = SearchWebTool.cache.keys().next().value
+          if (first) SearchWebTool.cache.delete(first)
+        }
+      }
+
       return toolSuccess(output)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

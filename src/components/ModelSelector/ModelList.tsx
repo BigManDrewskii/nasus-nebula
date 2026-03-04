@@ -41,61 +41,59 @@ export function ModelList({
     return 'openrouter'
   }, [currentProvider])
 
-  // Build display models by merging registry with live data
-  const displayModels = useMemo((): DisplayModel[] => {
-    const registryModels = getModelsForGateway(gatewayType)
+    // Build display models by merging registry with live data
+    const displayModels = useMemo((): DisplayModel[] => {
+      const registryModels = getModelsForGateway(gatewayType)
 
-    // For OpenRouter, merge with live data
-    if (gatewayType === 'openrouter' && openRouterModels.length > 0) {
-      const liveModelMap = new Map(openRouterModels.map((m) => [m.id, m]))
+      // For OpenRouter, use all live models
+      if (gatewayType === 'openrouter' && openRouterModels.length > 0) {
+        return openRouterModels.map((m) => {
+          // Try to find matching registry model for tier
+          const registryModel = registryModels.find((r) => r.ids.openrouter === m.id)
 
-      return registryModels
-        .map((m) => {
-          const liveData = liveModelMap.get(m.ids.openrouter!)
-          if (!liveData) return null
-
-          const promptPrice = parseFloat(liveData.pricing?.prompt ?? '0')
-          const completionPrice = parseFloat(liveData.pricing?.completion ?? '0')
+          const promptPrice = parseFloat(m.pricing?.prompt ?? '0')
+          const completionPrice = parseFloat(m.pricing?.completion ?? '0')
 
           return {
-            id: m.ids.openrouter!,
-            name: m.canonicalName,
+            id: m.id,
+            name: m.name || m.id.split('/').pop() || m.id,
             provider: 'openrouter',
-            tier: m.tier,
-            contextWindow: liveData.context_length ?? m.contextWindow,
-            isFree: promptPrice === 0 || m.freeOn.openrouter === true,
+            tier: registryModel?.tier ?? 'general',
+            contextWindow: m.context_length ?? registryModel?.contextWindow ?? 128000,
+            isFree: promptPrice === 0,
             inputCost: promptPrice * 1_000_000,
             outputCost: completionPrice * 1_000_000,
             isAvailable: true,
           }
         })
-        .filter((m): m is DisplayModel => m !== null)
-    }
+      }
 
-    // For Vercel, use live models if available
-    if (gatewayType === 'vercel' && vercelModels.length > 0) {
-      // Include all live models, not just ones in registry
-      return vercelModels.map((m) => {
-        // Try to find matching registry model for metadata
-        const registryModel = registryModels.find((r) =>
-          r.ids.vercel === m.id ||
-          r.ids.openrouter === m.id ||
-          m.id.includes(r.canonicalName.toLowerCase().replace(/\s+/g, '-'))
-        )
+      // For Vercel, use all live models
+      if (gatewayType === 'vercel' && vercelModels.length > 0) {
+        return vercelModels.map((m) => {
+          // Try to find matching registry model for tier
+          const registryModel = registryModels.find((r) =>
+            r.ids.vercel === m.id ||
+            r.ids.openrouter === m.id ||
+            m.id.includes(r.canonicalName.toLowerCase().replace(/\s+/g, '-'))
+          )
 
-        return {
-          id: m.id,
-          name: registryModel?.canonicalName ?? m.id.split('/').pop() ?? m.id,
-          provider: 'vercel',
-          tier: registryModel?.tier ?? 'general',
-          contextWindow: registryModel?.contextWindow ?? 128000,
-          isFree: false, // Vercel models are paid unless configured otherwise
-          inputCost: registryModel?.inputCostPer1M ?? 0,
-          outputCost: registryModel?.outputCostPer1M ?? 0,
-          isAvailable: true,
-        }
-      })
-    }
+          const inputPrice = parseFloat(m.pricing?.input ?? '0')
+          const outputPrice = parseFloat(m.pricing?.output ?? '0')
+
+          return {
+            id: m.id,
+            name: m.name || registryModel?.canonicalName || m.id.split('/').pop() || m.id,
+            provider: 'vercel',
+            tier: registryModel?.tier ?? 'general',
+            contextWindow: m.context_window ?? registryModel?.contextWindow ?? 128000,
+            isFree: inputPrice === 0,
+            inputCost: inputPrice * 1_000_000,
+            outputCost: outputPrice * 1_000_000,
+            isAvailable: true,
+          }
+        })
+      }
 
     // For other providers, use registry only
     return registryModels.map((m) => ({

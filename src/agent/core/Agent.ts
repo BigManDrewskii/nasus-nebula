@@ -48,10 +48,10 @@ export interface AgentContext {
   /** Available tools (filtered for this agent type) */
   tools: AgentTool[]
   /** API configuration */
-  apiKey: string
-  model: string
-  apiBase: string
-  provider: string
+  apiKey?: string
+  model?: string
+  apiBase?: string
+  provider?: string
   /** Execution config for sandbox */
   executionConfig?: ExecutionConfig
   /** Search configuration */

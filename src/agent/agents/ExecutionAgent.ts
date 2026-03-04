@@ -10,8 +10,10 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
-import { streamCompletion, chatOnce, cheapestModel } from '../llm'
-import { executeTool, startTurnTracking, flushTurnFiles, getWorkspace, type SearchStatusCallback } from '../tools'
+import { streamCompletion, chatOnce, cheapestModel, powerfulModel, balancedModel, chatOnceViaGateway } from '../llm'
+import { startTurnTracking, flushTurnFiles, getWorkspace, type SearchStatusCallback } from '../tools'
+import { executeTool as executeToolLegacy } from '../tools'
+import { executeTool as executeRegistryTool } from '../tools/index'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
 import type { AgentStep, Task } from '../../types'
@@ -21,9 +23,9 @@ import { getToolDefinitions } from '../tools/index'
 import type { ToolCall } from '../llm'
 import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
-
-// Gateway integration
-import { selectModel, type GatewayType } from '../gateway'
+import { readProjectMemory, updateProjectMemory } from '../projectMemory'
+import { permissionSystem } from '../core/PermissionSystem'
+import { getModelAdapter } from '../promptAdapter'
 
 const MAX_CORRECTION_ATTEMPTS = 3
 
@@ -122,6 +124,8 @@ export class ExecutionAgent extends BaseAgent {
   private searchBrowseCount = 0
   // Track progress for auto-updating task_plan.md
   private completedCheckboxes = 0
+  private contextWarningIssued = false
+  private forcePowerfulModel = false
 
   constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
     super(name, type)
@@ -168,6 +172,14 @@ export class ExecutionAgent extends BaseAgent {
     // Reset per-task counters at the start of each execution
     this.searchBrowseCount = 0
     this.completedCheckboxes = 0
+    this.contextWarningIssued = false
+    
+    // Set powerful model if plan complexity is high
+    if (params.plan?.complexity === 'high') {
+      this.forcePowerfulModel = true
+    } else {
+      this.forcePowerfulModel = false
+    }
 
     // Validate API key
     if (!apiKey) {
@@ -192,9 +204,38 @@ export class ExecutionAgent extends BaseAgent {
       ...userMessages,
     ]
 
+    // Inject project memory
+    const projectMemory = await readProjectMemory()
+    if (projectMemory && projectMemory.trim()) {
+      messages.splice(1, 0, {
+        role: 'system',
+        content: `[Project Context]\n${projectMemory.slice(0, 2000)}`,
+      })
+    }
+
+    // Inject model-specific hints
+    const modelHints = getModelAdapter(params.model || store.model)
+    if (modelHints) {
+      messages.splice(1, 0, {
+        role: 'system',
+        content: modelHints,
+      })
+    }
+
+    // Inject user preferences
+    const { buildPreferencesSummary } = await import('../memory/userPreferences')
+    const userPrefs = buildPreferencesSummary()
+    if (userPrefs) {
+      messages.splice(1, 0, {
+        role: 'system',
+        content: userPrefs,
+      })
+    }
+
     // Inject environment summary
     const envSummary = this.buildEnvSummary(params.executionConfig)
-    messages.splice(1, 0, { role: 'system', content: envSummary })
+    const envIdx = messages.findIndex(m => m.role === 'user')
+    messages.splice(envIdx === -1 ? 1 : envIdx, 0, { role: 'system', content: envSummary })
 
     // Inject stack template if detected
     const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
@@ -259,37 +300,59 @@ export class ExecutionAgent extends BaseAgent {
         return { state: AgentState.FINISHED, done: true }
       }
 
-      const { finishReason, responseContent, responseToolCalls } = llmResult
+      const { finishReason, responseContent, responseToolCalls, usage, model: effectiveModel } = llmResult
 
-      if (signal?.aborted) {
-        this.emitDone(taskId, messageId)
-        return { state: AgentState.FINISHED, done: true }
-      }
+      // Token awareness & context management
+      if (usage) {
+        useAppStore.getState().updateTokenUsage(taskId, usage, effectiveModel)
 
-      // No tool calls = done
-      const noTools = responseToolCalls.length === 0
-      if (finishReason === 'stop' || noTools) {
-        if (responseContent) {
-          useAppStore.getState().appendRawHistory(taskId, [
-            { role: 'assistant', content: responseContent },
-          ])
+        // Calculate context utilization
+        const modelCtx = this.getContextWindow(effectiveModel)
+        const utilization = usage.promptTokens / modelCtx
+
+        // Warn agent at 70%
+        if (utilization > 0.7 && !this.contextWarningIssued) {
+          messages.push({
+            role: 'system',
+            content: `[Context Warning] You are using ${Math.round(utilization * 100)}% of the context window. Prioritize completing the task. Avoid reading large files unless essential.`,
+          })
+          this.contextWarningIssued = true
         }
-        this.emitDone(taskId, messageId)
-        return { state: AgentState.FINISHED, done: true }
+
+        // Force compression at 85%
+        if (utilization > 0.85) {
+          this.compressContext(messages, taskId, messageId)
+        }
       }
 
-      // Process tool calls
-      const toolResult = await this.processToolCalls(
-        responseToolCalls,
-        responseContent,
-        messages,
-        taskId,
-        messageId,
-        params.executionConfig,
-        signal,
-        iteration,
-        warnIter,
-      )
+    if (signal?.aborted) {
+      this.emitDone(taskId, messageId)
+      return { state: AgentState.FINISHED, done: true }
+    }
+
+    // No tool calls = done
+    if (finishReason === 'stop' || responseToolCalls.length === 0) {
+      if (responseContent) {
+        useAppStore.getState().appendRawHistory(taskId, [
+          { role: 'assistant', content: responseContent },
+        ])
+      }
+      this.emitDone(taskId, messageId)
+      return { state: AgentState.FINISHED, done: true }
+    }
+
+    // Process tool calls
+    const toolResult = await this.processToolCalls(
+      responseToolCalls,
+      responseContent,
+      messages,
+      taskId,
+      messageId,
+      params.executionConfig,
+      signal,
+      iteration,
+      warnIter,
+    )
 
       if (toolResult === 'aborted') {
         this.emitDone(taskId, messageId)
@@ -454,10 +517,12 @@ export class ExecutionAgent extends BaseAgent {
     taskId: string,
     messageId: string,
     signal: AbortSignal,
-  ): Promise<{ finishReason: string; responseContent: string | null; responseToolCalls: ToolCall[] } | null> {
+  ): Promise<{ finishReason: string; responseContent: string | null; responseToolCalls: ToolCall[]; usage: any; model: string } | null> {
     let finishReason = ''
     let responseContent: string | null = null
     let responseToolCalls: ToolCall[] = []
+    let usage: any = null
+    let model = ''
 
     const store = useAppStore.getState()
     const gatewayService = store.getGatewayService()
@@ -470,20 +535,32 @@ export class ExecutionAgent extends BaseAgent {
           const gateway = store.gateways.find(g => g.apiBase === apiBase)
           const gatewayType = (gateway?.type ?? 'openrouter') as GatewayType
 
-          // Use routingMode from gateway store directly (already 'auto-free' | 'auto-paid' | 'manual')
-          let routingMode = store.routingMode
-          
-          // Auto-fallback check: if we've already hit a 402 this task, or we're doing a manual fallback retry, force auto-free
-          const taskState = store.taskRouterState[taskId]
-          if (isAutoFreeFallback || taskState?.reason?.includes('402') || taskState?.reason?.includes('Payment Required')) {
-            routingMode = 'auto-free'
-          }
+            // Use routingMode from gateway store directly (already 'auto-free' | 'auto-paid' | 'manual')
+            let routingMode = store.routingMode
+            
+            // If forcePowerfulModel is set (e.g. after a tool strike), try to use a paid/powerful model
+            if (this.forcePowerfulModel && routingMode === 'auto-free') {
+              routingMode = 'auto-paid'
+            }
 
-            const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined, store.openRouterModels)
-            const effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
-            const effectiveDisplayName = modelSelection?.model?.canonicalName ?? effectiveModel
-            const effectiveProvider = gatewayType === 'openrouter' ? 'OpenRouter' : 'Vercel'
+            // Auto-fallback check: if we've already hit a 402 this task, or we're doing a manual fallback retry, force auto-free
+            const taskState = store.taskRouterState[taskId]
+            if (isAutoFreeFallback || taskState?.reason?.includes('402') || taskState?.reason?.includes('Payment Required')) {
+              routingMode = 'auto-free'
+            }
 
+              const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined, store.openRouterModels)
+              let effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
+              
+              // If still on a weak model and forcePowerfulModel is set, pick a known powerful one
+              if (this.forcePowerfulModel && (effectiveModel.includes('haiku') || effectiveModel.includes('mini') || effectiveModel.includes('flash'))) {
+                effectiveModel = powerfulModel(store.openRouterModels)
+              }
+
+              const effectiveDisplayName = modelSelection?.model?.canonicalName ?? effectiveModel
+              const effectiveProvider = gatewayType === 'openrouter' ? 'OpenRouter' : 'Vercel'
+
+            model = effectiveModel
             this.emitModelSelected(taskId, messageId, effectiveModel, effectiveDisplayName, effectiveProvider)
 
             // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
@@ -500,7 +577,10 @@ export class ExecutionAgent extends BaseAgent {
             {
               onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
               onToolCalls: (calls) => { responseToolCalls = calls },
-              onUsage: (prompt, completion, total) => this.emitTokenUsage(taskId, prompt, completion, total),
+              onUsage: (prompt, completion, total) => {
+                usage = { promptTokens: prompt, completionTokens: completion, totalTokens: total }
+                this.emitTokenUsage(taskId, prompt, completion, total)
+              },
               onError: (err) => this.emitError(taskId, messageId, err),
               signal,
               extraHeaders,
@@ -516,6 +596,7 @@ export class ExecutionAgent extends BaseAgent {
       finishReason = result.finishReason
       responseContent = result.content
       responseToolCalls = result.toolCalls
+      usage = result.usage || usage
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       
@@ -542,7 +623,8 @@ export class ExecutionAgent extends BaseAgent {
             finishReason = result.finishReason
             responseContent = result.content
             responseToolCalls = result.toolCalls
-            return { finishReason, responseContent, responseToolCalls }
+            usage = result.usage || usage
+            return { finishReason, responseContent, responseToolCalls, usage, model }
           } catch {
             // Fall through to error emission
           }
@@ -555,7 +637,7 @@ export class ExecutionAgent extends BaseAgent {
       return null
     }
 
-    return { finishReason, responseContent, responseToolCalls }
+    return { finishReason, responseContent, responseToolCalls, usage, model }
   }
 
 
@@ -572,19 +654,21 @@ export class ExecutionAgent extends BaseAgent {
     iteration = 0,
     warnIter = 40,
   ): Promise<'continue' | 'aborted' | 'max_iterations'> {
-    // Enforce one-tool-call-per-turn
-    const singleToolCall = responseToolCalls.slice(0, 1)
-
     messages.push({
       role: 'assistant',
       content: responseContent || null,
-      tool_calls: singleToolCall,
+      tool_calls: responseToolCalls,
     })
 
     startTurnTracking(taskId)
 
-    for (const tc of singleToolCall) {
-      if (signal?.aborted) return 'aborted'
+    // Group tool calls: File operations should be serialized to avoid race conditions
+    const FILE_OPS = ['write_file', 'edit_file', 'patch_file', 'delete_file', 'bash_execute'] // bash_execute can also modify files
+    const fileToolCalls = responseToolCalls.filter(tc => FILE_OPS.includes(tc.function.name))
+    const nonFileToolCalls = responseToolCalls.filter(tc => !FILE_OPS.includes(tc.function.name))
+
+    const executeOne = async (tc: ToolCall) => {
+      if (signal?.aborted) return null
 
       const callId = tc.id
       const fnName = tc.function.name
@@ -595,10 +679,18 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolCall(taskId, messageId, fnName, args, callId)
 
+      // Step: Permission Check
+      const permission = await permissionSystem.checkPermission(fnName, args, taskId)
+      if (!permission.approved) {
+        const output = permission.reason || `User rejected execution of tool: ${fnName}`
+        this.emitToolResult(taskId, messageId, callId, output, true)
+        return { callId, output, effectiveOutput: output, isScreenshot: false, rawOutput: output }
+      }
+
       // Research checkpoint
-      if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file') {
+      if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file' || fnName === 'search_files') {
         this.searchBrowseCount++
-        if (this.searchBrowseCount > 0 && this.searchBrowseCount % 3 === 0) {
+        if (this.searchBrowseCount > 0 && this.searchBrowseCount % 5 === 0) {
           messages.push({
             role: 'system',
             content: `[Research checkpoint — ${this.searchBrowseCount} operations]: If this is a complex task, consider saving key findings to findings.md before continuing.`,
@@ -606,31 +698,35 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
-      const { output: rawOutput, isError } = await executeTool(
-        taskId, fnName, args,
-        fnName === 'search_web'
-          ? (evt: Parameters<SearchStatusCallback>[0]) => this.emitSearchStatus(taskId, messageId, callId, evt)
-          : undefined,
-        executionConfig
-          ? {
-              ...executionConfig,
-              onSandboxStatus: (status, message) => {
-                useAppStore.getState().setSandboxStatus(status, message)
-              },
-            }
-          : undefined,
-      )
+      // Try registry tool first, fallback to legacy tool executor if not found
+      let toolResult: { output: string, isError: boolean }
+      try {
+        toolResult = await executeRegistryTool(fnName, args, {
+          taskId,
+          executionConfig,
+          onSearchStatus: (evt) => this.emitSearchStatus(taskId, messageId, callId, evt)
+        })
+      } catch (e) {
+        // Fallback to legacy dispatcher if registry fails or doesn't have it
+        toolResult = await executeToolLegacy(
+          taskId, fnName, args,
+          (evt) => this.emitSearchStatus(taskId, messageId, callId, evt),
+          executionConfig
+        )
+      }
 
+      const { output: rawOutput, isError } = toolResult
       let output: string
       const isScreenshot = fnName === 'browser_screenshot' && !isError && rawOutput.startsWith('data:image/')
 
-      if (isError) {
-        const strike = this.errorTracker.record(fnName, rawOutput)
-        if (strike === 1) {
-          output = `[Strike 1/3] Error: ${rawOutput}\nDiagnose and apply a targeted fix.`
-        } else if (strike === 2) {
-          output = `[Strike 2/3] Same tool failed again: ${rawOutput}\nTry a COMPLETELY DIFFERENT approach or tool.`
-        } else if (strike === 3) {
+        if (isError) {
+          const strike = this.errorTracker.record(fnName, rawOutput)
+          if (strike === 1) {
+            output = `[Strike 1/3] Error: ${rawOutput}\nDiagnose and apply a targeted fix.`
+          } else if (strike === 2) {
+            this.forcePowerfulModel = true
+            output = `[Strike 2/3] Same tool failed again: ${rawOutput}\nSwitching to a more powerful model. Try a COMPLETELY DIFFERENT approach or tool.`
+          } else if (strike === 3) {
           const attempts = this.errorTracker.attempts(fnName)
           this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
           output = `[Strike 3/3 — ESCALATE] All 3 attempts at \`${fnName}\` failed:\n${attempts.join('\n---\n')}\n\nYou MUST stop retrying this tool.`
@@ -640,14 +736,63 @@ export class ExecutionAgent extends BaseAgent {
       } else {
         this.errorTracker.reset(fnName)
         output = rawOutput
-
-        // Auto-update task_plan.md after successful tool execution
         this.updateTaskPlanProgress(taskId)
       }
 
-      this.emitToolResult(taskId, messageId, callId, output, isError)
+        this.emitToolResult(taskId, messageId, callId, output, isError)
 
-      // Add to message history
+        // Quick verification for code files
+        if (!isError && (fnName === 'write_file' || fnName === 'edit_file' || fnName === 'patch_file')) {
+          const filePath = args.path as string
+          const content = args.content as string
+          if (filePath && content) {
+            const verification = await this.quickVerify(taskId, filePath, content)
+            if (!verification.ok) {
+              messages.push({
+                role: 'system',
+                content: `[Quick Check Failed] Issues in ${filePath}:\n${verification.issues.join('\n')}\nFix these before proceeding.`,
+              })
+            }
+          }
+        }
+
+        // Output Truncation Logic (P0 Implementation Review Fix)
+      const MAX_OUTPUT_CHARS = 10000
+      let effectiveOutput = output
+      if (typeof output === 'string' && output.length > MAX_OUTPUT_CHARS && !isScreenshot) {
+        // Smarter truncation: Head + Tail
+        const head = output.slice(0, 5000)
+        const tail = output.slice(-2000)
+        effectiveOutput = head + 
+          ` \n\n[... truncated ${output.length - 7000} characters ...]\n\n ` + 
+          tail
+        
+        // Add hint if truncated mid-JSON
+        if (output.trim().startsWith('{') || output.trim().startsWith('[')) {
+          effectiveOutput += `\n[Note: JSON output truncated, content may be incomplete.]`
+        }
+      }
+
+      return { callId, output, effectiveOutput, isScreenshot, rawOutput }
+    }
+
+    // 1. Run non-file operations in parallel
+    const nonFileResults = await Promise.all(nonFileToolCalls.map(executeOne))
+    
+    // 2. Run file operations serially
+    const fileResults: any[] = []
+    for (const tc of fileToolCalls) {
+      if (signal?.aborted) break
+      const res = await executeOne(tc)
+      if (res) fileResults.push(res)
+    }
+
+    const allResults = [...nonFileResults.filter(Boolean), ...fileResults]
+
+    // Construct tool messages in history
+    for (const res of allResults) {
+      const { callId, output, effectiveOutput, isScreenshot, rawOutput } = res as any
+      
       if (isScreenshot) {
         const base64 = rawOutput.replace(/^data:image\/[^;]+;base64,/, '')
         const mediaType = rawOutput.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
@@ -665,7 +810,7 @@ export class ExecutionAgent extends BaseAgent {
       } else {
         messages.push({
           role: 'tool',
-          content: typeof output === 'string' ? output : JSON.stringify(output),
+          content: typeof effectiveOutput === 'string' ? effectiveOutput : JSON.stringify(effectiveOutput),
           tool_call_id: callId,
         } as unknown as LlmMessage)
       }
@@ -736,16 +881,27 @@ export class ExecutionAgent extends BaseAgent {
     return 40
   }
 
-  private compressContext(messages: LlmMessage[], taskId: string, messageId: string): number {
+  private async compressContext(
+    messages: LlmMessage[],
+    taskId: string,
+    messageId: string,
+  ): Promise<number> {
     const toolResultIndices = messages
       .map((m, i) => (m.role === 'tool' ? i : -1))
       .filter((i) => i >= 0)
 
-    if (toolResultIndices.length <= 6) return 0
+    if (toolResultIndices.length <= 8) return 0
 
-    const middleResults = new Set(toolResultIndices.slice(2, toolResultIndices.length - 4))
-    const toRemove = new Set<number>(middleResults)
+    // Identify messages to compress (keep first 3 and last 5)
+    const keepFirst = 3
+    const keepLast = 5
+    const middleIndices = toolResultIndices.slice(keepFirst, toolResultIndices.length - keepLast)
+    const toRemove = new Set<number>()
 
+    // Also mark the assistant messages that go with removed tool results
+    for (const idx of middleIndices) {
+      toRemove.add(idx)
+    }
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i]
       if (m.role === 'assistant' && m.tool_calls?.length) {
@@ -755,29 +911,110 @@ export class ExecutionAgent extends BaseAgent {
           resultIndices.push(j)
           j++
         }
-        if (resultIndices.length > 0 && resultIndices.every((idx) => middleResults.has(idx))) {
+        if (resultIndices.length > 0 && resultIndices.every((idx) => toRemove.has(idx))) {
           toRemove.add(i)
         }
       }
     }
 
-    const removed = toRemove.size
+    // Build a text summary of the removed messages for the LLM to summarize
+    const removedContent: string[] = []
+    for (const idx of Array.from(toRemove).sort((a, b) => a - b)) {
+      const m = messages[idx]
+      if (m.role === 'assistant' && m.tool_calls) {
+        for (const tc of m.tool_calls) {
+          removedContent.push(`Called: ${tc.function.name}(${tc.function.arguments.slice(0, 100)})`)
+        }
+      } else if (m.role === 'tool') {
+        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+        removedContent.push(`Result: ${content.slice(0, 200)}`)
+      }
+    }
+
+    // Generate a compressed summary using a cheap/fast model
+    let summary = ''
+    try {
+      const summaryPrompt = `Summarize these agent actions and their results in 3-5 bullet points. Focus on: what was attempted, what was discovered, what files were created/modified, and any errors encountered.\n\n${removedContent.join('\n')}`
+
+      const store = useAppStore.getState()
+      const { openRouterModels } = store
+      const cheapModel = openRouterModels.length > 0
+        ? cheapestModel(openRouterModels)
+        : 'anthropic/claude-3-haiku'
+
+      summary = await chatOnceViaGateway(summaryPrompt, 500, cheapModel) || ''
+    } catch (e) {
+      console.error('[Compression] Summary generation failed:', e)
+      // If summary generation fails, fall back to a basic list
+      summary = removedContent.slice(0, 10).join('\n')
+    }
+
+    const removedCount = toRemove.size
     const kept = messages.filter((_, i) => !toRemove.has(i))
 
+    // Insert the summary as a system message
     if (kept.length > 1) {
       kept.splice(1, 0, {
         role: 'system',
-        content: `[Context compressed: ${removed} old tool call/result pairs removed to save space. Key recovery files are in /workspace — read task_plan.md to confirm current phase, findings.md for research, progress.md for action history.]`,
+        content: `[Context compressed — ${removedCount} messages summarized]\n${summary}\n\n[Recovery: Read task_plan.md for current phase, findings.md for research, progress.md for action history.]`,
       })
     }
 
     messages.length = 0
     messages.push(...kept)
 
-    const step: AgentStep = { kind: 'context_compressed', removedCount: removed }
+    const step: AgentStep = { kind: 'context_compressed', removedCount }
     useAppStore.getState().addStep(taskId, messageId, step)
 
-    return removed
+    return removedCount
+  }
+
+  private getContextWindow(modelId: string): number {
+    for (const [re, ctx] of CONTEXT_WINDOWS) {
+      if (re.test(modelId)) return ctx
+    }
+    return 128_000
+  }
+
+  private async quickVerify(
+    taskId: string,
+    filePath: string,
+    content: string,
+  ): Promise<{ ok: boolean; issues: string[] }> {
+    const issues: string[] = []
+    const ext = filePath.split('.').pop()?.toLowerCase()
+
+    // 1. Check for common syntax issues (no external tools needed)
+    if (['ts', 'tsx', 'js', 'jsx'].includes(ext ?? '')) {
+      // Unmatched brackets/braces
+      const opens = (content.match(/[{(\[]/g) || []).length
+      const closes = (content.match(/[})\]]/g) || []).length
+      if (Math.abs(opens - closes) > 2) {
+        issues.push(`Bracket mismatch: ${opens} opening, ${closes} closing`)
+      }
+
+      // Incomplete file (ends mid-statement)
+      const trimmed = content.trimEnd()
+      if (trimmed.endsWith(',') || trimmed.endsWith('{') || trimmed.endsWith('(')) {
+        issues.push('File appears truncated (ends with incomplete syntax)')
+      }
+
+      // Check for common "oops" patterns
+      if (content.includes('TODO: implement') || content.includes('// ...')) {
+        issues.push('File contains placeholder/unimplemented sections')
+      }
+    }
+
+    // 2. Check for JSON validity
+    if (ext === 'json') {
+      try {
+        JSON.parse(content)
+      } catch (e) {
+        issues.push(`Invalid JSON: ${(e as Error).message}`)
+      }
+    }
+
+    return { ok: issues.length === 0, issues }
   }
 
   /**
@@ -858,7 +1095,7 @@ export class ExecutionAgent extends BaseAgent {
       : 'anthropic/claude-3-haiku'
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
-    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, resolved.extraHeaders)
+    const title = await chatOnceViaGateway(prompt, 50, titleModel)
     if (title) {
       const clean = title.replace(/^["']|["']$/g, '').trim()
       if (clean) store.updateTaskTitle(taskId, clean)
@@ -938,6 +1175,11 @@ export class ExecutionAgent extends BaseAgent {
     useAppStore.getState().updateTaskStatus(taskId, 'completed')
     window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
     window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+    
+    // Update project memory on task completion
+    updateProjectMemory(taskId).catch(err => {
+      console.error('[Project Memory] Update failed:', err)
+    })
   }
 
   private emitError(taskId: string, messageId: string, err: string): void {

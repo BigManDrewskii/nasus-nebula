@@ -5,6 +5,8 @@
 
 import { streamText, generateText } from 'ai';
 import { getUnifiedModel } from './gateway/provider';
+import { useAppStore } from '../store';
+import { selectModel } from './gateway/modelRegistry';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -39,13 +41,15 @@ export interface StreamCallbacks {
   extraHeaders?: Record<string, string>
   /** Query parameters to append to the URL (e.g., Vercel provider options) */
   queryParams?: Record<string, string>
+  /** Enable JSON output mode */
+  jsonMode?: boolean
 }
 
 export interface LlmResponse {
   content: string | null
   toolCalls: ToolCall[]
   finishReason: string
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null
+  usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null
 }
 
 /**
@@ -86,18 +90,21 @@ export async function streamCompletion(
 
   // Convert ToolDefinition to AI SDK Tool
   const sdkTools: Record<string, any> = {};
-  tools.filter(t => !t.inactive).forEach(t => {
-    sdkTools[t.function.name] = {
-      description: t.function.description,
-      parameters: t.function.parameters as any,
-    };
-  });
+  if (!cb.jsonMode) {
+    tools.filter(t => !t.inactive).forEach(t => {
+      sdkTools[t.function.name] = {
+        description: t.function.description,
+        parameters: t.function.parameters as any,
+      };
+    });
+  }
 
   try {
     const { textStream, toolCalls, usage, finishReason } = await streamText({
       model: unifiedModel,
       messages: coreMessages as any,
       tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
+      responseFormat: cb.jsonMode ? 'json' : 'text',
       onFinish: async (event) => {
         if (event.usage) {
           const input = event.usage.inputTokens ?? 0;
@@ -135,9 +142,9 @@ export async function streamCompletion(
       toolCalls: resolvedToolCalls,
       finishReason: await finishReason,
       usage: resolvedUsage ? {
-        prompt_tokens: resolvedUsage.inputTokens ?? 0,
-        completion_tokens: resolvedUsage.outputTokens ?? 0,
-        total_tokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
+        promptTokens: resolvedUsage.inputTokens ?? 0,
+        completionTokens: resolvedUsage.outputTokens ?? 0,
+        totalTokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
       } : null,
     };
   } catch (err) {
@@ -178,6 +185,60 @@ export async function chatOnce(
 }
 
 /**
+ * One-shot JSON completion.
+ */
+export async function chatJson<T>(
+  apiBase: string,
+  apiKey: string,
+  provider: string,
+  model: string,
+  prompt: string,
+  maxTokens = 1000,
+  extraHeaders?: Record<string, string>,
+): Promise<T | null> {
+  const unifiedModel = getUnifiedModel({
+    provider,
+    apiKey,
+    apiBase,
+    extraHeaders,
+  }, model);
+
+  try {
+    const { text } = await generateText({
+      model: unifiedModel,
+      prompt,
+      responseFormat: 'json',
+      maxTokens,
+    });
+
+    // Clean potential markdown fences
+    const clean = text.replace(/```json\n?|```\n?/g, '').trim()
+    return JSON.parse(clean) as T
+  } catch (err) {
+    console.error('[LLM] chatJson failed:', err);
+    return null
+  }
+}
+
+/**
+ * One-shot string completion via the current gateway.
+ */
+export async function chatOnceViaGateway(prompt: string, maxTokens = 500, modelId?: string): Promise<string> {
+  const { resolveConnection } = useAppStore.getState()
+  const conn = resolveConnection()
+  return chatOnce(conn.apiBase, conn.apiKey, conn.provider, modelId || conn.model, prompt, conn.extraHeaders)
+}
+
+/**
+ * One-shot JSON completion via the current gateway.
+ */
+export async function chatJsonViaGateway<T>(prompt: string, maxTokens = 1000, modelId?: string): Promise<T | null> {
+  const { resolveConnection } = useAppStore.getState()
+  const conn = resolveConnection()
+  return chatJson<T>(conn.apiBase, conn.apiKey, conn.provider, modelId || conn.model, prompt, maxTokens, conn.extraHeaders)
+}
+
+/**
  * Fetch available models from any OpenAI-compatible /models endpoint.
  * Kept for backwards compat — new code should use fetchOpenRouterModels.
  */
@@ -213,12 +274,15 @@ export interface OpenRouterModel {
     completion: string
     request?: string
     image?: string
+    internal_reasoning?: string // Added for 2026 models
+    input_cache_read?: string   // Added for 2026 models
+    input_cache_write?: string  // Added for 2026 models
   }
   top_provider: {
     context_length: number | null
     is_moderated: boolean
   }
-  supported_parameters?: string[]
+  supported_parameters?: string[] // "tools", "structured_outputs", "include_reasoning", "seed", etc.
 }
 
 const OR_API_BASE = 'https://openrouter.ai/api/v1'
@@ -280,20 +344,30 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
 
 export interface VercelModel {
   id: string
-  object: string
-  created: number
-  owned_by: string
+  name: string // "name" is now returned in 2026 API
+  context_window: number // max tokens input
+  max_tokens: number // max tokens output
+  type: 'language' | 'embedding' | 'image' | 'video'
+  tags: string[] // ["reasoning", "vision", "tool-use", etc.]
+  pricing: {
+    input: string // Base cost per token as string
+    output: string
+    input_cache_read?: string
+    input_tiers?: Array<{ cost: string; min: number; max?: number }>
+  }
 }
 
 /**
  * Fetch available models from Vercel AI Gateway's /models endpoint.
- * Vercel uses the OpenAI-compatible API format.
+ * Vercel uses the OpenAI-compatible API format but adds metadata.
  */
-export async function fetchVercelModels(apiKey: string): Promise<VercelModel[]> {
+export async function fetchVercelModels(apiKey?: string): Promise<VercelModel[]> {
   const url = 'https://ai-gateway.vercel.sh/v1/models'
   const headers: Record<string, string> = {
-    Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
+  }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
   }
 
   const resp = await fetch(url, { headers })
@@ -344,7 +418,7 @@ export function formatTokenPrice(pricePerToken: string | undefined): string {
  * Falls back to anthropic/claude-3-haiku if the list is empty.
  */
 export function cheapestModel(models: OpenRouterModel[]): string {
-  if (models.length === 0) return 'anthropic/claude-3-haiku'
+  if (models.length === 0) return 'anthropic/claude-3.5-haiku'
   
   // Try to find a free model first
   const freeModels = models.filter(m => parseFloat(m.pricing?.completion ?? '1') === 0)
@@ -360,4 +434,49 @@ export function cheapestModel(models: OpenRouterModel[]): string {
     if (price < best) cheapest = m
   }
   return cheapest.id
+}
+
+/**
+ * Return a "powerful" model from the list (high intelligence, usually more expensive).
+ * Prefers Claude 3.7 Sonnet or GPT-4o variants.
+ */
+export function powerfulModel(models: OpenRouterModel[]): string {
+  const powerfulIds = [
+    'anthropic/claude-3.7-sonnet',
+    'anthropic/claude-3.5-sonnet',
+    'openai/gpt-4o',
+    'openai/o3-mini',
+    'google/gemini-2.0-pro-exp-02-05:free',
+    'google/gemini-2.0-flash-001',
+    'deepseek/deepseek-chat'
+  ]
+
+  for (const id of powerfulIds) {
+    if (models.some(m => m.id === id)) return id
+  }
+
+  // Fallback: highest context length from available models
+  if (models.length > 0) {
+    return models.sort((a, b) => b.context_length - a.context_length)[0].id
+  }
+
+  return 'anthropic/claude-3.7-sonnet'
+}
+
+/**
+ * Return a "balanced" model (good speed/intelligence/cost).
+ */
+export function balancedModel(models: OpenRouterModel[]): string {
+  const balancedIds = [
+    'anthropic/claude-3.5-haiku',
+    'openai/gpt-4o-mini',
+    'google/gemini-2.0-flash-lite-001',
+    'mistralai/mistral-large-2411'
+  ]
+
+  for (const id of balancedIds) {
+    if (models.some(m => m.id === id)) return id
+  }
+
+  return cheapestModel(models)
 }

@@ -11,7 +11,7 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../core/Agent'
-import { chatOnce, cheapestModel } from '../llm'
+import { chatOnce, chatJson, cheapestModel, chatJsonViaGateway } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
 import { useAppStore } from '../../store'
 
@@ -74,10 +74,14 @@ export class PlanningAgent extends BaseAgent {
     const prompt = await this.buildPlanningPrompt(userInput, useMemory)
 
     try {
-      const response = await chatOnce(apiBase, apiKey, provider, planModel, prompt)
+      const response = await chatJsonViaGateway<any>(prompt, 1500, planModel)
 
-      // Parse the response into an ExecutionPlan
-      const plan = this.parsePlan(response, userInput)
+      if (!response) {
+        throw new Error('Failed to generate structured plan')
+      }
+
+      // Parse/Validate the response into an ExecutionPlan
+      const plan = this.validatePlan(response, userInput)
 
       return {
         state: this.state,
@@ -163,19 +167,10 @@ Respond ONLY with the JSON, no other text.`
   }
 
   /**
-   * Parse the LLM response into an ExecutionPlan.
+   * Validate and format the LLM response into an ExecutionPlan.
    */
-  private parsePlan(response: string, userMessage: string): ExecutionPlan {
+  private validatePlan(parsed: any, userMessage: string): ExecutionPlan {
     try {
-      // Extract JSON from markdown code blocks if present
-      let jsonStr = response.trim()
-      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
-      if (codeBlockMatch) {
-        jsonStr = codeBlockMatch[1]
-      }
-
-      const parsed = JSON.parse(jsonStr)
-
       // Validate and build the plan
       const phases: PlanPhase[] = (parsed.phases || []).map((p: unknown, idx: number) => {
         const phase = p as Record<string, unknown>
@@ -210,7 +205,7 @@ Respond ONLY with the JSON, no other text.`
         createdAt: new Date(),
       }
     } catch {
-      // Fallback: create a simple plan if parsing failed
+      // Fallback: create a simple plan if validation failed
       return {
         id: crypto.randomUUID(),
         title: 'Task Execution',

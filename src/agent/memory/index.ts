@@ -19,5 +19,14 @@ export {
   LocalMemoryStore,
   memoryStore,
   initMemoryStore,
-  storeTaskCompletion,
-} from './LocalMemoryStore'
+    storeTaskCompletion,
+  } from './LocalMemoryStore'
+  
+  export {
+    loadUserPreferences,
+    saveUserPreferences,
+    updatePreference,
+    buildPreferencesSummary,
+    extractPreferencesFromText,
+  } from './userPreferences'
+  

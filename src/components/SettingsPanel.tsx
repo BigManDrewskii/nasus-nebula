@@ -6,6 +6,8 @@ import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
+import { GatewaySettings } from './GatewaySettings'
+
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
 
 const FALLBACK_MODELS: OpenRouterModel[] = [
@@ -53,12 +55,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         maxIterations, setMaxIterations,
         addRecentWorkspacePath,
         routerConfig, setRouterConfig,
-        updateGateway,
+        updateGateway, gateways,
         settingsTab,
         setSettingsTab,
       } = useAppStore()
 
-  const [localKey, setLocalKey] = useState(apiKey)
+  const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
+  const [localVercelKey, setLocalVercelKey] = useState('')
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
@@ -99,17 +102,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     // Initialize provider-specific state from gateway configs
     useEffect(() => {
       const state = useAppStore.getState()
+      
+      const orGateway = state.gateways.find((g) => g.id === 'openrouter')
+      if (orGateway?.apiKey) {
+        setLocalOpenRouterKey(orGateway.apiKey)
+      } else if (state.provider === 'openrouter') {
+        setLocalOpenRouterKey(state.apiKey)
+      }
+
+      const vercelGateway = state.gateways.find((g) => g.id === 'vercel')
+      if (vercelGateway?.apiKey) {
+        setLocalVercelKey(vercelGateway.apiKey)
+      } else if (state.provider === 'vercel') {
+        setLocalVercelKey(state.apiKey)
+      }
+
       if (state.provider === 'vercel') {
-        const vercelGateway = state.gateways.find((g) => g.id === 'vercel')
-        if (vercelGateway?.apiKey) {
-          setLocalKey(vercelGateway.apiKey)
-        }
         setActiveProvider('vercel')
       } else if (state.provider === 'openrouter') {
-        const orGateway = state.gateways.find((g) => g.id === 'openrouter')
-        if (orGateway?.apiKey) {
-          setLocalKey(orGateway.apiKey)
-        }
         setActiveProvider('openrouter')
       } else if (state.provider === 'ollama') {
         setActiveProvider('ollama')
@@ -206,7 +216,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   }, [settingsTab])
 
   async function handleFetchModels() {
-    if (!localKey.trim()) {
+    if (activeProvider === 'openrouter' && !localOpenRouterKey.trim()) {
       setFetchModelsError('Enter your OpenRouter API key first')
       return
     }
@@ -214,7 +224,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setFetchModelsError(null)
     try {
       // Always use the OR fetch function directly — Tauri path also calls OR
-      const models = await fetchOpenRouterModels(localKey.trim())
+      const key = activeProvider === 'openrouter' ? localOpenRouterKey.trim() : localVercelKey.trim()
+      const models = await fetchOpenRouterModels(key)
       setOpenRouterModels(models)
       setFetchedCount(models.length)
       setFetchModelsError(null)
@@ -229,15 +240,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   function validate(): ValidationErrors {
     const errs: ValidationErrors = {}
     if (activeProvider === 'openrouter') {
-      if (!localKey.trim()) {
+      if (!localOpenRouterKey.trim()) {
         errs.apiKey = 'API key is required'
-      } else if (!localKey.trim().startsWith('sk-or-')) {
+      } else if (!localOpenRouterKey.trim().startsWith('sk-or-')) {
         errs.apiKey = 'OpenRouter keys start with sk-or-… — get one at openrouter.ai/keys'
       }
     } else if (activeProvider === 'vercel') {
-      if (!localKey.trim()) {
+      if (!localVercelKey.trim()) {
         errs.apiKey = 'API key is required'
-      } else if (!localKey.trim().startsWith('vck_')) {
+      } else if (!localVercelKey.trim().startsWith('vck_')) {
         errs.apiKey = 'Vercel AI Gateway keys start with vck_…'
       }
     }
@@ -249,7 +260,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   function handleReset() {
     if (!confirm('Reset all settings to defaults? This will clear your API keys and preferences.')) return
-    setLocalKey('')
+    setLocalOpenRouterKey('')
+    setLocalVercelKey('')
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
     setLocalExaKey('')
@@ -271,6 +283,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
       const isOllama = activeProvider === 'ollama'
       const isVercel = activeProvider === 'vercel'
+      const isOpenRouter = activeProvider === 'openrouter'
       const VERCEL_BASE = 'https://ai-gateway.vercel.sh/v1'
       const finalApiBase = isOllama ? OLLAMA_BASE
         : isVercel ? VERCEL_BASE
@@ -279,14 +292,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         : isVercel ? 'vercel'
         : 'openrouter'
 
-        const finalApiKey = isOllama ? '' : localKey.trim()
+        // Save both keys to their respective gateways in the store
+        updateGateway('openrouter', { apiKey: localOpenRouterKey.trim() })
+        updateGateway('vercel', { apiKey: localVercelKey.trim() })
+
+        // The legacy/active apiKey in the store is the one for the currently active provider
+        const finalApiKey = isVercel ? localVercelKey.trim() 
+          : isOpenRouter ? localOpenRouterKey.trim() 
+          : ''
+        
         setApiKey(finalApiKey)
-        // Sync the API key into the gateway config so callWithFailover uses the new key immediately
-        if (isVercel) {
-          updateGateway('vercel', { apiKey: finalApiKey })
-        } else if (!isOllama) {
-          updateGateway('openrouter', { apiKey: finalApiKey })
-        }
         setModel(localModel)
         setWorkspacePath(localWorkspace.trim())
       if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
@@ -328,7 +343,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       // Main config save - this one is critical
       try {
         await tauriInvoke('save_config', {
-          apiKey: isOllama ? '' : localKey.trim(),
+          apiKey: finalApiKey,
           model: localModel,
           workspacePath: localWorkspace.trim(),
           apiBase: finalApiBase,
@@ -506,286 +521,156 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
             {settingsTab === 'model' && (
             <>
+              <GatewaySettings />
 
-            {/* ── Provider Switcher ── */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              {[
-                { id: 'openrouter', label: 'Paid (API)', icon: 'cloud', desc: 'OpenRouter Cloud', color: 'var(--amber)' },
-                { id: 'vercel', label: 'Vercel AI', icon: 'triangle', desc: 'Vercel AI Gateway', color: '#818cf8' },
-                { id: 'ollama', label: 'Free (Local)', icon: 'server', desc: 'Ollama Offline', color: '#22c55e' }
-              ].map(p => {
-                const isSel = activeProvider === p.id
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => setActiveProvider(p.id)}
-                    style={{
-                      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                      padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
-                      background: isSel ? `${p.color}15` : 'transparent',
-                      border: `1px solid ${isSel ? p.color : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'all 0.12s'
-                    }}
-                  >
-                    <Pxi name={p.icon as any} size={14} style={{ color: isSel ? p.color : 'var(--tx-tertiary)' }} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)' }}>{p.label}</span>
-                    <span style={{ fontSize: 9, color: 'var(--tx-muted)' }}>{p.desc}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {activeProvider === 'ollama' && (
-              <div style={{ padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              {/* ── Model ── */}
+              <Field label="Override Model" icon="sparkles" hint="Manually select a model. Only used when Model Router is in 'Manual' mode.">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* Fetch row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: ollamaRunning ? '#22c55e' : ollamaRunning === false ? '#f87171' : 'var(--tx-muted)' }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-primary)' }}>Ollama Status</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      setCheckingOllama(true)
-                      const ok = await checkOllama()
-                      setOllamaRunning(ok)
-                      setCheckingOllama(false)
-                    }}
-                    disabled={checkingOllama}
-                    style={{ padding: '4px 8px', fontSize: 10, borderRadius: 6, background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', color: 'var(--tx-secondary)' }}
-                  >
-                    {checkingOllama ? 'Detecting...' : 'Detect'}
-                  </button>
-                </div>
-                {ollamaRunning === false && (
-                  <div style={{ fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.5 }}>
-                    Ollama not found at <code style={{ color: 'var(--tx-secondary)' }}>localhost:11434</code>. 
-                    <a href="https://ollama.com" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', marginLeft: 4 }}>Download Ollama</a>
-                  </div>
-                )}
-                {ollamaRunning && (
-                   <div style={{ fontSize: 11, color: '#22c55e' }}>
-                     Ollama is running. Ready to use local models!
-                   </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <label style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Local Model Name</label>
-                  <input
-                    type="text"
-                    value={localModel.includes('/') ? 'llama3.1' : localModel}
-                    onChange={(e) => setLocalModel(e.target.value)}
-                    placeholder="e.g. llama3.1, deepseek-r1:7b"
-                    style={{
-                      width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                      color: 'var(--tx-primary)', background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)'
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeProvider === 'openrouter' && (
-              <>
-                {/* ── API Key ── */}
-            <Field label="OpenRouter API Key" icon="lock"
-              hint={<>Get a free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>openrouter.ai/keys</a></>}
-              error={errors.apiKey}
-            >
-              <input
-                type="password"
-                value={localKey}
-                onChange={(e) => { setLocalKey(e.target.value); setErrors((p) => ({ ...p, apiKey: undefined })) }}
-                placeholder="sk-or-v1-…"
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                  color: 'var(--tx-primary)', background: '#0d0d0d',
-                  border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                  transition: 'border-color 0.12s',
-                }}
-                className="placeholder-[var(--tx-muted)]"
-                onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
-              />
-            </Field>
-
-            {/* ── Model ── */}
-            <Field label="Model" icon="sparkles">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Fetch row */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={handleFetchModels}
-                    disabled={fetchingModels}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '4px 10px', borderRadius: 8, fontSize: 11,
-                      background: 'rgba(255,255,255,0.07)', border: 'none',
-                      cursor: fetchingModels ? 'default' : 'pointer',
-                      color: 'var(--tx-secondary)', transition: 'color 0.12s',
-                      opacity: fetchingModels ? 0.45 : 1,
-                    }}
-                    onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
-                    onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
-                    title="Fetch all available models from OpenRouter"
-                  >
-                    <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={9} />
-                    {fetchingModels ? 'Fetching…' : 'Fetch all models'}
-                  </button>
-                  {fetchModelsError && (
-                    <span style={{ fontSize: 11, color: '#f87171', flex: 1 }}>{fetchModelsError}</span>
-                  )}
-                  {fetchedCount !== null && !fetchModelsError && (
-                    <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>{fetchedCount} models</span>
-                  )}
-                  {openRouterModels.length === 0 && !fetchedCount && !fetchModelsError && (
-                    <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Showing curated list</span>
-                  )}
-                </div>
-
-                {/* Model dropdown */}
-                <div style={{ position: 'relative' }} ref={modelRef}>
-                  <button
-                    type="button"
-                    onClick={() => setModelOpen((o) => !o)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
-                      background: '#0d0d0d',
-                      border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
-                      color: 'var(--tx-primary)', transition: 'border-color 0.12s',
-                      gap: 8,
-                    }}
-                  >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-                      {selectedModelObj?.name ?? localModel}
-                    </span>
-                    {selectedModelObj && (
-                      <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                        {fmtCtx(selectedModelObj.context_length)} · {formatTokenPrice(selectedModelObj.pricing?.completion)}/tok out
-                      </span>
+                    <button
+                      type="button"
+                      onClick={handleFetchModels}
+                      disabled={fetchingModels}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '4px 10px', borderRadius: 8, fontSize: 11,
+                        background: 'rgba(255,255,255,0.07)', border: 'none',
+                        cursor: fetchingModels ? 'default' : 'pointer',
+                        color: 'var(--tx-secondary)', transition: 'color 0.12s',
+                        opacity: fetchingModels ? 0.45 : 1,
+                      }}
+                      onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
+                      onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
+                      title="Fetch all available models from OpenRouter"
+                    >
+                      <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={9} />
+                      {fetchingModels ? 'Fetching…' : 'Fetch all models'}
+                    </button>
+                    {fetchModelsError && (
+                      <span style={{ fontSize: 11, color: '#f87171', flex: 1 }}>{fetchModelsError}</span>
                     )}
-                    <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                  </button>
+                    {fetchedCount !== null && !fetchModelsError && (
+                      <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>{fetchedCount} models</span>
+                    )}
+                  </div>
 
-                  {modelOpen && (
-                    <div style={{
-                      position: 'absolute', zIndex: 20, width: '100%', marginTop: 4, borderRadius: 12,
-                      boxShadow: '0 16px 40px rgba(0,0,0,0.5)', background: '#161616',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      display: 'flex', flexDirection: 'column',
-                      maxHeight: 320,
-                    }}>
-                      {/* Search */}
-                      <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
-                          <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                          <input
-                            ref={modelSearchRef}
-                            type="text"
-                            value={modelSearch}
-                            onChange={(e) => setModelSearch(e.target.value)}
-                            placeholder="Search models…"
-                            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, color: 'var(--tx-primary)' }}
-                            className="placeholder-[var(--tx-muted)]"
-                          />
-                          {modelSearch && (
-                            <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
-                              <Pxi name="times" size={9} />
-                            </button>
-                          )}
+                  {/* Model dropdown */}
+                  <div style={{ position: 'relative' }} ref={modelRef}>
+                    <button
+                      type="button"
+                      onClick={() => setModelOpen((o) => !o)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
+                        background: '#0d0d0d',
+                        border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                        color: 'var(--tx-primary)', transition: 'border-color 0.12s',
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+                        {selectedModelObj?.name ?? localModel}
+                      </span>
+                      {selectedModelObj && (
+                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                          {fmtCtx(selectedModelObj.context_length)} · {formatTokenPrice(selectedModelObj.pricing?.completion)}/tok out
+                        </span>
+                      )}
+                      <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+                    </button>
+
+                    {modelOpen && (
+                      <div style={{
+                        position: 'absolute', zIndex: 20, width: '100%', marginTop: 4, borderRadius: 12,
+                        boxShadow: '0 16px 40px rgba(0,0,0,0.5)', background: '#161616',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        display: 'flex', flexDirection: 'column',
+                        maxHeight: 320,
+                      }}>
+                        {/* Search */}
+                        <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+                            <input
+                              ref={modelSearchRef}
+                              type="text"
+                              value={modelSearch}
+                              onChange={(e) => setModelSearch(e.target.value)}
+                              placeholder="Search models…"
+                              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, color: 'var(--tx-primary)' }}
+                              className="placeholder-[var(--tx-muted)]"
+                            />
+                            {modelSearch && (
+                              <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
+                                <Pxi name="times" size={9} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Grouped list */}
+                        <div style={{ overflowY: 'auto', flex: 1 }}>
+                          {groupedModels.size === 0 ? (
+                            <div style={{ padding: '12px', fontSize: 12, color: 'var(--tx-tertiary)', textAlign: 'center' }}>
+                              No models match "{modelSearch}"
+                            </div>
+                          ) : [...groupedModels.entries()].map(([family, models]) => (
+                            <div key={family}>
+                              {/* Group header */}
+                              <div style={{
+                                padding: '6px 12px 3px',
+                                fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
+                                color: 'var(--tx-tertiary)',
+                                borderTop: '1px solid rgba(255,255,255,0.04)',
+                              }}>
+                                {family}
+                              </div>
+                              {models.map((m) => {
+                                const isSelected = m.id === localModel
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => { setLocalModel(m.id); setModelOpen(false); setModelSearch('') }}
+                                    style={{
+                                      width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                                      padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
+                                      color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                                      background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                                      transition: 'background 0.1s',
+                                    }}
+                                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
+                                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{m.name}</span>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
+                                          {fmtCtx(m.context_length)}
+                                        </span>
+                                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
+                                          {formatTokenPrice(m.pricing?.completion)}/tok
+                                        </span>
+                                        {isSelected && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
+                                      </div>
+                                    </div>
+                                    {m.description && (
+                                      <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{m.description}</span>
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ))}
                         </div>
                       </div>
-
-                      {/* Grouped list */}
-                      <div style={{ overflowY: 'auto', flex: 1 }}>
-                        {groupedModels.size === 0 ? (
-                          <div style={{ padding: '12px', fontSize: 12, color: 'var(--tx-tertiary)', textAlign: 'center' }}>
-                            No models match "{modelSearch}"
-                          </div>
-                        ) : [...groupedModels.entries()].map(([family, models]) => (
-                          <div key={family}>
-                            {/* Group header */}
-                            <div style={{
-                              padding: '6px 12px 3px',
-                              fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
-                              color: 'var(--tx-tertiary)',
-                              borderTop: '1px solid rgba(255,255,255,0.04)',
-                            }}>
-                              {family}
-                            </div>
-                            {models.map((m) => {
-                              const isSelected = m.id === localModel
-                              return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => { setLocalModel(m.id); setModelOpen(false); setModelSearch('') }}
-                                  style={{
-                                    width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                    padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
-                                    color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                                    background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                                    transition: 'background 0.1s',
-                                  }}
-                                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                                    <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{m.name}</span>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                      <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
-                                        {fmtCtx(m.context_length)}
-                                      </span>
-                                      <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
-                                        {formatTokenPrice(m.pricing?.completion)}/tok
-                                      </span>
-                                      {isSelected && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
-                                    </div>
-                                  </div>
-                                  {m.description && (
-                                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{m.description}</span>
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                    )}
                   </div>
                 </div>
               </Field>
-              </>
-            )}
 
-            {activeProvider === 'vercel' && (
-              <>
-                {/* ── API Key ── */}
-            <Field label="Vercel AI Gateway API Key" icon="lock"
-              hint={<>Get your key at <a href="https://vercel.com/docs/ai-gateway/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>vercel.com/docs → AI Gateway</a></>}
-              error={errors.apiKey}
-            >
-              <input
-                type="password"
-                value={localKey}
-                onChange={(e) => { setLocalKey(e.target.value); setErrors((p) => ({ ...p, apiKey: undefined })) }}
-                placeholder="vck_…"
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                  color: 'var(--tx-primary)', background: '#0d0d0d',
-                  border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                  transition: 'border-color 0.12s',
-                }}
-                className="placeholder-[var(--tx-muted)]"
-                onFocus={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)' }}
-              />
-            </Field>
-              </>
-            )}
-
-            {/* ── Model Router ── */}
-            {activeProvider === 'openrouter' && (
+              {/* ── Model Router ── */}
               <ModelRouterSection
                 mode={localRouterMode}
                 onModeChange={setLocalRouterMode}
@@ -794,7 +679,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 modelOverrides={localModelOverrides}
                 onModelOverridesChange={setLocalModelOverrides}
               />
-            )}
             </>
             )}
 

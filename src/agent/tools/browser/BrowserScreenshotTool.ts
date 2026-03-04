@@ -16,6 +16,8 @@ export class BrowserScreenshotTool extends BaseTool {
     properties: {
       full_page: { type: 'boolean', description: 'Capture the full scrollable page (default false = viewport only).' },
       tab_id: { type: 'number', description: 'Target tab ID (omit for current tab).' },
+      max_dimension: { type: 'integer', description: 'Resize the longest side to this pixel value (default: 1024). Saves tokens.', default: 1024 },
+      quality: { type: 'number', description: 'JPEG quality 0.0 to 1.0 (default: 0.8).', default: 0.8 },
     },
   }
 
@@ -25,10 +27,53 @@ export class BrowserScreenshotTool extends BaseTool {
         tabId: args.tab_id as number | undefined,
         fullPage: Boolean(args.full_page),
       })
-      // Return the data URL — the LLM can reference it
-      return toolSuccess(result.dataUrl)
+      
+      let dataUrl = result.dataUrl
+      
+      // Resize/Compress if requested
+      const maxDim = (args.max_dimension as number) || 1024
+      const quality = (args.quality as number) || 0.8
+      
+      if (maxDim > 0 || quality < 1.0) {
+        dataUrl = await this.resizeImage(dataUrl, maxDim, quality)
+      }
+      
+      return toolSuccess(dataUrl)
     } catch (err) {
       return toolFailure(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  private async resizeImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        let { width, height } = img
+        
+        if (maxDim > 0 && (width > maxDim || height > maxDim)) {
+          if (width > height) {
+            height = (height / width) * maxDim
+            width = maxDim
+          } else {
+            width = (width / height) * maxDim
+            height = maxDim
+          }
+        }
+        
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(dataUrl)
+          return
+        }
+        
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      }
+      img.onerror = reject
+      img.src = dataUrl
+    })
   }
 }

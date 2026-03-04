@@ -19,6 +19,48 @@ import type { GatewayModel, GatewayType, RoutingMode } from './gatewayTypes'
 export const MODEL_REGISTRY: GatewayModel[] = [
   // ── Frontier Reasoning ──────────────────────────────────────────────────
   {
+    canonicalName: 'GPT-5.2',
+    ids: {
+      openrouter: 'openai/gpt-5.2-thinking',
+      vercel: 'openai/gpt-5.2',
+      direct: 'gpt-5.2',
+      litellm: 'openai/gpt-5.2',
+    },
+    freeOn: {},
+    tier: 'reasoning',
+    contextWindow: 400_000,
+    inputCostPer1M: 1.75,
+    outputCostPer1M: 14.0,
+  },
+  {
+    canonicalName: 'Claude 4.6 Sonnet',
+    ids: {
+      openrouter: 'anthropic/claude-4.6-sonnet',
+      vercel: 'anthropic/claude-4.6-sonnet',
+      direct: 'claude-4-6-sonnet-20260215',
+      litellm: 'anthropic/claude-4.6-sonnet',
+    },
+    freeOn: {},
+    tier: 'reasoning',
+    contextWindow: 1_000_000,
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+  },
+  {
+    canonicalName: 'Gemini 3.1 Pro',
+    ids: {
+      openrouter: 'google/gemini-3.1-pro',
+      vercel: 'google/gemini-3.1-pro',
+      direct: 'gemini-3.1-pro',
+      litellm: 'google/gemini-3.1-pro',
+    },
+    freeOn: {},
+    tier: 'reasoning',
+    contextWindow: 1_500_000,
+    inputCostPer1M: 2.0,
+    outputCostPer1M: 12.0,
+  },
+  {
     canonicalName: 'Claude Sonnet 4',
     ids: {
       openrouter: 'anthropic/claude-sonnet-4-20250514',
@@ -31,20 +73,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 200_000,
     inputCostPer1M: 3.0,
     outputCostPer1M: 15.0,
-  },
-  {
-    canonicalName: 'Claude Opus 4',
-    ids: {
-      openrouter: 'anthropic/claude-opus-4-20250514',
-      vercel: 'anthropic/claude-opus-4-20250514',
-      direct: 'claude-opus-4-20250514',
-      litellm: 'anthropic/claude-opus-4-20250514',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 200_000,
-    inputCostPer1M: 15.0,
-    outputCostPer1M: 75.0,
   },
   {
     canonicalName: 'GPT-4.1',
@@ -60,22 +88,22 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     inputCostPer1M: 2.0,
     outputCostPer1M: 8.0,
   },
-  {
-    canonicalName: 'Gemini 2.5 Pro',
-    ids: {
-      openrouter: 'google/gemini-2.5-pro-preview',
-      vercel: 'google/gemini-2.5-pro-preview',
-      direct: 'gemini-2.5-pro-preview',
-      litellm: 'google/gemini-2.5-pro-preview',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 1_048_576,
-    inputCostPer1M: 1.25,
-    outputCostPer1M: 10.0,
-  },
 
   // ── Coding / Balanced ───────────────────────────────────────────────────
+  {
+    canonicalName: 'DeepSeek V3.2',
+    ids: {
+      openrouter: 'deepseek/deepseek-v3.2',
+      vercel: 'deepseek/deepseek-v3.2',
+      direct: 'deepseek-chat-3.2',
+      litellm: 'deepseek/deepseek-v3.2',
+    },
+    freeOn: {},
+    tier: 'coding',
+    contextWindow: 163_000,
+    inputCostPer1M: 0.25,
+    outputCostPer1M: 0.38,
+  },
   {
     canonicalName: 'DeepSeek V3',
     ids: {
@@ -103,66 +131,33 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
-    supportsTools: false, // DeepSeek R1 does not support function calling → 400
-  },
-  {
-    canonicalName: 'Qwen QwQ 32B',
-    ids: {
-      openrouter: 'qwen/qwq-32b',
-      vercel: 'qwen/qwq-32b',
-      litellm: 'qwen/qwq-32b',
-      ollama: 'qwq:32b',
-    },
-    freeOn: { openrouter: true },
-    tier: 'reasoning',
-    contextWindow: 131_072,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
-    supportsTools: false, // QwQ 32B does not reliably support function calling
+    supportsTools: false,
   },
 
-  // ── Fast / Cheap ────────────────────────────────────────────────────────
+  // ── Fast / Cheap / Free ─────────────────────────────────────────────────
   {
-    canonicalName: 'Claude 3.5 Haiku',
+    canonicalName: 'Mimo V2 Flash',
     ids: {
-      openrouter: 'anthropic/claude-3.5-haiku',
-      vercel: 'anthropic/claude-3.5-haiku',
-      direct: 'claude-3-5-haiku-20241022',
-      litellm: 'anthropic/claude-3.5-haiku',
-    },
-    freeOn: {},
-    tier: 'fast',
-    contextWindow: 200_000,
-    inputCostPer1M: 0.8,
-    outputCostPer1M: 4.0,
-  },
-  {
-    canonicalName: 'GPT-4.1 Mini',
-    ids: {
-      openrouter: 'openai/gpt-4.1-mini',
-      vercel: 'openai/gpt-4.1-mini',
-      direct: 'gpt-4.1-mini',
-      litellm: 'openai/gpt-4.1-mini',
-    },
-    freeOn: {},
-    tier: 'fast',
-    contextWindow: 1_000_000,
-    inputCostPer1M: 0.4,
-    outputCostPer1M: 1.6,
-  },
-  {
-    canonicalName: 'Gemini 2.5 Flash',
-    ids: {
-      openrouter: 'google/gemini-2.5-flash-preview',
-      vercel: 'google/gemini-2.5-flash-preview',
-      direct: 'gemini-2.5-flash-preview',
-      litellm: 'google/gemini-2.5-flash-preview',
+      openrouter: 'xiaomi/mimo-v2-flash',
     },
     freeOn: { openrouter: true },
     tier: 'fast',
-    contextWindow: 1_048_576,
-    inputCostPer1M: 0.15,
-    outputCostPer1M: 0.60,
+    contextWindow: 256_000,
+    inputCostPer1M: 0,
+    outputCostPer1M: 0,
+  },
+  {
+    canonicalName: 'Grok 4.1 Fast',
+    ids: {
+      openrouter: 'xai/grok-4.1-fast',
+      vercel: 'xai/grok-4.1-fast',
+      direct: 'grok-4.1-fast',
+    },
+    freeOn: {},
+    tier: 'fast',
+    contextWindow: 2_000_000,
+    inputCostPer1M: 0.20,
+    outputCostPer1M: 0.50,
   },
   {
     canonicalName: 'Gemini 2.0 Flash',
@@ -179,6 +174,20 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     outputCostPer1M: 0.40,
   },
   {
+    canonicalName: 'GPT-4.1 Mini',
+    ids: {
+      openrouter: 'openai/gpt-4.1-mini',
+      vercel: 'openai/gpt-4.1-mini',
+      direct: 'gpt-4.1-mini',
+      litellm: 'openai/gpt-4.1-mini',
+    },
+    freeOn: {},
+    tier: 'fast',
+    contextWindow: 1_000_000,
+    inputCostPer1M: 0.4,
+    outputCostPer1M: 1.6,
+  },
+  {
     canonicalName: 'Llama 3.3 70B',
     ids: {
       openrouter: 'meta-llama/llama-3.3-70b-instruct',
@@ -189,44 +198,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     freeOn: { openrouter: true },
     tier: 'general',
     contextWindow: 128_000,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
-  },
-  {
-    canonicalName: 'Mistral Large',
-    ids: {
-      openrouter: 'mistralai/mistral-large',
-      vercel: 'mistralai/mistral-large',
-      direct: 'mistral-large-latest',
-      litellm: 'mistralai/mistral-large',
-    },
-    freeOn: {},
-    tier: 'general',
-    contextWindow: 128_000,
-    inputCostPer1M: 2.0,
-    outputCostPer1M: 6.0,
-  },
-
-  // ── Local-only (Ollama) ─────────────────────────────────────────────────
-  {
-    canonicalName: 'Llama 3.2 3B',
-    ids: {
-      ollama: 'llama3.2:3b',
-    },
-    freeOn: { ollama: true },
-    tier: 'fast',
-    contextWindow: 128_000,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
-  },
-  {
-    canonicalName: 'Qwen 2.5 Coder 7B',
-    ids: {
-      ollama: 'qwen2.5-coder:7b',
-    },
-    freeOn: { ollama: true },
-    tier: 'coding',
-    contextWindow: 131_072,
     inputCostPer1M: 0,
     outputCostPer1M: 0,
   },
@@ -295,19 +266,36 @@ export function selectModel(
     (m) => m.supportsTools !== false,
   )
   
-  // Map dynamic models to match GatewayModel interface roughly
-  const mappedDynamic = dynamicModels
-    .filter(m => (m as any).architecture?.output_modalities?.includes('text'))
-    .map(m => ({
-      canonicalName: m.name,
-      ids: { [gatewayType]: m.id },
-      freeOn: { [gatewayType]: parseFloat(m.pricing?.prompt ?? '1') === 0 },
-      tier: (m as any).tier || 'general',
-      contextWindow: m.context_length,
-      inputCostPer1M: parseFloat(m.pricing?.prompt ?? '0') * 1_000_000,
-      outputCostPer1M: parseFloat(m.pricing?.completion ?? '0') * 1_000_000,
-      supportsTools: true, // Default to true for dynamic models
-    }))
+    // Map dynamic models to match GatewayModel interface roughly
+    const mappedDynamic = dynamicModels
+      .filter(m => {
+        // OpenRouter check
+        if ((m as any).architecture?.output_modalities) {
+          return (m as any).architecture.output_modalities.includes('text')
+        }
+        // Vercel check
+        if ((m as any).type) {
+          return (m as any).type === 'language'
+        }
+        return true // Fallback
+      })
+      .map(m => {
+        const inputPriceStr = (m as any).pricing?.prompt || (m as any).pricing?.input || '0'
+        const outputPriceStr = (m as any).pricing?.completion || (m as any).pricing?.output || '0'
+        const inputPrice = parseFloat(inputPriceStr)
+        const outputPrice = parseFloat(outputPriceStr)
+        
+        return {
+          canonicalName: m.name || m.id,
+          ids: { [gatewayType]: m.id },
+          freeOn: { [gatewayType]: inputPrice === 0 },
+          tier: (m as any).tier || 'general',
+          contextWindow: m.context_length || m.context_window || 128000,
+          inputCostPer1M: inputPrice * 1_000_000,
+          outputCostPer1M: outputPrice * 1_000_000,
+          supportsTools: (m as any).tags?.includes('tool-use') ?? true, // Default to true unless tags say otherwise
+        }
+      })
 
   const available = [...staticModels, ...mappedDynamic]
   if (available.length === 0) return undefined

@@ -12,7 +12,7 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
-import { chatOnce } from '../llm'
+import { chatOnce, chatJsonViaGateway, chatOnceViaGateway } from '../llm'
 import { getWorkspace } from '../tools'
 
 /**
@@ -144,6 +144,10 @@ export class VerificationAgent extends BaseAgent {
           syntaxValid = false
           break
         }
+        if (this.isTruncated(file.content)) {
+          syntaxValid = false // Treat truncation as syntax invalid for now to trigger correction
+          break
+        }
       }
     }
 
@@ -195,6 +199,28 @@ export class VerificationAgent extends BaseAgent {
       default:
         return true
     }
+  }
+
+  /**
+   * Check if code appears to be truncated by the LLM.
+   */
+  private isTruncated(content: string): boolean {
+    const lines = content.split('\n')
+    const lastLines = lines.slice(-5)
+    const combinedLast = lastLines.join('\n')
+
+    // Indicators of truncation:
+    const indicators = [
+      /\/\/ \.\.\./,
+      /\/\* \.\.\. \*\//,
+      /\/\/ rest of code/,
+      /\/\/ existing code/,
+      /\/\* existing code \*\//,
+      /\/\/ code stays the same/,
+      /\.\.\.\s*$/, // ... at the end of content
+    ]
+
+    return indicators.some(regex => regex.test(combinedLast))
   }
 
   /**
@@ -279,10 +305,11 @@ export class VerificationAgent extends BaseAgent {
 
     // Syntax issues
     if (!checklist.syntaxValid) {
+      const isTruncated = (context.createdFiles || []).some(f => this.isTruncated(f.content))
       issues.push({
         type: 'error',
-        message: 'Syntax errors detected in generated code',
-        correction: 'Review and fix syntax errors before proceeding',
+        message: isTruncated ? 'Code appears to be truncated by the LLM' : 'Syntax errors detected in generated code',
+        correction: isTruncated ? 'Please output the full content of the file without using "..." or "// existing code"' : 'Review and fix syntax errors before proceeding',
       })
     }
 
@@ -348,7 +375,7 @@ Respond in JSON format:
 If no issues found, return {"issues": []}.`
 
     try {
-      const response = await chatOnce(apiBase, apiKey, provider, verifyModel, prompt)
+      const response = await chatOnceViaGateway(prompt, 1000, verifyModel)
 
       const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
       const jsonStr = jsonMatch ? jsonMatch[1] : response
