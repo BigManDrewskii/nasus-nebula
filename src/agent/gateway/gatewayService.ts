@@ -376,9 +376,9 @@ export class GatewayService {
     return params
   }
 
-  // ── Private: Health Tracking ────────────────────────────────────────────────
+  // ── Public: Health Tracking ────────────────────────────────────────────────
 
-  private recordSuccess(gatewayId: string, latencyMs: number): void {
+  recordSuccess(gatewayId: string, latencyMs: number): void {
     const health = this.health.get(gatewayId)
     if (!health) return
 
@@ -401,7 +401,7 @@ export class GatewayService {
       : health.avgLatencyMs * 0.8 + latencyMs * 0.2
   }
 
-  private recordFailure(gatewayId: string): void {
+  recordFailure(gatewayId: string): void {
     const health = this.health.get(gatewayId)
     if (!health) return
 

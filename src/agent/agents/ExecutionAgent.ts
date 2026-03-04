@@ -278,10 +278,7 @@ export class ExecutionAgent extends BaseAgent {
 
       // Attention refresh
       if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
-        messages.push({
-          role: 'system',
-          content: `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`,
-        })
+        this.pushOrReplaceSystemMessage(messages, '[Attention Refresh', `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`)
       }
 
       // Get current model for context compression threshold
@@ -341,6 +338,11 @@ export class ExecutionAgent extends BaseAgent {
       return { state: AgentState.FINISHED, done: true }
     }
 
+    const isComplete = responseToolCalls.some(tc => tc.function.name === 'complete')
+    if (isComplete) {
+      // Find the complete call to get its summary if needed, but the tool execution will handle it
+    }
+
     // Process tool calls
     const toolResult = await this.processToolCalls(
       responseToolCalls,
@@ -354,10 +356,11 @@ export class ExecutionAgent extends BaseAgent {
       warnIter,
     )
 
-      if (toolResult === 'aborted') {
-        this.emitDone(taskId, messageId)
-        return { state: AgentState.FINISHED, done: true }
-      }
+    if (toolResult === 'aborted' || toolResult === 'complete') {
+      this.emitDone(taskId, messageId)
+      return { state: AgentState.FINISHED, done: true }
+    }
+
 
       if (toolResult === 'max_iterations') {
         this.flushRemainingFiles(taskId, messageId)
@@ -366,39 +369,36 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
-    return { state: AgentState.FINISHED, done: true }
+    if (isComplete) return 'complete'
+
+    return 'continue'
   }
 
-
   /**
-   * Execute with verification and self-correction loop.
+   * Execute with verification and optional self-correction.
    */
   private async executeWithVerification(
     params: ExecutionConfigParams,
-    initialResult: AgentResult,
+    _executionResult: AgentResult,
   ): Promise<AgentResult> {
     const attempt = params.correctionAttempt ?? 0
-
-    // Max correction attempts reached
-    if (attempt >= MAX_CORRECTION_ATTEMPTS) {
-      this.emitVerificationFailed(params.taskId, params.messageId, 'Maximum correction attempts reached')
-      return initialResult
-    }
 
     // Run verification
     const verificationResult = await this.runVerification(params)
 
-    // Verification passed
     if (verificationResult.passed) {
       this.emitVerificationPassed(params.taskId, params.messageId)
-      return initialResult
+      return { state: AgentState.FINISHED, done: true }
     }
 
-    // Verification failed - emit correction needed and retry
-    this.emitVerificationFailed(params.taskId, params.messageId, verificationResult.issues[0]?.message || 'Verification failed')
+    // Verification failed — attempt correction if within limit
+    if (attempt >= MAX_CORRECTION_ATTEMPTS) {
+      this.emitVerificationFailed(params.taskId, params.messageId, 'Maximum correction attempts reached')
+      return { state: AgentState.FINISHED, done: true }
+    }
 
     // Build correction hints
-    const correctionHints = this.buildCorrectionHints(verificationResult, attempt + 1)
+    const correctionHints = this.buildCorrectionHints(verificationResult, attempt)
 
     // Retry with correction hints
     const retryParams: ExecutionConfigParams = {
@@ -439,34 +439,39 @@ export class ExecutionAgent extends BaseAgent {
   /**
    * Run verification on execution results.
    */
-  private async runVerification(params: ExecutionConfigParams): Promise<ReturnType<typeof verifyExecution>> {
-    const { plan, taskId } = params
+  private async runVerification(params: ExecutionConfigParams): Promise<Awaited<ReturnType<typeof verifyExecution>>> {
+    const { taskId } = params
+
+    // Resolve connection for verification (same gateway)
+    // Preference: use existing resolved params if any, or store
+    const store = useAppStore.getState()
+    const resolvedConnection = store.resolveConnection()
+    const apiKey = params.apiKey || resolvedConnection.apiKey || store.apiKey
+    const model = params.model || resolvedConnection.model || store.model
+    const apiBase = params.apiBase || resolvedConnection.apiBase || store.apiBase
+    const provider = params.provider || resolvedConnection.provider || store.provider
 
     // Get workspace to collect created files
-    const workspace = await getWorkspace(taskId)
+    const workspace = getWorkspace(taskId)
     const createdFiles: Array<{ path: string; content: string }> = []
 
-    for (const [path, content] of workspace.entries()) {
-      if (!path.startsWith('.')) {
-        createdFiles.push({ path, content })
+    if (workspace) {
+      for (const [path, content] of workspace.entries()) {
+        if (!path.startsWith('.')) {
+          createdFiles.push({ path, content })
+        }
       }
     }
 
-    // Get connection params from store (gateway resolution)
-    const store = useAppStore.getState()
-
     const verificationContext: VerificationContext = {
-      task: { id: taskId } as Task,
-      userInput: '',
-      messages: params.userMessages,
-      tools: [],
-      apiKey: params.apiKey || store.apiKey,
-      model: params.model || store.model,
-      apiBase: params.apiBase || store.apiBase,
-      provider: params.provider || store.provider,
-      plan: plan || { id: '', title: '', description: '', estimatedSteps: 0, phases: [], dependencies: [], createdAt: new Date() },
-      executionOutput: '', // Will be filled by verification agent
+      ...params,
+      plan: params.plan || { id: '', title: '', description: '', estimatedSteps: 0, phases: [], dependencies: [], createdAt: new Date() },
+      executionOutput: '',
       createdFiles,
+      apiKey,
+      model,
+      apiBase,
+      provider,
     }
 
     return verifyExecution(verificationContext)
@@ -506,143 +511,61 @@ export class ExecutionAgent extends BaseAgent {
     return lines.join('\n')
   }
 
-  // ── LLM Call ─────────────────────────────────────────────────────────────────
-
   /**
    * Make an LLM call with automatic gateway failover.
-   * Uses the gateway service to try multiple gateways on failure.
    */
   private async callLLM(
     messages: LlmMessage[],
     taskId: string,
     messageId: string,
     signal: AbortSignal,
-  ): Promise<{ finishReason: string; responseContent: string | null; responseToolCalls: ToolCall[]; usage: any; model: string } | null> {
-    let finishReason = ''
-    let responseContent: string | null = null
-    let responseToolCalls: ToolCall[] = []
-    let usage: any = null
-    let model = ''
-
+  ): Promise<LlmResponse | null> {
     const store = useAppStore.getState()
-    const gatewayService = store.getGatewayService()
-    let isAutoFreeFallback = false
-
-    const performCall = async () => {
-      return gatewayService.callWithFailover(
-        async (apiBase, apiKey, extraHeaders, queryParams) => {
-          // Resolve gateway type from apiBase
-          const gateway = store.gateways.find(g => g.apiBase === apiBase)
-          const gatewayType = (gateway?.type ?? 'openrouter') as GatewayType
-
-            // Use routingMode from gateway store directly (already 'auto-free' | 'auto-paid' | 'manual')
-            let routingMode = store.routingMode
-            
-            // If forcePowerfulModel is set (e.g. after a tool strike), try to use a paid/powerful model
-            if (this.forcePowerfulModel && routingMode === 'auto-free') {
-              routingMode = 'auto-paid'
-            }
-
-            // Auto-fallback check: if we've already hit a 402 this task, or we're doing a manual fallback retry, force auto-free
-            const taskState = store.taskRouterState[taskId]
-            if (isAutoFreeFallback || taskState?.reason?.includes('402') || taskState?.reason?.includes('Payment Required')) {
-              routingMode = 'auto-free'
-            }
-
-              const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined, store.openRouterModels)
-              let effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
-              
-              // If still on a weak model and forcePowerfulModel is set, pick a known powerful one
-              if (this.forcePowerfulModel && (effectiveModel.includes('haiku') || effectiveModel.includes('mini') || effectiveModel.includes('flash'))) {
-                effectiveModel = powerfulModel(store.openRouterModels)
-              }
-
-              const effectiveDisplayName = modelSelection?.model?.canonicalName ?? effectiveModel
-              const effectiveProvider = gatewayType === 'openrouter' ? 'OpenRouter' : 'Vercel'
-
-            model = effectiveModel
-            this.emitModelSelected(taskId, messageId, effectiveModel, effectiveDisplayName, effectiveProvider)
-
-            // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
-          // const budget = routingMode === 'auto-free' ? 'free' : 'paid'
-          // const fallbackModels = await getFallbackChain(effectiveModel, budget)
-
-          return streamCompletion(
-            apiBase,
-            apiKey,
-            gatewayType,
-            effectiveModel,
-            messages,
-            getToolDefinitions() as any,
-            {
-              onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
-              onToolCalls: (calls) => { responseToolCalls = calls },
-              onUsage: (prompt, completion, total) => {
-                usage = { promptTokens: prompt, completionTokens: completion, totalTokens: total }
-                this.emitTokenUsage(taskId, prompt, completion, total)
-              },
-              onError: (err) => this.emitError(taskId, messageId, err),
-              signal,
-              extraHeaders,
-              queryParams,
-            },
-          )
-        },
-      )
-    }
+    const resolved = store.resolveConnection()
+    
+    // Legacy support: prefer store/resolved values unless overridden
+    const apiBase = resolved.apiBase || store.apiBase
+    const apiKey = resolved.apiKey || store.apiKey
+    const provider = resolved.provider || store.provider
+    const model = this.forcePowerfulModel 
+      ? powerfulModel(store.openRouterModels) 
+      : (resolved.model || store.model)
 
     try {
-      const { result } = await performCall()
-      finishReason = result.finishReason
-      responseContent = result.content
-      responseToolCalls = result.toolCalls
-      usage = result.usage || usage
+      this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
+
+      const env = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+
+      const result = await streamCompletion(
+        apiBase,
+        apiKey,
+        provider,
+        model,
+        messages,
+        getToolDefinitions(env),
+        {
+          onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
+          onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
+          onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
+          onError: (err) => this.emitError(taskId, messageId, err),
+          signal,
+          extraHeaders: resolved.extraHeaders,
+          gatewayId: resolved.gatewayId,
+        },
+      )
+
+      return result
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      
-      // If we hit a 402 Payment Required, record it in task state to trigger auto-fallback
-      if (msg.includes('402') || msg.includes('Payment Required') || msg.includes('insufficient credits')) {
-        const storeState = useAppStore.getState()
-        
-        // If we weren't already in auto-free mode, try one more time with auto-free
-        const taskState = storeState.taskRouterState[taskId]
-        const alreadyFree = storeState.routingMode === 'auto-free' || taskState?.isFree
-        
-        storeState.setTaskRouterState(taskId, { 
-          reason: `Insufficient credits. Falling back to free models. (${msg})`,
-          isFree: true 
-        })
-        
-        // Also immediately switch the global routing mode to auto-free to help the user
-        storeState.setRoutingMode('auto-free')
-
-        if (!alreadyFree && !signal.aborted) {
-          isAutoFreeFallback = true
-          try {
-            const { result } = await performCall()
-            finishReason = result.finishReason
-            responseContent = result.content
-            responseToolCalls = result.toolCalls
-            usage = result.usage || usage
-            return { finishReason, responseContent, responseToolCalls, usage, model }
-          } catch {
-            // Fall through to error emission
-          }
-        }
-      }
-
       if (!signal.aborted) {
-        this.emitError(taskId, messageId, msg)
+        this.emitError(taskId, messageId, err instanceof Error ? err.message : String(err))
       }
       return null
     }
-
-    return { finishReason, responseContent, responseToolCalls, usage, model }
   }
 
-
-  // ── Tool Call Processing ───────────────────────────────────────────────────────
-
+  /**
+   * Process tool calls from the assistant.
+   */
   private async processToolCalls(
     responseToolCalls: ToolCall[],
     responseContent: string | null,
@@ -653,209 +576,116 @@ export class ExecutionAgent extends BaseAgent {
     signal?: AbortSignal,
     iteration = 0,
     warnIter = 40,
-  ): Promise<'continue' | 'aborted' | 'max_iterations'> {
+  ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
+    // NASUS standard: process one tool call at a time for maximum reliability
+    const singleToolCall = responseToolCalls.slice(0, 1)
+
     messages.push({
       role: 'assistant',
       content: responseContent || null,
-      tool_calls: responseToolCalls,
+      tool_calls: singleToolCall,
     })
 
     startTurnTracking(taskId)
 
-    // Group tool calls: File operations should be serialized to avoid race conditions
-    const FILE_OPS = ['write_file', 'edit_file', 'patch_file', 'delete_file', 'bash_execute'] // bash_execute can also modify files
-    const fileToolCalls = responseToolCalls.filter(tc => FILE_OPS.includes(tc.function.name))
-    const nonFileToolCalls = responseToolCalls.filter(tc => !FILE_OPS.includes(tc.function.name))
-
-    const executeOne = async (tc: ToolCall) => {
-      if (signal?.aborted) return null
+    for (const tc of singleToolCall) {
+      if (signal?.aborted) return 'aborted'
 
       const callId = tc.id
       const fnName = tc.function.name
       let args: Record<string, unknown> = {}
       try {
         args = JSON.parse(tc.function.arguments || '{}')
-      } catch { /* malformed JSON — use empty */ }
+      } catch { /* malformed JSON */ }
 
       this.emitToolCall(taskId, messageId, fnName, args, callId)
 
-      // Step: Permission Check
-      const permission = await permissionSystem.checkPermission(fnName, args, taskId)
-      if (!permission.approved) {
-        const output = permission.reason || `User rejected execution of tool: ${fnName}`
+      const env = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+      const availableTools = getToolDefinitions(env).map(t => t.function.name)
+
+      if (!availableTools.includes(fnName)) {
+        const output = `Tool "${fnName}" is not available in the current environment. ${
+          env === 'browser-only'
+            ? 'You are in browser-only mode without shell access. Use write_file/edit_file for file operations, python_execute for WASM computation, and http_fetch for networking.'
+            : 'Check tool availability.'
+        }`
         this.emitToolResult(taskId, messageId, callId, output, true)
-        return { callId, output, effectiveOutput: output, isScreenshot: false, rawOutput: output }
+        messages.push({
+          role: 'tool',
+          content: `Error: ${output}`,
+          tool_call_id: callId,
+        })
+        continue
       }
 
       // Research checkpoint
-      if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file' || fnName === 'search_files') {
+      if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file') {
         this.searchBrowseCount++
-        if (this.searchBrowseCount > 0 && this.searchBrowseCount % 5 === 0) {
+        if (this.searchBrowseCount > 0 && this.searchBrowseCount % 3 === 0) {
+          this.pushOrReplaceSystemMessage(messages, '[Research checkpoint', `[Research checkpoint — ${this.searchBrowseCount} operations]: Consider saving key findings to findings.md or project_memory if you've made significant progress.`)
+        }
+      }
+
+      // Execute the tool
+      const { output: rawOutput, isError } = await executeRegistryTool(
+        fnName,
+        args,
+        {
+          taskId,
+          executionConfig: executionConfig ? {
+            ...executionConfig,
+            onSandboxStatus: (status: string, message: string) => {
+              useAppStore.getState().setSandboxStatus(status, message)
+            },
+          } : undefined,
+          onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
+        }
+      )
+
+      // Truncate tool output
+      const output = typeof rawOutput === 'string'
+        ? rawOutput.length > 15_000
+          ? rawOutput.slice(0, 7_500) + '\n\n[…truncated…]\n\n' + rawOutput.slice(-5_000)
+          : rawOutput
+        : JSON.stringify(rawOutput)
+
+      this.emitToolResult(taskId, messageId, callId, output, isError)
+
+      // Error tracking — 3-strike escalation
+      if (isError) {
+        const strikes = this.errorTracker.record(fnName, output)
+        if (strikes >= 3) {
+          const attempts = this.errorTracker.attempts(fnName)
+          this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
           messages.push({
             role: 'system',
-            content: `[Research checkpoint — ${this.searchBrowseCount} operations]: If this is a complex task, consider saving key findings to findings.md before continuing.`,
+            content: `[3-Strike Escalation] Tool "${fnName}" has failed 3 times with these errors:\n${attempts.map((a, i) => `${i + 1}. ${a.slice(0, 200)}`).join('\n')}\n\nDo NOT retry the same approach. Either:\n1. Try a completely different tool/approach\n2. If this subtask is non-critical, skip it and continue\n3. If critical, report the blocker to the user`,
           })
         }
       }
 
-      // Try registry tool first, fallback to legacy tool executor if not found
-      let toolResult: { output: string, isError: boolean }
-      try {
-        toolResult = await executeRegistryTool(fnName, args, {
-          taskId,
-          executionConfig,
-          onSearchStatus: (evt) => this.emitSearchStatus(taskId, messageId, callId, evt)
-        })
-      } catch (e) {
-        // Fallback to legacy dispatcher if registry fails or doesn't have it
-        toolResult = await executeToolLegacy(
-          taskId, fnName, args,
-          (evt) => this.emitSearchStatus(taskId, messageId, callId, evt),
-          executionConfig
-        )
-      }
+      // Add tool result to history
+      messages.push({
+        role: 'tool',
+        content: isError ? `Error: ${output}` : output,
+        tool_call_id: callId,
+      })
 
-      const { output: rawOutput, isError } = toolResult
-      let output: string
-      const isScreenshot = fnName === 'browser_screenshot' && !isError && rawOutput.startsWith('data:image/')
-
-        if (isError) {
-          const strike = this.errorTracker.record(fnName, rawOutput)
-          if (strike === 1) {
-            output = `[Strike 1/3] Error: ${rawOutput}\nDiagnose and apply a targeted fix.`
-          } else if (strike === 2) {
-            this.forcePowerfulModel = true
-            output = `[Strike 2/3] Same tool failed again: ${rawOutput}\nSwitching to a more powerful model. Try a COMPLETELY DIFFERENT approach or tool.`
-          } else if (strike === 3) {
-          const attempts = this.errorTracker.attempts(fnName)
-          this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
-          output = `[Strike 3/3 — ESCALATE] All 3 attempts at \`${fnName}\` failed:\n${attempts.join('\n---\n')}\n\nYou MUST stop retrying this tool.`
-        } else {
-          output = `[BLOCKED] \`${fnName}\` has failed ${strike} times. Do not call this tool again. Report failure to user.`
-        }
-      } else {
-        this.errorTracker.reset(fnName)
-        output = rawOutput
+      // Auto-update task plan progress on success
+      if (!isError && fnName !== 'think' && fnName !== 'update_plan') {
         this.updateTaskPlanProgress(taskId)
       }
 
-        this.emitToolResult(taskId, messageId, callId, output, isError)
-
-        // Quick verification for code files
-        if (!isError && (fnName === 'write_file' || fnName === 'edit_file' || fnName === 'patch_file')) {
-          const filePath = args.path as string
-          const content = args.content as string
-          if (filePath && content) {
-            const verification = await this.quickVerify(taskId, filePath, content)
-            if (!verification.ok) {
-              messages.push({
-                role: 'system',
-                content: `[Quick Check Failed] Issues in ${filePath}:\n${verification.issues.join('\n')}\nFix these before proceeding.`,
-              })
-            }
-          }
-        }
-
-        // Output Truncation Logic (P0 Implementation Review Fix)
-      const MAX_OUTPUT_CHARS = 10000
-      let effectiveOutput = output
-      if (typeof output === 'string' && output.length > MAX_OUTPUT_CHARS && !isScreenshot) {
-        // Smarter truncation: Head + Tail
-        const head = output.slice(0, 5000)
-        const tail = output.slice(-2000)
-        effectiveOutput = head + 
-          ` \n\n[... truncated ${output.length - 7000} characters ...]\n\n ` + 
-          tail
-        
-        // Add hint if truncated mid-JSON
-        if (output.trim().startsWith('{') || output.trim().startsWith('[')) {
-          effectiveOutput += `\n[Note: JSON output truncated, content may be incomplete.]`
-        }
-      }
-
-      return { callId, output, effectiveOutput, isScreenshot, rawOutput }
-    }
-
-    // 1. Run non-file operations in parallel
-    const nonFileResults = await Promise.all(nonFileToolCalls.map(executeOne))
-    
-    // 2. Run file operations serially
-    const fileResults: any[] = []
-    for (const tc of fileToolCalls) {
-      if (signal?.aborted) break
-      const res = await executeOne(tc)
-      if (res) fileResults.push(res)
-    }
-
-    const allResults = [...nonFileResults.filter(Boolean), ...fileResults]
-
-    // Construct tool messages in history
-    for (const res of allResults) {
-      const { callId, output, effectiveOutput, isScreenshot, rawOutput } = res as any
-      
-      if (isScreenshot) {
-        const base64 = rawOutput.replace(/^data:image\/[^;]+;base64,/, '')
-        const mediaType = rawOutput.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
-        messages.push({
-          role: 'tool',
-          content: [
-            { type: 'text', text: '[Screenshot captured. See image below.]' },
-            {
-              type: 'image_url',
-              image_url: { url: `data:${mediaType};base64,${base64}`, detail: 'auto' },
-            },
-          ],
-          tool_call_id: callId,
-        } as unknown as LlmMessage)
-      } else {
-        messages.push({
-          role: 'tool',
-          content: typeof effectiveOutput === 'string' ? effectiveOutput : JSON.stringify(effectiveOutput),
-          tool_call_id: callId,
-        } as unknown as LlmMessage)
-      }
-    }
-
-    // Sync rawHistory
-    const batchRaw: LlmMessage[] = []
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.role === 'tool') {
-        batchRaw.unshift(m)
-      } else if (m.role === 'assistant' && m.tool_calls?.length) {
-        batchRaw.unshift(m)
-        break
-      } else {
-        break
-      }
-    }
-    if (batchRaw.length > 0) {
-      useAppStore.getState().appendRawHistory(taskId, batchRaw)
-    }
-
-    // Emit output cards
-    const turnFiles = flushTurnFiles(taskId)
-    const deliverableFiles = turnFiles.filter((f) => {
-      const name = f.filename
-      return name !== 'task_plan.md' && name !== 'findings.md' && name !== 'progress.md'
-    })
-    if (deliverableFiles.length > 0) {
-      const step: AgentStep = { kind: 'output_cards', files: deliverableFiles }
-      useAppStore.getState().addStep(taskId, messageId, step)
+      if (fnName === 'complete') return 'complete'
     }
 
     // Continuation nudge
     if (iteration > 0 && iteration < warnIter - 1) {
-      const ws = await getWorkspace(taskId)
-      const hasPlan = ws.has('task_plan.md')
-      if (hasPlan) {
-        const plan = ws.get('task_plan.md') ?? ''
-        const hasUnchecked = plan.includes('- [ ]')
-        if (hasUnchecked) {
-          messages.push({
-            role: 'system',
-            content: `[Continue] task_plan.md has unchecked phases. Do NOT output a summary yet — immediately call the next tool to continue execution.`,
-          })
+      const ws = getWorkspace(taskId)
+      if (ws) {
+        const plan = ws.get('task_plan.md') || ''
+        if (plan.includes('[ ]') || plan.includes('[?]') || plan.includes('☐')) {
+          this.pushOrReplaceSystemMessage(messages, '[Continue]', `[Continue] task_plan.md has unchecked phases. Do NOT output a summary yet — immediately call the next tool to continue execution.`)
         }
       }
     }
@@ -865,11 +695,45 @@ export class ExecutionAgent extends BaseAgent {
 
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
+
   private buildEnvSummary(executionConfig?: ExecutionConfig): string {
-    const hasDockerSandbox = executionConfig?.executionMode === 'docker'
-    return hasDockerSandbox
-      ? `[Environment] Docker sandbox active. Full shell available via bash_execute: npm, node, npx, pip, apt, git, curl, wget all work. Pre-built web templates with all dependencies installed are available at /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html. For web projects: copy a template with bash_execute, then use serve_preview to start the dev server. Do NOT scaffold projects from scratch with npm init or npx create-next-app.`
-      : `[Environment] No sandbox configured. Available tools: write_file, read_file, patch_file, list_files, http_fetch, search_web, python_execute, bash (cat/ls/echo/mkdir only). npm, node, npx, pip, curl, wget, apt, git WILL FAIL — do not attempt them. Write files directly with write_file instead.`
+    const hasSandbox = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker'
+    
+    // Core tools that are ALWAYS available
+    const coreTools = [
+      'read_file', 'write_file', 'edit_file', 'patch_file', 'list_files', 'search_files', 'undo_file',
+      'search_web', 'http_fetch',
+      'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll', 'browser_screenshot', 'browser_extract', 'browser_extract_links', 'browser_wait_for', 'browser_eval', 'browser_select', 'browser_get_tabs',
+      'think', 'save_memory', 'save_preference', 'complete', 'update_plan'
+    ].join(', ')
+
+    if (hasSandbox) {
+      return `[Environment] Sandbox active (${executionConfig!.executionMode}). Full shell available.
+Tools: All 30 tools available including bash_execute, git, serve_preview.
+Templates: /templates/nextjs-shadcn, /templates/react-vite, /templates/vanilla-html.
+For web projects: copy a template with bash_execute, then serve_preview to start dev server.`
+    }
+
+    return `[Environment] Browser-only mode. No shell access.
+Available: ${coreTools}, bash (cat/ls/echo/mkdir ONLY), python_execute (WASM).
+NOT available: bash_execute, git, serve_preview, npm/node/pip/curl.
+Strategy: Write files directly with write_file/edit_file. Use python_execute for computation. Use browser tools for web interaction. Use http_fetch for networking.`
+  }
+
+  /**
+   * Push a system message to the history, or replace an existing one with the same prefix.
+   * Helps avoid message accumulation during long tasks.
+   */
+  private pushOrReplaceSystemMessage(messages: LlmMessage[], prefix: string, content: string): void {
+    const idx = messages.findIndex(m =>
+      m.role === 'system' && typeof m.content === 'string' && m.content.startsWith(prefix)
+    )
+    const msg: LlmMessage = { role: 'system', content }
+    if (idx >= 0) {
+      messages[idx] = msg
+    } else {
+      messages.push(msg)
+    }
   }
 
   private compressThreshold(model: string): number {

@@ -68,7 +68,26 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       extensionConnected,
       extensionVersion,
       gatewayHealth,
+      lastGatewayEvent,
+      addStep,
     } = useAppStore()
+
+    // Monitor gateway failovers and show notifications
+    useEffect(() => {
+      if (lastGatewayEvent?.type === 'fallback' && task?.id) {
+        // Find the currently streaming message to add a step to it
+        const currentMsgs = getMessages(task.id)
+        const activeAgentMsg = currentMsgs.find(m => m.author === 'agent' && m.streaming)
+        if (activeAgentMsg) {
+          addStep(task.id, activeAgentMsg.id, {
+            kind: 'gateway_fallback',
+            fromGateway: lastGatewayEvent.gatewayLabel || 'Primary',
+            toGateway: lastGatewayEvent.nextGatewayId || 'Fallback',
+            reason: lastGatewayEvent.error || 'Rate limited or timeout'
+          })
+        }
+      }
+    }, [lastGatewayEvent, task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
     // Use the agent status hook to track agent state
     const { status: agentStatus, iteration } = useAgentStatus(task?.id)

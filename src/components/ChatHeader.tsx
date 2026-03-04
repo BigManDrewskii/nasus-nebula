@@ -173,10 +173,17 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     const providerIcon = manualProvider === 'ollama' ? 'server' : 'cloud'
 
     // Health status for the primary provider
-    const health = gatewayHealth.find(h => h.status !== 'unknown')
+    const health = gatewayHealth.find(h => h.status !== 'unknown' && h.status !== 'healthy') || gatewayHealth[0]
     const healthStatus = health?.status || 'healthy'
     const healthColors: Record<string, string> = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }
     const healthColor = healthColors[healthStatus]
+
+    const healthTooltip = health ? `
+${health.gatewayId}: ${healthStatus.toUpperCase()}
+Success rate: ${Math.round((health.successRate || 0) * 100)}%
+Avg latency: ${(health.avgLatencyMs / 1000).toFixed(1)}s
+Requests: ${health.requestCount || 0}
+`.trim() : `Gateway health: ${healthStatus}`
 
     return (
       <header
@@ -199,14 +206,14 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
 
             {/* Provider + Model Badge */}
             <div
-              title={taskRouterState?.reason || `Connected to ${providerLabel}`}
+              title={healthTooltip}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6,
                 background: isAutoFree ? 'rgba(34,197,94,0.08)' : 'rgba(234,179,8,0.08)',
                 border: `1px solid ${isAutoFree ? 'rgba(34,197,94,0.18)' : 'rgba(234,179,8,0.18)'}`,
                 color: isAutoFree ? '#4ade80' : 'var(--tx-primary)',
                 flexShrink: 0,
-                cursor: 'default',
+                cursor: 'help',
               }}
             >
               {/* Health dot */}

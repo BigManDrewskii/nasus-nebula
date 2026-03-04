@@ -63,12 +63,13 @@ export async function streamCompletion(
   model: string,
   messages: LlmMessage[],
   tools: ToolDefinition[],
-  cb: StreamCallbacks,
+  cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
   const unifiedModel = getUnifiedModel({
     provider,
     apiKey,
     apiBase,
+    gatewayId: cb.gatewayId,
     extraHeaders: cb.extraHeaders,
   }, model);
 

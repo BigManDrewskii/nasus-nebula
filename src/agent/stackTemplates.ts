@@ -21,6 +21,12 @@ type StackId =
   | 'html-plain'
   | 'python-script'
   | 'python-flask'
+  | 'express-api'
+  | 'python-fastapi'
+  | 'astro-blog'
+  | 'chrome-extension'
+  | 'tauri-app'
+  | 'monorepo'
 
 interface DetectedStack {
   id: StackId
@@ -64,6 +70,67 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
       'NEVER run npx create-react-app or npm init.',
   },
   {
+    id: 'express-api',
+    label: 'Express.js API',
+    patterns: [/express/i, /api.*node/i, /rest.*api/i, /backend.*node/i, /server.*node/i],
+    contextInjection: 
+      'Stack detected: Express.js API.\n' +
+      'Template ready at /templates/express-api with TypeScript, cors, helmet, and express-validator.\n' +
+      'Workflow:\n' +
+      '  1. bash_execute("cp -r /templates/express-api /workspace/api")\n' +
+      '  2. serve_preview(command="cd /workspace/api && npm run dev", port=3001)\n' +
+      '  3. write_file("/workspace/api/src/routes/index.ts", ...) to build endpoints.\n' +
+      'Base URL for testing: http://localhost:3001',
+  },
+  {
+    id: 'python-fastapi',
+    label: 'Python FastAPI',
+    patterns: [/fastapi/i, /python.*api/i, /uvicorn/i, /pydantic/i],
+    contextInjection:
+      'Stack detected: Python FastAPI.\n' +
+      'Template ready at /templates/python-fastapi with uvicorn, SQLAlchemy, and Pydantic.\n' +
+      'Workflow:\n' +
+      '  1. bash_execute("cp -r /templates/python-fastapi /workspace/backend")\n' +
+      '  2. serve_preview(command="cd /workspace/backend && uvicorn app.main:app --reload", port=8000)\n' +
+      '  3. write_file("/workspace/backend/app/main.py", ...) to add routes.',
+  },
+  {
+    id: 'astro-blog',
+    label: 'Astro Blog',
+    patterns: [/astro/i, /blog/i, /static.*site/i, /mdx/i],
+    contextInjection:
+      'Stack detected: Astro.\n' +
+      'Template ready at /templates/astro-blog with Tailwind and MDX.\n' +
+      'Workflow: cp -r /templates/astro-blog /workspace/blog && npm run dev (port 4321).',
+  },
+  {
+    id: 'chrome-extension',
+    label: 'Chrome Extension',
+    patterns: [/chrome.*ext/i, /browser.*ext/i, /extension/i, /manifest\.json/i],
+    contextInjection:
+      'Stack detected: Chrome Extension.\n' +
+      'Template ready at /templates/chrome-extension with manifest v3 skeleton.\n' +
+      'Workflow: cp -r /templates/chrome-extension /workspace/extension.',
+  },
+  {
+    id: 'tauri-app',
+    label: 'Tauri Desktop App',
+    patterns: [/tauri/i, /desktop.*app/i, /rust.*ui/i],
+    contextInjection:
+      'Stack detected: Tauri.\n' +
+      'Template ready at /templates/tauri-app.\n' +
+      'Workflow: cp -r /templates/tauri-app /workspace/desktop.',
+  },
+  {
+    id: 'monorepo',
+    label: 'Monorepo',
+    patterns: [/monorepo/i, /turborepo/i, /nx/i, /workspace.*package/i],
+    contextInjection:
+      'Stack detected: Monorepo.\n' +
+      'Template ready at /templates/monorepo with Turborepo.\n' +
+      'Workflow: cp -r /templates/monorepo /workspace/repo.',
+  },
+  {
     id: 'html-tailwind',
     label: 'HTML + Tailwind',
     patterns: [
@@ -86,6 +153,7 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
       /\bpython\b.*(?:script|analyze|parse|data|csv|json)/i,
       /(?:script|analyze|parse|data|csv|json).*\bpython\b/i,
       /write.*\.py\b/i,
+      /scrape/i, /automat/i
     ],
     contextInjection:
       'Stack detected: Python script. Template pre-loaded at /workspace/script.py. ' +

@@ -322,6 +322,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       apiKey: primary.apiKey,
       model: modelId,
       provider: primary.type,
+      gatewayId: primary.id,
       extraHeaders: primary.extraHeaders ?? {},
     }
   },

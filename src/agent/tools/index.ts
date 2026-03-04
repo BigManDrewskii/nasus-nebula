@@ -12,6 +12,8 @@ import type { ExecutionConfig } from '../sandboxRuntime'
 import { SaveMemoryTool } from './core/SaveMemoryTool'
 import { UpdatePlanTool } from './core/UpdatePlanTool'
 import { SavePreferenceTool } from './core/SavePreferenceTool'
+import { ThinkTool } from './core/ThinkTool'
+import { CompleteTool } from './core/CompleteTool'
 
 // File tools
 import { ReadFileTool } from './file/ReadFileTool'
@@ -55,6 +57,8 @@ export const toolRegistry = new ToolRegistry()
 toolRegistry.registerConstructor('save_memory', SaveMemoryTool)
 toolRegistry.registerConstructor('update_plan', UpdatePlanTool)
 toolRegistry.registerConstructor('save_preference', SavePreferenceTool)
+toolRegistry.registerConstructor('think', ThinkTool)
+toolRegistry.registerConstructor('complete', CompleteTool)
 toolRegistry.registerConstructor('read_file', ReadFileTool)
 toolRegistry.registerConstructor('write_file', WriteFileTool)
 toolRegistry.registerConstructor('patch_file', PatchFileTool)
@@ -87,8 +91,20 @@ toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
 /**
  * Get tool function definitions for OpenAI function calling.
  */
-export function getToolDefinitions(): Array<{ type: string; function: object }> {
-  return toolRegistry.getToolDefinitions()
+export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: string; function: any }> {
+  const allTools = toolRegistry.getToolDefinitions()
+
+  if (env === 'browser-only') {
+    // Remove tools that require shell/sandbox
+    const excludeInBrowserMode = new Set([
+      'bash_execute',
+      'git',
+      'serve_preview',
+    ])
+    return allTools.filter(t => !excludeInBrowserMode.has(t.function.name))
+  }
+
+  return allTools
 }
 
 /**

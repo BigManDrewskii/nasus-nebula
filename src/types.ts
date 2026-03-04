@@ -43,6 +43,7 @@ export type AgentStep =
   | { kind: 'browser_action'; action: string; url?: string; selector?: string; tabId?: number; phase: 'start' | 'done' | 'error'; detail?: string }
   | { kind: 'output_cards'; files: OutputCardFile[] }
   | { kind: 'verification'; status: 'passed' | 'failed'; error?: string }
+  | { kind: 'gateway_fallback'; fromGateway: string; toGateway: string; reason: string }
 
 // A file written by the agent during a turn — used to render output cards
 export interface OutputCardFile {

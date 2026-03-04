@@ -66,6 +66,76 @@ export function GatewaySettings() {
       >
         + Add Custom Gateway
       </button>
+
+      {/* ── Gateway Health Dashboard ── */}
+      <GatewayHealthDashboard health={gatewayHealth} />
+    </div>
+  )
+}
+
+function GatewayHealthDashboard({ health }: { health: any[] }) {
+  if (health.length === 0) return null
+
+  return (
+    <div style={{
+      marginTop: 16, padding: '16px', borderRadius: 12,
+      background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)',
+      display: 'flex', flexDirection: 'column', gap: 14
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Pxi name="activity" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tx-secondary)' }}>
+          Real-time Health
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {health.map((h) => {
+          const statusColors: Record<string, string> = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#94a3b8' }
+          const color = statusColors[h.status] || '#94a3b8'
+          
+          return (
+            <div key={h.gatewayId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: h.status === 'healthy' ? `0 0 6px ${color}40` : 'none' }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-primary)' }}>{h.gatewayId}</span>
+                  <span style={{ fontSize: 10, color: color, textTransform: 'capitalize' }}>{h.status}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: 9, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Latency</span>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{h.avgLatencyMs > 0 ? `${Math.round(h.avgLatencyMs)}ms` : '—'}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <span style={{ fontSize: 9, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Success</span>
+                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{Math.round(h.successRate * 100)}%</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: 12, paddingLeft: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 9, color: 'var(--tx-tertiary)' }}>Requests:</span>
+                  <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{h.requestCount || 0}</span>
+                </div>
+                {h.lastChecked > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 9, color: 'var(--tx-tertiary)' }}>Last:</span>
+                    <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{new Date(h.lastChecked).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  </div>
+                )}
+                {h.status === 'down' && h.retryAfter && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontSize: 9, color: '#ef4444' }}>Retry in:</span>
+                    <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#ef4444' }}>{Math.ceil((h.retryAfter - Date.now()) / 1000)}s</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

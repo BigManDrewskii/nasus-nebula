@@ -121,8 +121,9 @@ type AnyRow =
   | { kind: 'strike_escalation'; step: Extract<AgentStep, { kind: 'strike_escalation' }> }
   | { kind: 'context_compressed'; step: Extract<AgentStep, { kind: 'context_compressed' }> }
   | { kind: 'search_status'; step: Extract<AgentStep, { kind: 'search_status' }> }
-  | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
-  | { kind: 'verification'; step: Extract<AgentStep, { kind: 'verification' }> }
+    | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
+    | { kind: 'verification'; step: Extract<AgentStep, { kind: 'verification' }> }
+    | { kind: 'gateway_fallback'; step: Extract<AgentStep, { kind: 'gateway_fallback' }> }
 
 function buildRows(steps: AgentStep[]): AnyRow[] {
   const rows: AnyRow[] = []
@@ -166,6 +167,8 @@ function buildRows(steps: AgentStep[]): AnyRow[] {
       rows.push({ kind: 'browser_action', step })
     } else if (step.kind === 'verification') {
       rows.push({ kind: 'verification', step })
+    } else if (step.kind === 'gateway_fallback') {
+      rows.push({ kind: 'gateway_fallback', step })
     }
   }
   return rows
@@ -180,7 +183,9 @@ function Row({ row }: { row: AnyRow }) {
   if (row.kind === 'search_status') return <SearchStatusRow step={row.step} />
   if (row.kind === 'browser_action') return <BrowserActionRow step={row.step} />
   if (row.kind === 'verification') return <VerificationRow step={row.step} />
+  if (row.kind === 'gateway_fallback') return <FallbackRow step={row.step} />
   if (row.kind === 'context_compressed') {
+
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
@@ -532,6 +537,30 @@ function SectionLabel({ icon, label, isError = false }: { icon: string; label: s
       <Pxi name={icon} size={9} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
       <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
         {label}
+      </span>
+    </div>
+  )
+}
+
+function FallbackRow({ step }: { step: Extract<AgentStep, { kind: 'gateway_fallback' }> }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '5px 8px',
+      borderRadius: 8,
+      background: 'rgba(234,179,8,0.04)',
+      border: '1px solid rgba(234,179,8,0.12)',
+    }}>
+      <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Pxi name="bolt" size={10} style={{ color: 'var(--amber)' }} />
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--amber)', flex: 1 }}>
+        Switched: {step.fromGateway} &rarr; {step.toGateway}
+      </span>
+      <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'rgba(234,179,8,0.6)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {step.reason}
       </span>
     </div>
   )
