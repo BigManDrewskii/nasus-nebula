@@ -1,20 +1,18 @@
 /**
- * ContextPanel — Right sidebar
+ * ConfigAccordion — Collapsible configuration sections in left sidebar
  *
- * Sections (all collapsible):
- *   1. Model selector (pinned top) — full upgraded picker
- *   2. Provider toggle: OpenRouter / Vercel / Auto
- *   3. Free-models toggle with count badge
- *   4. System prompt / persona editor
- *   5. Temperature + max-tokens sliders with reset
- *   6. Conversation stats: tokens, estimated cost, model info
+ * Sections extracted from ContextPanel:
+ *   1. Model selector with provider toggle and free/paid toggle
+ *   2. Parameters (Temperature, Max Tokens)
+ *   3. System prompt editor
+ *   4. Conversation stats
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useAppStore } from '../store'
-import { Pxi } from './Pxi'
-import { familyMeta } from '../lib/models'
-import { formatTokenPrice } from '../agent/llm'
+import { useAppStore } from '../../store'
+import { Pxi } from '../Pxi'
+import { familyMeta } from '../../lib/models'
+import { formatTokenPrice } from '../../agent/llm'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -29,98 +27,81 @@ function savePref(key: string, val: unknown) {
   try { localStorage.setItem(key, JSON.stringify(val)) } catch { /* ignore */ }
 }
 
-// ── Panel ──────────────────────────────────────────────────────────────────────
-
-interface ContextPanelProps {
+interface ConfigAccordionProps {
+  /** Whether the sidebar is collapsed (icon rail mode) */
   collapsed?: boolean
-  onToggle?: () => void
+  /** Callback to expand sidebar and optionally open a specific section */
+  onExpand?: (section?: string) => void
 }
 
-export function ContextPanel({ collapsed = false, onToggle }: ContextPanelProps) {
-  // collapsed → zero-width icon rail
+export function ConfigAccordion({ collapsed = false, onExpand }: ConfigAccordionProps) {
+  const { configSections, setConfigSection } = useAppStore()
+
+  // When sidebar is collapsed, show only icons
   if (collapsed) {
     return (
       <div
         style={{
-          width: '100%',
-          height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          paddingTop: 'calc(28px + var(--space-2-5))',
           gap: 'var(--space-1)',
-          background: '#090909',
-          borderLeft: '1px solid rgba(255,255,255,0.05)',
-          overflow: 'hidden',
+          padding: 'var(--space-2) 0',
+          borderTop: '1px solid var(--sidebar-border)',
+          marginTop: 'auto',
         }}
       >
-        <RailBtn icon="angle-left" title="Expand context panel (⌘⇧\\)" onClick={onToggle} />
-        <RailBtn icon="sparkles" title="Model selector" onClick={onToggle} />
-        <RailBtn icon="sliders-h" title="Parameters" onClick={onToggle} />
-        <RailBtn icon="comment-dots" title="System prompt" onClick={onToggle} />
-        <RailBtn icon="chart-bar" title="Conversation stats" onClick={onToggle} />
+        <ConfigRailIcon
+          icon="sparkles"
+          title="Model selector"
+          onClick={() => onExpand?.('model')}
+        />
+        <ConfigRailIcon
+          icon="sliders-h"
+          title="Parameters"
+          onClick={() => onExpand?.('parameters')}
+        />
+        <ConfigRailIcon
+          icon="comment-dots"
+          title="System prompt"
+          onClick={() => onExpand?.('systemPrompt')}
+        />
+        <ConfigRailIcon
+          icon="chart-bar"
+          title="Conversation stats"
+          onClick={() => onExpand?.('stats')}
+        />
       </div>
     )
   }
 
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: '#090909',
-        borderLeft: '1px solid rgba(255,255,255,0.05)',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Header */}
-      <div
-        data-tauri-drag-region
-        style={{
-          height: 28,
-          flexShrink: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 var(--space-2-5) 0 var(--space-3)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-        }}
-      >
-        <span style={{
-          fontSize: 10,
-          fontWeight: 700,
-          fontFamily: 'var(--font-display)',
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          color: 'var(--tx-muted)',
-        }}>
-          Context
-        </span>
-        <RailBtn icon="angle-right" title="Collapse (⌘⇧\\)" onClick={onToggle} />
-      </div>
-
-      {/* Scrollable body */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', scrollbarWidth: 'thin' }}>
-        <ModelSection />
-        <Divider />
-        <ProviderSection />
-        <Divider />
-        <ParametersSection />
-        <Divider />
-        <SystemPromptSection />
-        <Divider />
-        <StatsSection />
-        <div style={{ height: 'var(--space-4)' }} />
-      </div>
+    <div style={{ borderTop: '1px solid var(--sidebar-border)' }}>
+      <ModelSection
+        open={configSections.model}
+        onToggle={() => setConfigSection('model', !configSections.model)}
+      />
+      <Divider />
+      <ParametersSection
+        open={configSections.parameters}
+        onToggle={() => setConfigSection('parameters', !configSections.parameters)}
+      />
+      <Divider />
+      <SystemPromptSection
+        open={configSections.systemPrompt}
+        onToggle={() => setConfigSection('systemPrompt', !configSections.systemPrompt)}
+      />
+      <Divider />
+      <StatsSection
+        open={configSections.stats}
+        onToggle={() => setConfigSection('stats', !configSections.stats)}
+      />
     </div>
   )
 }
 
 // ── Rail button (collapsed state icon) ────────────────────────────────────────
 
-function RailBtn({ icon, title, onClick }: { icon: string; title?: string; onClick?: () => void }) {
+function ConfigRailIcon({ icon, title, onClick }: { icon: string; title?: string; onClick?: () => void }) {
   const [hov, setHov] = useState(false)
   return (
     <button
@@ -129,7 +110,7 @@ function RailBtn({ icon, title, onClick }: { icon: string; title?: string; onCli
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        width: 32, height: 32,
+        width: 32, height: 32, margin: '0 auto',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         borderRadius: 8, border: hov ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
         background: hov ? 'rgba(255,255,255,0.07)' : 'transparent',
@@ -150,17 +131,17 @@ function Divider() {
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
 function Section({
-  icon, label, badge, defaultOpen = true, children,
+  icon, label, badge, open, onToggle, children,
 }: {
   icon: string
   label: string
   badge?: React.ReactNode
-  defaultOpen?: boolean
+  open: boolean
+  onToggle: () => void
   children: React.ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState<number | 'auto'>(defaultOpen ? 'auto' : 0)
+  const [height, setHeight] = useState<number | 'auto'>(open ? 'auto' : 0)
 
   useEffect(() => {
     const el = bodyRef.current
@@ -178,7 +159,7 @@ function Section({
   return (
     <div>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggle}
         style={{
           width: '100%',
           display: 'flex', alignItems: 'center', gap: 6,
@@ -190,8 +171,8 @@ function Section({
         <Pxi name={icon} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
         <span style={{
           flex: 1, fontSize: 10, fontWeight: 600,
-          fontFamily: 'var(--font-display)', letterSpacing: '0.08em',
-          textTransform: 'uppercase', color: 'var(--tx-tertiary)',
+          fontFamily: 'var(--font-display)', letterSpacing: '-0.01em',
+          color: 'var(--tx-tertiary)',
           userSelect: 'none',
         }}>
           {label}
@@ -225,9 +206,9 @@ function Section({
 
 // ── Model Section ──────────────────────────────────────────────────────────────
 
-function ModelSection() {
-  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore()
-  const [open, setOpen] = useState(false)
+function ModelSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview, provider } = useAppStore()
+  const [dropdownOpen, setDropdownOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [freeOnly, setFreeOnly] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -244,6 +225,9 @@ function ModelSection() {
     }
     return model.includes('/') ? model.split('/').pop()! : model
   }, [model, isAutoMode, routingPreview, routerConfig?.budget])
+
+  const providerLabel = provider === 'ollama' ? 'Local' : provider === 'vercel' ? 'Vercel AI' : 'OpenRouter'
+  const providerIcon = provider === 'ollama' ? 'server' : 'cloud'
 
   // Build model list
   const allModels = useMemo(() => {
@@ -279,25 +263,96 @@ function ModelSection() {
 
   // Close on outside click
   useEffect(() => {
-    if (!open) return
+    if (!dropdownOpen) return
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false); setSearch('')
+        setDropdownOpen(false); setSearch('')
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+  }, [dropdownOpen])
 
-  useEffect(() => { if (open) setTimeout(() => searchRef.current?.focus(), 30) }, [open])
+  useEffect(() => { if (dropdownOpen) setTimeout(() => searchRef.current?.focus(), 30) }, [dropdownOpen])
 
   return (
     <div ref={containerRef} style={{ padding: 'var(--space-2-5) var(--space-3) var(--space-1)' }}>
+      {/* Compact summary row (shown when collapsed) */}
+      {!open && (
+        <button
+          onClick={onToggle}
+          style={{
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '7px 10px',
+            borderRadius: 8,
+            background: 'rgba(255,255,255,0.025)',
+            border: '1px solid rgba(255,255,255,0.05)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            textAlign: 'left',
+            transition: 'background 0.1s, border-color 0.1s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' }}
+        >
+          {/* Provider icon */}
+          <div style={{
+            width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+            background: `${meta.color}18`, border: `1px solid ${meta.color}28`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Pxi name={providerIcon} size={8} style={{ color: meta.color }} />
+          </div>
+          {/* Provider · Model */}
+          <span style={{
+            flex: 1,
+            fontSize: 10.5,
+            fontWeight: 500,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--tx-secondary)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            letterSpacing: '-0.01em',
+          }}>
+            {providerLabel} · {shortModel}
+          </span>
+          {/* Free/Paid badge */}
+          <span style={{
+            fontSize: 8,
+            fontWeight: 700,
+            letterSpacing: '0.05em',
+            padding: '2px 6px',
+            borderRadius: 4,
+            background: routerConfig?.budget === 'free' ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
+            color: routerConfig?.budget === 'free' ? '#4ade80' : 'var(--amber)',
+            border: `1px solid ${routerConfig?.budget === 'free' ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'}`,
+            flexShrink: 0,
+          }}>
+            {routerConfig?.budget === 'free' ? 'FREE' : 'PAID'}
+          </span>
+          {/* Expand chevron */}
+          <Pxi
+            name="chevron-down"
+            size={8}
+            style={{
+              color: 'var(--tx-muted)',
+              flexShrink: 0,
+              transform: 'rotate(-90deg)',
+              transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1)',
+            }}
+          />
+        </button>
+      )}
+
       {/* Dropdown popup */}
-      {open && (
+      {dropdownOpen && (
         <div style={{
           position: 'absolute',
-          right: 'calc(100% + 6px)',
+          left: 'calc(100% + 6px)',
           top: 36,
           width: 280,
           zIndex: 300,
@@ -402,7 +457,7 @@ function ModelSection() {
                     : String(m.context_length)
                   return (
                     <button key={m.id} type="button"
-                      onClick={() => { setModel(m.id); setOpen(false); setSearch('') }}
+                      onClick={() => { setModel(m.id); setDropdownOpen(false); setSearch('') }}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center',
                         padding: '6px 12px', textAlign: 'left', border: 'none', cursor: 'pointer',
@@ -467,69 +522,75 @@ function ModelSection() {
       )}
 
       {/* Model trigger button */}
-      <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-display)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--tx-tertiary)', display: 'flex', alignItems: 'center', gap: 5, marginBottom: 'var(--space-1-5)' }}>
-        <Pxi name="sparkles" size={10} />
-        Model
-      </div>
-      <button
-        onClick={() => {
-          const opening = !open
-          setOpen(opening)
-          if (opening && modelsLastFetched) {
-            const age = Date.now() - modelsLastFetched
-            if (age < 60_000) setFreshLabel('just now')
-            else if (age < 3_600_000) setFreshLabel(`${Math.round(age / 60_000)}m ago`)
-            else setFreshLabel(`${Math.round(age / 3_600_000)}h ago`)
-          }
-        }}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 10px', borderRadius: 8,
-          background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)',
-          border: `1px solid ${open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
-          cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-          transition: 'background 0.1s, border-color 0.1s',
-          position: 'relative',
-        }}
-        onMouseEnter={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' } }}
-        onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' } }}
+      <Section
+        icon="sparkles"
+        label="Model"
+        open={open}
+        onToggle={onToggle}
       >
-        {/* Family icon */}
-        <div style={{
-          width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-          background: `${meta.color}18`, border: `1px solid ${meta.color}28`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Pxi name="sparkles" size={9} style={{ color: meta.color }} />
-        </div>
-        {/* Name */}
-        <span style={{
-          flex: 1, fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-mono)',
-          color: 'var(--tx-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          letterSpacing: '-0.01em',
-        }}>
-          {shortModel}
-        </span>
-        <Pxi name="angle-down" size={9} style={{
-          color: 'var(--tx-muted)', flexShrink: 0,
-          transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s',
-        }} />
-      </button>
+        <button
+          onClick={() => {
+            const opening = !dropdownOpen
+            setDropdownOpen(opening)
+            if (opening && modelsLastFetched) {
+              const age = Date.now() - modelsLastFetched
+              if (age < 60_000) setFreshLabel('just now')
+              else if (age < 3_600_000) setFreshLabel(`${Math.round(age / 60_000)}m ago`)
+              else setFreshLabel(`${Math.round(age / 3_600_000)}h ago`)
+            }
+          }}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 10px', borderRadius: 8,
+            background: dropdownOpen ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)',
+            border: `1px solid ${dropdownOpen ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
+            cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+            transition: 'background 0.1s, border-color 0.1s',
+            position: 'relative',
+          }}
+          onMouseEnter={e => { if (!dropdownOpen) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' } }}
+          onMouseLeave={e => { if (!dropdownOpen) { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' } }}
+        >
+          {/* Family icon */}
+          <div style={{
+            width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+            background: `${meta.color}18`, border: `1px solid ${meta.color}28`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Pxi name="sparkles" size={9} style={{ color: meta.color }} />
+          </div>
+          {/* Name */}
+          <span style={{
+            flex: 1, fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-mono)',
+            color: 'var(--tx-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            letterSpacing: '-0.01em',
+          }}>
+            {shortModel}
+          </span>
+          <Pxi name="angle-down" size={9} style={{
+            color: 'var(--tx-muted)', flexShrink: 0,
+            transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s',
+          }} />
+        </button>
 
-      {/* Provider family pill */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 5, marginTop: 'var(--space-1)',
-        fontSize: 9, fontWeight: 600, fontFamily: 'var(--font-display)',
-        letterSpacing: '0.08em', textTransform: 'uppercase', color: meta.color, opacity: 0.75,
-      }}>
-        <span style={{ width: 5, height: 5, borderRadius: '50%', background: meta.color, flexShrink: 0, boxShadow: `0 0 5px ${meta.color}88` }} />
-        {meta.label}
-      </div>
+        {/* Provider family pill */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 5, marginTop: 'var(--space-1)',
+          fontSize: 9, fontWeight: 600, fontFamily: 'var(--font-display)',
+          letterSpacing: '0.08em', textTransform: 'uppercase', color: meta.color, opacity: 0.75,
+        }}>
+          <span style={{ width: 5, height: 5, borderRadius: '50%', background: meta.color, flexShrink: 0, boxShadow: `0 0 5px ${meta.color}88` }} />
+          {meta.label}
+        </div>
+
+        {/* Provider toggle */}
+        <ProviderToggle />
+      </Section>
     </div>
   )
 }
 
-// ── Provider Section ───────────────────────────────────────────────────────────
+// ── Provider Toggle ───────────────────────────────────────────────────────────
 
 const PROVIDERS = [
   { id: 'openrouter', label: 'OpenRouter', icon: 'cloud', color: 'var(--amber)', desc: 'Cloud API' },
@@ -537,7 +598,7 @@ const PROVIDERS = [
   { id: 'auto',       label: 'Auto',       icon: 'bolt',     color: '#22c55e', desc: 'Best route' },
 ] as const
 
-function ProviderSection() {
+function ProviderToggle() {
   const { routerConfig, setRouterConfig, gateways, gatewayHealth } = useAppStore()
   const activeProvider = routerConfig?.mode === 'auto'
     ? 'auto'
@@ -554,12 +615,13 @@ function ProviderSection() {
   // Health dot
   function healthOf(gwId: string) {
     if (!gatewayHealth) return null
-    return gatewayHealth.find(h => h.id === gwId)
+    return gatewayHealth.find(h => h.gatewayId === gwId)
   }
 
   return (
-    <Section icon="cloud" label="Provider">
-      <div style={{ display: 'flex', gap: 5 }}>
+    <div style={{ marginTop: 'var(--space-2)' }}>
+      {/* Segmented control for provider selection */}
+      <div style={{ display: 'flex', gap: 4, padding: '4px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         {PROVIDERS.map(p => {
           const isSel = activeProvider === p.id
           const health = healthOf(p.id)
@@ -569,31 +631,36 @@ function ProviderSection() {
               key={p.id}
               onClick={() => pickProvider(p.id)}
               style={{
-                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-                padding: '8px 4px', borderRadius: 8, cursor: 'pointer',
-                background: isSel ? `${p.color}15` : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${isSel ? p.color + '55' : 'rgba(255,255,255,0.07)'}`,
-                transition: 'all 0.12s', fontFamily: 'inherit',
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '6px 8px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                background: isSel ? `${p.color}20` : 'transparent',
+                border: isSel ? `1px solid ${p.color}55` : '1px solid transparent',
+                color: isSel ? p.color : 'var(--tx-secondary)',
+                fontSize: 11,
+                fontWeight: isSel ? 600 : 400,
+                transition: 'all 0.12s',
+                fontFamily: 'inherit',
+                position: 'relative',
               }}
               onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
             >
-              <div style={{ position: 'relative' }}>
-                <Pxi name={p.icon} size={12} style={{ color: isSel ? p.color : 'var(--tx-tertiary)' }} />
-                {/* Health indicator */}
-                {health && (
-                  <span style={{
-                    position: 'absolute', top: -2, right: -2, width: 5, height: 5,
-                    borderRadius: '50%', flexShrink: 0,
-                    background: isHealthy ? '#22c55e' : health.status === 'degraded' ? 'var(--amber)' : '#f87171',
-                    boxShadow: isHealthy ? '0 0 4px #22c55e88' : 'none',
-                  }} />
-                )}
-              </div>
-              <span style={{ fontSize: 9.5, fontWeight: isSel ? 600 : 400, color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)' }}>
-                {p.label}
-              </span>
-              <span style={{ fontSize: 8.5, color: 'var(--tx-muted)' }}>{p.desc}</span>
+              <Pxi name={p.icon} size={10} />
+              <span>{p.label}</span>
+              {/* Health indicator */}
+              {health && (
+                <span style={{
+                  width: 4, height: 4, borderRadius: '50%', flexShrink: 0,
+                  background: isHealthy ? '#22c55e' : health.status === 'degraded' ? 'var(--amber)' : '#f87171',
+                  boxShadow: isHealthy ? '0 0 4px #22c55e88' : 'none',
+                }} />
+              )}
             </button>
           )
         })}
@@ -624,7 +691,7 @@ function ProviderSection() {
           })}
         </div>
       )}
-    </Section>
+    </div>
   )
 }
 
@@ -633,7 +700,7 @@ function ProviderSection() {
 const DEFAULT_TEMP    = 0.7
 const DEFAULT_MAXTOK  = 4096
 
-function ParametersSection() {
+function ParametersSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const [temp, setTemp]       = useState<number>(() => loadPref(TEMP_KEY, DEFAULT_TEMP))
   const [maxTok, setMaxTok]   = useState<number>(() => loadPref(MAXTOK_KEY, DEFAULT_MAXTOK))
 
@@ -645,24 +712,30 @@ function ParametersSection() {
   const isDefault = temp === DEFAULT_TEMP && maxTok === DEFAULT_MAXTOK
 
   return (
-    <Section icon="sliders-h" label="Parameters" badge={
-      !isDefault && (
-        <button
-          onClick={e => { e.stopPropagation(); reset() }}
-          title="Reset to defaults"
-          style={{
-            padding: '1px 6px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
-            background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
-            color: 'var(--tx-tertiary)', fontFamily: 'inherit',
-            transition: 'color 0.1s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-        >
-          Reset
-        </button>
-      )
-    }>
+    <Section
+      icon="sliders-h"
+      label="Parameters"
+      open={open}
+      onToggle={onToggle}
+      badge={
+        !isDefault && (
+          <button
+            onClick={e => { e.stopPropagation(); reset() }}
+            title="Reset to defaults"
+            style={{
+              padding: '1px 6px', fontSize: 9, borderRadius: 4, cursor: 'pointer',
+              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
+              color: 'var(--tx-tertiary)', fontFamily: 'inherit',
+              transition: 'color 0.1s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--tx-primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+          >
+            Reset
+          </button>
+        )
+      }
+    >
       <SliderRow
         label="Temperature"
         value={temp}
@@ -738,7 +811,7 @@ function SliderRow({
 
 // ── System Prompt Section ──────────────────────────────────────────────────────
 
-function SystemPromptSection() {
+function SystemPromptSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const [prompt, setPrompt] = useState<string>(() => loadPref(SYSTEM_PROMPT_KEY, ''))
   const [chars, setChars] = useState(prompt.length)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -753,7 +826,7 @@ function SystemPromptSection() {
   }, [])
 
   return (
-    <Section icon="comment-dots" label="System Prompt" defaultOpen={false}>
+    <Section icon="comment-dots" label="System Prompt" open={open} onToggle={onToggle}>
       <div style={{ position: 'relative' }}>
         <textarea
           ref={textareaRef}
@@ -804,7 +877,7 @@ function SystemPromptSection() {
 
 // ── Stats Section ──────────────────────────────────────────────────────────────
 
-function StatsSection() {
+function StatsSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { activeTaskId, taskRouterState, messages, routerConfig } = useAppStore()
   const stats = activeTaskId ? taskRouterState[activeTaskId] : null
   const msgCount = activeTaskId ? (messages[activeTaskId]?.length ?? 0) : 0
@@ -827,7 +900,7 @@ function StatsSection() {
   }
 
   return (
-    <Section icon="chart-bar" label="Stats" defaultOpen={false}>
+    <Section icon="chart-bar" label="Stats" open={open} onToggle={onToggle}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1-5)' }}>
         <StatRow label="Messages" value={String(msgCount)} />
         <StatRow label="User turns" value={String(userMsgs)} />

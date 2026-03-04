@@ -8,7 +8,6 @@
 import type { Task } from '../types'
 import { Pxi } from './Pxi'
 import { estimateCost } from '../lib/costEstimate'
-import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
 // ─── Status dot ────────────────────────────────────────────────────────────────
 
@@ -130,6 +129,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     model: string
     provider: string
     routingMode: string
+    routerConfig?: { budget: string }
     sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
     outputVisible?: boolean
     workspaceFileCount?: number
@@ -138,6 +138,8 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     onStop: () => void
     taskRouterState?: any
     gatewayHealth?: any[]
+    messageCount?: number
+    userTurns?: number
   }
 
   export function ChatHeader({
@@ -148,6 +150,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     model: manualModel,
     provider: manualProvider,
     routingMode,
+    routerConfig,
     sandboxStatus,
     outputVisible,
     workspaceFileCount = 0,
@@ -156,6 +159,8 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     onStop,
     taskRouterState,
     gatewayHealth = [],
+    messageCount = 0,
+    userTurns = 0,
   }: ChatHeaderProps) {
     // Current model info from either the live task state or the store defaults
     const activeModelId = taskRouterState?.modelId || manualModel
@@ -170,7 +175,8 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     // Health status for the primary provider
     const health = gatewayHealth.find(h => h.status !== 'unknown')
     const healthStatus = health?.status || 'healthy'
-    const healthColor = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }[healthStatus]
+    const healthColors: Record<string, string> = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }
+    const healthColor = healthColors[healthStatus]
 
     return (
       <header
@@ -212,8 +218,31 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
               {isAutoFree && <Pxi name="leaf" size={8} style={{ marginLeft: 2, color: '#4ade80' }} />}
             </div>
 
+            {/* Route Badge */}
+            {routerConfig?.budget && (
+              <span
+                style={{
+                  fontSize: 8,
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  padding: '2px 6px',
+                  borderRadius: 4,
+                  background: routerConfig.budget === 'free' ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
+                  color: routerConfig.budget === 'free' ? '#4ade80' : 'var(--amber)',
+                  border: `1px solid ${routerConfig.budget === 'free' ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'}`,
+                  flexShrink: 0,
+                }}
+              >
+                {routerConfig.budget === 'free' ? 'FREE' : 'PAID'}
+              </span>
+            )}
+
           {isActive && iteration > 0 && (
-            <span className="flex items-center gap-1 flex-shrink-0">
+            <span
+              className="flex items-center gap-1 flex-shrink-0"
+              title={`Iteration ${iteration}${messageCount > 0 ? `\nMessages: ${messageCount}` : ''}${userTurns > 0 ? `\nUser turns: ${userTurns}` : ''}`}
+              style={{ cursor: 'help' }}
+            >
               <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
               <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
             </span>

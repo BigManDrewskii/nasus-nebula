@@ -74,7 +74,7 @@ export class PlanningAgent extends BaseAgent {
     const prompt = await this.buildPlanningPrompt(userInput, useMemory)
 
     try {
-      const response = await chatOnce(apiBase, apiKey, provider, planModel, prompt, 4000)
+      const response = await chatOnce(apiBase, apiKey, provider, planModel, prompt)
 
       // Parse the response into an ExecutionPlan
       const plan = this.parsePlan(response, userInput)

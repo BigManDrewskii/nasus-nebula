@@ -14,7 +14,6 @@ import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
 import { chatOnce } from '../llm'
 import { getWorkspace } from '../tools'
-import { QUICK_TIMEOUT_MS } from '../../lib/constants'
 
 /**
  * Verification context parameters.
@@ -349,7 +348,7 @@ Respond in JSON format:
 If no issues found, return {"issues": []}.`
 
     try {
-      const response = await chatOnce(apiBase, apiKey, provider, verifyModel, prompt, QUICK_TIMEOUT_MS)
+      const response = await chatOnce(apiBase, apiKey, provider, verifyModel, prompt)
 
       const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
       const jsonStr = jsonMatch ? jsonMatch[1] : response

@@ -54,6 +54,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         addRecentWorkspacePath,
         routerConfig, setRouterConfig,
         updateGateway,
+        settingsTab,
+        setSettingsTab,
       } = useAppStore()
 
   const [localKey, setLocalKey] = useState(apiKey)
@@ -141,6 +143,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setPendingPaidMode(false)
   }
 
+  const scrollableRef = useRef<HTMLDivElement>(null)
   const [modelOpen, setModelOpen] = useState(false)
   const [modelSearch, setModelSearch] = useState('')
   const modelRef = useRef<HTMLDivElement>(null)
@@ -196,6 +199,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setTimeout(() => modelSearchRef.current?.focus(), 50)
     }
   }, [modelOpen])
+
+  // Scroll to top when tab changes
+  useEffect(() => {
+    scrollableRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [settingsTab])
 
   async function handleFetchModels() {
     if (!localKey.trim()) {
@@ -381,9 +389,123 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
         </div>
 
+        {/* Tab Bar */}
+        <div style={{ display: 'flex', gap: 4, paddingLeft: 24, paddingRight: 24, paddingTop: 12, paddingBottom: 8, flexShrink: 0 }}>
+          {(['general', 'model', 'execution', 'search', 'about'] as const).map((tab) => {
+            const isActive = settingsTab === tab
+            return (
+              <button
+                key={tab}
+                onClick={() => setSettingsTab(tab)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  background: isActive ? 'var(--amber)' : 'transparent',
+                  color: isActive ? '#000' : 'var(--tx-secondary)',
+                  fontSize: 11,
+                  fontWeight: isActive ? 600 : 400,
+                  letterSpacing: '0.02em',
+                  cursor: 'pointer',
+                  transition: 'background 0.12s, color 0.12s',
+                  border: 'none',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                    e.currentTarget.style.color = 'var(--tx-primary)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.background = 'transparent'
+                    e.currentTarget.style.color = 'var(--tx-secondary)'
+                  }
+                }}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            )
+          })}
+        </div>
+
         {/* Scrollable content */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '0 24px', minHeight: 0 }}>
+        <div ref={scrollableRef} style={{ overflowY: 'auto', flex: 1, padding: '0 24px', minHeight: 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 4 }}>
+            {settingsTab === 'general' && (
+            <>
+            {/* ── Workspace Path ── */}
+            <Field
+              label="Workspace Path"
+              icon="folder-open"
+              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
+              error={errors.workspacePath}
+            >
+              <WorkspacePicker
+                value={localWorkspace}
+                onChange={(v) => { setLocalWorkspace(v); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
+                error={errors.workspacePath}
+              />
+            </Field>
+
+            {/* ── Verification Toggle ── */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+              border: '1px solid rgba(255,255,255,0.06)',
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
+                  Enable verification
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
+                  Automatically verify execution results and self-correct if needed
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLocalEnableVerification(!localEnableVerification)}
+                style={{
+                  width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+                  border: 'none', cursor: 'pointer', position: 'relative',
+                  background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
+                  transition: 'background 0.15s',
+                  padding: 0,
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, borderRadius: '50%',
+                  width: 18, height: 18,
+                  background: '#fff',
+                  left: localEnableVerification ? 'calc(100% - 20px)' : 2,
+                  transition: 'left 0.15s',
+                  display: 'block',
+                }} />
+              </button>
+            </div>
+
+            {/* ── Max Iterations ── */}
+            <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
+              <input
+                type="number"
+                min={1}
+                max={200}
+                value={localMaxIterations}
+                onChange={(e) => setLocalMaxIterations(e.target.value)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                  color: 'var(--tx-primary)', background: '#0d0d0d',
+                  border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
+                }}
+                className="placeholder-[var(--tx-muted)]"
+                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+              />
+            </Field>
+            </>
+            )}
+
+            {settingsTab === 'model' && (
+            <>
 
             {/* ── Provider Switcher ── */}
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
@@ -673,82 +795,92 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 onModelOverridesChange={setLocalModelOverrides}
               />
             )}
+            </>
+            )}
 
-            {/* ── Workspace Path ── */}
-            <Field
-              label="Workspace Path"
-              icon="folder-open"
-              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
-              error={errors.workspacePath}
-            >
-              <WorkspacePicker
-                value={localWorkspace}
-                onChange={(v) => { setLocalWorkspace(v); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
-                error={errors.workspacePath}
-              />
-            </Field>
+            {/* ── Execution Tab ── */}
+            {settingsTab === 'execution' && (
+            <>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 12,
+                padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Pxi name="terminal" size={16} style={{ color: 'var(--amber)' }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)' }}>
+                    Code Execution Mode
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.5 }}>
+                  Nasus runs code in isolated Docker containers for security. Ensure Docker is running before executing tasks.
+                </div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '10px 12px', borderRadius: 8, background: '#0d0d0d',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)40',
+                  }} />
+                  <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
+                    Docker — Enabled
+                  </span>
+                </div>
+              </div>
+            </>
+            )}
 
-              {/* ── Web Search ── */}
+            {/* ── Search Tab ── */}
+            {settingsTab === 'search' && (
+            <>
               <SearchSection
                 exaKey={localExaKey}
                 onExaKeyChange={setLocalExaKey}
               />
+            </>
+            )}
 
-            {/* ── Verification Toggle ── */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
-                  Enable verification
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
-                  Automatically verify execution results and self-correct if needed
-                </span>
+            {/* ── About Tab ── */}
+            {settingsTab === 'about' && (
+            <>
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 16,
+                padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div style={{ textAlign: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+                    <Pxi name="cpu" size={20} style={{ color: 'var(--amber)' }} />
+                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--tx-primary)' }}>Nasus</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Autonomous AI Agent · Desktop Application</span>
+                </div>
+
+                <div style={{ fontSize: 11, color: 'var(--tx-secondary)', lineHeight: 1.6 }}>
+                  Nasus is a multi-agent system that plans, executes, and verifies complex tasks using tool-based execution.
+                </div>
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 4 }}>
+                  Keyboard Shortcuts
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11 }}>
+                  {[
+                    { key: '⌘ + ,', desc: 'Open Settings' },
+                    { key: '⌘ + Enter', desc: 'Submit task' },
+                    { key: '⌘ + K', desc: 'New conversation' },
+                    { key: 'Escape', desc: 'Close modal' },
+                  ].map(s => (
+                    <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--tx-secondary)' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 4 }}>{s.key}</span>
+                      <span>{s.desc}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setLocalEnableVerification(!localEnableVerification)}
-                style={{
-                  width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-                  border: 'none', cursor: 'pointer', position: 'relative',
-                  background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
-                  transition: 'background 0.15s',
-                  padding: 0,
-                }}
-              >
-                <span style={{
-                  position: 'absolute', top: 2, borderRadius: '50%',
-                  width: 18, height: 18,
-                  background: '#fff',
-                  left: localEnableVerification ? 'calc(100% - 20px)' : 2,
-                  transition: 'left 0.15s',
-                  display: 'block',
-                }} />
-              </button>
-            </div>
-
-            {/* ── Max Iterations ── */}
-            <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
-              <input
-                type="number"
-                min={1}
-                max={200}
-                value={localMaxIterations}
-                onChange={(e) => setLocalMaxIterations(e.target.value)}
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                  color: 'var(--tx-primary)', background: '#0d0d0d',
-                  border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-                }}
-                className="placeholder-[var(--tx-muted)]"
-                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-              />
-            </Field>
-
+            </>
+            )}
           </div>
         </div>{/* end scrollable */}
 

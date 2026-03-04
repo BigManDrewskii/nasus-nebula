@@ -40,11 +40,13 @@ export interface GatewaySlice {
   gatewayService: GatewayService | null
   lastGatewayEvent: GatewayEvent | null
   openRouterModels: any[]
+  vercelModels: any[]
   modelsLastFetched: number
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
   setOpenRouterModels: (models: any[]) => void
+  setVercelModels: (models: any[]) => void
 
   /** Initialize the gateway service (call once on app startup) */
   initGatewayService: () => void
@@ -106,11 +108,13 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
   gatewayService: null,
   lastGatewayEvent: null,
   openRouterModels: [],
+  vercelModels: [],
   modelsLastFetched: 0,
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   setOpenRouterModels: (models) => set({ openRouterModels: models, modelsLastFetched: Date.now() }),
+  setVercelModels: (models) => set({ vercelModels: models, modelsLastFetched: Date.now() }),
 
   initGatewayService: () => {
     // Gateways are NOT persisted (not in partialize), so gateways[0].apiKey is always ''

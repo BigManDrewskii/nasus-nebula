@@ -118,10 +118,10 @@ export function OutputPanel({
   const effectiveTab = tab === 'preview' && !hasHtml && hasFiles ? 'code' : tab
 
   const tabs: { id: Tab; icon: string; label: string; count?: number }[] = [
-    { id: 'preview', icon: 'browser',  label: 'Preview' },
-    { id: 'code',    icon: 'code',     label: 'Code'    },
-    { id: 'files',   icon: 'folder',   label: 'Files',  count: hasFiles ? files.length : undefined },
     { id: 'browser', icon: 'desktop',  label: 'Browser' },
+    { id: 'files',   icon: 'folder',  label: 'Files',   count: hasFiles ? files.length : undefined },
+    { id: 'preview', icon: 'browser', label: 'Preview' },
+    { id: 'code',    icon: 'code',    label: 'Code'    },
   ]
 
   // ── Collapsed icon rail ─────────────────────────────────────────────────────

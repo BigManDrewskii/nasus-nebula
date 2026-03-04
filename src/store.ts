@@ -9,7 +9,6 @@ import { MAX_TASKS, MAX_TOOL_RESULT_CHARS, MAX_RAW_HISTORY_LIVE, DEFAULT_MAX_ITE
 
 // NOTE: clearWorkspace is now async - we call it without await in state updates
 // The workspace cleanup happens in the background
-import type { OpenRouterModel } from './agent/llm'
 
 // Gateway integration
 import { createGatewaySlice, type GatewaySlice } from './agent/gateway'
@@ -86,6 +85,14 @@ interface AppState extends GatewaySlice {
   routingPreview: { modelId: string; displayName: string; reason: string } | null
   // Per-task router state (model used, cost, etc.) keyed by taskId
   taskRouterState: Record<string, TaskRouterState>
+  // Config accordion state (sidebar settings sections) — DEPRECATED, kept for compatibility
+  configSections: Record<string, boolean>
+  // Right panel resize state
+  rightPanelWidth: number
+  rightPanelVisible: boolean
+  // Settings modal state
+  settingsOpen: boolean
+  settingsTab: 'general' | 'model' | 'execution' | 'search' | 'about'
       /** Exa AI API key for web search */
       exaKey: string
     maxIterations: number
@@ -143,6 +150,13 @@ interface AppState extends GatewaySlice {
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
+  setConfigSection: (section: string, open: boolean) => void
+  toggleConfigSection: (section: string) => void
+  setRightPanelWidth: (width: number) => void
+  setRightPanelVisible: (visible: boolean) => void
+  openSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
+  closeSettings: () => void
+  setSettingsTab: (tab: 'general' | 'model' | 'execution' | 'search' | 'about') => void
   setPendingPlan: (plan: ExecutionPlan | null) => void
   setPlanApprovalStatus: (status: 'pending' | 'approved' | 'rejected' | null) => void
   setCurrentPlan: (plan: ExecutionPlan | null) => void
@@ -200,6 +214,14 @@ export const useAppStore = create<AppState>()(
           },
           routingPreview: null,
             taskRouterState: {},
+          // Config accordion state (sidebar settings sections)
+          configSections: { model: false, parameters: false, systemPrompt: false, stats: false },
+          // Right panel resize state (default 40% of viewport, calculated in component)
+          rightPanelWidth: 0.4,
+          rightPanelVisible: true,
+          // Settings modal state
+          settingsOpen: false,
+          settingsTab: 'general',
             pendingPlan: null,
             planApprovalStatus: null,
             currentPlan: null,
@@ -518,6 +540,19 @@ export const useAppStore = create<AppState>()(
               [taskId]: { ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }), ...state },
             },
           })),
+        setConfigSection: (section, open) =>
+          set((s) => ({
+            configSections: { ...s.configSections, [section]: open },
+          })),
+        toggleConfigSection: (section) =>
+          set((s) => ({
+            configSections: { ...s.configSections, [section]: !s.configSections[section] },
+          })),
+        setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
+        setRightPanelVisible: (visible) => set({ rightPanelVisible: visible }),
+        openSettings: (tab) => set({ settingsOpen: true, settingsTab: tab ?? 'general' }),
+        closeSettings: () => set({ settingsOpen: false }),
+        setSettingsTab: (tab) => set({ settingsTab: tab }),
         setPendingPlan: (plan) => set({ pendingPlan: plan }),
         setPlanApprovalStatus: (status) => set({ planApprovalStatus: status }),
         setCurrentPlan: (plan) => set({ currentPlan: plan }),
@@ -584,10 +619,10 @@ export const useAppStore = create<AppState>()(
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
                   enableVerification: state.enableVerification,
-              // openRouterModels is persisted so the dropdown is populated immediately on reload.
-              // It will be refreshed in the background on startup if the key is present.
+              // openRouterModels and vercelModels are persisted so the dropdown is populated immediately on reload.
+              // They will be refreshed in the background on startup if the key is present.
                 openRouterModels: state.openRouterModels,
-                dynamicModels: state.dynamicModels,
+                vercelModels: state.vercelModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
                 extensionConnected: state.extensionConnected,

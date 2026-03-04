@@ -21,7 +21,6 @@ import { getToolDefinitions } from '../tools/index'
 import type { ToolCall } from '../llm'
 import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
-import { getFallbackChain } from '../../tauri'
 
 // Gateway integration
 import { selectModel, type GatewayType } from '../gateway'
@@ -482,16 +481,14 @@ export class ExecutionAgent extends BaseAgent {
 
             const modelSelection = selectModel(routingMode, gatewayType, store.manualModelId || undefined, store.openRouterModels)
             const effectiveModel = modelSelection?.modelId ?? store.model ?? 'anthropic/claude-3.7-sonnet'
-            const effectiveDisplayName = modelSelection?.displayName ?? effectiveModel
+            const effectiveDisplayName = modelSelection?.model?.canonicalName ?? effectiveModel
             const effectiveProvider = gatewayType === 'openrouter' ? 'OpenRouter' : 'Vercel'
 
             this.emitModelSelected(taskId, messageId, effectiveModel, effectiveDisplayName, effectiveProvider)
 
-            // Get fallback chain for OpenRouter server-side fallback
-
-          // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
-          const budget = routingMode === 'auto-free' ? 'free' : 'paid'
-          const fallbackModels = await getFallbackChain(effectiveModel, budget)
+            // Derive budget from routingMode instead of routerConfig (avoid cross-slice access)
+          // const budget = routingMode === 'auto-free' ? 'free' : 'paid'
+          // const fallbackModels = await getFallbackChain(effectiveModel, budget)
 
           return streamCompletion(
             apiBase,
@@ -509,7 +506,6 @@ export class ExecutionAgent extends BaseAgent {
               extraHeaders,
               queryParams,
             },
-            fallbackModels,
           )
         },
       )
@@ -862,7 +858,7 @@ export class ExecutionAgent extends BaseAgent {
       : 'anthropic/claude-3-haiku'
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
-    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, 60, resolved.extraHeaders)
+    const title = await chatOnce(apiBase, apiKey, provider, titleModel, prompt, resolved.extraHeaders)
     if (title) {
       const clean = title.replace(/^["']|["']$/g, '').trim()
       if (clean) store.updateTaskTitle(taskId, clean)

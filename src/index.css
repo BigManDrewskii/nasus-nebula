@@ -902,6 +902,7 @@ html, body, #root {
 
 /* Right output panel — fluid width, collapses to icon rail */
 .app-sidebar-right {
+  /* When not collapsed, width is controlled via inline style for resize */
   width: clamp(320px, 28vw, 480px);
   min-width: clamp(320px, 28vw, 480px);
   max-width: clamp(320px, 28vw, 480px);
@@ -919,6 +920,17 @@ html, body, #root {
   width: 44px;
   min-width: 44px;
   max-width: 44px;
+}
+
+/* ── Panel Divider (resizable right panel) ────────────────────────────────── */
+.panel-divider {
+  position: relative;
+}
+.panel-divider:active {
+  user-select: none;
+}
+.panel-divider-grip {
+  pointer-events: none;
 }
 
 /* Chat takes all remaining space */
@@ -1328,29 +1340,6 @@ select:focus:not(:focus-visible) {
   will-change: width;
 }
 
-/* Right context panel slide */
-.app-context-panel {
-  width: clamp(220px, 18vw, 280px);
-  min-width: clamp(220px, 18vw, 280px);
-  max-width: clamp(220px, 18vw, 280px);
-  flex-shrink: 0;
-  overflow: hidden;
-  height: 100%;
-  position: relative;
-  background: rgba(9, 9, 9, 0.4);
-  backdrop-filter: var(--glass-blur);
-  transition: width var(--sidebar-transition),
-              min-width var(--sidebar-transition),
-              max-width var(--sidebar-transition);
-  will-change: width;
-}
-
-.app-context-panel.app-sidebar--collapsed {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
-}
-
 /* Context panel slide-in animation for dropdown */
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(8px); }
@@ -1407,23 +1396,122 @@ input[type="range"]::-moz-range-thumb {
     min-width: 260px !important;
     max-width: 260px !important;
   }
-  .app-context-panel {
-    position: fixed !important;
-    top: 0;
-    right: 0;
-    height: 100vh;
-    z-index: 100;
-    box-shadow: -8px 0 48px rgba(0,0,0,0.7);
-    width: 280px !important;
-    min-width: 280px !important;
-    max-width: 280px !important;
-    transform: translateX(0);
-    transition: transform 0.25s cubic-bezier(0.4,0,0.2,1) !important;
+}
+
+/* ── Skeleton loading states ───────────────────────────────────────────────────── */
+
+/* Skeleton bar - for text lines */
+.skeleton-bar {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  height: 12px;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+/* Skeleton title - taller heading */
+.skeleton-title {
+  height: 16px;
+  width: 60%;
+  margin-bottom: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-title::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+/* Skeleton circle - for avatars, icons */
+.skeleton-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-circle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+/* Skeleton card - for card loading states */
+.skeleton-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.02) 50%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.5s ease-in-out infinite;
+}
+
+/* Skeleton animation */
+@keyframes skeletonShimmer {
+  0% {
+    transform: translateX(-100%);
   }
-  .app-context-panel.app-sidebar--collapsed {
+  100% {
     transform: translateX(100%);
-    width: 280px !important;
-    min-width: 280px !important;
-    max-width: 280px !important;
   }
 }

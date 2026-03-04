@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 import { NasusLogo } from './NasusLogo'
-import { Pxi } from './Pxi'
 
 interface ThinkingIndicatorProps {
   /** Show or hide the indicator — drives the mount/unmount animation */

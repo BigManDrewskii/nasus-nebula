@@ -1,10 +1,8 @@
 import { useRef, useEffect, useImperativeHandle, forwardRef, useState } from 'react'
-import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
 import { AttachmentPreviewBar } from './AttachmentPreviewBar'
+import { ModelSelectorTrigger } from './ModelSelector/ModelSelectorTrigger'
 import type { Attachment } from '../types'
-import { ModelSelector } from './chat/ModelSelector'
-import { familyLabel, shortModelLabel } from '../lib/models'
 
 // ── Input state machine ───────────────────────────────────────────────────────
 export type InputState = 'idle' | 'processing' | 'streaming' | 'awaiting_input'
@@ -35,8 +33,6 @@ export interface UserInputAreaHandle {
       onSend, onStop, onContentChange, disabled, isRunning, inputState: inputStateProp, queuedMsg, autoFocus,
       attachments = [], onAddFiles, onRemoveAttachment, isOverLimit = false, totalAttachmentSize = 0,
     }, ref) {
-
-    const { model, setModel, routerConfig, setRouterConfig } = useAppStore()
 
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
@@ -132,7 +128,7 @@ export interface UserInputAreaHandle {
     })()
 
     const containerStyle: React.CSSProperties = {
-      borderRadius: 16,
+      borderRadius: 12,
       border: `1px solid ${borderColor}`,
       background: inputState === 'processing' ? '#0f0f0f' : '#131313',
       transition: 'border-color 0.2s, box-shadow 0.2s',
@@ -240,9 +236,9 @@ export interface UserInputAreaHandle {
           padding: '2px 10px 10px',
           gap: 8,
         }}>
-          {/* Left: attach + model selector */}
+          {/* Left: model selector + attach button */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, flex: 1 }}>
-            {/* Attach */}
+            <ModelSelectorTrigger />
             {onAddFiles && (
               <button
                 onClick={() => fileInputRef.current?.click()}
@@ -253,9 +249,9 @@ export interface UserInputAreaHandle {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 44,
-                  height: 44,
-                  borderRadius: 7,
+                  width: 48,
+                  height: 48,
+                  borderRadius: 8,
                   border: 'none',
                   background: 'transparent',
                   color: 'var(--tx-tertiary)',
@@ -278,37 +274,11 @@ export interface UserInputAreaHandle {
                 <Pxi name="paperclip" size={12} />
               </button>
             )}
-
-            {/* Divider */}
-            <div style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.07)', flexShrink: 0, margin: '0 2px' }} />
-
-            {/* Model dropdown */}
-                <ModelSelector
-                  value={model}
-                  onChange={(v) => {
-                    setModel(v)
-                    // Explicitly picking a model from the dropdown switches to manual mode
-                    if (routerConfig.mode === 'auto') {
-                      setRouterConfig({ mode: 'manual' })
-                    }
-                  }}
-                  disabled={isWorking}
-                />
-            </div>
+          </div>
 
 
-          {/* Right: hint + send/stop */}
+          {/* Right: send/stop */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {isWorking ? (
-              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', userSelect: 'none', whiteSpace: 'nowrap' }} className="hidden sm:block">
-                Esc to stop
-              </span>
-            ) : (
-              <span style={{ fontSize: 10, userSelect: 'none', color: 'var(--tx-tertiary)' }} className="hidden sm:block">
-                ↵ send · ⇧↵ newline
-              </span>
-            )}
-
             {/* Stop */}
             {isWorking && onStop ? (
               <button
@@ -349,14 +319,14 @@ export interface UserInputAreaHandle {
               <button
                 onClick={handleSend}
                 disabled={!canSend}
-                title="Send (Enter)"
+                title="Send (Enter) · Shift+Enter for newline"
                 aria-label="Send message"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 44,
-                  height: 44,
+                  width: 48,
+                  height: 48,
                   borderRadius: 8,
                   border: 'none',
                   cursor: !canSend ? 'not-allowed' : 'pointer',

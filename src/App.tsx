@@ -13,15 +13,17 @@ import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { useSidebarResponsive } from './hooks/useSidebarResponsive'
-import { ContextPanel } from './components/ContextPanel'
+import { PanelDivider } from './components/PanelDivider'
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
 interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
-  contextCollapsed: boolean
   rightActiveTab: Tab
+  rightPanelWidth: number
+  rightPanelVisible: boolean
+  configSections: Record<string, boolean>
   sidebarPreference?: 'auto' | 'always-left' | 'always-right' | 'minimal'
 }
 
@@ -30,7 +32,15 @@ function loadLayout(): LayoutState {
     const raw = localStorage.getItem(LAYOUT_KEY)
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
-  return { leftCollapsed: false, rightCollapsed: false, contextCollapsed: false, rightActiveTab: 'preview', sidebarPreference: 'auto' }
+  return {
+    leftCollapsed: false,
+    rightCollapsed: false,
+    rightActiveTab: 'preview',
+    rightPanelWidth: 0.4,
+    rightPanelVisible: true,
+    configSections: { model: true, parameters: false, systemPrompt: false, stats: false },
+    sidebarPreference: 'auto'
+  }
 }
 
 function saveLayout(state: LayoutState) {
@@ -38,7 +48,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings } = useAppStore(
     useShallow((s) => ({
       tasks: s.tasks,
       activeTaskId: s.activeTaskId,
@@ -47,6 +57,9 @@ function App() {
       onboardingComplete: s.onboardingComplete,
       workspacePath: s.workspacePath,
       routerConfig: s.routerConfig,
+      settingsOpen: s.settingsOpen,
+      closeSettings: s.closeSettings,
+      openSettings: s.openSettings,
     })),
   )
   
@@ -75,21 +88,27 @@ function App() {
 
       store.initGatewayService()
       store.loadGatewayConfig().catch(console.error)
-    }, [])
 
-  const [showSettings, setShowSettings] = useState(false)
+      // Initialize config sections from saved layout
+      if (savedLayout.configSections) {
+        // Merge saved config sections into store
+        Object.entries(savedLayout.configSections).forEach(([key, value]) => {
+          store.configSections[key] = value
+        })
+      }
+    }, [])
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
 
   // Layout state — loaded from localStorage
   const [savedLayout] = useState<LayoutState>(loadLayout)
   const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
-  const [contextCollapsed, setContextCollapsed] = useState(savedLayout.contextCollapsed ?? false)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
   const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
     savedLayout.sidebarPreference ?? 'auto'
   )
-  const [outputVisible, setOutputVisible] = useState(true)
+  const [outputVisible, setOutputVisible] = useState(savedLayout.rightPanelVisible ?? true)
+  const [rightPanelWidth, setRightPanelWidth] = useState(savedLayout.rightPanelWidth ?? 0.4)
 
   // Responsive hook for window-size-aware sidebar behavior
   // Note: Responsive recommendations are available but manual state currently takes precedence
@@ -119,8 +138,8 @@ function App() {
 
   // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed, rightCollapsed, contextCollapsed, rightActiveTab, sidebarPreference })
-  }, [leftCollapsed, rightCollapsed, contextCollapsed, rightActiveTab, sidebarPreference])
+    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: outputVisible, configSections: useAppStore.getState().configSections, sidebarPreference })
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, outputVisible, sidebarPreference])
 
     // Auto-show + expand right panel when the agent creates its first file,
     // or when switching to a task that already has files.
@@ -136,9 +155,15 @@ function App() {
     function handler(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
+      // Toggle left sidebar: ⌘ \ or ⌘ B
       if (e.key === '\\' && !e.shiftKey) { e.preventDefault(); setLeftCollapsed((v) => !v) }
-      if (e.key === '\\' && e.shiftKey)  { e.preventDefault(); setRightCollapsed((v) => !v) }
-      if (e.key === 'j'  && e.shiftKey)  { e.preventDefault(); setContextCollapsed((v) => !v) }
+      if (e.key === 'b') { e.preventDefault(); setLeftCollapsed((v) => !v) }
+      // Toggle right panel: ⌘ . (new)
+      if (e.key === '.') { e.preventDefault(); setOutputVisible((v) => !v) }
+      // Toggle right panel collapse: ⌘ Shift \
+      if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
+      // Open model selector: ⌘ M
+      if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -146,7 +171,6 @@ function App() {
 
   const toggleLeft    = useCallback(() => setLeftCollapsed((v) => !v),    [])
   const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
-  const toggleContext = useCallback(() => setContextCollapsed((v) => !v), [])
 
   useEffect(() => {
     function onPruned(e: Event) {
@@ -194,9 +218,6 @@ function App() {
     setActiveTaskId(task.id)
   }, [addTask, setActiveTaskId, routerConfig.budget])
 
-  const openSettings  = useCallback(() => setShowSettings(true),  [])
-  const closeSettings = useCallback(() => setShowSettings(false), [])
-
   if (!onboardingComplete) {
     return (
       <ErrorBoundary>
@@ -223,9 +244,7 @@ function App() {
             activeTaskId={activeTaskId}
             onSelectTask={setActiveTaskId}
             onNewTask={handleNewTask}
-            onOpenSettings={openSettings}
-            onToggleContext={toggleContext}
-            contextOpen={!contextCollapsed}
+            onOpenSettings={() => openSettings()}
             collapsed={leftCollapsed}
             onToggleCollapse={toggleLeft}
           />
@@ -236,7 +255,7 @@ function App() {
           <ChatView
             task={activeTask}
             onNewTask={handleNewTask}
-            onOpenSettings={openSettings}
+            onOpenSettings={() => openSettings()}
             outputVisible={outputVisible}
             onShowOutput={() => {
               setOutputVisible(true)
@@ -251,8 +270,20 @@ function App() {
         </main>
 
         {/* ── Right Output Panel ── */}
+        {outputVisible && !rightCollapsed && (
+          <PanelDivider
+            width={rightPanelWidth}
+            onWidthChange={setRightPanelWidth}
+            onCollapse={() => setRightCollapsed(true)}
+            previousWidth={0.4}
+          />
+        )}
+
         {outputVisible && (
-          <div className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+          <div
+            className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}
+            style={rightCollapsed ? undefined : { width: `${rightPanelWidth * 100}%` }}
+          >
             <OutputPanel
               key={activeTaskId ?? 'none'}
               files={workspaceFiles}
@@ -268,15 +299,7 @@ function App() {
           </div>
         )}
 
-        {/* ── Context / Settings Panel ── */}
-        <div className={`app-context-panel${contextCollapsed ? ' app-sidebar--collapsed' : ''}`}>
-          <ContextPanel
-            collapsed={contextCollapsed}
-            onToggle={toggleContext}
-          />
-        </div>
-
-        {showSettings && <SettingsPanel onClose={closeSettings} />}
+        {settingsOpen && <SettingsPanel onClose={closeSettings} />}
 
         {/* Offline banner */}
         {isOffline && (

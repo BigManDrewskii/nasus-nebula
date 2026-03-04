@@ -111,6 +111,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
   const messages = task ? (allMessages[task.id] ?? getMessages(task.id)) : []
   const taskWorkspacePath = workspacePath || (task?.id ? `workspace-${task.id}` : null)
 
+  // Calculate message stats for ChatHeader tooltip
+  const messageCount = messages.length
+  const userTurns = messages.filter(m => m.author === 'user').length
+
   const inputState: InputState = agentRunning
     ? (processingPhase ? 'processing' : 'streaming')
     : 'idle'
@@ -557,6 +561,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 model={model}
                 provider={provider}
                 routingMode={routingMode}
+                routerConfig={routerConfig}
                 sandboxStatus={sandboxStatus}
                 outputVisible={outputVisible}
                 workspaceFileCount={workspaceFileCount}
@@ -565,6 +570,8 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 onStop={handleStop}
                 taskRouterState={taskRouterEntry}
                 gatewayHealth={gatewayHealth}
+                messageCount={messageCount}
+                userTurns={userTurns}
               />
 
 

@@ -1,11 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
-import { useAppStore } from '../store'
 import type { Task } from '../types'
 import { TaskListItem } from './TaskListItem'
-import { STATIC_MODELS, familyMeta } from '../lib/models'
 import { SidebarEmptyState, RailButton } from './sidebar/SidebarComponents'
+import { ModelIndicatorRow } from './ModelIndicatorRow'
 
 interface SidebarProps {
   tasks: Task[]
@@ -13,8 +12,6 @@ interface SidebarProps {
   onSelectTask: (id: string) => void
   onNewTask: () => void
   onOpenSettings: () => void
-  onToggleContext?: () => void
-  contextOpen?: boolean
   /** Controlled collapse state — driven by the Panel's onResize callback */
   collapsed?: boolean
   onToggleCollapse?: () => void
@@ -53,8 +50,7 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, onToggleContext, contextOpen = false, collapsed = false, onToggleCollapse }: SidebarProps) {
-  const model = useAppStore((s) => s.model)
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed = false, onToggleCollapse }: SidebarProps) {
   const [search, setSearch]                   = useState('')
   const [searchOpen, setSearchOpen]           = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -89,8 +85,6 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
     })
   }, [])
 
-  const shortModel = model.includes('/') ? model.split('/').pop()! : model
-
   const noResults =
     q &&
     groups.every(({ items }) => filter(items).length === 0) &&
@@ -113,7 +107,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
     >
       {collapsed ? (
         /* ── Collapsed icon rail ── */
-        <div className="sidebar-rail">
+        <div className="sidebar-rail" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div
             className="rail-header"
             data-tauri-drag-region
@@ -150,6 +144,36 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               title="Expand sidebar"
               onClick={onToggleCollapse}
             />
+          </div>
+
+          {/* Spacer to push footer to bottom */}
+          <div style={{ flex: 1 }} />
+
+          {/* Footer: model health dot + settings */}
+          <div style={{ paddingTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center' }}>
+            {/* Model health dot (shows provider/model/budget in tooltip) */}
+            <button
+              onClick={onOpenSettings}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'rgba(255,255,255,0.025)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                cursor: 'pointer',
+                transition: 'background 0.1s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
+              title="Model settings"
+            >
+              <Pxi name="circle" size={6} style={{ color: 'var(--amber)' }} />
+            </button>
+
+            <RailButton icon="cog" title="Settings" onClick={onOpenSettings} />
           </div>
         </div>
       ) : (
@@ -254,7 +278,12 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
             )}
           </div>
 
-          <SidebarFooter model={shortModel} fullModel={model} onSettings={onOpenSettings} onToggleContext={onToggleContext} contextOpen={contextOpen} />
+          {/* Model indicator row */}
+          <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
+            <ModelIndicatorRow />
+          </div>
+
+          <SidebarFooter onSettings={onOpenSettings} />
         </>
       )}
     </aside>
@@ -645,271 +674,21 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-function SidebarFooter({ model, fullModel, onSettings, onToggleContext, contextOpen }: {
-  model: string
-  fullModel: string
-  onSettings: () => void
-  onToggleContext?: () => void
-  contextOpen?: boolean
-}) {
-  const { setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore()
-  const [open, setOpen]         = useState(false)
-  const [search, setSearch]     = useState('')
-  const containerRef            = useRef<HTMLDivElement>(null)
-  const searchRef               = useRef<HTMLInputElement>(null)
-
-  // Dynamic meta based on routing mode
-  const meta = routerConfig?.mode === 'auto'
-    ? { label: 'AUTO', color: 'var(--amber)' }
-    : familyMeta(fullModel)
-
-  // ── Build model list ──────────────────────────────────────────────────────
-  const isLive = openRouterModels.length > 0
-  const allModels = isLive
-    ? openRouterModels.map((m) => ({
-        value: m.id,
-        label: m.name,
-        group: familyMeta(m.id).label,
-      }))
-    : STATIC_MODELS
-
-  const q = search.trim().toLowerCase()
-  const filtered = q
-    ? allModels.filter((m) => m.label.toLowerCase().includes(q) || m.value.toLowerCase().includes(q))
-    : allModels
-
-  const grouped = new Map<string, typeof allModels>()
-  for (const m of filtered) {
-    if (!grouped.has(m.group)) grouped.set(m.group, [])
-    grouped.get(m.group)!.push(m)
-  }
-
-  const [freshLabel, setFreshLabel] = useState<string | null>(null)
-
-  function computeFreshLabel() {
-    if (!isLive) { setFreshLabel(null); return }
-    const age = Date.now() - modelsLastFetched
-    if (age < 60_000) setFreshLabel('just now')
-    else if (age < 3_600_000) setFreshLabel(`${Math.round(age / 60_000)}m ago`)
-    else setFreshLabel(`${Math.round(age / 3_600_000)}h ago`)
-  }
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return
-    function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-        setSearch('')
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
-
-  useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 30)
-  }, [open])
-
-    const isAuto = routerConfig?.mode === 'auto'
-    const modelLabel = isAuto
-      ? routingPreview?.displayName
-        ? `Auto → ${routingPreview.displayName}`
-        : `Auto · ${routerConfig?.budget === 'free' ? 'free' : 'paid'}`
-      : model
-
-    return (
-      <div
-        ref={containerRef}
-        style={{
-          borderTop: '1px solid var(--sidebar-border)',
-          padding: '8px 10px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          position: 'relative',
-        }}
-      >
-        {/* ── Inline model switcher dropdown ─────────────────────────── */}
-        {open && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 'calc(100% + 6px)',
-              left: 8,
-              right: 8,
-              zIndex: 200,
-              borderRadius: 10,
-              background: '#141414',
-              border: '1px solid rgba(255,255,255,0.08)',
-              boxShadow: '0 24px 56px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.03)',
-              display: 'flex',
-              flexDirection: 'column',
-              maxHeight: 300,
-              overflow: 'hidden',
-              animation: 'dropUp 0.14s ease',
-            }}
-          >
-            {/* Search */}
-            <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 10px', borderRadius: 7,
-                background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.07)',
-              }}>
-                <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                <input
-                  ref={searchRef}
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search models…"
-                  style={{
-                    flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                    fontSize: 11.5, color: 'var(--tx-primary)', fontFamily: 'inherit',
-                  }}
-                />
-                {search && (
-                  <button type="button" onClick={() => setSearch('')}
-                    aria-label="Clear model search"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0 }}>
-                    <Pxi name="times" size={9} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* List */}
-            <div style={{ overflowY: 'auto', flex: 1 }}>
-              {grouped.size === 0 ? (
-                <div style={{ padding: '14px 12px', textAlign: 'center', fontSize: 11.5, color: 'var(--tx-tertiary)' }}>
-                  No models match "{search}"
-                </div>
-              ) : [...grouped.entries()].map(([group, models]) => (
-                <div key={group}>
-                  <div style={{
-                    padding: '5px 12px 3px', fontSize: 9.5, fontWeight: 600,
-                    letterSpacing: '0.09em', textTransform: 'uppercase',
-                    color: 'var(--tx-tertiary)', borderTop: '1px solid rgba(255,255,255,0.04)',
-                  }}>{group}</div>
-                  {models.map((m) => {
-                    const isSel = m.value === fullModel
-                    return (
-                      <button key={m.value} type="button"
-                        onClick={() => { setModel(m.value); setOpen(false); setSearch('') }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center',
-                          justifyContent: 'space-between', padding: '6px 12px',
-                          textAlign: 'left', border: 'none', cursor: 'pointer', gap: 8,
-                          fontSize: 11.5, fontFamily: 'inherit',
-                          color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                          background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                          transition: 'background 0.08s',
-                        }}
-                        onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                        onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                          {m.label}
-                        </span>
-                        {isSel && <Pxi name="check" size={9} style={{ color: 'var(--amber)', flexShrink: 0 }} />}
-                      </button>
-                    )
-                  })}
-                </div>
-              ))}
-            </div>
-
-            {/* Dropdown footer */}
-            <div style={{
-              padding: '5px 10px', borderTop: '1px solid rgba(255,255,255,0.05)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              flexShrink: 0, gap: 6,
-            }}>
-              {isLive ? (
-                <>
-                  <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>{openRouterModels.length} models · OpenRouter</span>
-                  <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>Updated {freshLabel}</span>
-                </>
-              ) : (
-                <span style={{ fontSize: 9.5, color: 'var(--tx-tertiary)' }}>Curated list · add API key to load all</span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Model selector button ───────────────────────────────────── */}
-        <button
-          onClick={() => { setOpen((o) => !o); computeFreshLabel() }}
-          title={`Model: ${fullModel}\nClick to switch`}
-          style={{
-            width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-            padding: '6px 8px', borderRadius: 8,
-            background: open ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${open ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)'}`,
-            cursor: 'pointer', fontFamily: 'inherit',
-            transition: 'background 0.12s, border-color 0.12s', textAlign: 'left',
-          }}
-          onMouseEnter={(e) => {
-            if (!open) {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!open) {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
-            }
-          }}
-        >
-          {/* Provider color swatch */}
-          <div style={{
-            width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-            background: `${meta.color}20`,
-            border: `1px solid ${meta.color}35`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Pxi name={isAuto ? 'bolt' : 'sparkles'} size={9} style={{ color: meta.color }} />
-          </div>
-
-          {/* Model name + provider label stacked */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{
-              fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-mono)',
-              color: 'var(--tx-secondary)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              letterSpacing: '-0.01em', lineHeight: 1.3,
-            }}>
-              {modelLabel}
-            </span>
-            <span style={{
-              fontSize: 9, fontWeight: 600, letterSpacing: '0.07em',
-              textTransform: 'uppercase', fontFamily: 'var(--font-display)',
-              color: meta.color, opacity: 0.7, lineHeight: 1,
-            }}>
-              {meta.label}
-            </span>
-          </div>
-
-          {/* Chevron */}
-          <Pxi name="angle-down" size={9} style={{
-            color: 'var(--tx-muted)', flexShrink: 0,
-            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.15s',
-          }} />
-        </button>
-
-        {/* ── Bottom row ──────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 1px' }}>
-          <SettingsLink onSettings={onSettings} />
-          {onToggleContext && (
-            <ContextToggle active={contextOpen} onClick={onToggleContext} />
-          )}
-        </div>
-      </div>
-    )
-  }
+function SidebarFooter({ onSettings }: { onSettings: () => void }) {
+  return (
+    <div
+      style={{
+        borderTop: '1px solid var(--sidebar-border)',
+        padding: '8px 10px 10px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
+      <SettingsLink onSettings={onSettings} />
+    </div>
+  )
+}
 
 // ── SettingsLink — clickable "Settings" label ─────────────────────────────────
 
@@ -954,32 +733,4 @@ function SettingsLink({ onSettings }: { onSettings: () => void }) {
   )
 }
 
-// ── ContextToggle — sliders icon for the right panel ─────────────────────────
-
-function ContextToggle({ active = false, onClick }: { active?: boolean; onClick: () => void }) {
-  const [hov, setHov] = useState(false)
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      title="Context panel — model, params, system prompt (⌘⇧J)"
-      style={{
-        width: 22, height: 22, display: 'flex',
-        alignItems: 'center', justifyContent: 'center',
-        borderRadius: 5, flexShrink: 0, cursor: 'pointer',
-        border: active
-          ? '1px solid oklch(64% 0.214 40.1 / 0.45)'
-          : `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
-        background: active
-          ? 'oklch(64% 0.214 40.1 / 0.12)'
-          : hov ? 'rgba(255,255,255,0.05)' : 'transparent',
-        color: active ? 'var(--amber)' : hov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
-        transition: 'background 0.1s, border-color 0.1s, color 0.1s',
-      }}
-    >
-      <Pxi name="sliders-h" size={10} />
-    </button>
-  )
-}
 

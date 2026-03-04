@@ -3,8 +3,8 @@
  * Handles streaming completions, retries, rich model fetching.
  */
 
-import { streamText, generateText, type CoreMessage, type ToolDefinition as SDKToolDefinition } from 'ai';
-import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
+import { streamText, generateText } from 'ai';
+import { getUnifiedModel } from './gateway/provider';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -48,23 +48,6 @@ export interface LlmResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null
 }
 
-// ── Retry helpers ──────────────────────────────────────────────────────────────
-
-const MAX_RETRIES = 3
-const BASE_RETRY_DELAY_MS = 1000
-
-async function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) { reject(new DOMException('Aborted', 'AbortError')); return }
-    const t = setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')) }, { once: true })
-  })
-}
-
-function isRetryable(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504
-}
-
 /**
  * Stream a chat completion using the Vercel AI SDK.
  * Handles streaming completions, retries, and gateway failover logic.
@@ -77,7 +60,6 @@ export async function streamCompletion(
   messages: LlmMessage[],
   tools: ToolDefinition[],
   cb: StreamCallbacks,
-  fallbackModels?: string[],
 ): Promise<LlmResponse> {
   const unifiedModel = getUnifiedModel({
     provider,
@@ -86,8 +68,8 @@ export async function streamCompletion(
     extraHeaders: cb.extraHeaders,
   }, model);
 
-  // Convert LlmMessage to AI SDK CoreMessage
-  const coreMessages: CoreMessage[] = messages.map(m => {
+  // Convert LlmMessage to AI SDK message format
+  const coreMessages: any[] = messages.map(m => {
     if (m.role === 'tool') {
       return {
         role: 'tool',
@@ -103,7 +85,7 @@ export async function streamCompletion(
   });
 
   // Convert ToolDefinition to AI SDK Tool
-  const sdkTools: Record<string, SDKToolDefinition> = {};
+  const sdkTools: Record<string, any> = {};
   tools.filter(t => !t.inactive).forEach(t => {
     sdkTools[t.function.name] = {
       description: t.function.description,
@@ -114,17 +96,20 @@ export async function streamCompletion(
   try {
     const { textStream, toolCalls, usage, finishReason } = await streamText({
       model: unifiedModel,
-      messages: coreMessages,
+      messages: coreMessages as any,
       tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
       onFinish: async (event) => {
         if (event.usage) {
-          cb.onUsage(event.usage.promptTokens, event.usage.completionTokens, event.usage.totalTokens);
+          const input = event.usage.inputTokens ?? 0;
+          const output = event.usage.outputTokens ?? 0;
+          const total = event.usage.totalTokens ?? (input + output);
+          cb.onUsage(input, output, total);
         }
         if (event.toolCalls && event.toolCalls.length > 0) {
-          cb.onToolCalls(event.toolCalls.map(tc => ({
+          cb.onToolCalls(event.toolCalls.map((tc: any) => ({
             id: tc.toolCallId,
             type: 'function',
-            function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+            function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
           })));
         }
       },
@@ -137,10 +122,10 @@ export async function streamCompletion(
       cb.onDelta(delta);
     }
 
-    const resolvedToolCalls = (await toolCalls).map(tc => ({
+    const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
       id: tc.toolCallId,
       type: 'function' as const,
-      function: { name: tc.toolName, arguments: JSON.stringify(tc.args) },
+      function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
     }));
 
     const resolvedUsage = await usage;
@@ -150,9 +135,9 @@ export async function streamCompletion(
       toolCalls: resolvedToolCalls,
       finishReason: await finishReason,
       usage: resolvedUsage ? {
-        prompt_tokens: resolvedUsage.promptTokens,
-        completion_tokens: resolvedUsage.completionTokens,
-        total_tokens: resolvedUsage.totalTokens,
+        prompt_tokens: resolvedUsage.inputTokens ?? 0,
+        completion_tokens: resolvedUsage.outputTokens ?? 0,
+        total_tokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
       } : null,
     };
   } catch (err) {
@@ -171,7 +156,6 @@ export async function chatOnce(
   provider: string,
   model: string,
   userPrompt: string,
-  maxTokens = 20,
   extraHeaders?: Record<string, string>,
 ): Promise<string> {
   const unifiedModel = getUnifiedModel({
@@ -184,8 +168,7 @@ export async function chatOnce(
   try {
     const { text } = await generateText({
       model: unifiedModel,
-      messages: [{ role: 'user', content: userPrompt }],
-      maxTokens,
+      prompt: userPrompt,
     });
     return text.trim();
   } catch (err) {
@@ -290,6 +273,54 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
     if (fa !== fb) return fa.localeCompare(fb)
     return a.name.localeCompare(b.name)
   })
+  return models
+}
+
+// ── Vercel AI Gateway models ────────────────────────────────────────────────────
+
+export interface VercelModel {
+  id: string
+  object: string
+  created: number
+  owned_by: string
+}
+
+/**
+ * Fetch available models from Vercel AI Gateway's /models endpoint.
+ * Vercel uses the OpenAI-compatible API format.
+ */
+export async function fetchVercelModels(apiKey: string): Promise<VercelModel[]> {
+  const url = 'https://ai-gateway.vercel.sh/v1/models'
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+
+  const resp = await fetch(url, { headers })
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body?.error?.message) msg = body.error.message
+    } catch {
+      // Response body isn't JSON — ignore and use the status message
+    }
+    throw new Error(msg)
+  }
+
+  const json = await resp.json()
+  const models: VercelModel[] = (json?.data ?? json ?? []).filter(
+    (m: VercelModel) => m.id && m.id.length > 0,
+  )
+
+  // Sort by provider/name
+  models.sort((a, b) => {
+    const fa = a.id.split('/')[0]
+    const fb = b.id.split('/')[0]
+    if (fa !== fb) return fa.localeCompare(fb)
+    return a.id.localeCompare(b.id)
+  })
+
   return models
 }
 

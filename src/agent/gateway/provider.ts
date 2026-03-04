@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createMistral } from '@ai-sdk/mistral';
-import { type LanguageModelV1 } from 'ai';
+import { type LanguageModel } from 'ai';
 
 export interface ProviderConfig {
   provider: 'openrouter' | 'vercel' | 'openai' | 'anthropic' | 'google' | 'mistral' | 'litellm' | 'ollama' | string;
@@ -13,12 +13,12 @@ export interface ProviderConfig {
 }
 
 /**
- * Get a unified LanguageModelV1 instance for a given provider and model.
+ * Get a unified LanguageModel instance for a given provider and model.
  */
 export function getUnifiedModel(
   config: ProviderConfig,
   modelId: string
-): LanguageModelV1 {
+): LanguageModel {
   const { provider, apiKey, apiBase, extraHeaders } = config;
 
   // 1. OpenRouter (native provider for extra headers/features)
