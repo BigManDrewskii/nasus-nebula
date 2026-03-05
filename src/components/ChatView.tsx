@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { tauriInvoke } from '../tauri'
-import { stopWebAgent } from '../agent/index'
+import { runWebAgent, stopWebAgent } from '../agent/index'
 import type { Task, Message, LlmMessage } from '../types'
 import { useAppStore } from '../store'
 import { ChatMessage } from './ChatMessage'
@@ -294,6 +294,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               }
 
             try {
+              // Notify Rust backend for tracking (placeholder, but keeps state in sync)
               await tauriInvoke('run_agent', {
                 taskId,
                 messageId: agentMsgId,
@@ -315,6 +316,30 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 routerModelOverrides: cfg.routerConfig.modelOverrides ?? {},
                 maxIterations: cfg.maxIterations ?? 50,
                 taskTitle,
+                usePlanning: true,
+                orchestratorConfig: {
+                  enableVerification: cfg.enableVerification ?? true,
+                },
+              })
+
+              // Run the actual web agent (TypeScript orchestrator)
+              await runWebAgent({
+                taskId,
+                taskTitle,
+                messageId: agentMsgId,
+                userMessages: history,
+                apiKey: cfg.apiKey || '',
+                model: modelToUse,
+                apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
+                provider: cfg.provider || 'openrouter',
+                searchConfig: {
+                  exaKey: cfg.exaKey || '',
+                },
+                executionConfig: {
+                  executionMode: 'docker' as const,
+                  taskId,
+                },
+                maxIterations: cfg.maxIterations ?? 50,
                 usePlanning: true,
                 orchestratorConfig: {
                   enableVerification: cfg.enableVerification ?? true,

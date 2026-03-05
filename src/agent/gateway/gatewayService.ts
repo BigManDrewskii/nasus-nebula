@@ -23,6 +23,7 @@ import type {
   GatewayCallResult,
 } from './gatewayTypes'
 import { getActiveGateways } from './gatewayTypes'
+import { getGlobalRateLimiter, type RateLimiterStats } from './rateLimiter'
 
 // ─── Circuit Breaker Constants ──────────────────────────────────────────────
 
@@ -146,6 +147,19 @@ export class GatewayService {
       queryParams: Record<string, string>,
     ) => Promise<T>,
   ): Promise<{ result: T; meta: GatewayCallResult }> {
+    // Proactive rate limiting — wait before making request if needed
+    const rateLimiter = getGlobalRateLimiter()
+    const rateLimitWaitMs = await rateLimiter.acquire()
+    if (rateLimitWaitMs > 100) {
+      // Log if we waited more than 100ms (useful for debugging)
+      this.emitEvent({
+        type: 'trying',
+        gatewayId: '',
+        gatewayLabel: '',
+        message: `Rate limiting: waited ${Math.round(rateLimitWaitMs)}ms before request`,
+      })
+    }
+
     const active = this.getEligibleGateways()
 
     if (active.length === 0) {
@@ -303,6 +317,13 @@ export class GatewayService {
     }
   }
 
+  /**
+   * Get current rate limiter statistics for debugging/UI display.
+   */
+  getRateLimiterStats(): RateLimiterStats {
+    return getGlobalRateLimiter().getStats()
+  }
+
   // ── Private: Gateway Selection ──────────────────────────────────────────────
 
   /**
@@ -331,15 +352,15 @@ export class GatewayService {
 
   /**
    * Build request headers for a specific gateway.
-   * Injects HTTP-Referer and X-Title for OpenRouter (required for attribution
+   * Injects HTTP-Referer and X-Title for OpenRouter/Requesty (required for attribution
    * and some free-tier rate limit eligibility). These are standard/allowed CORS headers.
    */
   private buildHeaders(gw: GatewayConfig): Record<string, string> {
     const headers: Record<string, string> = {}
 
-    // Always inject OpenRouter attribution headers — they are explicitly listed in
-    // OpenRouter's Access-Control-Allow-Headers and do NOT cause CORS preflight issues.
-    if (gw.type === 'openrouter') {
+    // Always inject OpenRouter/Requesty attribution headers — they are explicitly listed in
+    // their Access-Control-Allow-Headers and do NOT cause CORS preflight issues.
+    if (gw.type === 'openrouter' || gw.type === 'requesty') {
       headers['HTTP-Referer'] = 'https://nasus.app'
       headers['X-Title'] = 'Nasus'
     }

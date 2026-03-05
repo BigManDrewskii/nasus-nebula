@@ -62,7 +62,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       } = useAppStore()
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
-  const [localVercelKey, setLocalVercelKey] = useState('')
+  const [localRequestyKey, setLocalRequestyKey] = useState('')
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
@@ -103,7 +103,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     // Initialize provider-specific state from gateway configs
     useEffect(() => {
       const state = useAppStore.getState()
-      
+
       const orGateway = state.gateways.find((g) => g.id === 'openrouter')
       if (orGateway?.apiKey) {
         setLocalOpenRouterKey(orGateway.apiKey)
@@ -111,17 +111,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         setLocalOpenRouterKey(state.apiKey)
       }
 
-      const vercelGateway = state.gateways.find((g) => g.id === 'vercel')
-      if (vercelGateway?.apiKey) {
-        setLocalVercelKey(vercelGateway.apiKey)
-      } else if (state.provider === 'vercel') {
-        setLocalVercelKey(state.apiKey)
+      const requestyGateway = state.gateways.find((g) => g.id === 'requesty')
+      if (requestyGateway?.apiKey) {
+        setLocalRequestyKey(requestyGateway.apiKey)
       }
 
-      if (state.provider === 'vercel') {
-        setActiveProvider('vercel')
-      } else if (state.provider === 'openrouter') {
+      if (state.provider === 'openrouter') {
         setActiveProvider('openrouter')
+      } else if (state.provider === 'requesty') {
+        setActiveProvider('requesty')
       } else if (state.provider === 'ollama') {
         setActiveProvider('ollama')
       }
@@ -221,11 +219,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setFetchModelsError('Enter your OpenRouter API key first')
       return
     }
+    if (activeProvider === 'requesty' && !localRequestyKey.trim()) {
+      setFetchModelsError('Enter your Requesty API key first')
+      return
+    }
     setFetchingModels(true)
     setFetchModelsError(null)
     try {
-      // Always use the OR fetch function directly — Tauri path also calls OR
-      const key = activeProvider === 'openrouter' ? localOpenRouterKey.trim() : localVercelKey.trim()
+      // Requesty uses the same API format as OpenRouter, so we use the same fetch function
+      const key = activeProvider === 'requesty'
+        ? localRequestyKey.trim()
+        : localOpenRouterKey.trim()
       const models = await fetchOpenRouterModels(key)
       setOpenRouterModels(models)
       setFetchedCount(models.length)
@@ -246,11 +250,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       } else if (!localOpenRouterKey.trim().startsWith('sk-or-')) {
         errs.apiKey = 'OpenRouter keys start with sk-or-… — get one at openrouter.ai/keys'
       }
-    } else if (activeProvider === 'vercel') {
-      if (!localVercelKey.trim()) {
+    }
+    if (activeProvider === 'requesty') {
+      if (!localRequestyKey.trim()) {
         errs.apiKey = 'API key is required'
-      } else if (!localVercelKey.trim().startsWith('vck_')) {
-        errs.apiKey = 'Vercel AI Gateway keys start with vck_…'
+      } else if (!localRequestyKey.trim().startsWith('req_')) {
+        errs.apiKey = 'Requesty keys start with req_… — get one at app.requesty.ai'
       }
     }
     if (localWorkspace.trim() && !localWorkspace.trim().startsWith('/')) {
@@ -262,7 +267,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   function handleReset() {
     if (!confirm('Reset all settings to defaults? This will clear your API keys and preferences.')) return
     setLocalOpenRouterKey('')
-    setLocalVercelKey('')
+    setLocalRequestyKey('')
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
     setLocalExaKey('')
@@ -277,31 +282,29 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     async function checkAndSave() {
       const errs = validate()
-      if ((activeProvider === 'openrouter' || activeProvider === 'vercel') && Object.keys(errs).length > 0) { setErrors(errs); return }
+      if ((activeProvider === 'openrouter' || activeProvider === 'requesty') && Object.keys(errs).length > 0) { setErrors(errs); return }
       setErrors({})
       setSaving(true)
       setSaveError(null)
 
       const isOllama = activeProvider === 'ollama'
-      const isVercel = activeProvider === 'vercel'
       const isOpenRouter = activeProvider === 'openrouter'
-      const VERCEL_BASE = 'https://ai-gateway.vercel.sh/v1'
-      const finalApiBase = isOllama ? OLLAMA_BASE
-        : isVercel ? VERCEL_BASE
-        : localApiBase
-      const finalProvider = isOllama ? 'ollama'
-        : isVercel ? 'vercel'
-        : 'openrouter'
+      const isRequesty = activeProvider === 'requesty'
 
-        // Save both keys to their respective gateways in the store
-        updateGateway('openrouter', { apiKey: localOpenRouterKey.trim() })
-        updateGateway('vercel', { apiKey: localVercelKey.trim() })
+      // Determine API base and provider
+      const REQUESTY_BASE = 'https://router.requesty.ai/v1'
+      const finalApiBase = isOllama ? OLLAMA_BASE : isRequesty ? REQUESTY_BASE : localApiBase
+      const finalProvider = isOllama ? 'ollama' : isRequesty ? 'requesty' : 'openrouter'
 
-        // The legacy/active apiKey in the store is the one for the currently active provider
-        const finalApiKey = isVercel ? localVercelKey.trim() 
-          : isOpenRouter ? localOpenRouterKey.trim() 
-          : ''
-        
+      // Save keys to their respective gateways
+      updateGateway('openrouter', { apiKey: localOpenRouterKey.trim() })
+      updateGateway('requesty', { apiKey: localRequestyKey.trim() })
+
+      // The legacy/active apiKey in the store is the one for the currently active provider
+      const finalApiKey = isOpenRouter ? localOpenRouterKey.trim()
+        : isRequesty ? localRequestyKey.trim()
+        : ''
+
         setApiKey(finalApiKey)
         setModel(localModel)
         setWorkspacePath(localWorkspace.trim())
@@ -324,15 +327,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
       setMaxIterations(parsedIter)
       setEnableVerification(localEnableVerification)
-      // Save router config (force manual for Ollama and Vercel)
+      // Save router config (force manual for Ollama)
       setRouterConfig({
-        mode: (isOllama || isVercel) ? 'manual' : localRouterMode,
+        mode: isOllama ? 'manual' : localRouterMode,
         budget: localRouterBudget,
         modelOverrides: localModelOverrides,
       })
       try {
         await tauriInvoke('save_router_settings', {
-          mode: (isOllama || isVercel) ? 'manual' : localRouterMode,
+          mode: isOllama ? 'manual' : localRouterMode,
           budget: localRouterBudget,
           modelOverrides: localModelOverrides,
         })
@@ -546,10 +549,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       healthKey: 'openrouter' as const,
                     },
                     {
-                      id: 'vercel',
-                      label: 'Vercel AI',
-                      description: 'Direct access to Anthropic, OpenAI, Google models',
-                      healthKey: 'vercel' as const,
+                      id: 'requesty',
+                      label: 'Requesty',
+                      description: 'LLM router with automatic failover & caching',
+                      healthKey: 'requesty' as const,
                     },
                     {
                       id: 'ollama',
@@ -562,8 +565,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     const health = gatewayHealth.find(h => h.gatewayId === opt.healthKey)
                     const hasKey = opt.id === 'openrouter'
                       ? Boolean(localOpenRouterKey.trim())
-                      : opt.id === 'vercel'
-                        ? Boolean(localVercelKey.trim())
+                      : opt.id === 'requesty'
+                        ? Boolean(localRequestyKey.trim())
                         : true // Ollama doesn't need a key
 
                     const statusColor = health?.status === 'healthy' ? '#22c55e'
@@ -579,6 +582,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           setActiveProvider(opt.id)
                           // Auto-fetch models when switching providers (if key exists)
                           if (opt.id === 'openrouter' && localOpenRouterKey.trim()) {
+                            handleFetchModels()
+                          } else if (opt.id === 'requesty' && localRequestyKey.trim()) {
+                            // Requesty uses the same API as OpenRouter, so we can fetch models the same way
                             handleFetchModels()
                           } else if (opt.id === 'ollama') {
                             // Fetch Ollama models
@@ -691,21 +697,21 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </Field>
                 )}
 
-                {activeProvider === 'vercel' && (
+                {activeProvider === 'requesty' && (
                   <Field
-                    label="Vercel AI Key"
+                    label="Requesty API Key"
                     icon="key"
-                    hint={<>Vercel AI Gateway key. Get one at <a href="https://vercel.com/account/tokens" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>vercel.com/account/tokens</a></>}
+                    hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>app.requesty.ai</a></>}
                     error={errors.apiKey}
                   >
                     <input
                       type="password"
-                      value={localVercelKey}
+                      value={localRequestyKey}
                       onChange={(e) => {
-                        setLocalVercelKey(e.target.value)
+                        setLocalRequestyKey(e.target.value)
                         setErrors((p) => ({ ...p, apiKey: undefined }))
                       }}
-                      placeholder="vck_..."
+                      placeholder="req_..."
                       style={{
                         width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
                         color: 'var(--tx-primary)', background: '#0d0d0d',

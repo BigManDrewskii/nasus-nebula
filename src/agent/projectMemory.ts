@@ -11,11 +11,12 @@ export async function readProjectMemory(): Promise<string> {
   const workspacePath = useAppStore.getState().workspacePath
   if (!workspacePath) return ''
 
-  const memoryPath = `${workspacePath}/.nasus/project_memory.md`
+  const memoryPath = '.nasus/project_memory.md'
   try {
     const content = await tauriInvoke<string>('read_file', {
       taskId: '__system__',
-      path: memoryPath
+      path: memoryPath,
+      workspacePath
     })
     return content || ''
   } catch {
@@ -27,14 +28,15 @@ export async function updateProjectMemory(taskId: string): Promise<void> {
   const workspacePath = useAppStore.getState().workspacePath
   if (!workspacePath) return
 
-  const memoryPath = `${workspacePath}/.nasus/project_memory.md`
+  const memoryPath = '.nasus/project_memory.md'
 
   // Read existing memory
   let existing = ''
   try {
     const content = await tauriInvoke<string>('read_file', {
       taskId: '__system__',
-      path: memoryPath
+      path: memoryPath,
+      workspacePath
     })
     existing = content || ''
   } catch {
@@ -86,7 +88,8 @@ Return ONLY new bullet points to ADD, or "NONE" if nothing new. Each bullet must
     await tauriInvoke('write_file', {
       taskId: '__system__',
       path: memoryPath,
-      content: updated
+      content: updated,
+      workspacePath
     })
   }
 }

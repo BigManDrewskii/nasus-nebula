@@ -16,11 +16,11 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.39",
-    "@hackernoon/pixel-icon-library": "^1.0.6",
     "@openrouter/ai-sdk-provider": "^2.2.3",
     "@tauri-apps/api": "^2.10.1",
     "ai": "^6.0.111",
     "jszip": "^3.10.1",
+    "pixelarticons": "^2.0.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zustand": "^5.0.11"

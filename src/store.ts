@@ -12,6 +12,7 @@ import { MAX_TASKS, MAX_TOOL_RESULT_CHARS, MAX_RAW_HISTORY_LIVE, DEFAULT_MAX_ITE
 
 // Gateway integration
 import { createGatewaySlice, type GatewaySlice } from './agent/gateway'
+import { updateGlobalRateLimiterConfig } from './agent/gateway/rateLimiter'
 
 // ── Router config ──────────────────────────────────────────────────────────────
 export type ToolCallingSupport = 'Strong' | 'Moderate' | 'Weak' | 'Unknown'
@@ -61,10 +62,6 @@ export interface TaskRouterState {
   totalOutputTokens: number
   callCount: number
   isFree: boolean
-  /** Actual cost from Vercel response headers (overrides estimation) */
-  actualCostUsd?: number
-  /** Vercel generation ID for the last request */
-  generationId?: string
   /** Cumulative token usage for this task */
   tokenUsage?: TaskTokenUsage
 }
@@ -127,6 +124,9 @@ interface AppState extends GatewaySlice {
     sidecarPromptShown: boolean
     // Browser activity state for agent-driven browsing
     browserActivityActive: boolean
+    // Rate limiting settings (to avoid 429 errors)
+    rateLimitEnabled: boolean
+    maxRequestsPerMinute: number
 
   // Planning state
   pendingPlan: ExecutionPlan | null
@@ -199,6 +199,8 @@ interface AppState extends GatewaySlice {
   setPendingToolApproval: (approval: { tool: string; args: Record<string, any>; reason?: string; taskId: string } | null) => void
   approveTool: (taskId: string, tool: string) => void
   rejectTool: (taskId: string, tool: string) => void
+  setRateLimitEnabled: (enabled: boolean) => void
+  setMaxRequestsPerMinute: (max: number) => void
 }
 
 const WELCOME_MESSAGE: Message = {
@@ -249,6 +251,9 @@ export const useAppStore = create<AppState>()(
           sidecarInstallProgress: null,
           sidecarPromptShown: false,
           browserActivityActive: false,
+          // Rate limiting settings (conservative defaults for free tiers)
+          rateLimitEnabled: true,
+          maxRequestsPerMinute: 60,
           routerConfig: {
             mode: 'auto',
             budget: 'free',
@@ -585,8 +590,7 @@ export const useAppStore = create<AppState>()(
 
               // Reset model to a default for this provider if needed
               const defaultModels: Record<string, string> = {
-                openrouter: 'anthropic/claude-sonnet-4-20250514',
-                vercel: 'anthropic/claude-sonnet-4-20250514',
+                openrouter: 'anthropic/claude-3.5-sonnet',
                 ollama: 'llama3.3:latest',
               }
               const currentModel = get().model
@@ -621,11 +625,6 @@ export const useAppStore = create<AppState>()(
                     const { fetchOpenRouterModels } = await import('./agent/llm')
                     const models = await fetchOpenRouterModels(key)
                     set({ openRouterModels: models })
-                    break
-                  }
-                  case 'vercel': {
-                    // Vercel AI uses static model list (no public discovery API)
-                    // The curated list is defined in the component
                     break
                   }
                   case 'ollama': {
@@ -782,6 +781,14 @@ export const useAppStore = create<AppState>()(
             set({ pendingToolApproval: null })
             window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { tool } }))
           },
+          setRateLimitEnabled: (enabled) => {
+            set({ rateLimitEnabled: enabled })
+            updateGlobalRateLimiterConfig({ enabled })
+          },
+          setMaxRequestsPerMinute: (max) => {
+            set({ maxRequestsPerMinute: max })
+            updateGlobalRateLimiterConfig({ maxRequests: max })
+          },
         }
     },
   {
@@ -833,11 +840,20 @@ export const useAppStore = create<AppState>()(
                 extensionConnected: state.extensionConnected,
                 extensionVersion: state.extensionVersion,
                 sidecarPromptShown: state.sidecarPromptShown,
+                rateLimitEnabled: state.rateLimitEnabled,
+                maxRequestsPerMinute: state.maxRequestsPerMinute,
                 }
       },
       // On rehydration, clear any streaming:true flags left by a previous crashed session
       onRehydrateStorage: () => (state) => {
         if (!state) return
+
+        // Initialize rate limiter with stored settings
+        updateGlobalRateLimiterConfig({
+          enabled: state.rateLimitEnabled ?? true,
+          maxRequests: state.maxRequestsPerMinute ?? 60,
+        })
+
         const fixedMessages: Record<string, Message[]> = {}
         for (const [tid, msgs] of Object.entries(state.messages)) {
           fixedMessages[tid] = msgs.map((m) =>

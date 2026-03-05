@@ -142,9 +142,17 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
           />
         </div>
       ) : (
-        <button
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onClick}
           onDoubleClick={(e) => startEdit(e)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onClick()
+            }
+          }}
           style={{
             width: '100%',
             display: 'flex',
@@ -272,7 +280,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
               <Pxi name="ellipses-vertical" size={12} />
             </button>
           )}
-        </button>
+        </div>
       )}
 
       <TaskActionMenu

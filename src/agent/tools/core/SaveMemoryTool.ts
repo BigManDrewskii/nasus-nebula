@@ -28,15 +28,16 @@ export class SaveMemoryTool extends BaseTool {
     const workspacePath = useAppStore.getState().workspacePath
     if (!workspacePath) return toolFailure('No workspace path configured')
 
-    const memoryPath = `${workspacePath}/.nasus/project_memory.md`
-    
+    const memoryPath = '.nasus/project_memory.md'
+
     try {
       // Read existing
       let existing = ''
       try {
         existing = await tauriInvoke<string>('read_file', {
           taskId: '__system__',
-          path: memoryPath
+          path: memoryPath,
+          workspacePath
         }) || ''
       } catch { /* ignore if not exists */ }
 
@@ -47,7 +48,8 @@ export class SaveMemoryTool extends BaseTool {
       await tauriInvoke('write_file', {
         taskId: '__system__',
         path: memoryPath,
-        content: updated
+        content: updated,
+        workspacePath
       })
 
       return toolSuccess(`Fact saved to project memory: ${fact}`)

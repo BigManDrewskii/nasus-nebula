@@ -418,6 +418,61 @@ async fn workspace_delete_all(taskId: String, workspacePath: String) -> Result<(
     Ok(())
 }
 
+// --- Generic File Operations (for project-level files like .nasus/project_memory.md) ---
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn read_file(_taskId: String, path: String, workspacePath: String) -> Result<String, String> {
+    // Only allow project-level files (outside task directories)
+    // Prevent path traversal attacks
+    let clean_path = Path::new(&path);
+    if clean_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Path traversal not allowed".to_string());
+    }
+
+    // Resolve the path relative to workspace root
+    let full_path = Path::new(&workspacePath).join(clean_path);
+
+    // Ensure the resolved path is still within workspace
+    let workspace = Path::new(&workspacePath).canonicalize().map_err(|e| e.to_string())?;
+    let resolved = full_path.canonicalize().map_err(|_| "File not found".to_string())?;
+
+    if !resolved.starts_with(&workspace) {
+        return Err("Access denied: path outside workspace".to_string());
+    }
+
+    std::fs::read_to_string(&full_path).map_err(|e| e.to_string())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn write_file(_taskId: String, path: String, content: String, workspacePath: String) -> Result<(), String> {
+    // Only allow project-level files (outside task directories)
+    // Prevent path traversal attacks
+    let clean_path = Path::new(&path);
+    if clean_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("Path traversal not allowed".to_string());
+    }
+
+    // Resolve the path relative to workspace root
+    let full_path = Path::new(&workspacePath).join(clean_path);
+
+    // Ensure the resolved path is still within workspace
+    let workspace = Path::new(&workspacePath).canonicalize().map_err(|e| e.to_string())?;
+    if let Ok(resolved) = full_path.canonicalize() {
+        if !resolved.starts_with(&workspace) {
+            return Err("Access denied: path outside workspace".to_string());
+        }
+    }
+
+    // Create parent directories if needed
+    if let Some(parent) = full_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    std::fs::write(&full_path, content).map_err(|e| e.to_string())
+}
+
 // --- Agent Commands ---
 
 #[allow(non_snake_case)]
@@ -672,6 +727,8 @@ pub fn run() {
         workspace_write,
         workspace_delete,
         workspace_delete_all,
+        read_file,
+        write_file,
         run_agent,
         stop_agent,
         http_fetch,

@@ -13,7 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'openrouter' | 'ollama' | 'custom'
+export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
@@ -139,6 +139,22 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     apiKey: '',
     priority: 0,
     enabled: true,
+    nativeRouting: true,
+    maxRetries: 2,
+    timeoutMs: 180_000,
+    extraHeaders: {
+      'HTTP-Referer': 'https://nasus.app',
+      'X-Title': 'Nasus',
+    },
+  },
+  {
+    id: 'requesty',
+    type: 'requesty',
+    label: 'Requesty',
+    apiBase: 'https://router.requesty.ai/v1',
+    apiKey: '',
+    priority: 1,
+    enabled: false,
     nativeRouting: true,
     maxRetries: 2,
     timeoutMs: 180_000,

@@ -226,7 +226,7 @@ function ModelSection({ open, onToggle }: { open: boolean; onToggle: () => void 
     return model.includes('/') ? model.split('/').pop()! : model
   }, [model, isAutoMode, routingPreview, routerConfig?.budget])
 
-  const providerLabel = provider === 'ollama' ? 'Local' : provider === 'vercel' ? 'Vercel AI' : 'OpenRouter'
+  const providerLabel = provider === 'ollama' ? 'Local' : 'OpenRouter'
   const providerIcon = provider === 'ollama' ? 'server' : 'cloud'
 
   // Build model list
@@ -594,7 +594,6 @@ function ModelSection({ open, onToggle }: { open: boolean; onToggle: () => void 
 
 const PROVIDERS = [
   { id: 'openrouter', label: 'OpenRouter', icon: 'cloud', color: 'var(--amber)', desc: 'Cloud API' },
-  { id: 'vercel',     label: 'Vercel AI',  icon: 'triangle', color: '#818cf8', desc: 'AI Gateway' },
   { id: 'auto',       label: 'Auto',       icon: 'bolt',     color: '#22c55e', desc: 'Best route' },
 ] as const
 

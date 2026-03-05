@@ -6,6 +6,7 @@
 import { streamText, generateText } from 'ai';
 import { getUnifiedModel } from './gateway/provider';
 import { useAppStore } from '../store';
+import { getGlobalRateLimiter } from './gateway/rateLimiter';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -119,11 +120,20 @@ export async function streamCompletion(
   try {
     console.log('[streamCompletion] Calling streamText...')
 
-    const { textStream, toolCalls, usage, finishReason } = await streamText({
-      model: unifiedModel,
-      messages: coreMessages as any,
-      tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
-      onFinish: async (event) => {
+    // Proactive rate limiting — wait before making request if needed
+    const rateLimiter = getGlobalRateLimiter()
+    const waitMs = await rateLimiter.acquire()
+    if (waitMs > 100) {
+      console.log(`[streamCompletion] Rate limited: waited ${Math.round(waitMs)}ms`)
+    }
+
+      const { textStream, toolCalls, usage, finishReason } = await streamText({
+        model: unifiedModel,
+        messages: coreMessages as any,
+        tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
+        // Don't retry on billing/auth errors — they won't recover with retries
+        maxRetries: 2,
+        onFinish: async (event) => {
         console.log('[streamCompletion] onFinish:', { usage: event.usage, toolCallsCount: event.toolCalls?.length })
         if (event.usage) {
           const input = event.usage.inputTokens ?? 0;
@@ -139,8 +149,14 @@ export async function streamCompletion(
           })));
         }
       },
-      abortSignal: cb.signal,
-    });
+        abortSignal: cb.signal,
+      });
+
+      // Attach no-op catch handlers to prevent unhandled rejection noise when
+      // the stream errors — these promises reject in parallel with textStream.
+      toolCalls.catch(() => {});
+      usage.catch(() => {});
+      finishReason.catch(() => {});
 
     console.log('[streamCompletion] streamText returned, starting stream read...')
 
@@ -172,20 +188,31 @@ export async function streamCompletion(
         totalTokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
       } : null,
     };
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    const errorStack = err instanceof Error ? err.stack : undefined;
-    console.error('[streamCompletion] Error:', {
-      message: errorMsg,
-      stack: errorStack,
-      provider,
-      apiBase,
-      model,
-      hasApiKey: Boolean(apiKey && apiKey.length > 0),
-    })
-    cb.onError(errorMsg);
-    throw err;
-  }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorStack = err instanceof Error ? err.stack : undefined;
+
+      // Map HTTP status codes to user-friendly messages
+      let userMessage = errorMsg;
+      if (errorMsg.includes('402') || errorMsg.toLowerCase().includes('insufficient credits') || errorMsg.toLowerCase().includes('insufficient_credits')) {
+        userMessage = 'OpenRouter account has insufficient credits. Add more at https://openrouter.ai/settings/credits';
+      } else if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('invalid api key')) {
+        userMessage = 'Invalid or missing API key. Check your API key in Settings.';
+      } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('rate limit') || errorMsg.toLowerCase().includes('too many requests')) {
+        userMessage = 'Rate limit reached. Please wait a moment before trying again.';
+      }
+
+      console.error('[streamCompletion] Error:', {
+        message: errorMsg,
+        stack: errorStack,
+        provider,
+        apiBase,
+        model,
+        hasApiKey: Boolean(apiKey && apiKey.length > 0),
+      })
+      cb.onError(userMessage);
+      throw err;
+    }
 }
 
 /**
@@ -207,6 +234,9 @@ export async function chatOnce(
   }, model);
 
   try {
+    // Rate limiting for non-streaming calls too
+    await getGlobalRateLimiter().acquire()
+
     const { text } = await generateText({
       model: unifiedModel,
       prompt: userPrompt,
@@ -238,6 +268,9 @@ export async function chatJson<T>(
   }, model);
 
   try {
+    // Rate limiting for non-streaming calls too
+    await getGlobalRateLimiter().acquire()
+
     const { text } = await generateText({
       model: unifiedModel,
       prompt,
@@ -275,6 +308,9 @@ export async function chatJsonViaGateway<T>(prompt: string, maxTokens = 1000, mo
  * Kept for backwards compat — new code should use fetchOpenRouterModels.
  */
 export async function fetchModels(apiBase: string, apiKey: string): Promise<string[]> {
+  // Rate limiting for model fetching
+  await getGlobalRateLimiter().acquire()
+
   const url = `${apiBase.replace(/\/$/, '')}/models`
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -333,6 +369,9 @@ function getORHeaders(): Record<string, string> {
  * Returns full OpenRouterModel objects sorted by provider family then name.
  */
 export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
+  // Rate limiting for model fetching too
+  await getGlobalRateLimiter().acquire()
+
   const url = `${OR_API_BASE}/models`
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,

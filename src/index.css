@@ -1,13 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* Override the node_modules @font-face to point to our statically-served copy */
-@font-face {
-  font-family: "iconfont";
-  src: url("/iconfont.woff2") format("woff2"),
-       url("/iconfont.woff") format("woff");
-  font-display: block;
-}
-
 @import "tailwindcss";
 
 @theme {
@@ -979,13 +971,40 @@ html, body, #root {
 .output-collapsed-rail {
   width: 100%;
   height: 100%;
-  background: linear-gradient(180deg, #0b0b0b 0%, #080808 100%);
-  border-left: 1px solid rgba(255,255,255,0.06);
+  background: var(--bg-base);
+  border-left: 1px solid rgba(255,255,255,0.05);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 0 6px;
+  justify-content: flex-start;
   overflow: hidden;
+}
+
+.output-collapsed-expand-btn {
+  /* Vertically centered within the 40px tab-bar height */
+  width: 28px;
+  height: 32px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.output-collapsed-expand-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.65);
+}
+
+.output-collapsed-expand-btn:active {
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.9);
 }
 
 /* Shared rail header — identical structure on both sides */

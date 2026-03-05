@@ -4,7 +4,7 @@ import { type LanguageModel } from 'ai';
 import { withHealthTracking } from './healthMiddleware';
 
 export interface ProviderConfig {
-  provider: 'openrouter' | 'ollama' | 'custom';
+  provider: 'openrouter' | 'requesty' | 'ollama' | 'custom';
   apiKey?: string;
   apiBase?: string;
   gatewayId?: string;
@@ -13,6 +13,7 @@ export interface ProviderConfig {
 
 /**
  * Get a unified LanguageModel instance for a given provider and model.
+ * Requesty uses the same OpenAI-compatible API as OpenRouter (same model IDs, headers).
  */
 export function getUnifiedModel(
   config: ProviderConfig,
@@ -22,8 +23,10 @@ export function getUnifiedModel(
 
   let model: LanguageModel;
 
-  // 1. OpenRouter (native provider for extra headers/features)
-  if (provider === 'openrouter' || (apiBase && apiBase.includes('openrouter.ai'))) {
+  // 1. OpenRouter/Requesty (native provider for extra headers/features)
+  // Requesty uses the same API format and model IDs as OpenRouter
+  if (provider === 'openrouter' || provider === 'requesty' ||
+      (apiBase && (apiBase.includes('openrouter.ai') || apiBase.includes('requesty.ai')))) {
     const openrouter = createOpenRouter({
       apiKey,
       baseURL: apiBase,

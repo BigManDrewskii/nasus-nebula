@@ -3,7 +3,7 @@ import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
 import type { Task } from '../types'
 import { TaskListItem } from './TaskListItem'
-import { SidebarEmptyState, RailButton } from './sidebar/SidebarComponents'
+import { SidebarEmptyState } from './sidebar/SidebarComponents'
 import { ModelIndicatorRow } from './ModelIndicatorRow'
 
 interface SidebarProps {
@@ -12,9 +12,6 @@ interface SidebarProps {
   onSelectTask: (id: string) => void
   onNewTask: () => void
   onOpenSettings: () => void
-  /** Controlled collapse state — driven by the Panel's onResize callback */
-  collapsed?: boolean
-  onToggleCollapse?: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,7 +47,7 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed = false, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings }: SidebarProps) {
   const [search, setSearch]                   = useState('')
   const [searchOpen, setSearchOpen]           = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -93,7 +90,6 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
   return (
     <aside
       className="sidebar"
-      data-collapsed={collapsed ? 'true' : 'false'}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -105,79 +101,8 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
         position: 'relative',
       }}
     >
-      {collapsed ? (
-        /* ── Collapsed icon rail ── */
-        <div className="sidebar-rail" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div
-            className="rail-header"
-            data-tauri-drag-region
-            style={{ paddingTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center' }}
-          >
-              {/* Logo with ambient glow */}
-                <div style={{ position: 'relative', lineHeight: 0 }}>
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: -8,
-                      borderRadius: 12,
-                      background: 'radial-gradient(ellipse at 50% 50%, oklch(64% 0.214 40.1 / 0.25) 0%, transparent 70%)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width={28}
-                    height={28}
-                    viewBox="0 0 256 256"
-                    fill="none"
-                    style={{ display: 'block', flexShrink: 0 }}
-                  >
-                    <path
-                      d="M 0 192 C 0 227.346 28.654 256 64 256 L 256 256 L 256 64 C 256 28.654 227.346 0 192 0 L 0 0 Z M 178 128 C 150.386 128 128 150.386 128 178 L 128 192 L 64 192 L 64 128 L 78 128 C 105.614 128 128 105.614 128 78 L 128 64 L 192 64 L 192 128 Z"
-                      fill="var(--amber)"
-                    />
-                  </svg>
-                </div>
-
-            <RailButton
-              icon="angle-right"
-              title="Expand sidebar"
-              onClick={onToggleCollapse}
-            />
-          </div>
-
-          {/* Spacer to push footer to bottom */}
-          <div style={{ flex: 1 }} />
-
-          {/* Footer: settings cog */}
-          <div style={{ paddingTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center' }}>
-            {/* Settings cog - opens settings panel */}
-            <button
-              onClick={onOpenSettings}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(255,255,255,0.025)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                cursor: 'pointer',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-              title="Settings (⌘,)"
-            >
-              <Pxi name="cog" size={11} style={{ color: 'var(--tx-secondary)' }} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* ── Expanded full sidebar ── */
-        <>
-          <SidebarBrand onToggleCollapse={onToggleCollapse} />
+      <>
+        <SidebarBrand />
 
           <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
             <NewTaskButton onClick={onNewTask} />
@@ -700,33 +625,50 @@ function SettingsLink({ onSettings }: { onSettings: () => void }) {
       title="System settings — API keys, workspace (⌘,)"
       style={{
         flex: 1,
-        display: 'flex', alignItems: 'center', gap: 5,
-        padding: '3px 4px',
-        background: 'none', border: 'none', cursor: 'pointer',
-        borderRadius: 4,
-        transition: 'color 0.12s',
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 8px',
+        background: hov ? 'var(--sidebar-item-hover)' : 'var(--sidebar-item-bg, rgba(255,255,255,0.04))',
+        border: '1px solid',
+        borderColor: hov ? 'var(--sidebar-border-strong, rgba(255,255,255,0.12))' : 'var(--sidebar-border)',
+        cursor: 'pointer',
+        borderRadius: 5,
+        transition: 'background 0.12s, border-color 0.12s',
       }}
     >
-      <Pxi
-        name="cog"
-        size={12}
-        style={{
+        <Pxi
+          name="cog"
+          size={16}
+          style={{
+            color: hov ? 'var(--amber-light)' : 'var(--tx-secondary)',
+            transition: 'color 0.15s, transform 0.4s cubic-bezier(0.4,0,0.2,1)',
+            transform: hov ? 'rotate(72deg)' : 'rotate(0deg)',
+            flexShrink: 0,
+          }}
+        />
+        <span style={{
+          fontSize: 11.5, fontWeight: 500,
+          color: hov ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          transition: 'color 0.15s',
+          lineHeight: 1,
+          letterSpacing: '0.01em',
+        }}>
+          Settings
+        </span>
+        <kbd style={{
+          marginLeft: 'auto',
+          fontSize: 9,
           color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
-          transition: 'color 0.12s, transform 0.35s',
-          transform: hov ? 'rotate(60deg)' : 'rotate(0deg)',
-          flexShrink: 0,
-        }}
-      />
-      <span style={{
-        fontSize: 9, fontWeight: 500, letterSpacing: '0.05em',
-        textTransform: 'uppercase', fontFamily: 'var(--font-mono)',
-        color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
-        transition: 'color 0.12s',
-        lineHeight: 1,
-        paddingLeft: 1,
-      }}>
-        Settings
-      </span>
+          fontFamily: 'var(--font-mono)',
+          letterSpacing: '0.02em',
+          background: hov ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 3,
+          padding: '1px 4px',
+          transition: 'background 0.15s, color 0.15s',
+          lineHeight: '14px',
+        }}>
+          ⌘,
+        </kbd>
     </button>
   )
 }

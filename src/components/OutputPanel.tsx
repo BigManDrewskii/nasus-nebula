@@ -124,17 +124,18 @@ export function OutputPanel({
     { id: 'code',    icon: 'code',    label: 'Code'    },
   ]
 
-  // ── Collapsed icon rail ─────────────────────────────────────────────────────
+  // ── Collapsed rail ──────────────────────────────────────────────────────────
   if (collapsed) {
     return (
       <div className="output-collapsed-rail" role="complementary" aria-label="Output panel (collapsed)">
-        <div className="rail-header" style={{ padding: 'var(--space-2-5)' }}>
-          <RailButton
-            icon="angle-left"
-            title="Expand output panel (⌘⇧\)"
-            onClick={() => onExpand?.()}
-          />
-        </div>
+        <button
+          className="output-collapsed-expand-btn"
+          onClick={() => onExpand?.()}
+          title="Expand output panel (⌘⇧\)"
+          aria-label="Expand output panel"
+        >
+            <Pxi name="angle-left" size={10} />
+        </button>
       </div>
     )
   }
