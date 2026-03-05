@@ -4,9 +4,7 @@
  * This is the single source of truth for "what models are available on which gateway".
  * When the user selects "Claude Sonnet 4" in the UI, this registry tells us:
  *  - OpenRouter: "anthropic/claude-sonnet-4-20250514"
- *  - Direct Anthropic: "claude-sonnet-4-20250514"
- *  - Ollama: not available
- *  - LiteLLM: "anthropic/claude-sonnet-4-20250514" (or whatever the proxy is configured with)
+ *  - Ollama: model-specific ID (e.g., "llama3.3:70b")
  *
  * For auto-free mode, we filter to models where freeOn[gatewayType] === true.
  * For auto-paid mode, we pick the best model for the task tier.
@@ -22,9 +20,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'GPT-5.2',
     ids: {
       openrouter: 'openai/gpt-5.2-thinking',
-      vercel: 'openai/gpt-5.2',
-      direct: 'gpt-5.2',
-      litellm: 'openai/gpt-5.2',
     },
     freeOn: {},
     tier: 'reasoning',
@@ -36,9 +31,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Claude 4.6 Sonnet',
     ids: {
       openrouter: 'anthropic/claude-4.6-sonnet',
-      vercel: 'anthropic/claude-4.6-sonnet',
-      direct: 'claude-4-6-sonnet-20260215',
-      litellm: 'anthropic/claude-4.6-sonnet',
     },
     freeOn: {},
     tier: 'reasoning',
@@ -50,9 +42,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Gemini 3.1 Pro',
     ids: {
       openrouter: 'google/gemini-3.1-pro',
-      vercel: 'google/gemini-3.1-pro',
-      direct: 'gemini-3.1-pro',
-      litellm: 'google/gemini-3.1-pro',
     },
     freeOn: {},
     tier: 'reasoning',
@@ -64,9 +53,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Claude Sonnet 4',
     ids: {
       openrouter: 'anthropic/claude-sonnet-4-20250514',
-      vercel: 'anthropic/claude-sonnet-4-20250514',
-      direct: 'claude-sonnet-4-20250514',
-      litellm: 'anthropic/claude-sonnet-4-20250514',
     },
     freeOn: {},
     tier: 'reasoning',
@@ -78,9 +64,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'GPT-4.1',
     ids: {
       openrouter: 'openai/gpt-4.1',
-      vercel: 'openai/gpt-4.1',
-      direct: 'gpt-4.1',
-      litellm: 'openai/gpt-4.1',
     },
     freeOn: {},
     tier: 'reasoning',
@@ -94,9 +77,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek V3.2',
     ids: {
       openrouter: 'deepseek/deepseek-v3.2',
-      vercel: 'deepseek/deepseek-v3.2',
-      direct: 'deepseek-chat-3.2',
-      litellm: 'deepseek/deepseek-v3.2',
     },
     freeOn: {},
     tier: 'coding',
@@ -108,9 +88,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek V3',
     ids: {
       openrouter: 'deepseek/deepseek-chat-v3-0324',
-      vercel: 'deepseek/deepseek-chat-v3-0324',
-      direct: 'deepseek-chat',
-      litellm: 'deepseek/deepseek-chat-v3-0324',
     },
     freeOn: { openrouter: true },
     tier: 'coding',
@@ -122,9 +99,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek R1',
     ids: {
       openrouter: 'deepseek/deepseek-r1',
-      vercel: 'deepseek/deepseek-r1',
-      direct: 'deepseek-reasoner',
-      litellm: 'deepseek/deepseek-r1',
     },
     freeOn: { openrouter: true },
     tier: 'reasoning',
@@ -150,8 +124,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Grok 4.1 Fast',
     ids: {
       openrouter: 'xai/grok-4.1-fast',
-      vercel: 'xai/grok-4.1-fast',
-      direct: 'grok-4.1-fast',
     },
     freeOn: {},
     tier: 'fast',
@@ -163,9 +135,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Gemini 2.0 Flash',
     ids: {
       openrouter: 'google/gemini-2.0-flash-001',
-      vercel: 'google/gemini-2.0-flash-001',
-      direct: 'gemini-2.0-flash',
-      litellm: 'google/gemini-2.0-flash-001',
     },
     freeOn: { openrouter: true },
     tier: 'fast',
@@ -177,9 +146,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'GPT-4.1 Mini',
     ids: {
       openrouter: 'openai/gpt-4.1-mini',
-      vercel: 'openai/gpt-4.1-mini',
-      direct: 'gpt-4.1-mini',
-      litellm: 'openai/gpt-4.1-mini',
     },
     freeOn: {},
     tier: 'fast',
@@ -191,8 +157,6 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'Llama 3.3 70B',
     ids: {
       openrouter: 'meta-llama/llama-3.3-70b-instruct',
-      vercel: 'meta-llama/llama-3.3-70b-instruct',
-      litellm: 'meta-llama/llama-3.3-70b-instruct',
       ollama: 'llama3.3:70b',
     },
     freeOn: { openrouter: true },
@@ -269,13 +233,9 @@ export function selectModel(
     // Map dynamic models to match GatewayModel interface roughly
     const mappedDynamic = dynamicModels
       .filter(m => {
-        // OpenRouter check
+        // OpenRouter format check
         if ((m as any).architecture?.output_modalities) {
           return (m as any).architecture.output_modalities.includes('text')
-        }
-        // Vercel check
-        if ((m as any).type) {
-          return (m as any).type === 'language'
         }
         return true // Fallback
       })
@@ -350,7 +310,7 @@ export function selectModel(
 
 /**
  * Resolve a model ID from one gateway format to another.
- * e.g., "anthropic/claude-sonnet-4-20250514" (openrouter) → "claude-sonnet-4-20250514" (direct)
+ * e.g., "anthropic/claude-sonnet-4-20250514" (openrouter) → "llama3.3:70b" (ollama)
  */
 export function translateModelId(
   modelId: string,

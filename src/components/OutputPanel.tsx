@@ -118,9 +118,9 @@ export function OutputPanel({
   const effectiveTab = tab === 'preview' && !hasHtml && hasFiles ? 'code' : tab
 
   const tabs: { id: Tab; icon: string; label: string; count?: number }[] = [
-    { id: 'browser', icon: 'desktop',  label: 'Browser' },
+    { id: 'browser', icon: 'globe',   label: 'Browser' },
     { id: 'files',   icon: 'folder',  label: 'Files',   count: hasFiles ? files.length : undefined },
-    { id: 'preview', icon: 'browser', label: 'Preview' },
+    { id: 'preview', icon: 'eye',     label: 'Preview' },
     { id: 'code',    icon: 'code',    label: 'Code'    },
   ]
 
@@ -154,7 +154,7 @@ export function OutputPanel({
             aria-controls={`panel-${t.id}`}
             style={{ position: 'relative' }}
           >
-            <Pxi name={t.icon} size={10} />
+            <Pxi name={t.icon} size={11} />
             <span>{t.label}</span>
             {typeof t.count === 'number' && (
               <span className="output-tab-badge">{t.count}</span>

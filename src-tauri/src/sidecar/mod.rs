@@ -14,6 +14,7 @@ use tokio::time::{sleep, timeout};
 use tokio::io::AsyncReadExt;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures_util::{StreamExt, SinkExt};
+use tauri::Emitter;
 
 /// Active browser session
 #[derive(Debug, Clone)]
@@ -386,7 +387,7 @@ impl SidecarState {
 // ─── Tauri Commands ───────────────────────────────────────────────────────
 
 use crate::AppState;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartSessionResult {
@@ -721,4 +722,125 @@ pub async fn browser_set_stealth(
     response.get("stealth")
         .and_then(|v| v.as_bool())
         .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+// ─── Sidecar Installation Commands ─────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidecarInstallStatus {
+    pub installed: bool,
+    pub has_node_modules: bool,
+    pub has_chromium: bool,
+    pub message: String,
+}
+
+/// Check if sidecar dependencies are installed
+#[tauri::command]
+pub async fn browser_check_sidecar_installed(
+    state: State<'_, AppState>,
+) -> Result<SidecarInstallStatus, String> {
+    let sidecar = state.sidecar.0.lock().await;
+    let node_modules_path = sidecar.sidecar_dir.join("node_modules");
+    let has_node_modules = node_modules_path.exists();
+
+    // Check for Chromium in the expected Playwright location
+    // Playwright stores browsers in a cache directory
+    let chromium_path = sidecar.sidecar_dir.join("node_modules")
+        .join("playwright-core")
+        .join("local-registry")
+        .join("chromium");
+
+    // Also check the global cache location (Playwright stores as chromium-<version>)
+    let has_global_chromium = dirs::home_dir()
+        .and_then(|home| home.join(".cache").join("ms-playwright").canonicalize().ok())
+        .as_ref()
+        .and_then(|p| std::fs::read_dir(p).ok())
+        .map_or(false, |entries| {
+            entries.filter_map(|e| e.ok())
+                .any(|entry| {
+                    let name = entry.file_name();
+                    let name_str = name.to_string_lossy();
+                    name_str.starts_with("chromium-") && entry.path().is_dir()
+                })
+        });
+
+    let has_chromium = chromium_path.exists() || has_global_chromium;
+
+    Ok(SidecarInstallStatus {
+        installed: has_node_modules && has_chromium,
+        has_node_modules,
+        has_chromium,
+        message: if has_node_modules && has_chromium {
+            "Sidecar is ready".to_string()
+        } else if !has_node_modules {
+            "Dependencies not installed".to_string()
+        } else {
+            "Chromium not installed".to_string()
+        },
+    })
+}
+
+/// Install sidecar dependencies (npm packages and Chromium)
+#[tauri::command]
+pub async fn browser_install_sidecar(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let sidecar_dir = {
+        let sidecar = state.sidecar.0.lock().await;
+        sidecar.sidecar_dir.clone()
+    };
+
+    // Emit progress event to frontend
+    let emit_progress = |message: String| {
+        let _ = app.emit("sidecar:install_progress", message);
+    };
+
+    emit_progress("Installing npm dependencies...".to_string());
+
+    // Install npm dependencies
+    let npm_output = std::process::Command::new("npm")
+        .arg("install")
+        .arg("--no-save")
+        .current_dir(&sidecar_dir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output();
+
+    match npm_output {
+        Ok(output) if output.status.success() => {
+            emit_progress("Installing Chromium browser...".to_string());
+
+            // Install Chromium via Playwright
+            let playwright_output = std::process::Command::new("npx")
+                .arg("playwright")
+                .arg("install")
+                .arg("chromium")
+                .current_dir(&sidecar_dir)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output();
+
+            match playwright_output {
+                Ok(output) if output.status.success() => {
+                    emit_progress("Installation complete!".to_string());
+                    Ok("Sidecar installed successfully".to_string())
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("Chromium installation failed: {}", stderr))
+                }
+                Err(e) => {
+                    Err(format!("Failed to run playwright install: {}", e))
+                }
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("npm install failed: {}", stderr))
+        }
+        Err(e) => {
+            Err(format!("Failed to run npm install: {}", e))
+        }
+    }
 }

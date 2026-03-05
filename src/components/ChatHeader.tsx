@@ -135,6 +135,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     workspaceFileCount?: number
     onShowOutput?: () => void
     onShowMemory: () => void
+    onOpenSettings?: () => void
     onStop: () => void
     taskRouterState?: any
     gatewayHealth?: any[]
@@ -156,6 +157,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     workspaceFileCount = 0,
     onShowOutput,
     onShowMemory,
+    onOpenSettings,
     onStop,
     taskRouterState,
     gatewayHealth = [],
@@ -290,6 +292,17 @@ Requests: ${health.requestCount || 0}
           >
             <Pxi name="folder" size={12} />
             <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
+          </button>
+        )}
+
+        {/* Settings */}
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            title="Settings (⌘,)"
+            className="header-sidebar-toggle"
+          >
+            <Pxi name="cog" size={14} />
           </button>
         )}
 

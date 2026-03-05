@@ -1,7 +1,8 @@
-import { useState, useRef, memo, useCallback, useEffect } from 'react'
+import { useState, useRef, memo, useCallback } from 'react'
 import type { Task } from '../types'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
+import { TaskActionMenu } from './TaskActionMenu'
 import { getWorkspace } from '../agent/tools'
 
 // ── Export helper ─────────────────────────────────────────────────────────────
@@ -52,188 +53,6 @@ interface TaskListItemProps {
   onClick: () => void
 }
 
-// ── Task action menu ───────────────────────────────────────────────────────────
-
-interface TaskActionMenuProps {
-  task: Task
-  position: { top: number; right: number }
-  onClose: () => void
-  onRename: () => void
-  onDelete: () => void
-  onPin: () => void
-  onDuplicate: () => void
-  onExport: () => void
-}
-
-function TaskActionMenu({
-  task, position, onClose, onRename, onDelete, onPin, onDuplicate, onExport
-}: TaskActionMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Close on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [onClose])
-
-  // Close on ESC key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  // Reset delete confirmation when closing
-  useEffect(() => {
-    return () => {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current)
-    }
-  }, [])
-
-  const handleDeleteClick = useCallback(() => {
-    if (!confirmDelete) {
-      setConfirmDelete(true)
-      confirmTimer.current = setTimeout(() => setConfirmDelete(false), 2500)
-    } else {
-      if (confirmTimer.current) clearTimeout(confirmTimer.current)
-      onDelete()
-      onClose()
-    }
-  }, [confirmDelete, onDelete, onClose])
-
-  const handleAction = useCallback((action: () => void) => {
-    return (e: React.MouseEvent) => {
-      e.stopPropagation()
-      action()
-      onClose()
-    }
-  }, [onClose])
-
-  const handleRenameClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation()
-    onClose()
-    onRename()
-  }, [onClose, onRename])
-
-  return (
-    <div
-      ref={menuRef}
-      onMouseLeave={() => onClose()}
-      style={{
-        position: 'fixed',
-        top: `${position.top}px`,
-        right: `${position.right}px`,
-        zIndex: 1000,
-        minWidth: 160,
-      }}
-    >
-      <div
-        style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
-          overflow: 'hidden',
-          padding: '4px 0',
-        }}
-      >
-        <MenuItem
-          icon={task.pinned ? 'thumbtack' : 'thumbtack'}
-          label={task.pinned ? 'Unpin' : 'Pin'}
-          onClick={handleAction(onPin)}
-          amber={!!task.pinned}
-        />
-        <MenuItem
-          icon="download"
-          label="Export as Markdown"
-          onClick={handleAction(onExport)}
-        />
-        <MenuItem
-          icon="copy"
-          label="Duplicate"
-          onClick={handleAction(onDuplicate)}
-        />
-        <MenuItem
-          icon="pencil"
-          label="Rename"
-          onClick={handleRenameClick}
-        />
-        <div style={{
-          height: 1,
-          background: 'var(--border)',
-          margin: '4px 8px',
-        }} />
-        <MenuItem
-          icon={confirmDelete ? 'exclamation-triangle' : 'trash'}
-          label={confirmDelete ? 'Click again to delete' : 'Delete'}
-          onClick={handleDeleteClick}
-          danger
-        />
-      </div>
-    </div>
-  )
-}
-
-interface MenuItemProps {
-  icon: string
-  label: string
-  onClick: (e: React.MouseEvent) => void
-  danger?: boolean
-  amber?: boolean
-}
-
-function MenuItem({ icon, label, onClick, danger, amber }: MenuItemProps) {
-  const [hovered, setHovered] = useState(false)
-
-  return (
-    <button
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
-      style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '8px 12px',
-        border: 'none',
-        background: hovered
-          ? danger
-            ? 'rgba(239,68,68,0.12)'
-            : 'rgba(255,255,255,0.06)'
-          : 'transparent',
-        color: danger
-          ? hovered
-            ? '#fca5a5'
-            : '#f87171'
-          : amber
-            ? 'var(--amber)'
-            : hovered
-              ? 'var(--tx-primary)'
-              : 'var(--tx-secondary)',
-        fontSize: 12,
-        fontWeight: 400,
-        cursor: 'pointer',
-        transition: 'all 0.1s',
-      }}
-    >
-      <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-        <Pxi name={icon} size={14} />
-      </span>
-      <span>{label}</span>
-    </button>
-  )
-}
-
 // ── Task list item ────────────────────────────────────────────────────────────
 
 export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
@@ -244,12 +63,12 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
-  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   const startEdit = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
     setEditValue(task.title)
     setEditing(true)
+    setMenuOpen(false) // Close menu when starting edit
     setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
   }, [task.title])
 
@@ -264,29 +83,12 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
     setEditing(false)
   }, [task.title])
 
-  const handleDelete = useCallback(() => {
-    deleteTask(task.id)
-  }, [deleteTask, task.id])
-
-  const handlePin = useCallback(() => {
-    toggleTaskPin(task.id)
-  }, [toggleTaskPin, task.id])
-
-  const handleDuplicate = useCallback(() => {
-    duplicateTask(task.id)
-  }, [duplicateTask, task.id])
-
-  const handleExport = useCallback(() => {
-    exportTask(task)
-  }, [task])
-
   const openMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     const rect = e.currentTarget.getBoundingClientRect()
-    const MENU_HEIGHT = 200 // Approximate menu height
+    const MENU_HEIGHT = 200
     const MENU_BOTTOM_SPACING = 8
 
-    // Check if menu would overflow bottom of viewport
     const wouldOverflow = rect.bottom + MENU_HEIGHT + MENU_BOTTOM_SPACING > window.innerHeight
 
     setMenuPosition({
@@ -294,6 +96,10 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
       right: window.innerWidth - rect.right,
     })
     setMenuOpen(true)
+  }, [])
+
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false)
   }, [])
 
   const icon = taskTypeIcon(task.taskType)
@@ -305,7 +111,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
       onMouseLeave={() => setHovered(false)}
     >
       {editing ? (
-        /* ── Inline rename input ── */
         <div
           style={{
             padding: '5px 8px',
@@ -337,7 +142,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
           />
         </div>
       ) : (
-        /* ── Main row ── */
         <button
           onClick={onClick}
           onDoubleClick={(e) => startEdit(e)}
@@ -366,7 +170,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.2)' : 'none',
           }}
         >
-          {/* Active left accent */}
           {isActive && (
             <span
               style={{
@@ -382,7 +185,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             />
           )}
 
-          {/* Type icon */}
           <span
             style={{
               display: 'flex',
@@ -398,7 +200,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             <Pxi name={icon} size={12} />
           </span>
 
-          {/* Title - no gradient mask, always full width */}
           <span
             style={{
               flex: 1,
@@ -414,7 +215,6 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             {task.title}
           </span>
 
-          {/* Budget mode badge */}
           {task.budgetMode && (
             <span
               style={{
@@ -441,13 +241,10 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             </span>
           )}
 
-          {/* Status indicator - hide when hovered to make room for menu button */}
           {!hovered && <StatusDot status={task.status} />}
 
-          {/* Three-dot menu button - show on hover */}
           {hovered && (
             <button
-              ref={menuButtonRef}
               onClick={openMenu}
               style={{
                 flexShrink: 0,
@@ -472,25 +269,23 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
                 e.currentTarget.style.color = 'var(--tx-tertiary)'
               }}
             >
-              <Pxi name="ellipsis-vertical" size={12} />
+              <Pxi name="ellipses-vertical" size={12} />
             </button>
           )}
         </button>
       )}
 
-      {/* ── Action menu popover ── */}
-      {menuOpen && !editing && (
-        <TaskActionMenu
-          task={task}
-          position={menuPosition}
-          onClose={() => setMenuOpen(false)}
-          onRename={() => startEdit()}
-          onDelete={handleDelete}
-          onPin={handlePin}
-          onDuplicate={handleDuplicate}
-          onExport={handleExport}
-        />
-      )}
+      <TaskActionMenu
+        task={task}
+        isOpen={menuOpen && !editing}
+        position={menuPosition}
+        onClose={closeMenu}
+        onPin={() => toggleTaskPin(task.id)}
+        onDuplicate={() => duplicateTask(task.id)}
+        onRename={startEdit}
+        onDelete={() => deleteTask(task.id)}
+        onExport={() => exportTask(task)}
+      />
     </div>
   )
 })

@@ -175,15 +175,12 @@ export class GatewayService {
         nextGatewayId: active[i + 1]?.id,
       })
 
-      // Build query params for this gateway (Vercel provider options)
-      const queryParams = this.buildQueryParams(gw)
-
       // Retry loop within this gateway
       let lastError: unknown = null
       for (let retry = 0; retry <= gw.maxRetries; retry++) {
         try {
           const headers = this.buildHeaders(gw)
-          const result = await callFn(gw.apiBase, gw.apiKey, headers, queryParams)
+          const result = await callFn(gw.apiBase, gw.apiKey, headers, {})
 
           // Success — update health
           this.recordSuccess(gw.id, Date.now() - startTime)
@@ -353,27 +350,6 @@ export class GatewayService {
     }
 
     return headers
-  }
-
-  /**
-   * Build query parameters for a specific gateway.
-   * Vercel AI Gateway supports provider options via query params.
-   */
-  buildQueryParams(gw: GatewayConfig): Record<string, string> {
-    if (gw.type !== 'vercel' || !gw.providerOptions) return {}
-
-    const opts = gw.providerOptions
-    const params: Record<string, string> = {}
-
-    // Vercel uses array-like query params: order[]=anthropic&order[]=openai
-    if (opts.order) opts.order.forEach((p, i) => params[`order[${i}]`] = p)
-    if (opts.only) opts.only.forEach((p, i) => params[`only[${i}]`] = p)
-    if (opts.models) opts.models.forEach((m, i) => params[`models[${i}]`] = m)
-    if (opts.byok !== undefined) params.byok = String(opts.byok)
-    if (opts.reasoning !== undefined) params.reasoning = String(opts.reasoning)
-    if (opts.webSearch !== undefined) params.webSearch = String(opts.webSearch)
-
-    return params
   }
 
   // ── Public: Health Tracking ────────────────────────────────────────────────

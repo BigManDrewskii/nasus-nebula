@@ -7,17 +7,17 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build && npm run install:sidecar"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
         "label": "main",
         "title": "Nasus",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 900,
-        "minHeight": 600,
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1280,
+        "minHeight": 720,
         "resizable": true,
         "fullscreen": false,
         "decorations": true,

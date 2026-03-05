@@ -15,12 +15,43 @@ const log = createLogger('browserBridge')
 // Shared session ID for all browser operations
 let tauriSessionId: string | null = null
 
+/** Emit browser activity event for UI to open browser panel */
+function emitBrowserActivity(type: string, detail?: Record<string, unknown>) {
+  window.dispatchEvent(new CustomEvent('nasus:browser-activity', {
+    detail: { type, ...detail }
+  }))
+}
+
+/** Ensure the sidecar is running before browser operations */
+async function ensureSidecarRunning(): Promise<void> {
+  const isRunning = await tauriInvoke<boolean>('browser_is_sidecar_running')
+  if (isRunning) return
+
+  // Check if installed first
+  const { browserCheckSidecarInstalled } = await import('../tauri')
+  const status = await browserCheckSidecarInstalled()
+  if (!status.installed) {
+    throw new Error(
+      'Browser automation requires Chromium (~300MB). Please install it from the browser panel in the right sidebar.'
+    )
+  }
+
+  log.info('Starting browser sidecar...')
+  await tauriInvoke('browser_start_sidecar')
+  // Give it a moment to start
+  await new Promise(resolve => setTimeout(resolve, 1500))
+  log.info('Browser sidecar started')
+}
+
 async function getTauriSession(): Promise<string> {
+  await ensureSidecarRunning()
+
   if (!tauriSessionId) {
     try {
       const result = await tauriInvoke<{ session_id: string }>('browser_start_session')
       if (result) {
         tauriSessionId = result.session_id
+        emitBrowserActivity('session_started', { sessionId: result.session_id })
       } else {
         throw new Error('No session ID returned')
       }
@@ -50,6 +81,7 @@ export interface NavigateResult {
 
 export async function browserNavigate(url: string, _newTab = false): Promise<NavigateResult> {
   const sessionId = await getTauriSession()
+  emitBrowserActivity('navigate', { url })
   await tauriInvoke('browser_navigate', { sessionId, url })
   return {
     success: true,
@@ -70,6 +102,7 @@ export async function browserClick(
   params: { tabId?: number; selector?: string; x?: number; y?: number }
 ): Promise<ClickResult> {
   const sessionId = await getTauriSession()
+  emitBrowserActivity('click', { selector: params.selector })
   return await tauriInvokeOrThrow<ClickResult>('browser_click', { sessionId, ...params })
 }
 

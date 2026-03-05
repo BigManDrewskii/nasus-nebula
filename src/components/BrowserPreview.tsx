@@ -7,7 +7,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Pxi } from './Pxi'
-import { tauriInvoke } from '../tauri'
+import { SidecarPrompt } from './SidecarPrompt'
+import { tauriInvoke, tauriListen } from '../tauri'
+import { useAppStore } from '../store'
 
 interface BrowserPreviewProps {
   className?: string
@@ -27,7 +29,9 @@ interface HistoryEntry {
 type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error'
 
 export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
+  const { sidecarInstalled, sidecarPromptShown, checkSidecarInstalled, setSidecarInstalled } = useAppStore()
   const [sidecarStatus, setSidecarStatus] = useState<SidecarStatus>('stopped')
+  const [showPrompt, setShowPrompt] = useState(false)
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [, setCurrentUrl] = useState<string>('')
@@ -67,6 +71,15 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
   // Start the sidecar
   const startSidecar = useCallback(async () => {
+    // Check if sidecar is installed first
+    if (!sidecarInstalled) {
+      const isInstalled = await checkSidecarInstalled()
+      if (!isInstalled && !sidecarPromptShown) {
+        setShowPrompt(true)
+        return
+      }
+    }
+
     setSidecarStatus('starting')
     setError(null)
 
@@ -82,7 +95,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       setError(err as string)
       setSidecarStatus('error')
     }
-  }, [])
+  }, [sidecarInstalled, sidecarPromptShown, checkSidecarInstalled])
 
   // Stop the sidecar
   const stopSidecar = useCallback(async () => {
@@ -346,6 +359,18 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         clearTimeout(highlightTimeoutRef.current)
       }
     }
+  }, [])
+
+  // Listen for sidecar install progress events from Rust backend
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    tauriListen<string>('sidecar:install_progress', (message) => {
+      // Progress is handled via store
+      console.log('[BrowserPreview] Install progress:', message)
+    }).then((cleanup) => {
+      unlisten = cleanup
+    })
+    return () => unlisten?.()
   }, [])
 
   // Common button styles
@@ -900,6 +925,19 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
           </div>
         )}
       </div>
+
+      {/* Sidecar installation prompt */}
+      {showPrompt && (
+        <SidecarPrompt
+          onInstallComplete={() => {
+            setShowPrompt(false)
+            setSidecarInstalled(true)
+            // Auto-start after installation
+            startSidecar()
+          }}
+          onSkip={() => setShowPrompt(false)}
+        />
+      )}
     </div>
   )
 }

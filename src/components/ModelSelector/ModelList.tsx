@@ -8,6 +8,7 @@ import { getModelsForGateway } from '../../agent/gateway/modelRegistry'
 import type { GatewayType } from '../../agent/gateway/gatewayTypes'
 import { ModelItem } from './ModelItem'
 import type { DisplayModel } from './types'
+import { Pxi } from '../Pxi'
 
 interface ModelListProps {
   currentModelId: string
@@ -30,15 +31,12 @@ export function ModelList({
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   const openRouterModels = useAppStore((s) => s.openRouterModels)
-  const vercelModels = useAppStore((s) => s.vercelModels)
   const ollamaModels = useAppStore((s) => s.ollamaModels)
 
   // Resolve actual gateway type from provider label
   const gatewayType: GatewayType = useMemo(() => {
     const normalized = currentProvider.toLowerCase()
-    if (normalized.includes('vercel')) return 'vercel'
     if (normalized.includes('ollama') || normalized.includes('local')) return 'ollama'
-    if (normalized.includes('litellm')) return 'litellm'
     return 'openrouter'
   }, [currentProvider])
 
@@ -64,33 +62,6 @@ export function ModelList({
             isFree: promptPrice === 0,
             inputCost: promptPrice * 1_000_000,
             outputCost: completionPrice * 1_000_000,
-            isAvailable: true,
-          }
-        })
-      }
-
-      // For Vercel, use all live models
-      if (gatewayType === 'vercel' && vercelModels.length > 0) {
-        return vercelModels.map((m) => {
-          // Try to find matching registry model for tier
-          const registryModel = registryModels.find((r) =>
-            r.ids.vercel === m.id ||
-            r.ids.openrouter === m.id ||
-            m.id.includes(r.canonicalName.toLowerCase().replace(/\s+/g, '-'))
-          )
-
-          const inputPrice = parseFloat(m.pricing?.input ?? '0')
-          const outputPrice = parseFloat(m.pricing?.output ?? '0')
-
-          return {
-            id: m.id,
-            name: m.name || registryModel?.canonicalName || m.id.split('/').pop() || m.id,
-            provider: 'vercel',
-            tier: registryModel?.tier ?? 'general',
-            contextWindow: m.context_window ?? registryModel?.contextWindow ?? 128000,
-            isFree: inputPrice === 0,
-            inputCost: inputPrice * 1_000_000,
-            outputCost: outputPrice * 1_000_000,
             isAvailable: true,
           }
         })
@@ -123,7 +94,7 @@ export function ModelList({
       outputCost: m.outputCostPer1M,
       isAvailable: true,
     }))
-  }, [gatewayType, openRouterModels, vercelModels])
+  }, [gatewayType, openRouterModels])
 
   // Filter by search query
   const filteredModels = useMemo(() => {
@@ -218,29 +189,43 @@ export function ModelList({
     >
       {/* Search bar */}
       <div style={{ padding: '10px 10px 6px', flexShrink: 0 }}>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={handleSearchChange}
-          placeholder="Search models..."
-          autoFocus
-          style={{
-            width: '100%',
-            padding: '6px 10px',
-            borderRadius: 6,
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            background: '#111',
-            color: 'var(--tx-primary)',
-            fontSize: 12,
-            outline: 'none',
-          }}
-          onFocus={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
-          }}
-          onBlur={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
-          }}
-        />
+        <div style={{ position: 'relative' }}>
+          <Pxi
+            name="search"
+            size={11}
+            style={{
+              position: 'absolute',
+              left: 10,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--tx-tertiary)',
+              pointerEvents: 'none',
+            }}
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder="Search models..."
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '6px 10px 6px 30px',
+              borderRadius: 6,
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#111',
+              color: 'var(--tx-primary)',
+              fontSize: 12,
+              outline: 'none',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
+            }}
+          />
+        </div>
       </div>
 
       {/* Scrollable list */}
@@ -272,13 +257,17 @@ export function ModelList({
               <>
                 <div
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                     padding: '8px 0 4px',
                     fontSize: 10,
                     fontWeight: 600,
                     color: '#22c55e',
                   }}
                 >
-                  Free
+                  <Pxi name="leaf" size={10} />
+                  <span>Free</span>
                 </div>
                 {groupedModels.free.map((model, idx) => {
                   const flatIdx = idx
@@ -306,13 +295,17 @@ export function ModelList({
               <>
                 <div
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
                     padding: groupedModels.free.length > 0 ? '12px 0 4px' : '8px 0 4px',
                     fontSize: 10,
                     fontWeight: 600,
                     color: 'oklch(64% 0.214 40.1)',
                   }}
                 >
-                  Paid
+                  <Pxi name="coins" size={10} />
+                  <span>Paid</span>
                 </div>
                 {groupedModels.paid.map((model, idx) => {
                   const flatIdx = groupedModels.free.length + idx

@@ -9,38 +9,26 @@ const PROVIDERS = [
   {
     id: 'openrouter',
     label: 'OpenRouter',
-    description: 'Access 200+ models with one key',
+    description: 'Access 400+ models with one key',
     placeholder: 'sk-or-v1-…',
     apiBase: 'https://openrouter.ai/api/v1',
-      defaultModel: 'anthropic/claude-3.7-sonnet',
+      defaultModel: 'anthropic/claude-sonnet-4-20250514',
     helpUrl: 'https://openrouter.ai/keys',
     helpLabel: 'openrouter.ai/keys',
     requiresKey: true,
     dot: '#a78bfa',
   },
   {
-    id: 'openai',
-    label: 'OpenAI',
-    description: 'GPT-4o, o3, and more',
-    placeholder: 'sk-…',
-    apiBase: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o',
-    helpUrl: 'https://platform.openai.com/api-keys',
-    helpLabel: 'platform.openai.com',
-    requiresKey: true,
-    dot: '#34d399',
-  },
-  {
-    id: 'litellm',
-    label: 'LiteLLM',
-    description: 'Local proxy to any model',
-    placeholder: 'http://localhost:4000/v1',
-    apiBase: '',
-      defaultModel: 'anthropic/claude-3.7-sonnet',
-      helpUrl: 'https://docs.litellm.ai/docs/proxy/quick_start',
-    helpLabel: 'docs.litellm.ai',
+    id: 'ollama',
+    label: 'Ollama (Local)',
+    description: 'Run models locally',
+    placeholder: 'http://localhost:11434/v1',
+    apiBase: 'http://localhost:11434/v1',
+      defaultModel: 'llama3.3',
+    helpUrl: 'https://ollama.com',
+    helpLabel: 'ollama.com',
     requiresKey: false,
-    dot: '#60a5fa',
+    dot: '#34d399',
   },
   {
     id: 'custom',
@@ -126,9 +114,9 @@ export function OnboardingScreen() {
 
   const [saving, setSaving] = useState(false)
 
-  const isLiteLLMOrCustom = selectedProvider.id === 'litellm' || selectedProvider.id === 'custom'
-  const effectiveBase = isLiteLLMOrCustom ? customBase.trim() : selectedProvider.apiBase
-  const canContinueProvider = isLiteLLMOrCustom ? effectiveBase.length > 0 : apiKey.trim().length > 0
+  const isOllamaOrCustom = selectedProvider.id === 'ollama' || selectedProvider.id === 'custom'
+  const effectiveBase = isOllamaOrCustom ? customBase.trim() : selectedProvider.apiBase
+  const canContinueProvider = isOllamaOrCustom ? effectiveBase.length > 0 : apiKey.trim().length > 0
 
   async function handleFinish() {
     setSaving(true)
@@ -382,7 +370,7 @@ export function OnboardingScreen() {
               </div>
 
               {/* Base URL for proxy/custom */}
-              {isLiteLLMOrCustom && (
+              {isOllamaOrCustom && (
                 <div>
                   <label style={labelStyle}>
                     <Pxi name="link" size={9} style={{ color: 'var(--tx-tertiary)' }} />
@@ -406,14 +394,14 @@ export function OnboardingScreen() {
               <div>
                 <label style={labelStyle}>
                   <Pxi name="lock" size={9} style={{ color: 'var(--tx-tertiary)' }} />
-                  {isLiteLLMOrCustom ? 'API Key (optional)' : 'API Key'}
+                  {isOllamaOrCustom ? 'API Key (optional)' : 'API Key'}
                 </label>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => { setApiKeyLocal(e.target.value); setError('') }}
-                  placeholder={isLiteLLMOrCustom ? 'Leave blank if auth disabled' : selectedProvider.placeholder}
-                  autoFocus={!isLiteLLMOrCustom}
+                  placeholder={isOllamaOrCustom ? 'Leave blank if auth disabled' : selectedProvider.placeholder}
+                  autoFocus={!isOllamaOrCustom}
                   style={inputStyle}
                   className="placeholder-[var(--tx-muted)]"
                   onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}

@@ -13,43 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'openrouter' | 'vercel' | 'litellm' | 'direct' | 'ollama' | 'custom'
-
-/**
- * Provider options for Vercel AI Gateway.
- * These control routing, model selection, and feature flags.
- * Only supported by gateway type 'vercel'.
- */
-export interface VercelProviderOptions {
-  /** Provider preference order (e.g., ["anthropic", "openai"]) */
-  order?: string[]
-  /** Restrict to specific providers only */
-  only?: string[]
-  /** Explicit model selection (bypasses auto-routing) */
-  models?: string[]
-  /** Bring Your Own Key mode (use provider keys instead of Vercel's) */
-  byok?: boolean
-  /** Enable extended reasoning for supported models */
-  reasoning?: boolean
-  /** Enable Vercel's built-in web search (alternative to Exa tool) */
-  webSearch?: boolean
-}
-
-/**
- * Response metadata from Vercel AI Gateway.
- * Extracted from response headers for actual cost tracking.
- */
-export interface VercelResponseMetadata {
-  usage: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
-  cost?: number
-  provider?: string
-  model?: string
-  generationId?: string
-}
+export type GatewayType = 'openrouter' | 'ollama' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
@@ -74,8 +38,6 @@ export interface GatewayConfig {
   timeoutMs: number
   /** Provider-specific headers to inject */
   extraHeaders?: Record<string, string>
-  /** Provider-specific options (Vercel only) */
-  providerOptions?: VercelProviderOptions
 }
 
 // ─── Routing Configuration ──────────────────────────────────────────────────
@@ -170,24 +132,12 @@ export type GatewayEventCallback = (event: GatewayEvent) => void
 
 export const DEFAULT_GATEWAYS: GatewayConfig[] = [
   {
-    id: 'vercel',
-    type: 'vercel',
-    label: 'Vercel AI Gateway',
-    apiBase: 'https://ai-gateway.vercel.sh/v1',
-    apiKey: '',
-    priority: 0,
-    enabled: true,
-    nativeRouting: true,
-    maxRetries: 2,
-    timeoutMs: 60_000, // Vercel has lower latency
-  },
-  {
     id: 'openrouter',
     type: 'openrouter',
     label: 'OpenRouter',
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: '',
-    priority: 10, // Fallback after Vercel
+    priority: 0,
     enabled: true,
     nativeRouting: true,
     maxRetries: 2,
@@ -196,18 +146,6 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
       'HTTP-Referer': 'https://nasus.app',
       'X-Title': 'Nasus',
     },
-  },
-  {
-    id: 'litellm',
-    type: 'litellm',
-    label: 'LiteLLM Proxy',
-    apiBase: 'http://localhost:4000/v1',
-    apiKey: '',
-    priority: 5,
-    enabled: false,
-    nativeRouting: true,
-    maxRetries: 2,
-    timeoutMs: 180_000,
   },
   {
     id: 'ollama',
@@ -220,6 +158,18 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     nativeRouting: false,
     maxRetries: 1,
     timeoutMs: 300_000, // Local models can be slow
+  },
+  {
+    id: 'custom',
+    type: 'custom',
+    label: 'Custom',
+    apiBase: '',
+    apiKey: '',
+    priority: 20,
+    enabled: false,
+    nativeRouting: false,
+    maxRetries: 2,
+    timeoutMs: 180_000,
   },
 ]
 

@@ -586,6 +586,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 workspaceFileCount={workspaceFileCount}
                 onShowOutput={onShowOutput}
                 onShowMemory={() => setShowMemory(true)}
+                onOpenSettings={onOpenSettings}
                 onStop={handleStop}
                 taskRouterState={taskRouterEntry}
                 gatewayHealth={gatewayHealth}

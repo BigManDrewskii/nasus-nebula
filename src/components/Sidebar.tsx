@@ -149,9 +149,9 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
           {/* Spacer to push footer to bottom */}
           <div style={{ flex: 1 }} />
 
-          {/* Footer: model health dot + settings */}
+          {/* Footer: settings cog */}
           <div style={{ paddingTop: 'var(--space-2)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', alignItems: 'center' }}>
-            {/* Model health dot (shows provider/model/budget in tooltip) */}
+            {/* Settings cog - opens settings panel */}
             <button
               onClick={onOpenSettings}
               style={{
@@ -168,12 +168,10 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
               onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
-              title="Model settings"
+              title="Settings (⌘,)"
             >
-              <Pxi name="circle" size={8} style={{ color: 'var(--amber)' }} />
+              <Pxi name="cog" size={11} style={{ color: 'var(--tx-secondary)' }} />
             </button>
-
-            <RailButton icon="cog" title="Settings" onClick={onOpenSettings} />
           </div>
         </div>
       ) : (

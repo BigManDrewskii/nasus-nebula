@@ -78,7 +78,7 @@ export async function streamCompletion(
   // ===========================
 
   const unifiedModel = getUnifiedModel({
-    provider,
+    provider: provider as 'openrouter' | 'ollama' | 'custom',
     apiKey,
     apiBase,
     gatewayId: cb.gatewayId,
@@ -200,7 +200,7 @@ export async function chatOnce(
   extraHeaders?: Record<string, string>,
 ): Promise<string> {
   const unifiedModel = getUnifiedModel({
-    provider,
+    provider: provider as 'openrouter' | 'ollama' | 'custom',
     apiKey,
     apiBase,
     extraHeaders,
@@ -231,7 +231,7 @@ export async function chatJson<T>(
   extraHeaders?: Record<string, string>,
 ): Promise<T | null> {
   const unifiedModel = getUnifiedModel({
-    provider,
+    provider: provider as 'openrouter' | 'ollama' | 'custom',
     apiKey,
     apiBase,
     extraHeaders,
@@ -369,64 +369,6 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
     if (fa !== fb) return fa.localeCompare(fb)
     return a.name.localeCompare(b.name)
   })
-  return models
-}
-
-// ── Vercel AI Gateway models ────────────────────────────────────────────────────
-
-export interface VercelModel {
-  id: string
-  name: string // "name" is now returned in 2026 API
-  context_window: number // max tokens input
-  max_tokens: number // max tokens output
-  type: 'language' | 'embedding' | 'image' | 'video'
-  tags: string[] // ["reasoning", "vision", "tool-use", etc.]
-  pricing: {
-    input: string // Base cost per token as string
-    output: string
-    input_cache_read?: string
-    input_tiers?: Array<{ cost: string; min: number; max?: number }>
-  }
-}
-
-/**
- * Fetch available models from Vercel AI Gateway's /models endpoint.
- * Vercel uses the OpenAI-compatible API format but adds metadata.
- */
-export async function fetchVercelModels(apiKey?: string): Promise<VercelModel[]> {
-  const url = 'https://ai-gateway.vercel.sh/v1/models'
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`
-  }
-
-  const resp = await fetch(url, { headers })
-  if (!resp.ok) {
-    let msg = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      if (body?.error?.message) msg = body.error.message
-    } catch {
-      // Response body isn't JSON — ignore and use the status message
-    }
-    throw new Error(msg)
-  }
-
-  const json = await resp.json()
-  const models: VercelModel[] = (json?.data ?? json ?? []).filter(
-    (m: VercelModel) => m.id && m.id.length > 0,
-  )
-
-  // Sort by provider/name
-  models.sort((a, b) => {
-    const fa = a.id.split('/')[0]
-    const fb = b.id.split('/')[0]
-    if (fa !== fb) return fa.localeCompare(fb)
-    return a.id.localeCompare(b.id)
-  })
-
   return models
 }
 

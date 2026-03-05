@@ -5,6 +5,7 @@
  */
 
 import { useAppStore } from '../store'
+import { Pxi } from './Pxi'
 
 export function ModelIndicatorRow() {
   const provider = useAppStore((s) => s.provider)
@@ -107,23 +108,7 @@ export function ModelIndicatorRow() {
         </span>
 
         {/* Settings gear icon */}
-        <svg
-          width="11"
-          height="11"
-          viewBox="0 0 11 11"
-          fill="none"
-          style={{
-            flexShrink: 0,
-            color: 'var(--tx-tertiary)',
-          }}
-        >
-          <path
-            d="M5.5 1.5a1.5 1.5 0 0 1 1.5 1.5H4a1.5 1.5 0 0 1 1.5-1.5zm0 8a1.5 1.5 0 0 1-1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5zm4-4h-8"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-          />
-        </svg>
+        <Pxi name="cog" size={11} style={{ flexShrink: 0, color: 'var(--tx-tertiary)' }} />
       </button>
     </div>
   )

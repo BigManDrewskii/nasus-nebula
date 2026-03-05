@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppStore } from '../store'
 import type { ModelInfo } from '../store'
-import { fetchOpenRouterModels, fetchVercelModels } from '../agent/llm'
+import { fetchOpenRouterModels } from '../agent/llm'
 import { tauriInvoke } from '../tauri'
 import { createLogger } from '../lib/logger'
 import { MODEL_REFRESH_INTERVAL_MS } from '../lib/constants'
@@ -19,17 +19,10 @@ export function useModelSync() {
   const apiKey = useAppStore((s) => s.apiKey)
   const modelsLastFetched = useAppStore((s) => s.modelsLastFetched)
   const openRouterModels = useAppStore((s) => s.openRouterModels)
-  const vercelModels = useAppStore((s) => s.vercelModels)
   const setOpenRouterModels = useAppStore((s) => s.setOpenRouterModels)
-  const setVercelModels = useAppStore((s) => s.setVercelModels)
-
-  // Get gateway configs
-  const gateways = useAppStore((s) => s.gateways)
-  const vercelGateway = gateways.find((g) => g.type === 'vercel')
 
   // Track the keys we last fetched with so we re-fetch on key change
   const lastFetchedKey = useRef<string>('')
-  const lastFetchedVercelKey = useRef<string>('')
 
   useEffect(() => {
     // Sync backend model registry
@@ -39,7 +32,7 @@ export function useModelSync() {
           useAppStore.getState().setRouterConfig({ registry })
         }
       })
-      .catch(err => {
+      .catch((err: unknown) => {
         log.warn('Failed to sync backend model registry', err)
         // Non-blocking: stale registry or static fallback remains usable
       })
@@ -54,41 +47,18 @@ export function useModelSync() {
         lastFetchedKey.current = apiKey.trim()
 
         fetchOpenRouterModels(apiKey.trim())
-          .then((models) => {
+          .then((models: unknown[]) => {
             if (models.length > 0) setOpenRouterModels(models)
           })
-          .catch(err => {
+          .catch((err: unknown) => {
             log.warn('Failed to fetch OpenRouter models', err)
-          })
-      }
-    }
-
-    // Fetch Vercel models
-    const vercelKey = vercelGateway?.apiKey?.trim()
-    if (vercelKey) {
-      const keyChanged = lastFetchedVercelKey.current !== vercelKey
-      const vercelCacheStale = Date.now() - modelsLastFetched > MODEL_REFRESH_INTERVAL_MS
-      const noVercelCache = vercelModels.length === 0
-
-      if (keyChanged || vercelCacheStale || noVercelCache) {
-        lastFetchedVercelKey.current = vercelKey
-
-        fetchVercelModels(vercelKey)
-          .then((models) => {
-            if (models.length > 0) setVercelModels(models)
-          })
-          .catch(err => {
-            log.warn('Failed to fetch Vercel models', err)
           })
       }
     }
   }, [
     apiKey,
-    vercelGateway?.apiKey,
     modelsLastFetched,
     openRouterModels.length,
-    vercelModels.length,
     setOpenRouterModels,
-    setVercelModels,
   ])
 }

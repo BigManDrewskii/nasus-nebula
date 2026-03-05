@@ -121,6 +121,12 @@ interface AppState extends GatewaySlice {
     extensionVersion: string | null
     // Ollama models list (fetched from local Ollama instance)
     ollamaModels: Array<{ name: string; size?: number; modified_at?: string }>
+    // Browser sidecar installation state
+    sidecarInstalled: boolean
+    sidecarInstallProgress: string | null
+    sidecarPromptShown: boolean
+    // Browser activity state for agent-driven browsing
+    browserActivityActive: boolean
 
   // Planning state
   pendingPlan: ExecutionPlan | null
@@ -165,6 +171,12 @@ interface AppState extends GatewaySlice {
       setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error', message?: string) => void
   setExtensionConnected: (connected: boolean, version?: string | null) => void
   setOllamaModels: (models: Array<{ name: string; size?: number; modified_at?: string }>) => void
+  setSidecarInstalled: (installed: boolean) => void
+  setSidecarInstallProgress: (progress: string | null) => void
+  setSidecarPromptShown: (shown: boolean) => void
+  checkSidecarInstalled: () => Promise<boolean>
+  installSidecar: () => Promise<string>
+  setBrowserActivityActive: (active: boolean) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
@@ -232,6 +244,11 @@ export const useAppStore = create<AppState>()(
               extensionVersion: null,
           // Ollama models list
           ollamaModels: [],
+          // Browser sidecar state
+          sidecarInstalled: false,
+          sidecarInstallProgress: null,
+          sidecarPromptShown: false,
+          browserActivityActive: false,
           routerConfig: {
             mode: 'auto',
             budget: 'free',
@@ -627,6 +644,36 @@ export const useAppStore = create<AppState>()(
               }
             },
             setOllamaModels: (models) => set({ ollamaModels: models }),
+            setSidecarInstalled: (installed) => set({ sidecarInstalled: installed }),
+            setSidecarInstallProgress: (progress) => set({ sidecarInstallProgress: progress }),
+            setSidecarPromptShown: (shown) => set({ sidecarPromptShown: shown }),
+            checkSidecarInstalled: async () => {
+              try {
+                const { browserCheckSidecarInstalled } = await import('./tauri')
+                const status = await browserCheckSidecarInstalled()
+                set({ sidecarInstalled: status.installed })
+                return status.installed
+              } catch {
+                return false
+              }
+            },
+            installSidecar: async () => {
+              try {
+                const { browserInstallSidecar, tauriListen } = await import('./tauri')
+                // Listen for progress events
+                const unlisten = await tauriListen<string>('sidecar:install_progress', (progress) => {
+                  set({ sidecarInstallProgress: progress })
+                })
+                const result = await browserInstallSidecar()
+                unlisten()
+                set({ sidecarInstalled: true, sidecarInstallProgress: null })
+                return result
+              } catch (err) {
+                set({ sidecarInstallProgress: null })
+                throw err
+              }
+            },
+            setBrowserActivityActive: (active) => set({ browserActivityActive: active }),
               setExaKey: (key) => set({ exaKey: key }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
@@ -776,16 +823,16 @@ export const useAppStore = create<AppState>()(
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
                   enableVerification: state.enableVerification,
-              // openRouterModels, vercelModels, and ollamaModels are persisted so the dropdown is populated immediately on reload.
+              // openRouterModels and ollamaModels are persisted so the dropdown is populated immediately on reload.
               // They will be refreshed in the background on startup if the key is present.
                 openRouterModels: state.openRouterModels,
-                vercelModels: state.vercelModels,
                 ollamaModels: state.ollamaModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
                 gateways: state.gateways,
                 extensionConnected: state.extensionConnected,
                 extensionVersion: state.extensionVersion,
+                sidecarPromptShown: state.sidecarPromptShown,
                 }
       },
       // On rehydration, clear any streaming:true flags left by a previous crashed session

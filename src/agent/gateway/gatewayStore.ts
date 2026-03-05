@@ -24,39 +24,9 @@ import type {
   GatewayHealth,
   GatewayEvent,
   RoutingMode,
-  VercelProviderOptions,
 } from './gatewayTypes'
 import { DEFAULT_GATEWAYS } from './gatewayTypes'
 import { selectModel, translateModelId } from './modelRegistry'
-
-// ─── Curated Vercel AI Model List ─────────────────────────────────────────────
-// Vercel AI doesn't have a public model discovery API, so we maintain a curated list
-const VERCEL_MODEL_LIST = [
-  // Anthropic
-  { id: 'anthropic/claude-sonnet-4-20250514', name: 'Claude Sonnet 4', context_window: 200_000, pricing: { input: 3, output: 15 } },
-  { id: 'anthropic/claude-3-7-sonnet', name: 'Claude 3.7 Sonnet', context_window: 200_000, pricing: { input: 3, output: 15 } },
-  { id: 'anthropic/claude-3-5-sonnet', name: 'Claude 3.5 Sonnet', context_window: 200_000, pricing: { input: 3, output: 15 } },
-  { id: 'anthropic/claude-3-haiku', name: 'Claude 3 Haiku', context_window: 200_000, pricing: { input: 0.25, output: 1.25 } },
-
-  // OpenAI
-  { id: 'openai/gpt-4.1', name: 'GPT-4.1', context_window: 1_000_000, pricing: { input: 2, output: 8 } },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', context_window: 128_000, pricing: { input: 2.5, output: 10 } },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', context_window: 128_000, pricing: { input: 0.15, output: 0.6 } },
-  { id: 'openai/o3-mini', name: 'o3-mini', context_window: 128_000, pricing: { input: 1.1, output: 4.4 } },
-
-  // Google
-  { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', context_window: 1_048_576, pricing: { input: 1.25, output: 10 } },
-  { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash', context_window: 1_048_576, pricing: { input: 0.15, output: 0.6 } },
-  { id: 'google/gemini-2.0-flash', name: 'Gemini 2.0 Flash', context_window: 1_000_000, pricing: { input: 0.075, output: 0.3 } },
-
-  // Meta
-  { id: 'meta/llama-3.3-70b', name: 'Llama 3.3 70B', context_window: 128_000, pricing: { input: 0, output: 0 } },
-  { id: 'meta/llama-3.1-405b', name: 'Llama 3.1 405B', context_window: 128_000, pricing: { input: 0, output: 0 } },
-
-  // Mistral
-  { id: 'mistral/mistral-large', name: 'Mistral Large', context_window: 128_000, pricing: { input: 2, output: 6 } },
-  { id: 'mistral/codestral', name: 'Codestral', context_window: 128_000, pricing: { input: 0.2, output: 0.6 } },
-]
 
 // ─── Slice Interface ────────────────────────────────────────────────────────
 
@@ -69,13 +39,11 @@ export interface GatewaySlice {
   gatewayService: GatewayService | null
   lastGatewayEvent: GatewayEvent | null
   openRouterModels: any[]
-  vercelModels: any[]
   modelsLastFetched: number
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
   setOpenRouterModels: (models: any[]) => void
-  setVercelModels: (models: any[]) => void
 
   /** Initialize the gateway service (call once on app startup) */
   initGatewayService: () => void
@@ -94,9 +62,6 @@ export interface GatewaySlice {
 
   /** Set manual model selection */
   setManualModel: (modelId: string) => void
-
-  /** Update provider options for a gateway (Vercel only) */
-  updateProviderOptions: (gatewayId: string, options: VercelProviderOptions | undefined) => void
 
   /** Save gateway config to persistent store */
   saveGatewayConfig: () => Promise<void>
@@ -138,13 +103,11 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
   gatewayService: null,
   lastGatewayEvent: null,
   openRouterModels: [],
-  vercelModels: VERCEL_MODEL_LIST,
   modelsLastFetched: 0,
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
   setOpenRouterModels: (models) => set({ openRouterModels: models, modelsLastFetched: Date.now() }),
-  setVercelModels: (models) => set({ vercelModels: models, modelsLastFetched: Date.now() }),
 
   initGatewayService: () => {
     // Gateways are NOT persisted (not in partialize), so gateways[0].apiKey is always ''
@@ -188,17 +151,6 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
   setRoutingMode: (mode) => set({ routingMode: mode }),
 
   setManualModel: (modelId) => set({ manualModelId: modelId }),
-
-  updateProviderOptions: (gatewayId, options) => {
-    set((state) => ({
-      gateways: state.gateways.map((g) =>
-        g.id === gatewayId ? { ...g, providerOptions: options } : g,
-      ),
-    }))
-    // Sync to service
-    const { gatewayService, gateways } = get()
-    gatewayService?.updateGateways(gateways)
-  },
 
   saveGatewayConfig: async () => {
     try {

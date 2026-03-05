@@ -152,6 +152,35 @@ export async function getFallbackChain(
   })
 }
 
+// ── Browser Sidecar Commands ────────────────────────────────────────────────────
+
+export interface SidecarInstallStatus {
+  installed: boolean
+  has_node_modules: boolean
+  has_chromium: boolean
+  message: string
+}
+
+/**
+ * Check if browser sidecar dependencies are installed
+ */
+export async function browserCheckSidecarInstalled(): Promise<SidecarInstallStatus> {
+  return await tauriInvoke<SidecarInstallStatus>('browser_check_sidecar_installed') ?? {
+    installed: false,
+    has_node_modules: false,
+    has_chromium: false,
+    message: 'Unable to check',
+  }
+}
+
+/**
+ * Install browser sidecar dependencies (npm packages and Chromium)
+ */
+export async function browserInstallSidecar(): Promise<string> {
+  const result = await tauriInvokeOrThrow<string>('browser_install_sidecar')
+  return result
+}
+
 export async function tauriListen<T>(
   event: string,
   handler: (payload: T) => void,

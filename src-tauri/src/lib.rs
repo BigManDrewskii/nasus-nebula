@@ -706,6 +706,8 @@ pub fn run() {
         sidecar::browser_upload_file,
         sidecar::browser_cookies,
         sidecar::browser_set_stealth,
+        sidecar::browser_check_sidecar_installed,
+        sidecar::browser_install_sidecar,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

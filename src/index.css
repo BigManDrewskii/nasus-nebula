@@ -363,6 +363,12 @@ html, body, #root {
   white-space: nowrap;
 }
 
+.output-tab > span:first-child {
+  display: flex;
+  align-items: center;
+  opacity: 0.9;
+}
+
 .output-tab:hover {
   background: rgba(255,255,255,0.04);
   border-color: rgba(255,255,255,0.08);
@@ -373,6 +379,10 @@ html, body, #root {
   color: var(--tx-primary);
   background: rgba(255,255,255,0.07);
   border-color: rgba(255,255,255,0.1);
+}
+
+.output-tab--active > span:first-child {
+  opacity: 1;
 }
 
 .output-tab--icon {
@@ -741,6 +751,14 @@ html, body, #root {
   }
 }
 
+/* ── Icon with label utility ─────────────────────────────────────────────────── */
+
+.icon-with-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ── Responsive utilities ───────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
@@ -902,18 +920,13 @@ html, body, #root {
 
 /* Right output panel — fluid width, collapses to icon rail */
 .app-sidebar-right {
-  /* When not collapsed, width is controlled via inline style for resize */
-  width: clamp(320px, 28vw, 480px);
-  min-width: clamp(320px, 28vw, 480px);
-  max-width: clamp(320px, 28vw, 480px);
+  /* Width is controlled via inline style for resize when not collapsed */
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
   background: rgba(11, 11, 11, 0.4);
   backdrop-filter: var(--glass-blur);
-  transition: width var(--sidebar-transition),
-              min-width var(--sidebar-transition),
-              max-width var(--sidebar-transition);
+  transition: width var(--sidebar-transition);
 }
 
 .app-sidebar-right.app-sidebar--collapsed {
@@ -922,9 +935,15 @@ html, body, #root {
   max-width: 44px;
 }
 
+/* Disable transition during active drag for immediate response */
+.app-sidebar-right.is-resizing {
+  transition: none !important;
+}
+
 /* ── Panel Divider (resizable right panel) ────────────────────────────────── */
 .panel-divider {
   position: relative;
+  z-index: 10;
 }
 .panel-divider:active {
   user-select: none;

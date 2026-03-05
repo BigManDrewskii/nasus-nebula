@@ -1,5 +1,5 @@
 // Orchids was here
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Task } from './types'
 import { useAppStore } from './store'
@@ -48,7 +48,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, setBrowserActivityActive } = useAppStore(
     useShallow((s) => ({
       tasks: s.tasks,
       activeTaskId: s.activeTaskId,
@@ -60,6 +60,8 @@ function App() {
       settingsOpen: s.settingsOpen,
       closeSettings: s.closeSettings,
       openSettings: s.openSettings,
+      checkSidecarInstalled: s.checkSidecarInstalled,
+      setBrowserActivityActive: s.setBrowserActivityActive,
     })),
   )
   
@@ -110,20 +112,46 @@ function App() {
   const [outputVisible, setOutputVisible] = useState(savedLayout.rightPanelVisible ?? true)
   const [rightPanelWidth, setRightPanelWidth] = useState(savedLayout.rightPanelWidth ?? 0.4)
 
+  // Ref for the right sidebar element, used by PanelDivider to toggle resize class
+  const sidebarRef = useRef<HTMLDivElement>(null)
+
+  // Check sidecar installation status on startup
+  useEffect(() => {
+    checkSidecarInstalled()
+  }, [checkSidecarInstalled])
+
+  // Listen for browser activity events and auto-open browser panel
+  useEffect(() => {
+    const handler = () => {
+      setBrowserActivityActive(true)
+      // Auto-open and show browser panel
+      if (!outputVisible) setOutputVisible(true)
+      if (rightCollapsed) setRightCollapsed(false)
+      setRightActiveTab('browser')
+    }
+    window.addEventListener('nasus:browser-activity', handler as EventListener)
+    return () => window.removeEventListener('nasus:browser-activity', handler as EventListener)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Responsive hook for window-size-aware sidebar behavior
-  // Note: Responsive recommendations are available but manual state currently takes precedence
   const responsive = useSidebarResponsive({
     leftManual: leftCollapsed,
     rightManual: rightCollapsed,
     userPreference: sidebarPreference,
   })
 
-  // Log responsive state for debugging (can be removed in production)
+  // Auto-collapse panels based on window size
+  // Respects manual overrides - only auto-collapses when appropriate
   useEffect(() => {
-    if (responsive.shouldAutoCollapse && !leftCollapsed) {
-      // Window is too tight - could auto-collapse here
+    // Only auto-collapse when thresholds are hit, don't auto-expand
+    // This allows user to manually keep panels collapsed even at larger sizes
+    if (responsive.shouldAutoCollapseLeft && !leftCollapsed) {
+      setLeftCollapsed(true)
     }
-  }, [responsive.shouldAutoCollapse, leftCollapsed, responsive.windowWidth])
+    if (responsive.shouldAutoCollapseRight && !rightCollapsed) {
+      setRightCollapsed(true)
+    }
+  }, [responsive.shouldAutoCollapseLeft, responsive.shouldAutoCollapseRight])
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()
@@ -270,17 +298,21 @@ function App() {
         </main>
 
         {/* ── Right Output Panel ── */}
-        {outputVisible && !rightCollapsed && (
+        {outputVisible && (
           <PanelDivider
             width={rightPanelWidth}
             onWidthChange={setRightPanelWidth}
             onCollapse={() => setRightCollapsed(true)}
+            onExpand={() => setRightCollapsed(false)}
             previousWidth={0.4}
+            collapsed={rightCollapsed}
+            sidebarRef={sidebarRef}
           />
         )}
 
         {outputVisible && (
           <div
+            ref={sidebarRef}
             className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}
             style={rightCollapsed ? undefined : { width: `${rightPanelWidth * 100}%` }}
           >

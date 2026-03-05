@@ -1,13 +1,10 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createOpenAI } from '@ai-sdk/openai';
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createMistral } from '@ai-sdk/mistral';
 import { type LanguageModel } from 'ai';
 import { withHealthTracking } from './healthMiddleware';
 
 export interface ProviderConfig {
-  provider: 'openrouter' | 'vercel' | 'openai' | 'anthropic' | 'google' | 'mistral' | 'litellm' | 'ollama' | string;
+  provider: 'openrouter' | 'ollama' | 'custom';
   apiKey?: string;
   apiBase?: string;
   gatewayId?: string;
@@ -37,44 +34,14 @@ export function getUnifiedModel(
       },
     });
     model = openrouter(modelId);
-  } else if (provider === 'vercel' || provider === 'openai' || provider === 'litellm' || provider === 'ollama' || provider === 'custom') {
-    // 2. Vercel AI Gateway / Generic OpenAI Compatible
+  } else {
+    // 2. OpenAI-Compatible (Ollama, Custom, and any other OpenAI-compatible endpoint)
     const openai = createOpenAI({
       apiKey,
       baseURL: apiBase,
       headers: extraHeaders,
     });
     model = openai(modelId);
-  } else if (provider === 'anthropic') {
-    // 3. Direct Providers
-    const anthropic = createAnthropic({
-      apiKey,
-      baseURL: apiBase,
-      headers: extraHeaders,
-    });
-    model = anthropic(modelId);
-  } else if (provider === 'google') {
-    const google = createGoogleGenerativeAI({
-      apiKey,
-      baseURL: apiBase,
-      headers: extraHeaders,
-    });
-    model = google(modelId);
-  } else if (provider === 'mistral') {
-    const mistral = createMistral({
-      apiKey,
-      baseURL: apiBase,
-      headers: extraHeaders,
-    });
-    model = mistral(modelId);
-  } else {
-    // Fallback to generic OpenAI for anything else
-    const genericOpenAI = createOpenAI({
-      apiKey,
-      baseURL: apiBase,
-      headers: extraHeaders,
-    });
-    model = genericOpenAI(modelId);
   }
 
   // Wrap with health tracking if gatewayId is provided
