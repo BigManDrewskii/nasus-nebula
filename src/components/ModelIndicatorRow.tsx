@@ -1,17 +1,12 @@
 /**
  * Compact model indicator row for sidebar footer.
  * Displays current provider, model, and budget mode.
- * Clicking opens the ModelSelector popover for quick model switching.
+ * Clicking opens the Settings modal on the Model tab.
  */
 
-import { useRef, useState } from 'react'
 import { useAppStore } from '../store'
-import { ModelSelector } from './ModelSelector/ModelSelector'
 
 export function ModelIndicatorRow() {
-  const [selectorOpen, setSelectorOpen] = useState(false)
-  const rowRef = useRef<HTMLButtonElement>(null)
-
   const provider = useAppStore((s) => s.provider)
   const model = useAppStore((s) => s.model)
   const routerConfig = useAppStore((s) => s.routerConfig)
@@ -39,23 +34,9 @@ export function ModelIndicatorRow() {
   const providerLabel = provider === 'ollama' ? 'Local' : provider === 'vercel' ? 'Vercel AI' : 'OpenRouter'
 
   return (
-    <div className="relative" style={{ position: 'relative' }}>
-      {/* Popover — positioned above the row */}
-      {selectorOpen && (
-        <ModelSelector
-          anchor={rowRef}
-          position="above"
-          onSelect={(modelId) => {
-            useAppStore.getState().setModel(modelId)
-            setSelectorOpen(false)
-          }}
-          onClose={() => setSelectorOpen(false)}
-        />
-      )}
-
+    <div style={{ position: 'relative' }}>
       <button
-        ref={rowRef}
-        onClick={() => setSelectorOpen(!selectorOpen)}
+        onClick={() => openSettings('model')}
         style={{
           width: '100%',
           display: 'flex',
@@ -63,25 +44,20 @@ export function ModelIndicatorRow() {
           gap: 8,
           padding: '7px 10px',
           borderRadius: 7,
-          background: selectorOpen ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.025)',
-          border: selectorOpen ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(255, 255, 255, 0.05)',
+          background: 'rgba(255, 255, 255, 0.025)',
+          border: '1px solid rgba(255, 255, 255, 0.05)',
           cursor: 'pointer',
           transition: 'background 0.12s ease, border-color 0.12s ease',
-          position: 'relative',
         }}
         onMouseEnter={(e) => {
-          if (!selectorOpen) {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
-          }
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
         }}
         onMouseLeave={(e) => {
-          if (!selectorOpen) {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.025)'
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)'
-          }
+          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.025)'
+          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)'
         }}
-        title="Click to change model"
+        title="Open model settings"
       >
         {/* Health dot */}
         <span
@@ -102,7 +78,7 @@ export function ModelIndicatorRow() {
             fontSize: 11,
             fontWeight: 500,
             fontFamily: 'var(--font-mono)',
-            color: selectorOpen ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+            color: 'var(--tx-secondary)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -130,75 +106,25 @@ export function ModelIndicatorRow() {
           {isFree ? 'Free' : 'Paid'}
         </span>
 
-        {/* Dropdown indicator */}
+        {/* Settings gear icon */}
         <svg
-          width="9"
-          height="9"
-          viewBox="0 0 9 9"
+          width="11"
+          height="11"
+          viewBox="0 0 11 11"
+          fill="none"
           style={{
             flexShrink: 0,
-            color: selectorOpen ? 'var(--tx-secondary)' : 'var(--tx-tertiary)',
-            transform: selectorOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.14s ease',
+            color: 'var(--tx-tertiary)',
           }}
         >
           <path
-            d="M2 3.5l2.5 2.5 2.5-2.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-
-      {/* Settings button — separate from model selector */}
-      <button
-        onClick={() => openSettings('model')}
-        style={{
-          position: 'absolute',
-          right: -28,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          width: 22,
-          height: 22,
-          borderRadius: 5,
-          border: 'none',
-          background: 'transparent',
-          color: 'var(--tx-tertiary)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: 0,
-          transition: 'opacity 0.12s ease, color 0.12s ease',
-        }}
-        className="model-settings-btn"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.opacity = '1'
-          e.currentTarget.style.color = 'var(--tx-secondary)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.opacity = '0'
-          e.currentTarget.style.color = 'var(--tx-tertiary)'
-        }}
-        title="Open model settings"
-      >
-        <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-          <path
-            d="M5.5 1.5a1.5 1.5 0 0 1 1.5 1.5H4a1.5 1.5 0 0 1 1.5-1.5zm0 8a1.5 1.5 0 0 1-1.5-1.5h3a1.5 1.5 0 0 1-1.5 1.5zm4-4h-8"
+            d="M5.5 1.5a1.5 1.5 0 0 1 1.5 1.5H4a1.5 1.5 0 0 1 1.5-1.5zm0 8a1.5 1.5 0 0 1-1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5zm4-4h-8"
             stroke="currentColor"
             strokeWidth="1"
             strokeLinecap="round"
           />
         </svg>
       </button>
-
-      {/* Show settings button on hover of parent */}
-      <style>{`
-        .model-settings-btn { display: none; }
-      `}</style>
     </div>
   )
 }

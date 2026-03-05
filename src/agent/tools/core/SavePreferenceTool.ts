@@ -1,7 +1,7 @@
 import { BaseTool } from './BaseTool'
 import { toolSuccess, toolFailure } from './ToolResult'
 import type { ToolResult, ToolParameterSchema } from './ToolResult'
-import { updatePreference } from '../memory/userPreferences'
+import { updatePreference } from '../../memory/userPreferences'
 
 /**
  * Tool for saving persistent user preferences.

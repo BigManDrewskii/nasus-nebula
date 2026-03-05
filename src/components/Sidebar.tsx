@@ -170,7 +170,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.025)'}
               title="Model settings"
             >
-              <Pxi name="circle" size={6} style={{ color: 'var(--amber)' }} />
+              <Pxi name="circle" size={8} style={{ color: 'var(--amber)' }} />
             </button>
 
             <RailButton icon="cog" title="Settings" onClick={onOpenSettings} />
@@ -388,7 +388,7 @@ function NewTaskButton({ onClick }: { onClick: () => void }) {
         boxShadow: hov ? '0 0 16px oklch(64% 0.214 40.1 / 0.12)' : 'none',
       }}
     >
-        <Pxi name="plus" size={10} style={{ flexShrink: 0, transform: hov ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
+        <Pxi name="plus" size={12} style={{ flexShrink: 0, transform: hov ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
         <span style={{ flex: 1, textAlign: 'left', letterSpacing: '0.01em' }}>New task</span>
         <kbd
           style={{
@@ -434,7 +434,7 @@ function SearchBar({
           border: '1px solid rgba(255,255,255,0.11)',
         }}
       >
-        <Pxi name="search" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+        <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
         <input
           ref={inputRef}
           value={value}
@@ -459,7 +459,7 @@ function SearchBar({
               padding: 0, cursor: 'pointer', color: 'var(--tx-tertiary)',
             }}
           >
-            <Pxi name="times" size={9} />
+            <Pxi name="times" size={12} />
           </button>
         )}
       </div>
@@ -485,7 +485,7 @@ function SearchBar({
         fontFamily: 'inherit',
       }}
     >
-      <Pxi name="search" size={10} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
+      <Pxi name="search" size={12} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
       <span style={{ fontSize: 11.5, color: 'var(--tx-muted)', flex: 1, textAlign: 'left' }}>
         Search
       </span>
@@ -641,7 +641,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
             transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
           }}
         >
-          <Pxi name="chevron-down" size={8} />
+          <Pxi name="chevron-down" size={10} />
         </span>
       </button>
 
@@ -711,7 +711,7 @@ function SettingsLink({ onSettings }: { onSettings: () => void }) {
     >
       <Pxi
         name="cog"
-        size={9}
+        size={12}
         style={{
           color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
           transition: 'color 0.12s, transform 0.35s',

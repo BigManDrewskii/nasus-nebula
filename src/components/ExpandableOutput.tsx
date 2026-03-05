@@ -35,7 +35,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
         borderBottom: `1px solid ${isError ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)'}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Pxi name={isError ? 'alert-circle' : 'file-text'} size={11} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
+          <Pxi name={isError ? 'alert-circle' : 'file-text'} size={14} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
           {fileName && (
             <span style={{
               fontSize: 10.5,
@@ -126,7 +126,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
             onMouseEnter={(e) => e.currentTarget.style.color = 'var(--tx-secondary)'}
             onMouseLeave={(e) => e.currentTarget.style.color = 'var(--tx-tertiary)'}
           >
-            <Pxi name="chevron-up" size={8} /> Collapse
+            <Pxi name="chevron-up" size={10} /> Collapse
           </button>
         </div>
       )}

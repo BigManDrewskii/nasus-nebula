@@ -1,6 +1,6 @@
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
-import { chatOnce, cheapestModel, chatOnceViaGateway } from './llm'
+import { cheapestModel, chatOnceViaGateway } from './llm'
 import { getWorkspace } from './tools'
 
 /**
@@ -32,11 +32,15 @@ export async function updateProjectMemory(taskId: string): Promise<void> {
   // Read existing memory
   let existing = ''
   try {
-    existing = await tauriInvoke<string>('read_file', {
+    const content = await tauriInvoke<string>('read_file', {
       taskId: '__system__',
       path: memoryPath
     })
-  } catch { /* file doesn't exist yet */ }
+    existing = content || ''
+  } catch {
+    // file doesn't exist yet
+    existing = ''
+  }
 
   // Read this task's findings
   const workspace = await getWorkspace(taskId)
@@ -67,7 +71,6 @@ ${plan.slice(0, 1000)}
 Return ONLY new bullet points to ADD, or "NONE" if nothing new. Each bullet must start with "- ".`
 
   const store = useAppStore.getState()
-  const resolved = store.resolveConnection()
   const { openRouterModels } = store
   const cheapModel = openRouterModels.length > 0
     ? cheapestModel(openRouterModels)

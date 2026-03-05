@@ -10,13 +10,12 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
-import { streamCompletion, chatOnce, cheapestModel, powerfulModel, balancedModel, chatOnceViaGateway } from '../llm'
+import { streamCompletion, cheapestModel, powerfulModel, chatOnceViaGateway, type LlmResponse } from '../llm'
 import { startTurnTracking, flushTurnFiles, getWorkspace, type SearchStatusCallback } from '../tools'
-import { executeTool as executeToolLegacy } from '../tools'
 import { executeTool as executeRegistryTool } from '../tools/index'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
-import type { AgentStep, Task } from '../../types'
+import type { AgentStep } from '../../types'
 import { detectStack, seedStackTemplate } from '../stackTemplates'
 import { SYSTEM_PROMPT } from '../systemPrompt'
 import { getToolDefinitions } from '../tools/index'
@@ -24,7 +23,6 @@ import type { ToolCall } from '../llm'
 import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
-import { permissionSystem } from '../core/PermissionSystem'
 import { getModelAdapter } from '../promptAdapter'
 
 const MAX_CORRECTION_ATTEMPTS = 3
@@ -289,7 +287,7 @@ export class ExecutionAgent extends BaseAgent {
       }
 
       // LLM call with automatic gateway failover
-      const llmResult = await this.callLLM(messages, taskId, messageId, signal!)
+      const llmResult = await this.callLLM(messages, taskId, messageId, signal!, params.executionConfig)
       if (!llmResult) {
         if (signal && !signal.aborted) {
           return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
@@ -297,9 +295,11 @@ export class ExecutionAgent extends BaseAgent {
         return { state: AgentState.FINISHED, done: true }
       }
 
-      const { finishReason, responseContent, responseToolCalls, usage, model: effectiveModel } = llmResult
+      const { finishReason, content, toolCalls, usage } = llmResult
 
       // Token awareness & context management
+      // Get the effective model from the store (since LlmResponse doesn't include it)
+      const effectiveModel = useAppStore.getState().model
       if (usage) {
         useAppStore.getState().updateTokenUsage(taskId, usage, effectiveModel)
 
@@ -328,25 +328,25 @@ export class ExecutionAgent extends BaseAgent {
     }
 
     // No tool calls = done
-    if (finishReason === 'stop' || responseToolCalls.length === 0) {
-      if (responseContent) {
+    if (finishReason === 'stop' || toolCalls.length === 0) {
+      if (content) {
         useAppStore.getState().appendRawHistory(taskId, [
-          { role: 'assistant', content: responseContent },
+          { role: 'assistant', content: content },
         ])
       }
       this.emitDone(taskId, messageId)
       return { state: AgentState.FINISHED, done: true }
     }
 
-    const isComplete = responseToolCalls.some(tc => tc.function.name === 'complete')
+    const isComplete = toolCalls.some((tc: ToolCall) => tc.function.name === 'complete')
     if (isComplete) {
       // Find the complete call to get its summary if needed, but the tool execution will handle it
     }
 
     // Process tool calls
     const toolResult = await this.processToolCalls(
-      responseToolCalls,
-      responseContent,
+      toolCalls,
+      content,
       messages,
       taskId,
       messageId,
@@ -369,9 +369,8 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
-    if (isComplete) return 'complete'
-
-    return 'continue'
+    // Should never reach here, but TypeScript needs a return
+    return { state: AgentState.ERROR, done: true, error: 'Unexpected execution flow' }
   }
 
   /**
@@ -519,22 +518,46 @@ export class ExecutionAgent extends BaseAgent {
     taskId: string,
     messageId: string,
     signal: AbortSignal,
+    executionConfig?: ExecutionConfig,
   ): Promise<LlmResponse | null> {
     const store = useAppStore.getState()
     const resolved = store.resolveConnection()
-    
+
     // Legacy support: prefer store/resolved values unless overridden
     const apiBase = resolved.apiBase || store.apiBase
     const apiKey = resolved.apiKey || store.apiKey
     const provider = resolved.provider || store.provider
-    const model = this.forcePowerfulModel 
-      ? powerfulModel(store.openRouterModels) 
+    const model = this.forcePowerfulModel
+      ? powerfulModel(store.openRouterModels)
       : (resolved.model || store.model)
+
+    // === DIAGNOSTIC LOGGING ===
+    console.log('[callLLM] Provider Configuration:', {
+      provider,
+      apiBase,
+      hasApiKey: Boolean(apiKey && apiKey.length > 0),
+      apiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : 'none',
+      model,
+      gatewayId: resolved.gatewayId,
+      extraHeaders: Object.keys(resolved.extraHeaders || {}),
+    })
+    // ===========================
+
+    // Early validation for missing API key - provide visible error instead of silent hang
+    if (!apiKey || apiKey.length === 0) {
+      const providerLabel = provider === 'vercel' ? 'Vercel AI Gateway' :
+                           provider === 'openrouter' ? 'OpenRouter' :
+                           provider === 'openai' ? 'OpenAI' : provider
+      const errorMsg = `No API key configured for ${providerLabel}. Open Settings (⌘,) and enter your ${providerLabel} API key.`
+      console.error('[callLLM]', errorMsg)
+      this.emitError(taskId, messageId, errorMsg)
+      return null
+    }
 
     try {
       this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
 
-      const env = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+      const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
 
       const result = await streamCompletion(
         apiBase,
@@ -550,7 +573,6 @@ export class ExecutionAgent extends BaseAgent {
           onError: (err) => this.emitError(taskId, messageId, err),
           signal,
           extraHeaders: resolved.extraHeaders,
-          gatewayId: resolved.gatewayId,
         },
       )
 
@@ -567,8 +589,8 @@ export class ExecutionAgent extends BaseAgent {
    * Process tool calls from the assistant.
    */
   private async processToolCalls(
-    responseToolCalls: ToolCall[],
-    responseContent: string | null,
+    toolCalls: ToolCall[],
+    content: string | null,
     messages: LlmMessage[],
     taskId: string,
     messageId: string,
@@ -578,11 +600,11 @@ export class ExecutionAgent extends BaseAgent {
     warnIter = 40,
   ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
-    const singleToolCall = responseToolCalls.slice(0, 1)
+    const singleToolCall = toolCalls.slice(0, 1)
 
     messages.push({
       role: 'assistant',
-      content: responseContent || null,
+      content: content || null,
       tool_calls: singleToolCall,
     })
 
@@ -600,7 +622,7 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolCall(taskId, messageId, fnName, args, callId)
 
-      const env = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+      const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
       const availableTools = getToolDefinitions(env).map(t => t.function.name)
 
       if (!availableTools.includes(fnName)) {
@@ -634,7 +656,7 @@ export class ExecutionAgent extends BaseAgent {
           taskId,
           executionConfig: executionConfig ? {
             ...executionConfig,
-            onSandboxStatus: (status: string, message: string) => {
+            onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
               useAppStore.getState().setSandboxStatus(status, message)
             },
           } : undefined,
@@ -697,7 +719,7 @@ export class ExecutionAgent extends BaseAgent {
 
 
   private buildEnvSummary(executionConfig?: ExecutionConfig): string {
-    const hasSandbox = executionConfig?.executionMode === 'e2b' || executionConfig?.executionMode === 'docker'
+    const hasSandbox = executionConfig?.executionMode === 'docker'
     
     // Core tools that are ALWAYS available
     const coreTools = [
@@ -840,47 +862,6 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     return 128_000
   }
 
-  private async quickVerify(
-    taskId: string,
-    filePath: string,
-    content: string,
-  ): Promise<{ ok: boolean; issues: string[] }> {
-    const issues: string[] = []
-    const ext = filePath.split('.').pop()?.toLowerCase()
-
-    // 1. Check for common syntax issues (no external tools needed)
-    if (['ts', 'tsx', 'js', 'jsx'].includes(ext ?? '')) {
-      // Unmatched brackets/braces
-      const opens = (content.match(/[{(\[]/g) || []).length
-      const closes = (content.match(/[})\]]/g) || []).length
-      if (Math.abs(opens - closes) > 2) {
-        issues.push(`Bracket mismatch: ${opens} opening, ${closes} closing`)
-      }
-
-      // Incomplete file (ends mid-statement)
-      const trimmed = content.trimEnd()
-      if (trimmed.endsWith(',') || trimmed.endsWith('{') || trimmed.endsWith('(')) {
-        issues.push('File appears truncated (ends with incomplete syntax)')
-      }
-
-      // Check for common "oops" patterns
-      if (content.includes('TODO: implement') || content.includes('// ...')) {
-        issues.push('File contains placeholder/unimplemented sections')
-      }
-    }
-
-    // 2. Check for JSON validity
-    if (ext === 'json') {
-      try {
-        JSON.parse(content)
-      } catch (e) {
-        issues.push(`Invalid JSON: ${(e as Error).message}`)
-      }
-    }
-
-    return { ok: issues.length === 0, issues }
-  }
-
   /**
    * Auto-update task_plan.md with progress checkboxes.
    * Marks the next unchecked item as complete after successful tool execution.
@@ -942,14 +923,6 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     taskId: string,
   ): Promise<void> {
     const store = useAppStore.getState()
-
-    // Use the gateway's resolved connection so we get the correct apiKey, apiBase,
-    // and any extra headers (HTTP-Referer / X-Title) that OpenRouter requires.
-    const resolved = store.resolveConnection()
-    const apiBase = resolved.apiBase || store.apiBase
-    const apiKey  = resolved.apiKey  || store.apiKey
-    const provider = resolved.provider || store.provider
-
     const { openRouterModels } = store
 
     // Always use the cheapest available model for titling — no :free suffix,

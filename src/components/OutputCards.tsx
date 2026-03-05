@@ -117,7 +117,7 @@ function CopyBtn({ text }: { text: string }) {
         cursor: 'pointer', transition: 'all 0.12s',
       }}
     >
-      <Pxi name={copied ? 'check' : 'copy'} size={9} />
+      <Pxi name={copied ? 'check' : 'copy'} size={12} />
       {copied ? 'Copied' : 'Copy'}
     </button>
   )
@@ -172,7 +172,7 @@ function CardHeader({
         border: `1px solid ${iconColor}28`,
         flexShrink: 0,
       }}>
-        <Pxi name={icon} size={12} style={{ color: iconColor }} />
+        <Pxi name={icon} size={14} style={{ color: iconColor }} />
       </div>
 
       {/* Filename + type badge */}
@@ -234,7 +234,7 @@ function FileCard({ file }: { file: OutputCardFile }) {
                 color: 'var(--tx-tertiary)', cursor: 'pointer',
               }}
             >
-              <Pxi name="download" size={9} />
+              <Pxi name="download" size={12} />
               Save
             </button>
           </>
@@ -279,7 +279,7 @@ const CodeCard = memo(function CodeCard({ file }: { file: OutputCardFile }) {
                 color: 'var(--tx-tertiary)', cursor: 'pointer',
               }}
             >
-              <Pxi name="download" size={9} />
+              <Pxi name="download" size={12} />
               Save
             </button>
           </>
@@ -324,7 +324,7 @@ const CodeCard = memo(function CodeCard({ file }: { file: OutputCardFile }) {
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--tx-secondary)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
-            <Pxi name={expanded ? 'chevron-up' : 'chevron-down'} size={9} />
+            <Pxi name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
             {expanded ? 'Collapse' : `Show all ${lines.length} lines`}
           </button>
         )}
@@ -391,7 +391,7 @@ const PreviewCard = memo(function PreviewCard({ file }: { file: OutputCardFile }
                 color: 'var(--tx-tertiary)', cursor: 'pointer',
               }}
             >
-              <Pxi name="download" size={9} />
+              <Pxi name="download" size={12} />
               Save
             </button>
           </>
@@ -430,7 +430,7 @@ const PreviewCard = memo(function PreviewCard({ file }: { file: OutputCardFile }
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--tx-secondary)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
-            <Pxi name={expanded ? 'compress' : 'expand'} size={9} />
+            <Pxi name={expanded ? 'compress' : 'expand'} size={12} />
             {expanded ? 'Collapse preview' : 'Expand preview'}
           </button>
         </div>
@@ -492,7 +492,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
           background: 'rgba(251,191,36,0.1)',
           border: '1px solid rgba(251,191,36,0.2)',
         }}>
-          <Pxi name="folder-open" size={12} style={{ color: 'var(--amber)' }} />
+          <Pxi name="folder-open" size={14} style={{ color: 'var(--amber)' }} />
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -550,7 +550,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(251,191,36,0.15)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(251,191,36,0.08)' }}
           >
-            <Pxi name="download" size={10} />
+            <Pxi name="download" size={12} />
             Download all
           </button>
         </div>
@@ -579,7 +579,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--tx-secondary)' }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
-            <Pxi name={expanded ? 'compress' : 'expand'} size={9} />
+            <Pxi name={expanded ? 'compress' : 'expand'} size={12} />
             {expanded ? 'Collapse' : 'Expand preview'}
           </button>
         </div>
@@ -612,7 +612,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
                   onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
                   onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent' }}
                 >
-                  <Pxi name={m.icon} size={10} style={{ color: active ? 'var(--amber)' : m.color, flexShrink: 0 }} />
+                  <Pxi name={m.icon} size={12} style={{ color: active ? 'var(--amber)' : m.color, flexShrink: 0 }} />
                   <span style={{
                     fontSize: 11, color: active ? 'var(--amber-soft)' : 'var(--tx-secondary)',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -644,7 +644,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
                   background: 'transparent', color: 'var(--tx-tertiary)', cursor: 'pointer',
                 }}
               >
-                <Pxi name="download" size={8} />
+                <Pxi name="download" size={10} />
               </button>
             </div>
             <pre style={{

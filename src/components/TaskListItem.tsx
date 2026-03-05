@@ -1,4 +1,4 @@
-import { useState, useRef, memo, useCallback } from 'react'
+import { useState, useRef, memo, useCallback, useEffect } from 'react'
 import type { Task } from '../types'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
@@ -52,74 +52,257 @@ interface TaskListItemProps {
   onClick: () => void
 }
 
-export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
-    const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
-    const [hovered,    setHovered]    = useState(false)
-    const [confirming, setConfirming] = useState(false)
-    const [editing,    setEditing]    = useState(false)
-    const [editValue,  setEditValue]  = useState(task.title)
-    const inputRef = useRef<HTMLInputElement>(null)
-    const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+// ── Task action menu ───────────────────────────────────────────────────────────
 
-    const startEdit = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation()
-      setEditValue(task.title)
-      setEditing(true)
-      setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
-    }, [task.title])
+interface TaskActionMenuProps {
+  task: Task
+  position: { top: number; right: number }
+  onClose: () => void
+  onRename: () => void
+  onDelete: () => void
+  onPin: () => void
+  onDuplicate: () => void
+  onExport: () => void
+}
 
-    const commitEdit = useCallback(() => {
-      const trimmed = editValue.trim()
-      if (trimmed && trimmed !== task.title) updateTaskTitle(task.id, trimmed)
-      setEditing(false)
-    }, [editValue, task.title, task.id, updateTaskTitle])
+function TaskActionMenu({
+  task, position, onClose, onRename, onDelete, onPin, onDuplicate, onExport
+}: TaskActionMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const cancelEdit = useCallback(() => {
-      setEditValue(task.title)
-      setEditing(false)
-    }, [task.title])
-
-    const handleDelete = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation()
-      if (!confirming) {
-        setConfirming(true)
-        confirmTimer.current = setTimeout(() => setConfirming(false), 2500)
-        return
+  // Close on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose()
       }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [onClose])
+
+  // Close on ESC key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  // Reset delete confirmation when closing
+  useEffect(() => {
+    return () => {
       if (confirmTimer.current) clearTimeout(confirmTimer.current)
-      deleteTask(task.id)
-    }, [confirming, deleteTask, task.id])
+    }
+  }, [])
 
-    const handlePin = useCallback((e: React.MouseEvent) => {
+  const handleDeleteClick = useCallback(() => {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      confirmTimer.current = setTimeout(() => setConfirmDelete(false), 2500)
+    } else {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current)
+      onDelete()
+      onClose()
+    }
+  }, [confirmDelete, onDelete, onClose])
+
+  const handleAction = useCallback((action: () => void) => {
+    return (e: React.MouseEvent) => {
       e.stopPropagation()
-      toggleTaskPin(task.id)
-    }, [toggleTaskPin, task.id])
+      action()
+      onClose()
+    }
+  }, [onClose])
 
-    const handleDuplicate = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation()
-      duplicateTask(task.id)
-    }, [duplicateTask, task.id])
+  const handleRenameClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClose()
+    onRename()
+  }, [onClose, onRename])
 
-    const handleExport = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation()
-      exportTask(task)
-    }, [task])
+  return (
+    <div
+      ref={menuRef}
+      onMouseLeave={() => onClose()}
+      style={{
+        position: 'fixed',
+        top: `${position.top}px`,
+        right: `${position.right}px`,
+        zIndex: 1000,
+        minWidth: 160,
+      }}
+    >
+      <div
+        style={{
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          overflow: 'hidden',
+          padding: '4px 0',
+        }}
+      >
+        <MenuItem
+          icon={task.pinned ? 'thumbtack' : 'thumbtack'}
+          label={task.pinned ? 'Unpin' : 'Pin'}
+          onClick={handleAction(onPin)}
+          amber={!!task.pinned}
+        />
+        <MenuItem
+          icon="download"
+          label="Export as Markdown"
+          onClick={handleAction(onExport)}
+        />
+        <MenuItem
+          icon="copy"
+          label="Duplicate"
+          onClick={handleAction(onDuplicate)}
+        />
+        <MenuItem
+          icon="pencil"
+          label="Rename"
+          onClick={handleRenameClick}
+        />
+        <div style={{
+          height: 1,
+          background: 'var(--border)',
+          margin: '4px 8px',
+        }} />
+        <MenuItem
+          icon={confirmDelete ? 'exclamation-triangle' : 'trash'}
+          label={confirmDelete ? 'Click again to delete' : 'Delete'}
+          onClick={handleDeleteClick}
+          danger
+        />
+      </div>
+    </div>
+  )
+}
 
-    const icon = taskTypeIcon(task.taskType)
+interface MenuItemProps {
+  icon: string
+  label: string
+  onClick: (e: React.MouseEvent) => void
+  danger?: boolean
+  amber?: boolean
+}
 
-    // How much space the action buttons take — drives the mask stop
-    const ACTIONS_WIDTH = 96 // 4 × 22px + 3 × 2px gap
+function MenuItem({ icon, label, onClick, danger, amber }: MenuItemProps) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <button
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '8px 12px',
+        border: 'none',
+        background: hovered
+          ? danger
+            ? 'rgba(239,68,68,0.12)'
+            : 'rgba(255,255,255,0.06)'
+          : 'transparent',
+        color: danger
+          ? hovered
+            ? '#fca5a5'
+            : '#f87171'
+          : amber
+            ? 'var(--amber)'
+            : hovered
+              ? 'var(--tx-primary)'
+              : 'var(--tx-secondary)',
+        fontSize: 12,
+        fontWeight: 400,
+        cursor: 'pointer',
+        transition: 'all 0.1s',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <Pxi name={icon} size={14} />
+      </span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
+// ── Task list item ────────────────────────────────────────────────────────────
+
+export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
+  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
+  const [hovered, setHovered] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(task.title)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 })
+  const inputRef = useRef<HTMLInputElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+
+  const startEdit = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setEditValue(task.title)
+    setEditing(true)
+    setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select() }, 0)
+  }, [task.title])
+
+  const commitEdit = useCallback(() => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== task.title) updateTaskTitle(task.id, trimmed)
+    setEditing(false)
+  }, [editValue, task.title, task.id, updateTaskTitle])
+
+  const cancelEdit = useCallback(() => {
+    setEditValue(task.title)
+    setEditing(false)
+  }, [task.title])
+
+  const handleDelete = useCallback(() => {
+    deleteTask(task.id)
+  }, [deleteTask, task.id])
+
+  const handlePin = useCallback(() => {
+    toggleTaskPin(task.id)
+  }, [toggleTaskPin, task.id])
+
+  const handleDuplicate = useCallback(() => {
+    duplicateTask(task.id)
+  }, [duplicateTask, task.id])
+
+  const handleExport = useCallback(() => {
+    exportTask(task)
+  }, [task])
+
+  const openMenu = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const MENU_HEIGHT = 200 // Approximate menu height
+    const MENU_BOTTOM_SPACING = 8
+
+    // Check if menu would overflow bottom of viewport
+    const wouldOverflow = rect.bottom + MENU_HEIGHT + MENU_BOTTOM_SPACING > window.innerHeight
+
+    setMenuPosition({
+      top: wouldOverflow ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    })
+    setMenuOpen(true)
+  }, [])
+
+  const icon = taskTypeIcon(task.taskType)
 
   return (
     <div
       className="relative"
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => {
-        setHovered(false)
-        if (!confirming) return
-        if (confirmTimer.current) clearTimeout(confirmTimer.current)
-        setConfirming(false)
-      }}
+      onMouseLeave={() => setHovered(false)}
     >
       {editing ? (
         /* ── Inline rename input ── */
@@ -137,7 +320,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter')  { e.preventDefault(); commitEdit() }
+              if (e.key === 'Enter') { e.preventDefault(); commitEdit() }
               if (e.key === 'Escape') { e.preventDefault(); cancelEdit() }
             }}
             onBlur={commitEdit}
@@ -157,13 +340,12 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
         /* ── Main row ── */
         <button
           onClick={onClick}
-          onDoubleClick={startEdit}
+          onDoubleClick={(e) => startEdit(e)}
           style={{
             width: '100%',
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            // Vertical padding slightly asymmetric — more bottom gives optical centering
             padding: '5px 8px 6px 8px',
             borderRadius: 7,
             cursor: 'pointer',
@@ -175,8 +357,8 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             background: isActive
               ? 'rgba(255,255,255,0.08)'
               : hovered
-              ? 'rgba(255,255,255,0.04)'
-              : 'transparent',
+                ? 'rgba(255,255,255,0.04)'
+                : 'transparent',
             border: isActive
               ? '1px solid rgba(255,255,255,0.12)'
               : '1px solid transparent',
@@ -184,7 +366,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.2)' : 'none',
           }}
         >
-          {/* Active left accent — glowing amber pip */}
+          {/* Active left accent */}
           {isActive && (
             <span
               style={{
@@ -200,7 +382,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             />
           )}
 
-          {/* Type icon — dimmer when inactive, amber when active */}
+          {/* Type icon */}
           <span
             style={{
               display: 'flex',
@@ -208,15 +390,15 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
               color: isActive
                 ? 'var(--amber)'
                 : hovered
-                ? 'var(--tx-tertiary)'
-                : 'rgba(255,255,255,0.2)',
+                  ? 'var(--tx-tertiary)'
+                  : 'rgba(255,255,255,0.2)',
               transition: 'color 0.1s',
             }}
           >
-            <Pxi name={icon} size={9} />
+            <Pxi name={icon} size={12} />
           </span>
 
-          {/* Title with right-edge mask when hovered to make room for actions */}
+          {/* Title - no gradient mask, always full width */}
           <span
             style={{
               flex: 1,
@@ -226,21 +408,13 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
               lineHeight: 1.35,
               overflow: 'hidden',
               whiteSpace: 'nowrap',
-              textOverflow: hovered ? 'clip' : 'ellipsis',
-              transition: 'mask-image 0.1s',
-              // Mask fades the last ~70px of title text when actions are visible
-              maskImage: hovered
-                ? `linear-gradient(to right, black calc(100% - ${ACTIONS_WIDTH + 8}px), transparent calc(100% - ${ACTIONS_WIDTH - 4}px))`
-                : undefined,
-              WebkitMaskImage: hovered
-                ? `linear-gradient(to right, black calc(100% - ${ACTIONS_WIDTH + 8}px), transparent calc(100% - ${ACTIONS_WIDTH - 4}px))`
-                : undefined,
+              textOverflow: 'ellipsis',
             }}
           >
             {task.title}
           </span>
 
-          {/* Budget mode badge — shows for tasks that have budgetMode set */}
+          {/* Budget mode badge */}
           {task.budgetMode && (
             <span
               style={{
@@ -267,105 +441,59 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             </span>
           )}
 
-          {/* Status indicator — only when not hovered */}
+          {/* Status indicator - hide when hovered to make room for menu button */}
           {!hovered && <StatusDot status={task.status} />}
+
+          {/* Three-dot menu button - show on hover */}
+          {hovered && (
+            <button
+              ref={menuButtonRef}
+              onClick={openMenu}
+              style={{
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 5,
+                border: 'none',
+                cursor: 'pointer',
+                background: 'rgba(255,255,255,0.06)',
+                color: 'var(--tx-tertiary)',
+                transition: 'all 0.1s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.12)'
+                e.currentTarget.style.color = 'var(--tx-secondary)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                e.currentTarget.style.color = 'var(--tx-tertiary)'
+              }}
+            >
+              <Pxi name="ellipsis-vertical" size={12} />
+            </button>
+          )}
         </button>
       )}
 
-      {/* ── Hover action buttons ── */}
-      {hovered && !editing && (
-        <div
-          style={{
-            position: 'absolute',
-            right: 6,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            zIndex: 10,
-          }}
-        >
-          <MicroBtn
-            title={task.pinned ? 'Unpin' : 'Pin'}
-            amber={!!task.pinned}
-            onClick={handlePin}
-          >
-            <Pxi name="thumbtack" size={9} />
-          </MicroBtn>
-          <MicroBtn title="Export as Markdown" onClick={handleExport}>
-            <Pxi name="download" size={9} />
-          </MicroBtn>
-          <MicroBtn title="Duplicate" onClick={handleDuplicate}>
-            <Pxi name="copy" size={9} />
-          </MicroBtn>
-          <MicroBtn
-            title={confirming ? 'Click again to delete' : 'Delete'}
-            danger
-            active={confirming}
-            onClick={handleDelete}
-          >
-            <Pxi name={confirming ? 'exclamation-triangle' : 'trash'} size={9} />
-          </MicroBtn>
-        </div>
+      {/* ── Action menu popover ── */}
+      {menuOpen && !editing && (
+        <TaskActionMenu
+          task={task}
+          position={menuPosition}
+          onClose={() => setMenuOpen(false)}
+          onRename={() => startEdit()}
+          onDelete={handleDelete}
+          onPin={handlePin}
+          onDuplicate={handleDuplicate}
+          onExport={handleExport}
+        />
       )}
     </div>
   )
 })
-
-// ── Micro action button ───────────────────────────────────────────────────────
-
-function MicroBtn({
-  children, title, onClick, danger, active, amber,
-}: {
-  children: React.ReactNode
-  title: string
-  onClick: (e: React.MouseEvent) => void
-  danger?: boolean
-  active?: boolean
-  amber?: boolean
-}) {
-  const [hov, setHov] = useState(false)
-
-  let bg: string
-  let color: string
-
-  if (danger) {
-    bg    = active ? 'rgba(239,68,68,0.22)' : hov ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.07)'
-    color = active || hov ? '#fca5a5' : '#f87171'
-  } else if (amber) {
-    bg    = hov ? 'oklch(64% 0.214 40.1 / 0.18)' : 'oklch(64% 0.214 40.1 / 0.10)'
-    color = 'var(--amber)'
-  } else {
-    bg    = hov ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)'
-    color = hov ? 'var(--tx-secondary)' : 'var(--tx-tertiary)'
-  }
-
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{
-        width: 22,
-        height: 22,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: 5,
-        border: 'none',
-        cursor: 'pointer',
-        background: bg,
-        color,
-        transition: 'background 0.1s, color 0.1s',
-        flexShrink: 0,
-      }}
-    >
-      {children}
-    </button>
-  )
-}
 
 // ── Status dot ────────────────────────────────────────────────────────────────
 
@@ -409,14 +537,14 @@ function StatusDot({ status }: { status: Task['status'] }) {
   if (status === 'completed') {
     return (
       <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: '#4ade80' }}>
-        <Pxi name="check-circle" size={10} />
+        <Pxi name="check-circle" size={12} />
       </span>
     )
   }
   if (status === 'failed') {
     return (
       <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', color: '#f87171' }}>
-        <Pxi name="times-circle" size={10} />
+        <Pxi name="times-circle" size={12} />
       </span>
     )
   }
@@ -443,9 +571,9 @@ function taskTypeIcon(type: Task['taskType']): string {
   switch (type) {
     case 'research': return 'search'
     case 'code':     return 'code'
-    case 'document': return 'file-text'
+    case 'document': return 'file-import'
     case 'web':      return 'globe'
-    case 'data':     return 'chart-bar'
+    case 'data':     return 'chart-line'
     default:         return 'bolt'
   }
 }

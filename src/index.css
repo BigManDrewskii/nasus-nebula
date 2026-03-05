@@ -52,11 +52,11 @@
   --space-4-5: 1.125rem;  /* 18px */
 
   /* ── Icon size scale ── */
-  --icon-xs:  8px;
-  --icon-sm: 10px;
-  --icon-md: 12px;
-  --icon-lg: 14px;
-  --icon-xl: 18px;
+  --icon-xs:  10px;
+  --icon-sm: 12px;
+  --icon-md: 14px;
+  --icon-lg: 16px;
+  --icon-xl: 20px;
 
   /* ── Desktop breakpoints ── */
   --bp-compact:  1024px;

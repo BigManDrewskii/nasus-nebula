@@ -15,8 +15,11 @@ export interface ToolParameterSchema {
     description?: string
     enum?: string[]
     default?: unknown
+    properties?: Record<string, unknown>
+    items?: unknown
+    required?: readonly string[]
   }>
-  required?: string[]
+  required?: readonly string[]
 }
 
 /**

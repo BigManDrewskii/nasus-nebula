@@ -91,7 +91,7 @@ export function ActionChips({ onSend, onPrefill, centered }: ActionChipsProps) {
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
           }}
         >
-          <Pxi name={chip.icon} size={12} />
+          <Pxi name={chip.icon} size={14} />
           <span>{chip.label}</span>
         </button>
       ))}

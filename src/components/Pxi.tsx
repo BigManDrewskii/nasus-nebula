@@ -11,7 +11,7 @@ interface PxiProps {
   title?: string
 }
 
-export function Pxi({ name, size = 14, className = '', style, title }: PxiProps) {
+export function Pxi({ name, size = 12, className = '', style, title }: PxiProps) {
   return (
     <i
       className={`hn hn-${name} ${className}`}

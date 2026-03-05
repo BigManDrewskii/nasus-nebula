@@ -12,7 +12,7 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
-import { chatOnce, chatJsonViaGateway, chatOnceViaGateway } from '../llm'
+import { chatOnceViaGateway } from '../llm'
 import { getWorkspace } from '../tools'
 
 /**
@@ -342,7 +342,7 @@ export class VerificationAgent extends BaseAgent {
    * Use LLM to analyze execution for deeper issues.
    */
   private async analyzeWithLLM(context: VerificationContext): Promise<AgentIssue[]> {
-    const { executionOutput, plan, apiKey, model, apiBase, provider } = context
+    const { executionOutput, plan, model } = context
 
     const verifyModel: string = model || 'anthropic/claude-3-haiku'
 

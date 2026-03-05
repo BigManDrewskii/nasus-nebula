@@ -48,16 +48,17 @@ type ValidationErrors = Partial<Record<'apiKey' | 'workspacePath', string>>
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const {
-        apiKey, model, workspacePath,
+        model, workspacePath,
         setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
         openRouterModels, setOpenRouterModels,
         exaKey, setExaKey,
         maxIterations, setMaxIterations,
         addRecentWorkspacePath,
         routerConfig, setRouterConfig,
-        updateGateway, gateways,
+        updateGateway,
         settingsTab,
         setSettingsTab,
+        gatewayHealth,
       } = useAppStore()
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
@@ -85,8 +86,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const [saveError, setSaveError] = useState<string | null>(null)
     const [errors, setErrors] = useState<ValidationErrors>({})
 
-    const [ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
-    const [checkingOllama, setCheckingOllama] = useState(false)
+    const [_ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
+    const [_checkingOllama, setCheckingOllama] = useState(false)
     const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'openrouter')
 
     useEffect(() => {
@@ -377,7 +378,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Pxi name="cog" size={12} style={{ color: 'var(--amber)' }} />
+              <Pxi name="cog" size={14} style={{ color: 'var(--amber)' }} />
               <h2 style={{ fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
             </div>
             {/* OpenRouter badge */}
@@ -399,7 +400,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
-              <Pxi name="times" size={13} />
+              <Pxi name="times" size={14} />
             </button>
           </div>
         </div>
@@ -521,6 +522,217 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
             {settingsTab === 'model' && (
             <>
+              {/* ── Provider Selection (Radio Group) ── */}
+              <div style={{
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
+                  textTransform: 'uppercase', letterSpacing: '0.1em',
+                  color: 'var(--tx-secondary)',
+                }}>
+                  <Pxi name="cloud" size={12} style={{ color: 'var(--tx-tertiary)' }} />
+                  AI Provider
+                </label>
+
+                {/* Radio options */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[
+                    {
+                      id: 'openrouter',
+                      label: 'OpenRouter',
+                      description: 'Cloud models via OpenRouter — widest selection',
+                      healthKey: 'openrouter' as const,
+                    },
+                    {
+                      id: 'vercel',
+                      label: 'Vercel AI',
+                      description: 'Direct access to Anthropic, OpenAI, Google models',
+                      healthKey: 'vercel' as const,
+                    },
+                    {
+                      id: 'ollama',
+                      label: 'Ollama (Local)',
+                      description: 'Run models locally on your machine',
+                      healthKey: 'ollama' as const,
+                    },
+                  ].map((opt) => {
+                    const isSelected = activeProvider === opt.id
+                    const health = gatewayHealth.find(h => h.gatewayId === opt.healthKey)
+                    const hasKey = opt.id === 'openrouter'
+                      ? Boolean(localOpenRouterKey.trim())
+                      : opt.id === 'vercel'
+                        ? Boolean(localVercelKey.trim())
+                        : true // Ollama doesn't need a key
+
+                    const statusColor = health?.status === 'healthy' ? '#22c55e'
+                      : health?.status === 'degraded' ? '#eab308'
+                      : health?.status === 'down' ? '#ef4444'
+                      : 'var(--tx-muted)'
+
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveProvider(opt.id)
+                          // Auto-fetch models when switching providers (if key exists)
+                          if (opt.id === 'openrouter' && localOpenRouterKey.trim()) {
+                            handleFetchModels()
+                          } else if (opt.id === 'ollama') {
+                            // Fetch Ollama models
+                            fetch('http://localhost:11434/api/tags')
+                              .then(r => r.json())
+                              .then(data => {
+                                useAppStore.getState().setOllamaModels(data.models || [])
+                              })
+                              .catch(() => {})
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: `1px solid ${isSelected ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                          background: isSelected ? 'oklch(64% 0.214 40.1 / 0.08)' : 'transparent',
+                          cursor: 'pointer',
+                          transition: 'all 0.12s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isSelected) {
+                            e.currentTarget.style.background = 'transparent'
+                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+                          }
+                        }}
+                      >
+                        {/* Radio indicator */}
+                        <div style={{
+                          width: 18, height: 18, borderRadius: '50%',
+                          border: `2px solid ${isSelected ? 'var(--amber)' : 'rgba(255,255,255,0.2)'}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0,
+                        }}>
+                          {isSelected && (
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--amber)' }} />
+                          )}
+                        </div>
+
+                        {/* Health dot */}
+                        <div style={{
+                          width: 6, height: 6, borderRadius: '50%',
+                          background: statusColor,
+                          boxShadow: health?.status === 'healthy' ? `0 0 6px ${statusColor}60` : 'none',
+                          flexShrink: 0,
+                        }} />
+
+                        {/* Provider info */}
+                        <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{
+                              fontSize: 13, fontWeight: 500,
+                              color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                            }}>
+                              {opt.label}
+                            </span>
+                            {hasKey ? (
+                              <Pxi name="check-circle" size={12} style={{ color: '#22c55e' }} />
+                            ) : (
+                              <span style={{ fontSize: 9, color: 'var(--tx-muted)' }}>Key required</span>
+                            )}
+                          </div>
+                          <span style={{
+                            fontSize: 11, color: 'var(--tx-tertiary)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {opt.description}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* API key input for selected provider */}
+                {activeProvider === 'openrouter' && (
+                  <Field
+                    label="OpenRouter API Key"
+                    icon="key"
+                    hint={<>Your OpenRouter key. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>openrouter.ai/keys</a></>}
+                    error={errors.apiKey}
+                  >
+                    <input
+                      type="password"
+                      value={localOpenRouterKey}
+                      onChange={(e) => {
+                        setLocalOpenRouterKey(e.target.value)
+                        setErrors((p) => ({ ...p, apiKey: undefined }))
+                      }}
+                      placeholder="sk-or-v1-..."
+                      style={{
+                        width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                        color: 'var(--tx-primary)', background: '#0d0d0d',
+                        border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                        transition: 'border-color 0.12s',
+                      }}
+                      className="placeholder-[var(--tx-muted)]"
+                      onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                    />
+                  </Field>
+                )}
+
+                {activeProvider === 'vercel' && (
+                  <Field
+                    label="Vercel AI Key"
+                    icon="key"
+                    hint={<>Vercel AI Gateway key. Get one at <a href="https://vercel.com/account/tokens" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>vercel.com/account/tokens</a></>}
+                    error={errors.apiKey}
+                  >
+                    <input
+                      type="password"
+                      value={localVercelKey}
+                      onChange={(e) => {
+                        setLocalVercelKey(e.target.value)
+                        setErrors((p) => ({ ...p, apiKey: undefined }))
+                      }}
+                      placeholder="vck_..."
+                      style={{
+                        width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                        color: 'var(--tx-primary)', background: '#0d0d0d',
+                        border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                        transition: 'border-color 0.12s',
+                      }}
+                      className="placeholder-[var(--tx-muted)]"
+                      onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                    />
+                  </Field>
+                )}
+
+                {activeProvider === 'ollama' && (
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 8,
+                    background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}>
+                    <Pxi name="check-circle" size={14} style={{ color: '#22c55e' }} />
+                    <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>
+                      No API key needed. Make sure Ollama is running on localhost:11434.
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <GatewaySettings />
 
               {/* ── Model ── */}
@@ -544,7 +756,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
                       title="Fetch all available models from OpenRouter"
                     >
-                      <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={9} />
+                      <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
                       {fetchingModels ? 'Fetching…' : 'Fetch all models'}
                     </button>
                     {fetchModelsError && (
@@ -577,7 +789,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           {fmtCtx(selectedModelObj.context_length)} · {formatTokenPrice(selectedModelObj.pricing?.completion)}/tok out
                         </span>
                       )}
-                      <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+                      <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
                     </button>
 
                     {modelOpen && (
@@ -591,7 +803,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         {/* Search */}
                         <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <Pxi name="search" size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+                            <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
                             <input
                               ref={modelSearchRef}
                               type="text"
@@ -603,7 +815,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             />
                             {modelSearch && (
                               <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
-                                <Pxi name="times" size={9} />
+                                <Pxi name="times" size={12} />
                               </button>
                             )}
                           </div>
@@ -652,7 +864,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                                         <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
                                           {formatTokenPrice(m.pricing?.completion)}/tok
                                         </span>
-                                        {isSelected && <Pxi name="check" size={10} style={{ color: 'var(--amber)' }} />}
+                                        {isSelected && <Pxi name="check" size={12} style={{ color: 'var(--amber)' }} />}
                                       </div>
                                     </div>
                                     {m.description && (
@@ -691,7 +903,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 border: '1px solid rgba(255,255,255,0.06)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Pxi name="terminal" size={16} style={{ color: 'var(--amber)' }} />
+                  <Pxi name="terminal" size={20} style={{ color: 'var(--amber)' }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)' }}>
                     Code Execution Mode
                   </span>
@@ -736,7 +948,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               }}>
                 <div style={{ textAlign: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-                    <Pxi name="cpu" size={20} style={{ color: 'var(--amber)' }} />
+                    <Pxi name="cpu" size={24} style={{ color: 'var(--amber)' }} />
                     <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--tx-primary)' }}>Nasus</span>
                   </div>
                   <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Autonomous AI Agent · Desktop Application</span>
@@ -814,11 +1026,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               }}
             >
               {saveError ? (
-                <><Pxi name="exclamation-triangle" size={11} style={{ color: '#000' }} /> Failed to save</>
+                <><Pxi name="exclamation-triangle" size={14} style={{ color: '#000' }} /> Failed to save</>
               ) : saved ? (
-                <><Pxi name="check" size={11} style={{ color: '#000' }} /> Saved</>
+                <><Pxi name="check" size={14} style={{ color: '#000' }} /> Saved</>
               ) : saving ? (
-                <><Pxi name="spinner-third" size={11} style={{ color: '#000' }} /> Saving…</>
+                <><Pxi name="spinner-third" size={14} style={{ color: '#000' }} /> Saving…</>
               ) : (
                 'Save settings'
               )}
@@ -844,7 +1056,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                   background: 'rgba(234,179,8,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Pxi name="triangle-exclamation" size={16} style={{ color: 'var(--amber)' }} />
+                  <Pxi name="triangle-exclamation" size={20} style={{ color: 'var(--amber)' }} />
                 </div>
                 <h3 style={{
                   fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--tx-primary)',
@@ -1045,7 +1257,7 @@ function ModelRouterSection({
           onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
           onMouseLeave={(e) => { if (!refreshing) e.currentTarget.style.background = 'transparent' }}
         >
-          <Pxi name={refreshing ? 'spinner-third' : 'refresh-cw'} size={10} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} />
+          <Pxi name={refreshing ? 'spinner-third' : 'refresh-cw'} size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} />
           {refreshing ? 'Fetching...' : 'Refresh'}
         </button>
       </div>
@@ -1151,7 +1363,7 @@ function ModelRouterSection({
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
           >
-            <Pxi name={expanded ? 'chevron-down' : 'chevron-right'} size={9} />
+            <Pxi name={expanded ? 'chevron-down' : 'chevron-right'} size={12} />
             <span>{expanded ? 'Hide' : 'Customize'} enabled models ({visibleModels.filter((m) => isEnabled(m.id)).length}/{visibleModels.length})</span>
           </button>
 
@@ -1250,13 +1462,13 @@ function Field({
             color: 'var(--tx-secondary)',
           }}
         >
-        <Pxi name={icon} size={10} style={{ color: 'var(--tx-tertiary)' }} />
+        <Pxi name={icon} size={12} style={{ color: 'var(--tx-tertiary)' }} />
         {label}
       </label>
       {children}
       {error ? (
         <p style={{ marginTop: 4, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.5, color: '#f87171' }}>
-          <Pxi name="exclamation-triangle" size={9} />
+          <Pxi name="exclamation-triangle" size={12} />
           {error}
         </p>
       ) : hint ? (

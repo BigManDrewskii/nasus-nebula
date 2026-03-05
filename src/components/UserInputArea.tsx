@@ -179,7 +179,7 @@ export interface UserInputAreaHandle {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}>
-              <Pxi name="clock" size={9} />
+              <Pxi name="clock" size={12} />
               Queued: {queuedMsg.length > 60 ? queuedMsg.slice(0, 60) + '…' : queuedMsg}
             </span>
           </div>
@@ -271,7 +271,7 @@ export interface UserInputAreaHandle {
                   e.currentTarget.style.background = 'transparent'
                 }}
               >
-                <Pxi name="paperclip" size={12} />
+                <Pxi name="paperclip" size={14} />
               </button>
             )}
           </div>
@@ -339,7 +339,7 @@ export interface UserInputAreaHandle {
                 onMouseEnter={(e) => { if (canSend) { e.currentTarget.style.background = 'var(--amber-soft)'; e.currentTarget.style.transform = 'scale(1.06)' } }}
                 onMouseLeave={(e) => { if (canSend) { e.currentTarget.style.background = 'var(--amber)'; e.currentTarget.style.transform = 'scale(1)' } }}
               >
-                <Pxi name="arrow-up" size={12} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
+                <Pxi name="arrow-up" size={14} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
               </button>
             )}
           </div>

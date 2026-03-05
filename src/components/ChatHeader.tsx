@@ -14,13 +14,13 @@ import { estimateCost } from '../lib/costEstimate'
 export function StatusDot({ status }: { status: Task['status'] }) {
   if (status === 'pending') return null
   if (status === 'completed') {
-    return <Pxi name="check-circle" size={13} style={{ color: '#34d399', flexShrink: 0 }} title="Done" />
+    return <Pxi name="check-circle" size={14} style={{ color: '#34d399', flexShrink: 0 }} title="Done" />
   }
   if (status === 'failed') {
-    return <Pxi name="times-circle" size={13} style={{ color: '#f87171', flexShrink: 0 }} title="Failed" />
+    return <Pxi name="times-circle" size={14} style={{ color: '#f87171', flexShrink: 0 }} title="Failed" />
   }
   if (status === 'stopped') {
-    return <Pxi name="stop-circle" size={13} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} title="Stopped" />
+    return <Pxi name="stop-circle" size={14} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} title="Stopped" />
   }
   if (status === 'in_progress') {
     return (
@@ -53,7 +53,7 @@ export function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' 
       className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
     >
-      <Pxi name={cfg.icon} size={10} style={{ color: cfg.color }} />
+      <Pxi name={cfg.icon} size={12} style={{ color: cfg.color }} />
       <span style={{ fontSize: 10, color: cfg.color }}>{cfg.label}</span>
     </div>
   )
@@ -90,7 +90,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
   if (workspaceWarning) {
     return (
       <div style={{ ...baseStyle, border: '1px solid rgba(234,179,8,0.35)' }}>
-        <Pxi name="exclamation-triangle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+        <Pxi name="exclamation-triangle" size={14} style={{ color: 'var(--amber)', flexShrink: 0 }} />
         <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>{workspaceWarning}</span>
       </div>
     )
@@ -99,7 +99,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
   if (rateLimitWarning) {
     return (
       <div style={{ ...baseStyle, border: '1px solid rgba(239,68,68,0.35)' }}>
-        <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171', flexShrink: 0 }} />
+        <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171', flexShrink: 0 }} />
         <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>{rateLimitWarning}</span>
       </div>
     )
@@ -108,7 +108,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
   if (folderDropConfirm) {
     return (
       <div style={{ ...baseStyle, border: '1px solid rgba(52,211,153,0.35)' }}>
-        <Pxi name="check-circle" size={11} style={{ color: '#34d399', flexShrink: 0 }} />
+        <Pxi name="check-circle" size={14} style={{ color: '#34d399', flexShrink: 0 }} />
         <span style={{ fontSize: 12, color: 'var(--tx-primary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           Workspace set to {folderDropConfirm}
         </span>
@@ -218,11 +218,11 @@ Requests: ${health.requestCount || 0}
             >
               {/* Health dot */}
               <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}` }} />
-              <Pxi name={providerIcon} size={8} style={{ opacity: 0.7 }} />
+              <Pxi name={providerIcon} size={10} style={{ opacity: 0.7 }} />
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.02em' }}>{providerLabel}</span>
               <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.1)' }} />
               <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-secondary)' }}>{activeModelName}</span>
-              {isAutoFree && <Pxi name="leaf" size={8} style={{ marginLeft: 2, color: '#4ade80' }} />}
+              {isAutoFree && <Pxi name="leaf" size={10} style={{ marginLeft: 2, color: '#4ade80' }} />}
             </div>
 
             {/* Route Badge */}
@@ -250,7 +250,7 @@ Requests: ${health.requestCount || 0}
               title={`Iteration ${iteration}${messageCount > 0 ? `\nMessages: ${messageCount}` : ''}${userTurns > 0 ? `\nUser turns: ${userTurns}` : ''}`}
               style={{ cursor: 'help' }}
             >
-              <Pxi name="refresh" size={8} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
+              <Pxi name="refresh" size={10} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
               <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
             </span>
           )}
@@ -288,7 +288,7 @@ Requests: ${health.requestCount || 0}
             title="Show output panel"
             className="header-action-btn"
           >
-            <Pxi name="folder" size={11} />
+            <Pxi name="folder" size={12} />
             <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
           </button>
         )}
@@ -299,7 +299,7 @@ Requests: ${health.requestCount || 0}
           title="Agent memory"
           className="header-sidebar-toggle"
         >
-          <Pxi name="bookmark" size={12} />
+          <Pxi name="bookmark" size={14} />
         </button>
 
         {/* Stop / status */}
@@ -309,7 +309,7 @@ Requests: ${health.requestCount || 0}
             className="header-stop-btn"
             title="Stop agent (Esc)"
           >
-            <Pxi name="times-circle" size={11} />
+            <Pxi name="times-circle" size={14} />
             <span>Stop</span>
           </button>
           ) : (

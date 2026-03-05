@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
-import type { GatewayConfig, GatewayType } from '../agent/gateway/gatewayTypes'
+import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
 
 export function GatewaySettings() {
   const { gateways, updateGateway, addGateway, removeGateway, checkGatewayHealth, gatewayHealth } = useAppStore()
@@ -15,7 +15,7 @@ export function GatewaySettings() {
           fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
           textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
         }}>
-          <Pxi name="microchip" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+          <Pxi name="microchip" size={12} style={{ color: 'var(--tx-tertiary)' }} />
           LLM Gateways
         </label>
         <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>
@@ -83,7 +83,7 @@ function GatewayHealthDashboard({ health }: { health: any[] }) {
       display: 'flex', flexDirection: 'column', gap: 14
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Pxi name="activity" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+        <Pxi name="activity" size={12} style={{ color: 'var(--tx-tertiary)' }} />
         <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tx-secondary)' }}>
           Real-time Health
         </span>
@@ -228,7 +228,7 @@ function GatewayItem({
               transition: 'left 0.15s'
             }} />
           </button>
-          <Pxi name={isExpanded ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)' }} />
+          <Pxi name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} style={{ color: 'var(--tx-tertiary)' }} />
         </div>
       </div>
 
@@ -290,13 +290,13 @@ function GatewayItem({
                   display: 'flex', alignItems: 'center', gap: 6
                 }}
               >
-                {testing ? <Pxi name="spinner-third" size={10} className="spin" /> : <Pxi name="vial" size={10} />}
+                {testing ? <Pxi name="spinner-third" size={12} className="spin" /> : <Pxi name="vial" size={12} />}
                 {testing ? 'Testing...' : 'Test Connection'}
               </button>
 
               {testResult && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Pxi name={testResult.ok ? 'check-circle' : 'circle-xmark'} size={12} style={{ color: testResult.ok ? '#22c55e' : '#ef4444' }} />
+                  <Pxi name={testResult.ok ? 'check-circle' : 'circle-xmark'} size={14} style={{ color: testResult.ok ? '#22c55e' : '#ef4444' }} />
                   <span style={{ fontSize: 10, color: testResult.ok ? '#22c55e' : '#ef4444' }}>
                     {testResult.ok ? `${testResult.latencyMs}ms` : testResult.error}
                   </span>
@@ -313,7 +313,7 @@ function GatewayItem({
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(239,68,68,1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(239,68,68,0.6)'}
             >
-              <Pxi name="trash-alt" size={12} />
+              <Pxi name="trash-alt" size={14} />
             </button>
           </div>
         </div>

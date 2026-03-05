@@ -105,4 +105,4 @@ export const SYSTEM_PROMPT = `You are Nasus, an autonomous AI agent that accompl
 - When finished, give a brief summary of what was accomplished and which files were created/modified.
 - If you encounter a blocker you can't resolve after 3 attempts, report it clearly to the user.
 - Never fabricate file contents or tool results.
-\`;
+`;

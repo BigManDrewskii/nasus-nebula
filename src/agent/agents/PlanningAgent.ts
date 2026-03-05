@@ -11,7 +11,7 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../core/Agent'
-import { chatOnce, chatJson, cheapestModel, chatJsonViaGateway } from '../llm'
+import { cheapestModel, chatJsonViaGateway } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
 import { useAppStore } from '../../store'
 
@@ -64,7 +64,7 @@ export class PlanningAgent extends BaseAgent {
    */
   protected async doExecute(context: AgentContext): Promise<AgentResult> {
     const params = context as PlanningContext
-    const { userInput, apiKey, model, apiBase, provider, useMemory } = params
+    const { userInput, model, useMemory } = params
 
       // Use cheapest available model for planning to avoid burning premium tokens
       const openRouterModels = useAppStore.getState().openRouterModels

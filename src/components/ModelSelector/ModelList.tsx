@@ -31,6 +31,7 @@ export function ModelList({
 
   const openRouterModels = useAppStore((s) => s.openRouterModels)
   const vercelModels = useAppStore((s) => s.vercelModels)
+  const ollamaModels = useAppStore((s) => s.ollamaModels)
 
   // Resolve actual gateway type from provider label
   const gatewayType: GatewayType = useMemo(() => {
@@ -93,6 +94,21 @@ export function ModelList({
             isAvailable: true,
           }
         })
+      }
+
+      // For Ollama, use the fetched models list
+      if (gatewayType === 'ollama' && ollamaModels.length > 0) {
+        return ollamaModels.map((m) => ({
+          id: m.name,
+          name: m.name,
+          provider: 'ollama',
+          tier: 'general',
+          contextWindow: 4096, // Ollama doesn't always provide this in the API response
+          isFree: true,
+          inputCost: 0,
+          outputCost: 0,
+          isAvailable: true,
+        }))
       }
 
     // For other providers, use registry only

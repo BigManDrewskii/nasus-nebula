@@ -119,6 +119,8 @@ interface AppState extends GatewaySlice {
     // Browser extension connection
     extensionConnected: boolean
     extensionVersion: string | null
+    // Ollama models list (fetched from local Ollama instance)
+    ollamaModels: Array<{ name: string; size?: number; modified_at?: string }>
 
   // Planning state
   pendingPlan: ExecutionPlan | null
@@ -153,12 +155,16 @@ interface AppState extends GatewaySlice {
   addRecentWorkspacePath: (path: string) => void
   setApiBase: (base: string) => void
   setProvider: (provider: string) => void
-    setExaKey: (key: string) => void
-      setMaxIterations: (n: number) => void
-      setOnboardingComplete: () => void
-        setEnableVerification: (enabled: boolean) => void
-          setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error', message?: string) => void
-    setExtensionConnected: (connected: boolean, version?: string | null) => void
+  setProviderKey: (provider: string, key: string) => void
+  getProviderKey: (provider: string) => string
+  fetchModelsForProvider: (provider: string) => Promise<void>
+  setExaKey: (key: string) => void
+  setMaxIterations: (n: number) => void
+  setOnboardingComplete: () => void
+    setEnableVerification: (enabled: boolean) => void
+      setSandboxStatus: (status: 'idle' | 'starting' | 'ready' | 'stopped' | 'error', message?: string) => void
+  setExtensionConnected: (connected: boolean, version?: string | null) => void
+  setOllamaModels: (models: Array<{ name: string; size?: number; modified_at?: string }>) => void
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
@@ -224,6 +230,8 @@ export const useAppStore = create<AppState>()(
               // Browser extension connection
               extensionConnected: false,
               extensionVersion: null,
+          // Ollama models list
+          ollamaModels: [],
           routerConfig: {
             mode: 'auto',
             budget: 'free',
@@ -543,7 +551,82 @@ export const useAppStore = create<AppState>()(
                 }
               }),
             setApiBase: (base) => set({ apiBase: base }),
-            setProvider: (provider) => set({ provider }),
+            setProvider: (provider) => {
+              set({ provider })
+
+              // Update the gateway system: enable the selected, disable others
+              const { gateways, updateGateway } = get()
+              for (const gw of gateways) {
+                const shouldEnable = gw.id === provider || gw.type === provider
+                if (gw.enabled !== shouldEnable) {
+                  updateGateway(gw.id, { enabled: shouldEnable })
+                }
+              }
+
+              // Fetch models for the new provider
+              get().fetchModelsForProvider(provider)
+
+              // Reset model to a default for this provider if needed
+              const defaultModels: Record<string, string> = {
+                openrouter: 'anthropic/claude-sonnet-4-20250514',
+                vercel: 'anthropic/claude-sonnet-4-20250514',
+                ollama: 'llama3.3:latest',
+              }
+              const currentModel = get().model
+              if (!currentModel || !currentModel.includes(provider)) {
+                set({ model: defaultModels[provider] || currentModel })
+              }
+            },
+            setProviderKey: (provider, key) => {
+              // Store the key for this specific provider
+              const { gateways, updateGateway } = get()
+              const gw = gateways.find((g) => g.id === provider || g.type === provider)
+              if (gw) {
+                updateGateway(gw.id, { apiKey: key })
+              }
+
+              // Also update the legacy apiKey field for backward compatibility
+              if (provider === get().provider) {
+                set({ apiKey: key })
+              }
+            },
+            getProviderKey: (provider) => {
+              const { gateways, apiKey } = get()
+              const gw = gateways.find((g) => g.id === provider || g.type === provider)
+              return gw?.apiKey || (provider === get().provider ? apiKey : '')
+            },
+            fetchModelsForProvider: async (provider) => {
+              try {
+                switch (provider) {
+                  case 'openrouter': {
+                    const key = get().getProviderKey('openrouter')
+                    if (!key) return
+                    const { fetchOpenRouterModels } = await import('./agent/llm')
+                    const models = await fetchOpenRouterModels(key)
+                    set({ openRouterModels: models })
+                    break
+                  }
+                  case 'vercel': {
+                    // Vercel AI uses static model list (no public discovery API)
+                    // The curated list is defined in the component
+                    break
+                  }
+                  case 'ollama': {
+                    try {
+                      const resp = await fetch('http://localhost:11434/api/tags')
+                      const data = await resp.json()
+                      set({ ollamaModels: data.models || [] })
+                    } catch {
+                      set({ ollamaModels: [] })
+                    }
+                    break
+                  }
+                }
+              } catch (err) {
+                console.error(`[Nasus] Failed to fetch models for ${provider}:`, err)
+              }
+            },
+            setOllamaModels: (models) => set({ ollamaModels: models }),
               setExaKey: (key) => set({ exaKey: key }),
               setMaxIterations: (n) => set({ maxIterations: n }),
               setOnboardingComplete: () => set({ onboardingComplete: true }),
@@ -573,23 +656,23 @@ export const useAppStore = create<AppState>()(
             const totalPromptTokens = current.totalPromptTokens + usage.promptTokens
             const totalCompletionTokens = current.totalCompletionTokens + usage.completionTokens
             const totalTokens = totalPromptTokens + totalCompletionTokens
-            
+
             // Calculate cost
             const { registry } = s.routerConfig
-            const modelInfo = (registry ?? []).find(m => 
-              Object.values(m.ids || {}).includes(modelId) || m.id === modelId
-            )
-            
+            const modelInfo = (registry ?? []).find(m => m.id === modelId)
+
             let estimatedCost = current.estimatedCost
             if (modelInfo) {
-              estimatedCost += (usage.promptTokens / 1_000_000) * modelInfo.inputCostPer1M
-                             + (usage.completionTokens / 1_000_000) * modelInfo.outputCostPer1M
+              // Use cost_tier to estimate (simplified)
+              const tierCost: Record<string, number> = { premium: 10, standard: 2, budget: 0.5, free: 0 }
+              const costPerMillion = tierCost[modelInfo.cost_tier] || 2
+              estimatedCost += (totalTokens / 1_000_000) * costPerMillion
             } else {
               // Fallback to a generic rate if not in registry
               estimatedCost += (totalTokens / 1_000_000) * 5
             }
-            
-            const contextUtilization = usage.promptTokens / (modelInfo?.contextWindow ?? 128_000)
+
+            const contextUtilization = usage.promptTokens / (modelInfo?.context_window ?? 128_000)
             
             return {
               taskRouterState: {
@@ -653,11 +736,8 @@ export const useAppStore = create<AppState>()(
             window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { tool } }))
           },
         }
-
-        },
-      }
     },
-    {
+  {
       name: 'nasus-store-v2',
       partialize: (state) => {
         // Trim large tool result outputs in steps before persisting to avoid bloating localStorage
@@ -696,10 +776,11 @@ export const useAppStore = create<AppState>()(
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
                   enableVerification: state.enableVerification,
-              // openRouterModels and vercelModels are persisted so the dropdown is populated immediately on reload.
+              // openRouterModels, vercelModels, and ollamaModels are persisted so the dropdown is populated immediately on reload.
               // They will be refreshed in the background on startup if the key is present.
                 openRouterModels: state.openRouterModels,
                 vercelModels: state.vercelModels,
+                ollamaModels: state.ollamaModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
                 gateways: state.gateways,
@@ -707,45 +788,45 @@ export const useAppStore = create<AppState>()(
                 extensionVersion: state.extensionVersion,
                 }
       },
-        // On rehydration, clear any streaming:true flags left by a previous crashed session
-        onRehydrateStorage: () => (state) => {
-          if (!state) return
-          const fixedMessages: Record<string, Message[]> = {}
-          for (const [tid, msgs] of Object.entries(state.messages)) {
-            fixedMessages[tid] = msgs.map((m) =>
-              m.streaming ? { ...m, streaming: false } : m,
-            )
-          }
-          // Use setState to update rather than direct mutation (safer with zustand persist)
-          useAppStore.setState({ messages: fixedMessages })
-  
-          // Trigger history load for active task from DB for full context
-          if (state.activeTaskId) {
-            getPersistedTaskHistory(state.activeTaskId).then(history => {
-              if (history && history.length > 0) {
-                useAppStore.setState(s => ({
-                  rawHistory: { ...s.rawHistory, [state.activeTaskId!]: history }
-                }))
-              }
-            }).catch(err => {
-              logger.warn('store', `Failed to load history for active task ${state.activeTaskId}`, err)
-            })
-          }
-  
-          // Seed workspaceVersions for any tasks that have persisted workspace data,
-          // so getWorkspaceVersion() returns > 0 and components re-render correctly.
-          import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
-            const tasks = state.tasks ?? []
-            // Fire all workspace loads in parallel, log individual failures
-            for (const task of tasks) {
-              workspaceManager.getWorkspace(task.id).catch(err => {
-                logger.warn('store', `Failed to load workspace for task ${task.id}`, err)
-              })
+      // On rehydration, clear any streaming:true flags left by a previous crashed session
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        const fixedMessages: Record<string, Message[]> = {}
+        for (const [tid, msgs] of Object.entries(state.messages)) {
+          fixedMessages[tid] = msgs.map((m) =>
+            m.streaming ? { ...m, streaming: false } : m,
+          )
+        }
+        // Use setState to update rather than direct mutation (safer with zustand persist)
+        useAppStore.setState({ messages: fixedMessages })
+
+        // Trigger history load for active task from DB for full context
+        if (state.activeTaskId) {
+          getPersistedTaskHistory(state.activeTaskId).then(history => {
+            if (history && history.length > 0) {
+              useAppStore.setState(s => ({
+                rawHistory: { ...s.rawHistory, [state.activeTaskId!]: history }
+              }))
             }
           }).catch(err => {
-            logger.warn('store', 'Failed to load WorkspaceManager module', err)
+            logger.warn('store', `Failed to load history for active task ${state.activeTaskId}`, err)
           })
-        },
+        }
+
+        // Seed workspaceVersions for any tasks that have persisted workspace data,
+        // so getWorkspaceVersion() returns > 0 and components re-render correctly.
+        import('./agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
+          const tasks = state.tasks ?? []
+          // Fire all workspace loads in parallel, log individual failures
+          for (const task of tasks) {
+            workspaceManager.getWorkspace(task.id).catch(err => {
+              logger.warn('store', `Failed to load workspace for task ${task.id}`, err)
+            })
+          }
+        }).catch(err => {
+          logger.warn('store', 'Failed to load WorkspaceManager module', err)
+        })
+      },
     },
   ),
 )

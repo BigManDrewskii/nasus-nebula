@@ -1,6 +1,6 @@
 {
   "name": "nasus-browser-sidecar",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Playwright-based browser automation sidecar for Nasus",
   "type": "module",
   "main": "index.js",

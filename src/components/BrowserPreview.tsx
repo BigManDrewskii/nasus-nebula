@@ -420,7 +420,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
             onClick={startSidecar}
             style={{ ...buttonStyles.base, ...buttonStyles.primary }}
           >
-            <Pxi name="globe" size={10} />
+            <Pxi name="globe" size={12} />
             Start Browser
           </button>
         )}
@@ -443,7 +443,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     }}
                     title="Back"
                   >
-                    <Pxi name="angle-left" size={10} />
+                    <Pxi name="angle-left" size={12} />
                   </button>
                   <button
                     onClick={goForward}
@@ -457,7 +457,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     }}
                     title="Forward"
                   >
-                    <Pxi name="angle-right" size={10} />
+                    <Pxi name="angle-right" size={12} />
                   </button>
                 </div>
 
@@ -528,7 +528,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                   }}
                   title="Browse history"
                 >
-                  <Pxi name="clock" size={10} />
+                  <Pxi name="clock" size={12} />
                   History
                   {history.length > 0 && (
                     <span style={{
@@ -571,7 +571,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                   style={{ ...buttonStyles.base, ...buttonStyles.ghost }}
                   title="Refresh screenshot"
                 >
-                  <Pxi name="refresh" size={10} />
+                  <Pxi name="refresh" size={12} />
                 </button>
 
                 {/* Control toggle */}
@@ -585,7 +585,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                       borderColor: '#22c55e',
                     }}
                   >
-                    <Pxi name="check" size={10} />
+                    <Pxi name="check" size={12} />
                     Release
                   </button>
                 ) : (
@@ -600,7 +600,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     }}
                     title="Take manual control of browser"
                   >
-                    <Pxi name="user" size={10} />
+                    <Pxi name="user" size={12} />
                     Take Control
                   </button>
                 )}
@@ -616,7 +616,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 marginLeft: 'auto',
               }}
             >
-              <Pxi name="times" size={10} />
+              <Pxi name="times" size={12} />
               Stop
             </button>
           </>
@@ -655,7 +655,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
           alignItems: 'center',
           gap: 'var(--space-1-5)',
         }}>
-          <Pxi name="times-circle" size={12} />
+          <Pxi name="times-circle" size={14} />
           <span style={{ flex: 1 }}>{error}</span>
           <button
             onClick={() => setError(null)}
@@ -667,7 +667,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
               padding: 'var(--space-1)',
             }}
           >
-            <Pxi name="times" size={10} />
+            <Pxi name="times" size={12} />
           </button>
         </div>
       )}
@@ -787,7 +787,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 background: 'rgba(255,255,255,0.03)',
                 border: '1px solid var(--sidebar-border)',
               }}>
-                <Pxi name="globe" size={20} style={{ opacity: 0.4 }} />
+                <Pxi name="globe" size={24} style={{ opacity: 0.4 }} />
               </div>
               <div style={{ textAlign: 'center' }}>
                 <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 500 }}>
@@ -825,7 +825,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
               alignItems: 'center',
               gap: 'var(--space-1-5)',
             }}>
-              <Pxi name="clock" size={10} />
+              <Pxi name="clock" size={12} />
               Browse History
             </div>
             <div style={{

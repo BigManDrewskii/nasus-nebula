@@ -19,7 +19,7 @@ export class ThinkTool extends BaseTool {
     required: ['thought'],
   } as const
 
-  async execute(args: { thought: string }): Promise<ToolResult> {
+  async execute(_args: { thought: string }): Promise<ToolResult> {
     return toolSuccess(`Thought acknowledged. Proceed with your next step.`)
   }
 }

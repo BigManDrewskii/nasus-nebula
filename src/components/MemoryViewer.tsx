@@ -76,7 +76,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', flexShrink: 0, borderBottom: '1px solid rgba(255,255,255,0.06)' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Pxi name="bookmark" size={13} style={{ color: 'var(--tx-tertiary)' }} />
+            <Pxi name="bookmark" size={14} style={{ color: 'var(--tx-tertiary)' }} />
             <div>
               <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)', margin: 0 }}>Agent Memory</h2>
               <p style={{ fontSize: 11, marginTop: 1, color: 'var(--tx-tertiary)', margin: 0 }}>Persistent files in /workspace</p>
@@ -99,7 +99,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
-              <Pxi name="refresh" size={12} />
+              <Pxi name="refresh" size={14} />
             </button>
 
             {files?.progress && (
@@ -125,7 +125,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
                   e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.28)'
                 }}
               >
-                <Pxi name="refresh" size={10} />
+                <Pxi name="refresh" size={12} />
                 Resume Task
               </button>
             )}
@@ -136,7 +136,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
-              <Pxi name="times" size={13} />
+              <Pxi name="times" size={14} />
             </button>
           </div>
         </div>
@@ -174,7 +174,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
                 onMouseEnter={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-primary)' }}
                 onMouseLeave={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-secondary)' }}
               >
-                <Pxi name={tab.icon} size={10} />
+                <Pxi name={tab.icon} size={12} />
                 {tab.label}
               </button>
             )
@@ -190,17 +190,17 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
         >
           {loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 128, color: 'var(--tx-tertiary)' }}>
-              <Pxi name="spinner-third" size={13} />
+              <Pxi name="spinner-third" size={14} />
               <span style={{ fontSize: 12 }}>Loading memory files…</span>
             </div>
           ) : error ? (
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 12, fontSize: 12, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)', color: '#fca5a5' }}>
-              <Pxi name="exclamation-triangle" size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+              <Pxi name="exclamation-triangle" size={14} style={{ flexShrink: 0, marginTop: 1 }} />
               {error}
             </div>
           ) : isEmpty ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 128, gap: 8, color: 'var(--tx-secondary)' }}>
-              <Pxi name={currentTab.icon} size={20} />
+              <Pxi name={currentTab.icon} size={24} />
               <span style={{ fontSize: 12, fontStyle: 'italic' }}>No content yet — the agent will populate this file as it works.</span>
             </div>
           ) : (
@@ -213,7 +213,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
         {/* Footer */}
         <div style={{ padding: '8px 20px 10px', flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontSize: 10, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx-tertiary)', margin: 0 }}>
-            <Pxi name="folder-open" size={9} />
+            <Pxi name="folder-open" size={12} />
             <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)' }}>{workspacePath}</code>
           </p>
           {/* Individual file download */}
@@ -232,7 +232,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
-              <Pxi name="download" size={9} />
+              <Pxi name="download" size={12} />
               Download {currentFilename}
             </button>
           )}

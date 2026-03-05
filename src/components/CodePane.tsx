@@ -118,7 +118,7 @@ export function CodePane({ files }: CodePaneProps) {
               >
                 <Pxi
                   name={fileIcon(f.ext)}
-                  size={10}
+                  size={12}
                   style={{ color: isActive ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
                 />
                 <span className="output-file-tab-name">{f.name.split('/').pop()}</span>

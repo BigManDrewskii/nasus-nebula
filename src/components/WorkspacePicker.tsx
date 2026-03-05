@@ -116,7 +116,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
           onMouseEnter={(e) => { if (!picking) e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
         >
-          <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={10} style={{ color: 'var(--amber)' }} />
+          <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={12} style={{ color: 'var(--amber)' }} />
           {picking ? 'Opening…' : 'Browse'}
         </button>
 
@@ -144,13 +144,13 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
         {/* Status indicator + recent dropdown trigger */}
         <div style={{ paddingRight: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
           {checking && (
-            <Pxi name="spinner-third" size={11} style={{ color: 'var(--tx-tertiary)' }} />
+            <Pxi name="spinner-third" size={14} style={{ color: 'var(--tx-tertiary)' }} />
           )}
           {!checking && valid === true && (
-            <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
+            <Pxi name="check-circle" size={14} style={{ color: '#34d399' }} />
           )}
           {!checking && valid === false && (
-            <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171' }} />
+            <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171' }} />
           )}
 
           {hasRecent && (
@@ -183,7 +183,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
               onMouseLeave={(e) => { if (!showRecent) e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
-              <Pxi name={showRecent ? 'chevron-up' : 'chevron-down'} size={9} />
+              <Pxi name={showRecent ? 'chevron-up' : 'chevron-down'} size={12} />
             </button>
           )}
         </div>
@@ -236,7 +236,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
               title={p}
             >
-              <Pxi name="folder" size={10} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+              <Pxi name="folder" size={12} style={{ color: 'var(--amber)', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p}</span>
             </button>
           ))}

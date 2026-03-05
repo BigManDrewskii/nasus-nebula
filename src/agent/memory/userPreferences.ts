@@ -8,8 +8,6 @@
  * - Project structure preferences
  */
 
-import { useAppStore } from '../../store'
-
 const PREFERENCES_STORAGE_KEY = 'nasus-user-preferences'
 
 export interface UserPreferences {

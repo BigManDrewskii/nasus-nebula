@@ -55,7 +55,7 @@ function CopyButton({ text, style }: { text: string; style?: React.CSSProperties
         }
       }}
     >
-      <Pxi name={copied ? 'check' : 'copy'} size={9} />
+      <Pxi name={copied ? 'check' : 'copy'} size={12} />
       {copied ? 'Copied!' : 'Copy'}
     </button>
   )
@@ -83,7 +83,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
       style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)' }}
     >
       <div className="flex items-center gap-2">
-        <Pxi name={icon} size={12} style={{ color: '#f87171' }} />
+        <Pxi name={icon} size={14} style={{ color: '#f87171' }} />
         <span style={{ fontSize: 11, fontWeight: 700, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
           {errorTitle}
         </span>
@@ -104,7 +104,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
               color: '#000',
             }}
           >
-            <Pxi name="refresh" size={10} />
+            <Pxi name="refresh" size={12} />
             Try again
           </button>
           
@@ -197,7 +197,7 @@ function renderMarkdown(text: string): React.ReactNode {
         <div key={k()} style={{ margin: '14px 0', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: '#0a0a0a' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Pxi name="code-block" size={11} style={{ color: 'var(--tx-tertiary)' }} />
+              <Pxi name="code-block" size={14} style={{ color: 'var(--tx-tertiary)' }} />
               {lang && (
                 <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                   {lang}
@@ -395,7 +395,7 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
               maxWidth: 260,
             }}
           >
-            <Pxi name={icon} size={12} style={{ color, flexShrink: 0 }} />
+            <Pxi name={icon} size={14} style={{ color, flexShrink: 0 }} />
             <div style={{ minWidth: 0 }}>
               <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {att.name}

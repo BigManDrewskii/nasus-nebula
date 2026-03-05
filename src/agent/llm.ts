@@ -6,7 +6,6 @@
 import { streamText, generateText } from 'ai';
 import { getUnifiedModel } from './gateway/provider';
 import { useAppStore } from '../store';
-import { selectModel } from './gateway/modelRegistry';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -65,6 +64,19 @@ export async function streamCompletion(
   tools: ToolDefinition[],
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
+  // === DIAGNOSTIC LOGGING ===
+  console.log('[streamCompletion] Entry:', {
+    provider,
+    apiBase,
+    hasApiKey: Boolean(apiKey && apiKey.length > 0),
+    apiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : 'none',
+    model,
+    messageCount: messages.length,
+    toolCount: tools.filter(t => !t.inactive).length,
+    gatewayId: cb.gatewayId,
+  })
+  // ===========================
+
   const unifiedModel = getUnifiedModel({
     provider,
     apiKey,
@@ -72,6 +84,10 @@ export async function streamCompletion(
     gatewayId: cb.gatewayId,
     extraHeaders: cb.extraHeaders,
   }, model);
+
+  console.log('[streamCompletion] Unified model created:', {
+    modelType: unifiedModel?.constructor?.name || 'unknown',
+  })
 
   // Convert LlmMessage to AI SDK message format
   const coreMessages: any[] = messages.map(m => {
@@ -101,12 +117,14 @@ export async function streamCompletion(
   }
 
   try {
+    console.log('[streamCompletion] Calling streamText...')
+
     const { textStream, toolCalls, usage, finishReason } = await streamText({
       model: unifiedModel,
       messages: coreMessages as any,
       tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
-      responseFormat: cb.jsonMode ? 'json' : 'text',
       onFinish: async (event) => {
+        console.log('[streamCompletion] onFinish:', { usage: event.usage, toolCallsCount: event.toolCalls?.length })
         if (event.usage) {
           const input = event.usage.inputTokens ?? 0;
           const output = event.usage.outputTokens ?? 0;
@@ -124,11 +142,17 @@ export async function streamCompletion(
       abortSignal: cb.signal,
     });
 
+    console.log('[streamCompletion] streamText returned, starting stream read...')
+
     let fullContent = '';
+    let deltaCount = 0;
     for await (const delta of textStream) {
       fullContent += delta;
+      deltaCount++;
       cb.onDelta(delta);
     }
+
+    console.log('[streamCompletion] Stream complete:', { deltaCount, contentLength: fullContent.length })
 
     const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
       id: tc.toolCallId,
@@ -149,8 +173,17 @@ export async function streamCompletion(
       } : null,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    cb.onError(msg);
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    console.error('[streamCompletion] Error:', {
+      message: errorMsg,
+      stack: errorStack,
+      provider,
+      apiBase,
+      model,
+      hasApiKey: Boolean(apiKey && apiKey.length > 0),
+    })
+    cb.onError(errorMsg);
     throw err;
   }
 }
@@ -194,7 +227,7 @@ export async function chatJson<T>(
   provider: string,
   model: string,
   prompt: string,
-  maxTokens = 1000,
+  _maxTokens = 1000,
   extraHeaders?: Record<string, string>,
 ): Promise<T | null> {
   const unifiedModel = getUnifiedModel({
@@ -208,8 +241,6 @@ export async function chatJson<T>(
     const { text } = await generateText({
       model: unifiedModel,
       prompt,
-      responseFormat: 'json',
-      maxTokens,
     });
 
     // Clean potential markdown fences
@@ -224,7 +255,7 @@ export async function chatJson<T>(
 /**
  * One-shot string completion via the current gateway.
  */
-export async function chatOnceViaGateway(prompt: string, maxTokens = 500, modelId?: string): Promise<string> {
+export async function chatOnceViaGateway(prompt: string, _maxTokens = 500, modelId?: string): Promise<string> {
   const { resolveConnection } = useAppStore.getState()
   const conn = resolveConnection()
   return chatOnce(conn.apiBase, conn.apiKey, conn.provider, modelId || conn.model, prompt, conn.extraHeaders)

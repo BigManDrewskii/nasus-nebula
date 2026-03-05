@@ -55,7 +55,7 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
           {isStreaming && !hasOnlyMemoryOps ? (
             <SpinnerDot />
           ) : (
-            <Pxi name="check-circle" size={11} style={{ color: '#34d399' }} />
+            <Pxi name="check-circle" size={14} style={{ color: '#34d399' }} />
           )}
         </span>
 
@@ -90,7 +90,7 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
 
         <Pxi
           name={collapsed ? 'chevron-down' : 'chevron-up'}
-          size={9}
+          size={12}
           style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.5 }}
         />
       </button>
@@ -190,7 +190,7 @@ function Row({ row }: { row: AnyRow }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}>
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
         <span style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-          <Pxi name="refresh" size={9} style={{ color: 'var(--tx-tertiary)' }} />
+          <Pxi name="refresh" size={12} style={{ color: 'var(--tx-tertiary)' }} />
           context compressed · {row.step.removedCount} pairs trimmed
         </span>
         <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.05)' }} />
@@ -292,15 +292,15 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           {isPending ? (
             <SpinnerDot />
           ) : isError ? (
-            <Pxi name="times-circle" size={10} style={{ color: '#f87171' }} />
+            <Pxi name="times-circle" size={12} style={{ color: '#f87171' }} />
           ) : (
-            <Pxi name="check-circle" size={10} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.25)' : '#34d399' }} />
+            <Pxi name="check-circle" size={12} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.25)' : '#34d399' }} />
           )}
         </span>
 
         {/* Tool icon */}
         <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-          <Pxi name={icon} size={11} style={{ color: iconColor }} />
+          <Pxi name={icon} size={14} style={{ color: iconColor }} />
         </span>
 
         {/* Label stack */}
@@ -331,7 +331,7 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           )}
         </span>
 
-        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={8} style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.4 }} />
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.4 }} />
       </button>
 
       {open && (
@@ -437,7 +437,7 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
       padding: '7px 12px 6px',
       borderBottom: '1px solid rgba(255,255,255,0.05)',
     }}>
-      <Pxi name={icon} size={9} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <Pxi name={icon} size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
       <span style={{
         fontSize: 10.5,
         fontFamily: 'var(--font-mono)',
@@ -463,7 +463,7 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
         </span>
       )}
       {success && (
-        <Pxi name="check-circle" size={9} style={{ color: '#34d399', flexShrink: 0 }} />
+        <Pxi name="check-circle" size={12} style={{ color: '#34d399', flexShrink: 0 }} />
       )}
     </div>
   )
@@ -534,7 +534,7 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
 function SectionLabel({ icon, label, isError = false }: { icon: string; label: string; isError?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-      <Pxi name={icon} size={9} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
+      <Pxi name={icon} size={12} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
       <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
         {label}
       </span>
@@ -554,7 +554,7 @@ function FallbackRow({ step }: { step: Extract<AgentStep, { kind: 'gateway_fallb
       border: '1px solid rgba(234,179,8,0.12)',
     }}>
       <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Pxi name="bolt" size={10} style={{ color: 'var(--amber)' }} />
+        <Pxi name="bolt" size={12} style={{ color: 'var(--amber)' }} />
       </span>
       <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--amber)', flex: 1 }}>
         Switched: {step.fromGateway} &rarr; {step.toGateway}
@@ -608,11 +608,11 @@ function SearchStatusRow({ step }: { step: Extract<AgentStep, { kind: 'search_st
         {isLive ? (
           <SpinnerDot />
         ) : (
-          <Pxi name={isFailed ? 'times-circle' : 'check-circle'} size={10} style={{ color: isFailed ? '#f87171' : isDone ? '#34d399' : 'var(--amber)' }} />
+          <Pxi name={isFailed ? 'times-circle' : 'check-circle'} size={12} style={{ color: isFailed ? '#f87171' : isDone ? '#34d399' : 'var(--amber)' }} />
         )}
       </span>
 
-      <Pxi name="search" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
 
       <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {message}
@@ -674,10 +674,10 @@ function BrowserActionRow({ step }: { step: Extract<AgentStep, { kind: 'browser_
         {phase === 'start' ? (
           <SpinnerDot />
         ) : (
-          <Pxi name={isError ? 'times-circle' : 'check-circle'} size={10} style={{ color: isError ? '#f87171' : '#34d399' }} />
+          <Pxi name={isError ? 'times-circle' : 'check-circle'} size={12} style={{ color: isError ? '#f87171' : '#34d399' }} />
         )}
       </span>
-      <Pxi name="browser" size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <Pxi name="browser" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
       <span style={{ fontSize: 12, fontWeight: 500, color: isError ? '#f87171' : 'var(--tx-secondary)', flexShrink: 0 }}>
         {label}
       </span>
@@ -703,7 +703,7 @@ function StrikeRow({ step }: { step: Extract<AgentStep, { kind: 'strike_escalati
       background: 'rgba(239,68,68,0.04)',
       border: '1px solid rgba(239,68,68,0.12)',
     }}>
-      <Pxi name="exclamation-triangle" size={11} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
+      <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: 12, fontWeight: 500, color: '#f87171', margin: 0 }}>
           Repeated error on{' '}
@@ -743,12 +743,12 @@ function VerificationRow({ step }: { step: Extract<AgentStep, { kind: 'verificat
       <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Pxi
           name={passed ? 'shield-check' : 'shield-x'}
-          size={10}
+          size={12}
           style={{ color: passed ? '#34d399' : '#f87171' }}
         />
       </span>
 
-      <Pxi name={passed ? 'check-circle' : 'x-circle'} size={10} style={{ color: passed ? '#34d399' : '#f87171', flexShrink: 0 }} />
+      <Pxi name={passed ? 'check-circle' : 'x-circle'} size={12} style={{ color: passed ? '#34d399' : '#f87171', flexShrink: 0 }} />
 
       <span style={{ fontSize: 12, fontWeight: 500, color: passed ? '#34d399' : '#f87171', flex: 1 }}>
         Verification {passed ? 'passed' : 'failed'}

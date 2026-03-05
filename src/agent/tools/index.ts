@@ -91,7 +91,7 @@ toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
 /**
  * Get tool function definitions for OpenAI function calling.
  */
-export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: string; function: any }> {
+export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: any }> {
   const allTools = toolRegistry.getToolDefinitions()
 
   if (env === 'browser-only') {
