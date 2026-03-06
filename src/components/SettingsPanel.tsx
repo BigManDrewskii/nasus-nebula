@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { tauriInvoke, checkOllama } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
@@ -50,22 +51,52 @@ interface SettingsPanelProps {
 type ValidationErrors = Partial<Record<'apiKey' | 'workspacePath', string>>
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-    const {
-        model, workspacePath,
-        setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
-        openRouterModels, setOpenRouterModels,
-        ollamaModels, setOllamaModels,
-        exaKey, setExaKey,
-        maxIterations, setMaxIterations,
-        addRecentWorkspacePath,
-        routerConfig, setRouterConfig,
-        updateGateway,
-        settingsTab,
-        setSettingsTab,
-        gatewayHealth,
-        rateLimitEnabled, setRateLimitEnabled,
-        maxRequestsPerMinute, setMaxRequestsPerMinute,
-      } = useAppStore()
+  const {
+    model, workspacePath, apiBase: storedApiBase,
+    setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
+    openRouterModels, setOpenRouterModels,
+    ollamaModels, setOllamaModels,
+    exaKey, setExaKey,
+    maxIterations, setMaxIterations,
+    enableVerification, setEnableVerification,
+    addRecentWorkspacePath,
+    routerConfig, setRouterConfig,
+    updateGateway,
+    settingsTab, setSettingsTab,
+    gatewayHealth,
+    rateLimitEnabled, setRateLimitEnabled,
+    maxRequestsPerMinute, setMaxRequestsPerMinute,
+  } = useAppStore(useShallow(s => ({
+    model: s.model,
+    workspacePath: s.workspacePath,
+    apiBase: s.apiBase,
+    setApiKey: s.setApiKey,
+    setModel: s.setModel,
+    setWorkspacePath: s.setWorkspacePath,
+    setApiBase: s.setApiBase,
+    setProvider: s.setProvider,
+    openRouterModels: s.openRouterModels,
+    setOpenRouterModels: s.setOpenRouterModels,
+    ollamaModels: s.ollamaModels,
+    setOllamaModels: s.setOllamaModels,
+    exaKey: s.exaKey,
+    setExaKey: s.setExaKey,
+    maxIterations: s.maxIterations,
+    setMaxIterations: s.setMaxIterations,
+    enableVerification: s.enableVerification,
+    setEnableVerification: s.setEnableVerification,
+    addRecentWorkspacePath: s.addRecentWorkspacePath,
+    routerConfig: s.routerConfig,
+    setRouterConfig: s.setRouterConfig,
+    updateGateway: s.updateGateway,
+    settingsTab: s.settingsTab,
+    setSettingsTab: s.setSettingsTab,
+    gatewayHealth: s.gatewayHealth,
+    rateLimitEnabled: s.rateLimitEnabled,
+    setRateLimitEnabled: s.setRateLimitEnabled,
+    maxRequestsPerMinute: s.maxRequestsPerMinute,
+    setMaxRequestsPerMinute: s.setMaxRequestsPerMinute,
+  })))
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
   const [localRequestyKey, setLocalRequestyKey] = useState('')
@@ -75,17 +106,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
   // Preserve custom API base (e.g. proxy URL) — only reset to OR_BASE when switching back to openrouter
-  const { apiBase: storedApiBase } = useAppStore()
   const OR_BASE = 'https://openrouter.ai/api/v1'
   const OLLAMA_BASE = 'http://localhost:11434/v1'
   const [localApiBase, setLocalApiBase] = useState(
     storedApiBase && storedApiBase !== OLLAMA_BASE ? storedApiBase : OR_BASE
   )
 
-  // Code execution state
-  const {
-    enableVerification, setEnableVerification,
-  } = useAppStore()
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
 
   // Rate limiting state
@@ -1379,7 +1405,10 @@ function ModelRouterSection({
   onModelOverridesChange: (v: Record<string, boolean>) => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const { routerConfig, openRouterModels } = useAppStore()
+  const { routerConfig, openRouterModels } = useAppStore(useShallow(s => ({
+    routerConfig: s.routerConfig,
+    openRouterModels: s.openRouterModels,
+  })))
 
   // Use registry from Tauri backend if available; fall back to openRouterModels from the store,
   // then to the curated FALLBACK_MODELS list so the section is never empty in browser mode.

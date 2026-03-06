@@ -91,12 +91,9 @@ interface AppState extends GatewaySlice {
   // Routing preview (model that will be selected for current input)
   routingPreview: { modelId: string; displayName: string; reason: string } | null
   // Per-task router state (model used, cost, etc.) keyed by taskId
-  taskRouterState: Record<string, TaskRouterState>
+    taskRouterState: Record<string, TaskRouterState>
   // Config accordion state (sidebar settings sections) — DEPRECATED, kept for compatibility
   configSections: Record<string, boolean>
-  // Right panel resize state
-  rightPanelWidth: number
-  rightPanelVisible: boolean
   // Settings modal state
   settingsOpen: boolean
   settingsTab: 'general' | 'model' | 'execution' | 'search' | 'about'
@@ -183,8 +180,6 @@ interface AppState extends GatewaySlice {
   updateTokenUsage: (taskId: string, usage: { promptTokens: number; completionTokens: number }, modelId: string) => void
   setConfigSection: (section: string, open: boolean) => void
 
-  setRightPanelWidth: (width: number) => void
-  setRightPanelVisible: (visible: boolean) => void
   openSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
   closeSettings: () => void
   setSettingsTab: (tab: 'general' | 'model' | 'execution' | 'search' | 'about') => void
@@ -263,9 +258,6 @@ export const useAppStore = create<AppState>()(
             taskRouterState: {},
           // Config accordion state (sidebar settings sections)
           configSections: { model: false, parameters: false, systemPrompt: false, stats: false },
-          // Right panel resize state (default 40% of viewport, calculated in component)
-          rightPanelWidth: 0.4,
-          rightPanelVisible: true,
           // Settings modal state
           settingsOpen: false,
           settingsTab: 'general',
@@ -818,9 +810,7 @@ export const useAppStore = create<AppState>()(
             set((s) => ({
               configSections: { ...s.configSections, [section]: open },
             })),
-          setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
-        setRightPanelVisible: (visible) => set({ rightPanelVisible: visible }),
-        openSettings: (tab) => set({ settingsOpen: true, settingsTab: tab ?? 'general' }),
+          openSettings: (tab) => set({ settingsOpen: true, settingsTab: tab ?? 'general' }),
         closeSettings: () => set({ settingsOpen: false }),
         setSettingsTab: (tab) => set({ settingsTab: tab }),
         setPendingPlan: (plan) => set({ pendingPlan: plan }),

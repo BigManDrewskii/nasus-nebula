@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
 import type { Task } from '../types'
@@ -632,9 +633,13 @@ function SidebarFooter({ onSettings }: { onSettings: () => void }) {
 // ── FooterModelInfo — inline health dot + provider + model ────────────────────
 
 function FooterModelInfo() {
-  const provider      = useAppStore((s) => s.provider)
-  const model         = useAppStore((s) => s.model)
-  const gatewayHealth = useAppStore((s) => s.gatewayHealth)
+  const { provider, model, gatewayHealth } = useAppStore(
+    useShallow((s) => ({
+      provider: s.provider,
+      model: s.model,
+      gatewayHealth: s.gatewayHealth,
+    }))
+  )
 
   const healthStatus = gatewayHealth.find((h) => h.gatewayId === provider)?.status ?? 'unknown'
   const healthColor  = {

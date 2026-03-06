@@ -106,10 +106,10 @@ function App() {
     store.initGatewayService()
     store.loadGatewayConfig().catch(console.error)
 
-    // Initialize config sections from saved layout
+    // Initialize config sections from saved layout (use the action, not direct mutation)
     if (savedLayout.configSections) {
       Object.entries(savedLayout.configSections).forEach(([key, value]) => {
-        store.configSections[key] = value
+        store.setConfigSection(key, value as boolean)
       })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAppStore } from '../../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from '../Pxi'
 import { familyMeta } from '../../lib/models'
 import { formatTokenPrice } from '../../agent/llm'
@@ -35,7 +36,10 @@ interface ConfigAccordionProps {
 }
 
 export function ConfigAccordion({ collapsed = false, onExpand }: ConfigAccordionProps) {
-  const { configSections, setConfigSection } = useAppStore()
+  const { configSections, setConfigSection } = useAppStore(useShallow(s => ({
+    configSections: s.configSections,
+    setConfigSection: s.setConfigSection,
+  })))
 
   // When sidebar is collapsed, show only icons
   if (collapsed) {
@@ -207,7 +211,15 @@ function Section({
 // ── Model Section ──────────────────────────────────────────────────────────────
 
 function ModelSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview, provider } = useAppStore()
+  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview, provider } = useAppStore(useShallow(s => ({
+    model: s.model,
+    setModel: s.setModel,
+    openRouterModels: s.openRouterModels,
+    modelsLastFetched: s.modelsLastFetched,
+    routerConfig: s.routerConfig,
+    routingPreview: s.routingPreview,
+    provider: s.provider,
+  })))
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [freeOnly, setFreeOnly] = useState(false)
@@ -598,7 +610,12 @@ const PROVIDERS = [
 ] as const
 
 function ProviderToggle() {
-  const { routerConfig, setRouterConfig, gateways, gatewayHealth } = useAppStore()
+  const { routerConfig, setRouterConfig, gateways, gatewayHealth } = useAppStore(useShallow(s => ({
+    routerConfig: s.routerConfig,
+    setRouterConfig: s.setRouterConfig,
+    gateways: s.gateways,
+    gatewayHealth: s.gatewayHealth,
+  })))
   const activeProvider = routerConfig?.mode === 'auto'
     ? 'auto'
     : gateways?.find(g => g.enabled)?.type ?? 'openrouter'
@@ -877,7 +894,12 @@ function SystemPromptSection({ open, onToggle }: { open: boolean; onToggle: () =
 // ── Stats Section ──────────────────────────────────────────────────────────────
 
 function StatsSection({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { activeTaskId, taskRouterState, messages, routerConfig } = useAppStore()
+  const { activeTaskId, taskRouterState, messages, routerConfig } = useAppStore(useShallow(s => ({
+    activeTaskId: s.activeTaskId,
+    taskRouterState: s.taskRouterState,
+    messages: s.messages,
+    routerConfig: s.routerConfig,
+  })))
   const stats = activeTaskId ? taskRouterState[activeTaskId] : null
   const msgCount = activeTaskId ? (messages[activeTaskId]?.length ?? 0) : 0
   const userMsgs = activeTaskId

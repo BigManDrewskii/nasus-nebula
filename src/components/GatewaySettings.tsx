@@ -1,10 +1,18 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
 
 export function GatewaySettings() {
-  const { gateways, updateGateway, addGateway, removeGateway, checkGatewayHealth, gatewayHealth } = useAppStore()
+  const { gateways, updateGateway, addGateway, removeGateway, checkGatewayHealth, gatewayHealth } = useAppStore(useShallow(s => ({
+    gateways: s.gateways,
+    updateGateway: s.updateGateway,
+    addGateway: s.addGateway,
+    removeGateway: s.removeGateway,
+    checkGatewayHealth: s.checkGatewayHealth,
+    gatewayHealth: s.gatewayHealth,
+  })))
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   return (

@@ -109,7 +109,8 @@ interface ChatViewProps {
     // Monitor gateway failovers and show notifications
     useEffect(() => {
       if (lastGatewayEvent?.type === 'fallback' && task?.id) {
-        // Find the currently streaming message to add a step to it
+        // Read stable store actions directly to avoid adding them as deps
+        const { getMessages, addStep } = useAppStore.getState()
         const currentMsgs = getMessages(task.id)
         const activeAgentMsg = currentMsgs.find(m => m.author === 'agent' && m.streaming)
         if (activeAgentMsg) {
@@ -121,7 +122,7 @@ interface ChatViewProps {
           })
         }
       }
-    }, [lastGatewayEvent, task?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    }, [lastGatewayEvent, task?.id])
 
     // Use the agent status hook to track agent state
     const { status: agentStatus, iteration } = useAgentStatus(task?.id)
@@ -129,6 +130,7 @@ interface ChatViewProps {
   const runningRef = useRef(false)
   const queuedMsgRef = useRef<string | null>(null)
   const handleSendRef = useRef<((content: string) => void) | null>(null)
+  const handleStopRef = useRef<(() => void) | null>(null)
   const sendTimestamps = useRef<number[]>([])
     const inputRef = useRef<UserInputAreaHandle>(null)
     const messageListRef = useRef<HTMLDivElement>(null)
@@ -538,6 +540,7 @@ interface ChatViewProps {
     }
   // Keep ref always pointing to the latest handleSend to avoid stale closures
   handleSendRef.current = handleSend
+  handleStopRef.current = handleStop
 
         async function handleRetry(failedMsgId: string) {
     if (!task || runningRef.current) return
@@ -590,11 +593,11 @@ interface ChatViewProps {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === 'n') { e.preventDefault(); onNewTask() }
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
-      if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStop() }
+      if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStopRef.current?.() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, showMemory, onNewTask, onOpenSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, showMemory, onNewTask, onOpenSettings])
 
   // Slice from index 1 to skip the persisted welcome message (shown only in empty state)
   const visibleMessages = messages.slice(1)

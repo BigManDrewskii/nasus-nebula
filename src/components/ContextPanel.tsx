@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { familyMeta } from '../lib/models'
 import { formatTokenPrice } from '../agent/llm'
@@ -226,7 +227,14 @@ function Section({
 // ── Model Section ──────────────────────────────────────────────────────────────
 
 function ModelSection() {
-  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore()
+  const { model, setModel, openRouterModels, modelsLastFetched, routerConfig, routingPreview } = useAppStore(useShallow(s => ({
+    model: s.model,
+    setModel: s.setModel,
+    openRouterModels: s.openRouterModels,
+    modelsLastFetched: s.modelsLastFetched,
+    routerConfig: s.routerConfig,
+    routingPreview: s.routingPreview,
+  })))
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [freeOnly, setFreeOnly] = useState(false)
@@ -538,7 +546,12 @@ const PROVIDERS = [
 ] as const
 
 function ProviderSection() {
-  const { routerConfig, setRouterConfig, gateways, gatewayHealth } = useAppStore()
+  const { routerConfig, setRouterConfig, gateways, gatewayHealth } = useAppStore(useShallow(s => ({
+    routerConfig: s.routerConfig,
+    setRouterConfig: s.setRouterConfig,
+    gateways: s.gateways,
+    gatewayHealth: s.gatewayHealth,
+  })))
   const activeProvider = routerConfig?.mode === 'auto'
     ? 'auto'
     : gateways?.find(g => g.enabled)?.type ?? 'openrouter'
@@ -805,7 +818,12 @@ function SystemPromptSection() {
 // ── Stats Section ──────────────────────────────────────────────────────────────
 
 function StatsSection() {
-  const { activeTaskId, taskRouterState, messages, routerConfig } = useAppStore()
+  const { activeTaskId, taskRouterState, messages, routerConfig } = useAppStore(useShallow(s => ({
+    activeTaskId: s.activeTaskId,
+    taskRouterState: s.taskRouterState,
+    messages: s.messages,
+    routerConfig: s.routerConfig,
+  })))
   const stats = activeTaskId ? taskRouterState[activeTaskId] : null
   const msgCount = activeTaskId ? (messages[activeTaskId]?.length ?? 0) : 0
   const userMsgs = activeTaskId

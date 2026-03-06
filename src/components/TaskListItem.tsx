@@ -1,6 +1,7 @@
 import { useState, useRef, memo, useCallback } from 'react'
 import type { Task } from '../types'
 import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { TaskActionMenu } from './TaskActionMenu'
 import { getWorkspace } from '../agent/tools'
@@ -56,7 +57,14 @@ interface TaskListItemProps {
 // ── Task list item ────────────────────────────────────────────────────────────
 
 export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
-  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore()
+  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore(
+    useShallow((s) => ({
+      deleteTask: s.deleteTask,
+      updateTaskTitle: s.updateTaskTitle,
+      toggleTaskPin: s.toggleTaskPin,
+      duplicateTask: s.duplicateTask,
+    }))
+  )
   const [hovered, setHovered] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(task.title)
