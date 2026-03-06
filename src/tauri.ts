@@ -63,15 +63,16 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
       // Suppress expected non-errors:
       // - "No such file / os error 2" = workspace file not found (expected)
       // - "Cannot read properties of undefined (reading 'invoke')" = running in browser without Tauri
-      const errorMsg = String(e)
-      if (
-        !errorMsg.includes('No such file') &&
-        !errorMsg.includes('os error 2') &&
-        !errorMsg.includes("reading 'invoke'") &&
-        !errorMsg.includes('invoke')
-      ) {
-        log.error(`Error calling ${cmd}`, e)
-      }
+        const errorMsg = String(e)
+        if (
+          !errorMsg.includes('No such file') &&
+          !errorMsg.includes('os error 2') &&
+          !errorMsg.includes('File not found') &&
+          !errorMsg.includes("reading 'invoke'") &&
+          !errorMsg.includes('invoke')
+        ) {
+          log.error(`Error calling ${cmd}`, e)
+        }
     }
 
   return undefined

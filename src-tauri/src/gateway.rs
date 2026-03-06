@@ -311,18 +311,75 @@ pub fn default_gateways() -> Vec<GatewayConfig> {
 
 // ─── Tauri Commands ─────────────────────────────────────────────────────────
 
-/// Get the current gateway configuration
+/// Get the current gateway configuration, merging from persisted store if available
 #[tauri::command]
-pub fn get_gateways(state: tauri::State<'_, GatewayState>) -> Vec<GatewayConfig> {
+pub fn get_gateways(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, GatewayState>,
+) -> Vec<GatewayConfig> {
+    // Try to load persisted gateway metadata from tauri-plugin-store
+    if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
+        if let Some(saved) = store.get("gateways") {
+            if let Ok(mut saved_gateways) =
+                serde_json::from_value::<Vec<GatewayConfig>>(saved.clone())
+            {
+                // Strip masked keys — real keys come from the zustand-persisted apiKey
+                for gw in &mut saved_gateways {
+                    if gw.api_key == "***" {
+                        gw.api_key = String::new();
+                    }
+                }
+                // Update in-memory manager to stay in sync
+                let mut manager = state.manager.lock().unwrap();
+                manager.update_gateways(saved_gateways.clone());
+                return saved_gateways;
+            }
+        }
+    }
+
     let manager = state.manager.lock().unwrap();
     manager.gateways.clone()
 }
 
-/// Update gateways from the frontend
+/// Update gateways from the frontend and persist to tauri-plugin-store
 #[tauri::command]
-pub fn save_gateways(state: tauri::State<'_, GatewayState>, gateways: Vec<GatewayConfig>) {
-    let mut manager = state.manager.lock().unwrap();
-    manager.update_gateways(gateways);
+pub fn save_gateways(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, GatewayState>,
+    gateways: Vec<GatewayConfig>,
+) {
+    // Update in-memory manager
+    {
+        let mut manager = state.manager.lock().unwrap();
+        manager.update_gateways(gateways.clone());
+    }
+
+    // Persist to tauri-plugin-store so gateways survive restarts
+    // Strip API keys — they are persisted separately via the zustand store
+    let safe_gateways: Vec<serde_json::Value> = gateways
+        .iter()
+        .map(|g| {
+            let mut v = serde_json::to_value(g).unwrap_or_default();
+            if let Some(obj) = v.as_object_mut() {
+                // Keep the key masked so we know the field exists, but don't store plaintext
+                let has_key = obj
+                    .get("apiKey")
+                    .and_then(|k| k.as_str())
+                    .map(|k| !k.is_empty())
+                    .unwrap_or(false);
+                obj.insert(
+                    "apiKey".to_string(),
+                    serde_json::Value::String(if has_key { "***" } else { "" }.to_string()),
+                );
+            }
+            v
+        })
+        .collect();
+
+    if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
+        let _ = store.set("gateways", serde_json::Value::Array(safe_gateways));
+        let _ = store.save();
+    }
 }
 
 /// Get health status

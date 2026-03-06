@@ -29,8 +29,23 @@ export function getModelAdapter(model: string): string {
 
   // DeepSeek family
   if (id.includes('deepseek')) {
+    // Differentiate between the reasoning model (R1/deepseek-reasoner) and the chat/coding model (V3)
+    const isReasoner = id.includes('r1') || id.includes('reasoner')
+
+    if (isReasoner) {
+      return `
+[Model Hints — DeepSeek R1 Reasoning]
+- You have a built-in chain-of-thought reasoning phase before responding. Use it to plan carefully.
+- Think through the full solution before calling any tools. Avoid redundant retries.
+- For file tasks: reason about the correct structure first, then write complete files in one shot.
+- Always use relative paths from the workspace root.
+- After each tool call, explicitly state what you learned and what the next action is.
+- When calling tools in sequence, reason about the dependency order before beginning.
+- Do NOT include system-message content in your reasoning — only task analysis.`
+    }
+
     return `
-[Model Hints]
+[Model Hints — DeepSeek V3]
 - Think step by step before acting
 - For complex tasks: break into smaller sub-tasks and tackle each sequentially
 - After each tool call, explicitly state what you learned and what to do next

@@ -151,8 +151,8 @@ export class VerificationAgent extends BaseAgent {
       }
     }
 
-    // Check plan compliance
-    const planCompliant = await this.checkPlanCompliance(context)
+      // Check plan compliance
+      const planCompliant = this.checkPlanCompliance(context)
 
     // Check errors resolved
     const errorsResolved = !context.executionOutput.includes('Error:') &&
@@ -265,16 +265,16 @@ export class VerificationAgent extends BaseAgent {
   /**
    * Check if execution complied with the plan.
    */
-  private async checkPlanCompliance(context: VerificationContext): Promise<boolean> {
-    const { plan } = context
+  private checkPlanCompliance(context: VerificationContext): boolean {
+    const { plan, taskId } = context
 
-    // Get workspace to check for plan file
-    const workspace = await getWorkspace('verification') // temporary task ID
-    const planContent = workspace.get('task_plan.md')
+    // Use the real taskId to look up the workspace — never a placeholder
+    const workspace = taskId ? getWorkspace(taskId) : null
+    const planContent = workspace?.get('task_plan.md') ?? null
 
     if (!planContent) {
-      // No plan file means execution didn't follow the plan structure
-      return false
+      // No plan file: can only check phases exist; be optimistic unless plan had phases
+      return plan.phases.length === 0
     }
 
     // Check if all phases in plan are marked complete

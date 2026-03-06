@@ -291,12 +291,13 @@ pub struct CallCost {
 
 /// Per-model pricing table (USD per million tokens)
 /// These are approximate and only used for client-side cost display.
-/// Source: OpenRouter model pages, 2025-02.
+/// Source: OpenRouter model pages, 2025-06.
 pub fn pricing_usd_per_million(model_id: &str) -> (f64, f64) {
     // (input_price, output_price) per million tokens
     match model_id {
         id if id.ends_with(":free") => (0.0, 0.0),
         "anthropic/claude-opus-4-5" => (15.0, 75.0),
+        "anthropic/claude-sonnet-4-20250514" => (3.0, 15.0),
         "anthropic/claude-sonnet-4-5" => (3.0, 15.0),
         "anthropic/claude-3.7-sonnet" => (3.0, 15.0),
         "anthropic/claude-3-5-haiku" => (0.80, 4.0),
@@ -305,6 +306,8 @@ pub fn pricing_usd_per_million(model_id: &str) -> (f64, f64) {
         "google/gemini-2.5-pro-preview" => (1.25, 10.0),
         "google/gemini-2.0-flash-001" => (0.10, 0.40),
         "deepseek/deepseek-chat" => (0.27, 1.10),
+        "deepseek/deepseek-r1" => (0.55, 2.19),
+        "deepseek/deepseek-r1-0528" => (0.55, 2.19),
         _ => (1.0, 5.0), // generic fallback estimate
     }
 }

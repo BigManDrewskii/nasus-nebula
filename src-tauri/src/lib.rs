@@ -23,6 +23,7 @@ static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .timeout(std::time::Duration::from_secs(30))
+        .user_agent("Mozilla/5.0 (compatible; Nasus/1.0)")
         .build()
         .expect("Failed to create HTTP client")
 });
@@ -60,6 +61,28 @@ pub struct AppState {
     pub active_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
     pub sidecar: sidecar::SharedSidecarState,
     pub gateway_state: gateway::GatewayState,
+    /// Shared SQLite connection — avoids opening a new file handle on every command.
+    /// WAL mode is enabled on init for better concurrent read performance.
+    pub db: Arc<Mutex<Connection>>,
+}
+
+/// Open (or create) the nasus.db and configure it for shared use.
+fn open_db(app_data_dir: &Path) -> Result<Connection, String> {
+    let db_path = app_data_dir.join("nasus.db");
+    if let Some(p) = db_path.parent() {
+        let _ = std::fs::create_dir_all(p);
+    }
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+    // Enable WAL for better concurrent read performance
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+        .map_err(|e| e.to_string())?;
+    // Ensure all tables exist
+    ensure_extended_schema(&conn)?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS history (task_id TEXT PRIMARY KEY, raw_history TEXT)",
+        [],
+    ).map_err(|e| e.to_string())?;
+    Ok(conn)
 }
 
 // --- Agent Events ---
@@ -151,6 +174,7 @@ async fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn save_config(
+    app: AppHandle,
     state: State<'_, AppState>,
     apiKey: String,
     model: String,
@@ -158,12 +182,30 @@ async fn save_config(
     apiBase: String,
     provider: String,
 ) -> Result<(), String> {
-    let mut config = state.config.lock().await;
-    config.api_key = apiKey;
-    config.model = model;
-    config.workspace_path = workspacePath;
-    config.api_base = apiBase;
-    config.provider = provider;
+    // Update in-memory state
+    {
+        let mut config = state.config.lock().await;
+        config.api_key = apiKey.clone();
+        config.model = model.clone();
+        if !workspacePath.is_empty() {
+            config.workspace_path = workspacePath.clone();
+        }
+        config.api_base = apiBase.clone();
+        config.provider = provider.clone();
+    }
+
+    // Persist to tauri-plugin-store so settings survive restarts
+    if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
+        // Never persist the raw API key to disk — the frontend's Zustand persist handles it
+        let _ = store.set("model", serde_json::Value::String(model));
+        if !workspacePath.is_empty() {
+            let _ = store.set("workspacePath", serde_json::Value::String(workspacePath));
+        }
+        let _ = store.set("apiBase", serde_json::Value::String(apiBase));
+        let _ = store.set("provider", serde_json::Value::String(provider));
+        let _ = store.save();
+    }
+
     Ok(())
 }
 
@@ -541,12 +583,8 @@ async fn http_fetch(
     headers: Option<Vec<String>>,
     body: Option<String>,
 ) -> Result<String, String> {
-    use reqwest::Client;
-
-    let client = Client::builder()
-        .user_agent("Mozilla/5.0 (compatible; Nasus/1.0)")
-        .build()
-        .map_err(|e| e.to_string())?;
+    // Reuse the shared HTTP_CLIENT (connection pooling) instead of creating a new client per call
+    let client = &*HTTP_CLIENT;
 
     let mut request = client.request(
         method.as_deref().unwrap_or("GET").parse::<reqwest::Method>().map_err(|e| e.to_string())?,
@@ -579,63 +617,22 @@ async fn http_fetch(
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn save_task_history(app: AppHandle, taskId: String, rawHistory: String) -> Result<(), String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    
-    // Ensure parent dir exists
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS history (task_id TEXT PRIMARY KEY, raw_history TEXT)",
-        [],
-    ).map_err(|e| e.to_string())?;
-
+async fn save_task_history(state: State<'_, AppState>, taskId: String, rawHistory: String) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute(
         "INSERT OR REPLACE INTO history (task_id, raw_history) VALUES (?1, ?2)",
         params![taskId, rawHistory],
     ).map_err(|e| e.to_string())?;
-
     Ok(())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn load_task_history(app: AppHandle, taskId: String) -> Result<Option<String>, String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    
-    if !db_path.exists() {
-        return Ok(None);
-    }
-
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    
-    // Check if table exists
-    let table_exists: bool = conn.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='history'",
-        [],
-        |row| {
-            let count: i32 = row.get(0)?;
-            Ok(count > 0)
-        },
-    ).unwrap_or(false);
-
-    if !table_exists {
-        return Ok(None);
-    }
-
+async fn load_task_history(state: State<'_, AppState>, taskId: String) -> Result<Option<String>, String> {
+    let conn = state.db.lock().await;
     let mut stmt = conn.prepare("SELECT raw_history FROM history WHERE task_id = ?1")
         .map_err(|e| e.to_string())?;
-    
     let result = stmt.query_row(params![taskId], |row| row.get(0));
-    
     match result {
         Ok(history) => Ok(Some(history)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -645,19 +642,10 @@ async fn load_task_history(app: AppHandle, taskId: String) -> Result<Option<Stri
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn delete_task_history(app: AppHandle, taskId: String) -> Result<(), String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    
-    if !db_path.exists() {
-        return Ok(());
-    }
-
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+async fn delete_task_history(state: State<'_, AppState>, taskId: String) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute("DELETE FROM history WHERE task_id = ?1", params![taskId])
         .map_err(|e| e.to_string())?;
-    
     Ok(())
 }
 
@@ -720,13 +708,8 @@ pub struct DbMemory {
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_save_memory(app: AppHandle, memory: DbMemory) -> Result<(), String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_save_memory(state: State<'_, AppState>, memory: DbMemory) -> Result<(), String> {
+    let conn = state.db.lock().await;
     let tags_json = memory.tags.map(|t| serde_json::to_string(&t).unwrap_or_default());
     conn.execute(
         "INSERT OR REPLACE INTO memories (id, task_id, content, content_type, tags, timestamp)
@@ -738,15 +721,10 @@ async fn db_save_memory(app: AppHandle, memory: DbMemory) -> Result<(), String> 
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_query_memories(app: AppHandle, taskId: Option<String>, limit: Option<i64>) -> Result<Vec<DbMemory>, String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    if !db_path.exists() { return Ok(vec![]); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_query_memories(state: State<'_, AppState>, taskId: Option<String>, limit: Option<i64>) -> Result<Vec<DbMemory>, String> {
+    let conn = state.db.lock().await;
     let lim = limit.unwrap_or(100);
-    let mut stmt = if let Some(tid) = &taskId {
+    if let Some(tid) = &taskId {
         let mut s = conn.prepare(
             "SELECT id, task_id, content, content_type, tags, timestamp
              FROM memories WHERE task_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
@@ -757,12 +735,11 @@ async fn db_query_memories(app: AppHandle, taskId: Option<String>, limit: Option
             Ok(DbMemory { id: row.get(0)?, task_id: row.get(1)?, content: row.get(2)?, content_type: row.get(3)?, tags, timestamp: row.get(5)? })
         }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
         return Ok(rows);
-    } else {
-        conn.prepare(
-            "SELECT id, task_id, content, content_type, tags, timestamp
-             FROM memories ORDER BY timestamp DESC LIMIT ?1"
-        ).map_err(|e| e.to_string())?
-    };
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id, task_id, content, content_type, tags, timestamp
+         FROM memories ORDER BY timestamp DESC LIMIT ?1"
+    ).map_err(|e| e.to_string())?;
     let rows: Vec<DbMemory> = stmt.query_map(params![lim], |row| {
         let tags_str: Option<String> = row.get(4)?;
         let tags = tags_str.as_deref().and_then(|s| serde_json::from_str(s).ok());
@@ -773,10 +750,8 @@ async fn db_query_memories(app: AppHandle, taskId: Option<String>, limit: Option
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_delete_memory(app: AppHandle, memoryId: String) -> Result<(), String> {
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
-    if !db_path.exists() { return Ok(()); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+async fn db_delete_memory(state: State<'_, AppState>, memoryId: String) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute("DELETE FROM memories WHERE id = ?1", params![memoryId]).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -800,13 +775,8 @@ pub struct DbTraceStep {
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_append_trace(app: AppHandle, step: DbTraceStep) -> Result<(), String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_append_trace(state: State<'_, AppState>, step: DbTraceStep) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute(
         "INSERT OR IGNORE INTO trace_steps
          (id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp)
@@ -820,11 +790,8 @@ async fn db_append_trace(app: AppHandle, step: DbTraceStep) -> Result<(), String
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_get_trace(app: AppHandle, taskId: String) -> Result<Vec<DbTraceStep>, String> {
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
-    if !db_path.exists() { return Ok(vec![]); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_get_trace(state: State<'_, AppState>, taskId: String) -> Result<Vec<DbTraceStep>, String> {
+    let conn = state.db.lock().await;
     let mut stmt = conn.prepare(
         "SELECT id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp
          FROM trace_steps WHERE task_id = ?1 ORDER BY timestamp ASC"
@@ -848,10 +815,8 @@ async fn db_get_trace(app: AppHandle, taskId: String) -> Result<Vec<DbTraceStep>
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_delete_trace(app: AppHandle, taskId: String) -> Result<(), String> {
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
-    if !db_path.exists() { return Ok(()); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+async fn db_delete_trace(state: State<'_, AppState>, taskId: String) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute("DELETE FROM trace_steps WHERE task_id = ?1", params![taskId]).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -873,13 +838,8 @@ pub struct DbAgentTask {
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_upsert_task(app: AppHandle, task: DbAgentTask) -> Result<(), String> {
-    let db_path = app.path().app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("nasus.db");
-    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_upsert_task(state: State<'_, AppState>, task: DbAgentTask) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute(
         "INSERT INTO agent_tasks (id, title, status, created_at, updated_at, model_id, total_tokens, estimated_cost_usd)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -895,11 +855,8 @@ async fn db_upsert_task(app: AppHandle, task: DbAgentTask) -> Result<(), String>
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn db_list_tasks(app: AppHandle, limit: Option<i64>) -> Result<Vec<DbAgentTask>, String> {
-    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
-    if !db_path.exists() { return Ok(vec![]); }
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    ensure_extended_schema(&conn)?;
+async fn db_list_tasks(state: State<'_, AppState>, limit: Option<i64>) -> Result<Vec<DbAgentTask>, String> {
+    let conn = state.db.lock().await;
     let lim = limit.unwrap_or(50);
     let mut stmt = conn.prepare(
         "SELECT id, title, status, created_at, updated_at, model_id, total_tokens, estimated_cost_usd
@@ -945,43 +902,48 @@ pub fn run() {
       .plugin(tauri_plugin_store::Builder::new().build())
       .plugin(tauri_plugin_shell::init())
       .plugin(tauri_plugin_dialog::init())
-      .setup(|app| {
-          let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-          let cache_path = app_data_dir.join("search_cache.db");
-          let _ = std::fs::create_dir_all(&app_data_dir);
+        .setup(|app| {
+            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            let cache_path = app_data_dir.join("search_cache.db");
+            let _ = std::fs::create_dir_all(&app_data_dir);
 
-          // Get the sidecar directory path
-          let mut sidecar_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-          sidecar_dir.push("sidecar");
-          let _ = std::fs::create_dir_all(&sidecar_dir);
+            // Open shared SQLite connection (WAL mode, all tables ensured)
+            let db_conn = open_db(&app_data_dir)
+                .expect("Failed to open nasus.db");
 
-          // Note: The actual sidecar files are in src-tauri/sidecar during development
-          // In production, they would be bundled with the app
-          let dev_sidecar_path = std::env::current_dir()
-              .ok()
-              .and_then(|p| p.join("src-tauri").join("sidecar").canonicalize().ok());
+            // Get the sidecar directory path
+            let mut sidecar_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            sidecar_dir.push("sidecar");
+            let _ = std::fs::create_dir_all(&sidecar_dir);
 
-          let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
+            // Note: The actual sidecar files are in src-tauri/sidecar during development
+            // In production, they would be bundled with the app
+            let dev_sidecar_path = std::env::current_dir()
+                .ok()
+                .and_then(|p| p.join("src-tauri").join("sidecar").canonicalize().ok());
 
-          app.manage(AppState {
-              config: Mutex::new(Config {
-                  api_key: "".into(),
-                  model: "anthropic/claude-3.7-sonnet".into(),
-                  workspace_path: "".into(),
-                  api_base: "https://openrouter.ai/api/v1".into(),
-                  provider: "openrouter".into(),
-              }),
-              router_config: Mutex::new(RouterConfig::default()),
-              search_config: Mutex::new(SearchConfig::default()),
-              search_service: Arc::new(SearchService::new(Some(cache_path))),
-              active_tasks: Mutex::new(HashMap::new()),
-              sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
-                  sidecar::SidecarState::new(sidecar_path)
-              ))),
-              gateway_state: gateway::GatewayState::new(gateway::default_gateways()),
-          });
-          Ok(())
-      })
+            let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
+
+            app.manage(AppState {
+                config: Mutex::new(Config {
+                    api_key: "".into(),
+                    model: "anthropic/claude-3.7-sonnet".into(),
+                    workspace_path: "".into(),
+                    api_base: "https://openrouter.ai/api/v1".into(),
+                    provider: "openrouter".into(),
+                }),
+                router_config: Mutex::new(RouterConfig::default()),
+                search_config: Mutex::new(SearchConfig::default()),
+                search_service: Arc::new(SearchService::new(Some(cache_path))),
+                active_tasks: Mutex::new(HashMap::new()),
+                sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
+                    sidecar::SidecarState::new(sidecar_path)
+                ))),
+                gateway_state: gateway::GatewayState::new(gateway::default_gateways()),
+                db: Arc::new(Mutex::new(db_conn)),
+            });
+            Ok(())
+        })
       .invoke_handler(tauri::generate_handler![
         get_config,
         save_config,

@@ -24,6 +24,35 @@ const MAX_MEMORIES = 1000
 const MAX_STORAGE_SIZE = 5 * 1024 * 1024 // 5MB
 
 /**
+ * Lightweight keyword-based fallback embedding.
+ * Produces a fixed-size 512-dim bag-of-words vector when the Transformers.js
+ * model is unavailable (first launch, slow connection, WASM not supported).
+ * Similarity is lower quality but ensures memories are never silently dropped.
+ */
+function keywordEmbedding(text: string): number[] {
+  const DIM = 512
+  const vec = new Float32Array(DIM)
+  const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
+  for (const word of words) {
+    if (!word) continue
+    // Simple deterministic hash to bucket index
+    let h = 5381
+    for (let i = 0; i < word.length; i++) {
+      h = ((h << 5) + h) ^ word.charCodeAt(i)
+      h = h >>> 0 // keep unsigned
+    }
+    vec[h % DIM] += 1
+  }
+  // L2 normalize
+  let norm = 0
+  for (let i = 0; i < DIM; i++) norm += vec[i] * vec[i]
+  norm = Math.sqrt(norm) || 1
+  const out: number[] = new Array(DIM)
+  for (let i = 0; i < DIM; i++) out[i] = vec[i] / norm
+  return out
+}
+
+/**
  * Stored memory format for persistence.
  */
 interface StoredMemory {
@@ -76,12 +105,24 @@ export class LocalMemoryStore implements MemoryStore {
 
   /**
    * Store a memory item.
+   * If the semantic embedding model is unavailable (e.g., first run / slow connection),
+   * falls back to a lightweight keyword-based embedding so the memory is never silently dropped.
    */
   async store(content: string, metadata: MemoryMetadata): Promise<string> {
     await this.ensureInit()
 
     const id = crypto.randomUUID()
-      const embedding = await createSemanticEmbedding(content)
+
+    let embedding: number[]
+    try {
+      embedding = await createSemanticEmbedding(content)
+    } catch (embErr) {
+      console.warn(
+        '[MemoryStore] Semantic embedding failed — falling back to keyword embedding.',
+        embErr instanceof Error ? embErr.message : String(embErr),
+      )
+      embedding = keywordEmbedding(content)
+    }
 
     const memory: MemoryItem = {
       id,
@@ -106,7 +147,12 @@ export class LocalMemoryStore implements MemoryStore {
   async search(query: string, k = 10): Promise<MemoryResult[]> {
     await this.ensureInit()
 
-      const queryEmbedding = await createSemanticEmbedding(query)
+    let queryEmbedding: number[]
+    try {
+      queryEmbedding = await createSemanticEmbedding(query)
+    } catch {
+      queryEmbedding = keywordEmbedding(query)
+    }
     const searchResults = await this.vectorStore.search(queryEmbedding, k * 2) // Get more to filter
 
     const results: MemoryResult[] = []

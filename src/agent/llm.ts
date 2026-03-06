@@ -36,6 +36,8 @@ export interface StreamCallbacks {
   onToolCalls: (calls: ToolCall[]) => void
   onUsage: (prompt: number, completion: number, total: number) => void
   onError: (err: string) => void
+  /** Called when reasoning_content tokens arrive (DeepSeek R1 only) */
+  onReasoning?: (text: string) => void
   signal: AbortSignal
   /** Extra headers to inject (e.g., from gateway config) */
   extraHeaders?: Record<string, string>
@@ -50,6 +52,8 @@ export interface LlmResponse {
   toolCalls: ToolCall[]
   finishReason: string
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null
+  /** Chain-of-thought from DeepSeek R1 reasoning_content (null for non-reasoning models) */
+  reasoningContent?: string | null
 }
 
 /**
@@ -105,7 +109,7 @@ export async function streamCompletion(
       const rateLimiter = getGlobalRateLimiter()
       await rateLimiter.acquire()
 
-      const { textStream, toolCalls, usage, finishReason } = await streamText({
+      const { fullStream, toolCalls, usage, finishReason } = await streamText({
         model: unifiedModel,
         messages: coreMessages as any,
         tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
@@ -128,29 +132,49 @@ export async function streamCompletion(
       });
 
       let fullContent = '';
-    for await (const delta of textStream) {
-      fullContent += delta;
-      cb.onDelta(delta);
-    }
+      let fullReasoning = '';
 
-    const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
-      id: tc.toolCallId,
-      type: 'function' as const,
-      function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
-    }));
+      for await (const chunk of fullStream) {
+        if (chunk.type === 'text-delta') {
+          fullContent += chunk.textDelta;
+          cb.onDelta(chunk.textDelta);
+        } else if (chunk.type === 'reasoning') {
+          // Vercel AI SDK 4.x exposes DeepSeek reasoning_content as a 'reasoning' chunk type
+          const reasoningDelta = (chunk as any).textDelta ?? (chunk as any).reasoning ?? '';
+          if (reasoningDelta) {
+            fullReasoning += reasoningDelta;
+            cb.onReasoning?.(reasoningDelta);
+          }
+        } else if (chunk.type === 'provider-defined') {
+          // Fallback: some SDK versions surface reasoning in provider-defined chunks
+          const delta = (chunk as any).value?.reasoning_content ?? (chunk as any).value?.reasoning ?? '';
+          if (delta) {
+            fullReasoning += delta;
+            cb.onReasoning?.(delta);
+          }
+        }
+        // Other chunk types (tool-call, tool-result, finish, error) are handled by onFinish/toolCalls
+      }
 
-    const resolvedUsage = await usage;
+      const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
+        id: tc.toolCallId,
+        type: 'function' as const,
+        function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
+      }));
 
-    return {
-      content: fullContent || null,
-      toolCalls: resolvedToolCalls,
-      finishReason: await finishReason,
-      usage: resolvedUsage ? {
-        promptTokens: resolvedUsage.inputTokens ?? 0,
-        completionTokens: resolvedUsage.outputTokens ?? 0,
-        totalTokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
-      } : null,
-    };
+      const resolvedUsage = await usage;
+
+      return {
+        content: fullContent || null,
+        toolCalls: resolvedToolCalls,
+        finishReason: await finishReason,
+        usage: resolvedUsage ? {
+          promptTokens: resolvedUsage.inputTokens ?? 0,
+          completionTokens: resolvedUsage.outputTokens ?? 0,
+          totalTokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
+        } : null,
+        reasoningContent: fullReasoning || null,
+      };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;

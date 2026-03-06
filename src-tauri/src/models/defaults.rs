@@ -23,6 +23,22 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
         },
         // ── Standard ─────────────────────────────────────────────────────────
         ModelInfo {
+            id: "anthropic/claude-sonnet-4-20250514".into(),
+            display_name: "Claude Sonnet 4".into(),
+            provider: Provider::Anthropic,
+            capabilities: ModelCapabilities {
+                reasoning: 0.95,
+                coding: 0.96,
+                writing: 0.93,
+                speed: 0.68,
+                instruction_following: 0.96,
+            },
+            tool_calling: ToolCallingSupport::Strong,
+            cost_tier: CostTier::Standard,
+            context_window: 200_000,
+            enabled: true,
+        },
+        ModelInfo {
             id: "anthropic/claude-sonnet-4-5".into(),
             display_name: "Claude Sonnet 4.5".into(),
             provider: Provider::Anthropic,
@@ -86,6 +102,40 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
             context_window: 1_000_000,
             enabled: true,
         },
+        // DeepSeek R1 — reasoning model, now supports tool calling
+        ModelInfo {
+            id: "deepseek/deepseek-r1".into(),
+            display_name: "DeepSeek R1".into(),
+            provider: Provider::DeepSeek,
+            capabilities: ModelCapabilities {
+                reasoning: 0.97,
+                coding: 0.95,
+                writing: 0.84,
+                speed: 0.45,
+                instruction_following: 0.90,
+            },
+            tool_calling: ToolCallingSupport::Strong,
+            cost_tier: CostTier::Standard,
+            context_window: 128_000,
+            enabled: true,
+        },
+        // DeepSeek R1-0528 — updated R1 checkpoint with tool calling
+        ModelInfo {
+            id: "deepseek/deepseek-r1-0528".into(),
+            display_name: "DeepSeek R1-0528".into(),
+            provider: Provider::DeepSeek,
+            capabilities: ModelCapabilities {
+                reasoning: 0.98,
+                coding: 0.96,
+                writing: 0.85,
+                speed: 0.40,
+                instruction_following: 0.91,
+            },
+            tool_calling: ToolCallingSupport::Strong,
+            cost_tier: CostTier::Standard,
+            context_window: 128_000,
+            enabled: true,
+        },
         // ── Budget ───────────────────────────────────────────────────────────
         ModelInfo {
             id: "anthropic/claude-3-5-haiku".into(),
@@ -119,6 +169,7 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
             context_window: 1_000_000,
             enabled: true,
         },
+        // DeepSeek V3 / V3.2 (deepseek-chat)
         ModelInfo {
             id: "deepseek/deepseek-chat".into(),
             display_name: "DeepSeek V3".into(),
@@ -130,7 +181,7 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
                 speed: 0.80,
                 instruction_following: 0.85,
             },
-            tool_calling: ToolCallingSupport::Moderate,
+            tool_calling: ToolCallingSupport::Strong,
             cost_tier: CostTier::Budget,
             context_window: 128_000,
             enabled: true,
@@ -166,6 +217,22 @@ pub fn default_model_registry() -> Vec<ModelInfo> {
             tool_calling: ToolCallingSupport::Moderate,
             cost_tier: CostTier::Free,
             context_window: 1_000_000,
+            enabled: true,
+        },
+        ModelInfo {
+            id: "deepseek/deepseek-r1:free".into(),
+            display_name: "DeepSeek R1 (Free)".into(),
+            provider: Provider::DeepSeek,
+            capabilities: ModelCapabilities {
+                reasoning: 0.97,
+                coding: 0.95,
+                writing: 0.84,
+                speed: 0.40,
+                instruction_following: 0.90,
+            },
+            tool_calling: ToolCallingSupport::Strong,
+            cost_tier: CostTier::Free,
+            context_window: 128_000,
             enabled: true,
         },
         ModelInfo {

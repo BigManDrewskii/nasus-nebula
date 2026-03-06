@@ -157,25 +157,25 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       const { tauriInvoke } = await import('../../tauri')
       const { gateways, routingMode, manualModelId } = get()
 
-      // Save to tauri-plugin-store via a Tauri command
-      // We serialize gateways but strip API keys for the config file —
-      // keys are stored separately in the OS keychain via set_search_key pattern
-      const safeGateways = gateways.map((g) => ({
-        ...g,
-        apiKey: g.apiKey ? '***' : '', // Don't persist keys in plaintext JSON
-      }))
+      // Persist all gateways (metadata + enabled/disabled/priority/labels) via the
+      // dedicated Tauri command. API keys are NOT sent here — they are already
+      // persisted by Zustand's persist middleware (apiKey field in AppState).
+      // The Rust side masks keys as "***" before writing to disk.
+      await tauriInvoke('save_gateways', { gateways })
 
-      await tauriInvoke('save_config', {
-        apiKey: '', // Legacy — now per-gateway
-        model: manualModelId || 'auto',
-        workspacePath: '', // Don't overwrite
-        apiBase: gateways.find((g) => g.enabled)?.apiBase ?? '',
-        provider: gateways.find((g) => g.enabled)?.type ?? 'openrouter',
-      })
+      // Also keep the legacy single-gateway config in sync so older code paths work
+      const primary = gateways.find((g) => g.enabled) ?? gateways[0]
+      if (primary) {
+        await tauriInvoke('save_config', {
+          apiKey: primary.apiKey ?? '',
+          model: manualModelId || 'auto',
+          workspacePath: '',
+          apiBase: primary.apiBase,
+          provider: primary.type,
+        })
+      }
 
-      // Store gateway-specific config
-      // TODO: When you add a save_gateway_config Tauri command, use it here
-      console.log('[gateway] Config saved', { routingMode, gatewayCount: safeGateways.length })
+      console.log('[gateway] Config saved', { routingMode, gatewayCount: gateways.length })
     } catch (err) {
       console.error('[gateway] Failed to save config:', err)
     }

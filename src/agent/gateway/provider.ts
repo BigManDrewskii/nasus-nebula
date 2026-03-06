@@ -4,7 +4,7 @@ import { type LanguageModel } from 'ai';
 import { withHealthTracking } from './healthMiddleware';
 
 export interface ProviderConfig {
-  provider: 'openrouter' | 'requesty' | 'ollama' | 'custom';
+  provider: 'openrouter' | 'requesty' | 'ollama' | 'deepseek' | 'custom';
   apiKey?: string;
   apiBase?: string;
   gatewayId?: string;
@@ -14,6 +14,7 @@ export interface ProviderConfig {
 /**
  * Get a unified LanguageModel instance for a given provider and model.
  * Requesty uses the same OpenAI-compatible API as OpenRouter (same model IDs, headers).
+ * DeepSeek uses a direct OpenAI-compatible endpoint (https://api.deepseek.com/v1).
  */
 export function getUnifiedModel(
   config: ProviderConfig,
@@ -24,7 +25,6 @@ export function getUnifiedModel(
   let model: LanguageModel;
 
   // 1. OpenRouter/Requesty (native provider for extra headers/features)
-  // Requesty uses the same API format and model IDs as OpenRouter
   if (provider === 'openrouter' || provider === 'requesty' ||
       (apiBase && (apiBase.includes('openrouter.ai') || apiBase.includes('requesty.ai')))) {
     const openrouter = createOpenRouter({
@@ -37,8 +37,16 @@ export function getUnifiedModel(
       },
     });
     model = openrouter(modelId);
+  } else if (provider === 'deepseek' || (apiBase && apiBase.includes('api.deepseek.com'))) {
+    // 2. DeepSeek Direct — OpenAI-compatible, no special headers needed
+    const deepseek = createOpenAI({
+      apiKey,
+      baseURL: apiBase ?? 'https://api.deepseek.com/v1',
+      headers: extraHeaders,
+    });
+    model = deepseek(modelId);
   } else {
-    // 2. OpenAI-Compatible (Ollama, Custom, and any other OpenAI-compatible endpoint)
+    // 3. OpenAI-Compatible fallback (Ollama, Custom, and any other OpenAI-compatible endpoint)
     const openai = createOpenAI({
       apiKey,
       baseURL: apiBase,

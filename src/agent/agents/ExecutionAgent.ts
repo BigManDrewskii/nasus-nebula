@@ -17,7 +17,6 @@ import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
 import type { AgentStep } from '../../types'
 import { detectStack, seedStackTemplate } from '../stackTemplates'
-import { SYSTEM_PROMPT } from '../systemPrompt'
 import { getToolDefinitions } from '../tools/index'
 import type { ToolCall } from '../llm'
 import { verifyExecution, type VerificationContext } from './VerificationAgent'
@@ -25,6 +24,7 @@ import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
 import { TraceLogger, type TraceSpan } from '../TraceLogger'
+import { buildContext } from '../context/ContextBuilder'
 
 const MAX_CORRECTION_ATTEMPTS = 3
 
@@ -38,8 +38,9 @@ const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
   [/gemini-2\.5/, 1_048_576],
   [/gemini-2\.0/, 1_048_576],
   [/gemini-1\.5/, 1_048_576],
-  [/deepseek-r1/, 128_000],
-  [/deepseek-v3|deepseek-chat/, 128_000],
+    [/deepseek-r1-0528/, 128_000],
+    [/deepseek-r1/, 128_000],
+    [/deepseek-v3|deepseek-chat|deepseek-reasoner/, 128_000],
   [/deepseek/, 64_000],
   [/llama-3\.[23]-\d+b/, 128_000],
   [/llama-3\.3/, 128_000],
@@ -200,57 +201,68 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
-    // Build message history
-    const messages: LlmMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...userMessages,
-    ]
+      // Build the environment summary (used by ContextBuilder as a stable cacheable block)
+      const envSummary = this.buildEnvSummary(params.executionConfig)
 
-    // Inject project memory
-    const projectMemory = await readProjectMemory()
-    if (projectMemory && projectMemory.trim()) {
-      messages.splice(1, 0, {
-        role: 'system',
-        content: `[Project Context]\n${projectMemory.slice(0, 2000)}`,
-      })
-    }
+      // Resolve per-model hints & user preferences
+      const modelHints = getModelAdapter(params.model || store.model)
+      const { buildPreferencesSummary } = await import('../memory/userPreferences')
+      const userPrefs = buildPreferencesSummary()
 
-    // Inject model-specific hints
-    const modelHints = getModelAdapter(params.model || store.model)
-    if (modelHints) {
-      messages.splice(1, 0, {
-        role: 'system',
-        content: modelHints,
-      })
-    }
+      // Compose the preamble injections that go before the cache breakpoint
+      // (stable prefix = system prompt, model hints, user prefs, project memory)
+      const preambleParts: string[] = []
+      if (userPrefs) preambleParts.push(userPrefs)
+      if (modelHints) preambleParts.push(modelHints)
 
-    // Inject user preferences
-    const { buildPreferencesSummary } = await import('../memory/userPreferences')
-    const userPrefs = buildPreferencesSummary()
-    if (userPrefs) {
-      messages.splice(1, 0, {
-        role: 'system',
-        content: userPrefs,
-      })
-    }
-
-    // Inject environment summary
-    const envSummary = this.buildEnvSummary(params.executionConfig)
-    const envIdx = messages.findIndex(m => m.role === 'user')
-    messages.splice(envIdx === -1 ? 1 : envIdx, 0, { role: 'system', content: envSummary })
-
-    // Inject stack template if detected
-    const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
-    if (firstUserContent && userMessages.length === 1) {
-      const detectedStack = detectStack(firstUserContent)
-      if (detectedStack) {
-        seedStackTemplate(taskId, detectedStack.id)
-        messages.splice(2, 0, {
-          role: 'system',
-          content: `[Stack Template Ready] ${detectedStack.contextInjection}`,
-        })
+      // Build project memory for injection
+      const projectMemory = await readProjectMemory()
+      if (projectMemory?.trim()) {
+        preambleParts.push(`[Project Context]\n${projectMemory.slice(0, 2000)}`)
       }
-    }
+
+      // Determine the active env so we can pass the right tool list
+      const env = params.executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+
+      // Stack template detection (first message only)
+      const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
+      let stackInjection: string | undefined
+      if (firstUserContent && userMessages.length === 1) {
+        const detectedStack = detectStack(firstUserContent)
+        if (detectedStack) {
+          seedStackTemplate(taskId, detectedStack.id)
+          stackInjection = `[Stack Template Ready] ${detectedStack.contextInjection}`
+        }
+      }
+
+      // Use ContextBuilder to produce a cache-optimised messages array.
+      // It inserts: stable system prefix → env summary → cache breakpoint → memory → plan → user messages.
+      const builtContext = await buildContext(
+        userMessages,
+        getToolDefinitions(env),
+        {
+          includeMemory: true,
+          maxMemoryItems: 3,
+          includePlan: !!params.plan,
+          maskInactiveTools: false, // masking disabled until tool-phase logic is added
+        },
+        params.plan,
+        envSummary,
+      )
+
+      // Start from the ContextBuilder output and inject additional preamble system messages
+      // right after the stable system prompt (index 0) to preserve cache prefix ordering.
+      const messages: LlmMessage[] = [...builtContext.messages]
+
+      // Insert preamble injections at index 1 (just after the system prompt),
+      // ordered: userPrefs → modelHints → projectMemory → stackTemplate
+      let insertAt = 1
+      for (const part of preambleParts) {
+        messages.splice(insertAt++, 0, { role: 'system', content: part })
+      }
+      if (stackInjection) {
+        messages.splice(insertAt++, 0, { role: 'system', content: stackInjection })
+      }
 
     // Inject correction hints if present
     if (params.correctionHints) {
@@ -299,7 +311,7 @@ export class ExecutionAgent extends BaseAgent {
         return { state: AgentState.FINISHED, done: true }
       }
 
-      const { finishReason, content, toolCalls, usage } = llmResult
+        const { finishReason, content, toolCalls, usage, reasoningContent } = llmResult
 
       // Token awareness & context management
       // Get the effective model from the store (since LlmResponse doesn't include it)
@@ -331,35 +343,41 @@ export class ExecutionAgent extends BaseAgent {
       return { state: AgentState.FINISHED, done: true }
     }
 
-    // No tool calls = done
-    if (finishReason === 'stop' || toolCalls.length === 0) {
-      if (content) {
-        useAppStore.getState().appendRawHistory(taskId, [
-          { role: 'assistant', content: content },
-        ])
+      // Log DeepSeek R1 reasoning_content as a thinking trace step
+      if (reasoningContent) {
+        tracer.recordThinking(reasoningContent)
       }
-      this.emitDone(taskId, messageId)
-      return { state: AgentState.FINISHED, done: true }
-    }
 
-    const isComplete = toolCalls.some((tc: ToolCall) => tc.function.name === 'complete')
-    if (isComplete) {
-      // Find the complete call to get its summary if needed, but the tool execution will handle it
-    }
+      // No tool calls = done
+      if (finishReason === 'stop' || toolCalls.length === 0) {
+        if (content) {
+          useAppStore.getState().appendRawHistory(taskId, [
+            { role: 'assistant', content: content },
+          ])
+        }
+        this.emitDone(taskId, messageId)
+        return { state: AgentState.FINISHED, done: true }
+      }
 
-      // Process tool calls
-      const toolResult = await this.processToolCalls(
-        toolCalls,
-        content,
-        messages,
-        taskId,
-        messageId,
-        params.executionConfig,
-        signal,
-        iteration,
-        warnIter,
-        tracer,
-      )
+      const isComplete = toolCalls.some((tc: ToolCall) => tc.function.name === 'complete')
+      if (isComplete) {
+        // Find the complete call to get its summary if needed, but the tool execution will handle it
+      }
+
+        // Process tool calls
+        const toolResult = await this.processToolCalls(
+          toolCalls,
+          content,
+          messages,
+          taskId,
+          messageId,
+          params.executionConfig,
+          signal,
+          iteration,
+          warnIter,
+          tracer,
+          reasoningContent,
+        )
 
     if (toolResult === 'aborted' || toolResult === 'complete') {
       this.emitDone(taskId, messageId)
@@ -554,21 +572,22 @@ export class ExecutionAgent extends BaseAgent {
       const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
 
       const result = await streamCompletion(
-        apiBase,
-        apiKey,
-        provider,
-        model,
-        messages,
-        getToolDefinitions(env),
-        {
-          onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
-          onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
-          onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
-          onError: (err) => this.emitError(taskId, messageId, err),
-          signal,
-          extraHeaders: resolved.extraHeaders,
-        },
-      )
+          apiBase,
+          apiKey,
+          provider,
+          model,
+          messages,
+          getToolDefinitions(env),
+          {
+            onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
+            onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
+            onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
+            onError: (err) => this.emitError(taskId, messageId, err),
+            onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
+            signal,
+            extraHeaders: resolved.extraHeaders,
+          },
+        )
 
       return result
     } catch (err) {
@@ -582,26 +601,33 @@ export class ExecutionAgent extends BaseAgent {
   /**
    * Process tool calls from the assistant.
    */
-    private async processToolCalls(
-      toolCalls: ToolCall[],
-      content: string | null,
-      messages: LlmMessage[],
-      taskId: string,
-      messageId: string,
-      executionConfig?: ExecutionConfig,
-      signal?: AbortSignal,
-      iteration = 0,
-      warnIter = 40,
-      tracer?: TraceLogger,
-    ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
+      private async processToolCalls(
+        toolCalls: ToolCall[],
+        content: string | null,
+        messages: LlmMessage[],
+        taskId: string,
+        messageId: string,
+        executionConfig?: ExecutionConfig,
+        signal?: AbortSignal,
+        iteration = 0,
+        warnIter = 40,
+        tracer?: TraceLogger,
+        reasoningContent?: string | null,
+      ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
-    messages.push({
+    // DeepSeek R1: must include reasoning_content in assistant message during tool call loops.
+    // The API returns 400 if reasoning_content is present in the stream but omitted here.
+    const assistantMsg: LlmMessage = {
       role: 'assistant',
       content: content || null,
       tool_calls: singleToolCall,
-    })
+    }
+    if (reasoningContent) {
+      ;(assistantMsg as any).reasoning_content = reasoningContent
+    }
+    messages.push(assistantMsg)
 
     startTurnTracking(taskId)
 
@@ -966,6 +992,13 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
   private emitTokenUsage(taskId: string, prompt: number, completion: number, total: number): void {
     window.dispatchEvent(
       new CustomEvent('nasus:tokens', { detail: { taskId, prompt_tokens: prompt, completion_tokens: completion, total_tokens: total } }),
+    )
+  }
+
+  private emitReasoning(taskId: string, messageId: string, delta: string): void {
+    // Stream reasoning tokens to UI — rendered as a collapsible "thinking" block
+    window.dispatchEvent(
+      new CustomEvent('nasus:reasoning-chunk', { detail: { taskId, messageId, delta } }),
     )
   }
 

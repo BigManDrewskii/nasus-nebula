@@ -13,7 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'custom'
+export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'deepseek' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
@@ -174,6 +174,18 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     nativeRouting: false,
     maxRetries: 1,
     timeoutMs: 300_000, // Local models can be slow
+  },
+  {
+    id: 'deepseek',
+    type: 'deepseek',
+    label: 'DeepSeek (Direct)',
+    apiBase: 'https://api.deepseek.com/v1',
+    apiKey: '',
+    priority: 5,
+    enabled: false,
+    nativeRouting: false,
+    maxRetries: 2,
+    timeoutMs: 180_000,
   },
   {
     id: 'custom',

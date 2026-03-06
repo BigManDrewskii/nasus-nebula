@@ -77,6 +77,7 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek V3.2',
     ids: {
       openrouter: 'deepseek/deepseek-v3.2',
+      deepseek: 'deepseek-chat',
     },
     freeOn: {},
     tier: 'coding',
@@ -88,6 +89,7 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek V3',
     ids: {
       openrouter: 'deepseek/deepseek-chat-v3-0324',
+      deepseek: 'deepseek-chat',
     },
     freeOn: { openrouter: true },
     tier: 'coding',
@@ -99,13 +101,26 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek R1',
     ids: {
       openrouter: 'deepseek/deepseek-r1',
+      deepseek: 'deepseek-reasoner',
     },
     freeOn: { openrouter: true },
     tier: 'reasoning',
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
-    supportsTools: false,
+    // R1-0528+ supports tool calling — supportsTools is now true
+  },
+  {
+    canonicalName: 'DeepSeek R1 0528',
+    ids: {
+      openrouter: 'deepseek/deepseek-r1-0528',
+      deepseek: 'deepseek-reasoner',
+    },
+    freeOn: {},
+    tier: 'reasoning',
+    contextWindow: 128_000,
+    inputCostPer1M: 0.55,
+    outputCostPer1M: 2.19,
   },
 
   // ── Fast / Cheap / Free ─────────────────────────────────────────────────
