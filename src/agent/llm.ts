@@ -56,6 +56,21 @@ export interface LlmResponse {
   reasoningContent?: string | null
 }
 
+// ── DeepSeek R1 tool-call guard ───────────────────────────────────────────────
+// DeepSeek R1 (pre-0528) does not support function/tool calling.
+// Sending tools: [...] to the API returns HTTP 400.
+// R1-0528+ does support tools. The free variant (:free) maps to the same checkpoint.
+// We strip tools for all R1 variants EXCEPT the confirmed tool-capable checkpoints.
+function modelSupportsTools(model: string): boolean {
+  const id = model.toLowerCase()
+  // Explicitly tool-capable R1 checkpoints
+  if (id.includes('deepseek-r1-0528')) return true
+  // Base R1 (all sub-variants) — no tools
+  if (id.includes('deepseek-r1') || id.includes('deepseek-reasoner')) return false
+  // All other models default to supporting tools
+  return true
+}
+
 /**
  * Stream a chat completion using the Vercel AI SDK.
  * Handles streaming completions, retries, and gateway failover logic.
@@ -77,14 +92,33 @@ export async function streamCompletion(
     extraHeaders: cb.extraHeaders,
   }, model);
 
+  // Determine if this model supports tool/function calling.
+  // Must be computed before building coreMessages so we can adapt history format.
+  const toolsEnabled = !cb.jsonMode && modelSupportsTools(model)
+
   // Convert LlmMessage to AI SDK message format
   const coreMessages: any[] = messages.map(m => {
     if (m.role === 'tool') {
+      // If tools are disabled for this model, convert tool results to plain user messages
+      // so the conversation history remains valid without function-call scaffolding
+      if (!toolsEnabled) {
+        return {
+          role: 'user',
+          content: `[Tool result] ${m.content || ''}`,
+        } as any
+      }
       return {
         role: 'tool',
         content: Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content || '' }],
         tool_call_id: m.tool_call_id || '',
       } as any;
+    }
+    if (m.role === 'assistant' && !toolsEnabled) {
+      // Strip tool_calls and reasoning_content from assistant messages when tools are disabled
+      return {
+        role: 'assistant',
+        content: m.content || '',
+      } as any
     }
     return {
       role: m.role as any,
@@ -94,8 +128,9 @@ export async function streamCompletion(
   });
 
   // Convert ToolDefinition to AI SDK Tool
-  const sdkTools: Record<string, any> = {};
-  if (!cb.jsonMode) {
+  const sdkTools: Record<string, any> = {}
+  // Strip tools for models that don't support function calling (e.g., DeepSeek R1 pre-0528)
+  if (toolsEnabled) {
     tools.filter(t => !t.inactive).forEach(t => {
       sdkTools[t.function.name] = {
         description: t.function.description,
@@ -427,17 +462,20 @@ export function cheapestModel(models: OpenRouterModel[]): string {
 
 /**
  * Return a "powerful" model from the list (high intelligence, usually more expensive).
- * Prefers Claude 3.7 Sonnet or GPT-4o variants.
+ * Prefers Claude Sonnet 4, Claude 3.7 Sonnet, GPT-4.1, Gemini 2.5 Pro, DeepSeek R1-0528.
  */
 export function powerfulModel(models: OpenRouterModel[]): string {
   const powerfulIds = [
+    'anthropic/claude-sonnet-4-20250514',
     'anthropic/claude-3.7-sonnet',
     'anthropic/claude-3.5-sonnet',
-    'openai/gpt-4o',
+    'openai/gpt-4.1',
     'openai/o3-mini',
+    'google/gemini-2.5-pro-preview',
     'google/gemini-2.0-pro-exp-02-05:free',
     'google/gemini-2.0-flash-001',
-    'deepseek/deepseek-chat'
+    'deepseek/deepseek-r1-0528',   // R1-0528: reasoning + tool calling
+    'deepseek/deepseek-chat',      // V3: strong coding, cheap
   ]
 
   for (const id of powerfulIds) {
@@ -449,7 +487,7 @@ export function powerfulModel(models: OpenRouterModel[]): string {
     return models.sort((a, b) => b.context_length - a.context_length)[0].id
   }
 
-  return 'anthropic/claude-3.7-sonnet'
+  return 'anthropic/claude-sonnet-4-20250514'
 }
 
 /**
@@ -458,9 +496,11 @@ export function powerfulModel(models: OpenRouterModel[]): string {
 export function balancedModel(models: OpenRouterModel[]): string {
   const balancedIds = [
     'anthropic/claude-3.5-haiku',
-    'openai/gpt-4o-mini',
+    'openai/gpt-4.1-mini',
     'google/gemini-2.0-flash-lite-001',
-    'mistralai/mistral-large-2411'
+    'google/gemini-2.0-flash-001',
+    'deepseek/deepseek-chat',       // V3: excellent coding balance
+    'mistralai/mistral-large-2411',
   ]
 
   for (const id of balancedIds) {

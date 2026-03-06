@@ -84,18 +84,32 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 163_000,
     inputCostPer1M: 0.25,
     outputCostPer1M: 0.38,
+    supportsTools: true,
   },
   {
     canonicalName: 'DeepSeek V3',
     ids: {
-      openrouter: 'deepseek/deepseek-chat-v3-0324',
+      openrouter: 'deepseek/deepseek-chat',
       deepseek: 'deepseek-chat',
     },
-    freeOn: { openrouter: true },
+    freeOn: {},
     tier: 'coding',
     contextWindow: 128_000,
     inputCostPer1M: 0.27,
     outputCostPer1M: 1.10,
+    supportsTools: true,
+  },
+  {
+    canonicalName: 'DeepSeek V3 (Free)',
+    ids: {
+      openrouter: 'deepseek/deepseek-chat-v3-0324',
+    },
+    freeOn: { openrouter: true },
+    tier: 'coding',
+    contextWindow: 128_000,
+    inputCostPer1M: 0,
+    outputCostPer1M: 0,
+    supportsTools: true,
   },
   {
     canonicalName: 'DeepSeek R1',
@@ -103,12 +117,25 @@ export const MODEL_REGISTRY: GatewayModel[] = [
       openrouter: 'deepseek/deepseek-r1',
       deepseek: 'deepseek-reasoner',
     },
-    freeOn: { openrouter: true },
+    freeOn: {},
     tier: 'reasoning',
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
-    // R1-0528+ supports tool calling — supportsTools is now true
+    // Pre-0528: NO tool calling support — sending tools: [] returns HTTP 400
+    supportsTools: false,
+  },
+  {
+    canonicalName: 'DeepSeek R1 (Free)',
+    ids: {
+      openrouter: 'deepseek/deepseek-r1:free',
+    },
+    freeOn: { openrouter: true },
+    tier: 'reasoning',
+    contextWindow: 128_000,
+    inputCostPer1M: 0,
+    outputCostPer1M: 0,
+    supportsTools: false,
   },
   {
     canonicalName: 'DeepSeek R1 0528',
@@ -121,6 +148,8 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
+    // R1-0528 added full function/tool calling support
+    supportsTools: true,
   },
 
   // ── Fast / Cheap / Free ─────────────────────────────────────────────────

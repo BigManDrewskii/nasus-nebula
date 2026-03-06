@@ -19,6 +19,10 @@ use std::time::{Duration, Instant};
 #[serde(rename_all = "snake_case")]
 pub enum GatewayType {
     Openrouter,
+    /// Requesty LLM router (OpenAI-compatible)
+    Requesty,
+    /// DeepSeek direct API (https://api.deepseek.com/v1)
+    Deepseek,
     Litellm,
     Direct,
     Ollama,
@@ -218,10 +222,13 @@ impl GatewayManager {
         let mut headers = HashMap::new();
 
         match gw.gateway_type {
-            GatewayType::Openrouter => {
+            GatewayType::Openrouter | GatewayType::Requesty => {
                 headers.insert("HTTP-Referer".to_string(), "https://nasus.app".to_string());
                 headers.insert("X-Title".to_string(), "Nasus".to_string());
                 headers.insert("X-Allow-Fallbacks".to_string(), "true".to_string());
+            }
+            GatewayType::Deepseek => {
+                // DeepSeek direct API — no special headers required beyond Authorization
             }
             _ => {}
         }
@@ -278,6 +285,42 @@ pub fn default_gateways() -> Vec<GatewayConfig> {
             native_routing: true,
             max_retries: 2,
             timeout_ms: 180_000,
+            extra_headers: {
+                let mut h = HashMap::new();
+                h.insert("HTTP-Referer".to_string(), "https://nasus.app".to_string());
+                h.insert("X-Title".to_string(), "Nasus".to_string());
+                h
+            },
+        },
+        GatewayConfig {
+            id: "requesty".to_string(),
+            gateway_type: GatewayType::Requesty,
+            label: "Requesty".to_string(),
+            api_base: "https://router.requesty.ai/v1".to_string(),
+            api_key: String::new(),
+            priority: 1,
+            enabled: false,
+            native_routing: true,
+            max_retries: 2,
+            timeout_ms: 180_000,
+            extra_headers: {
+                let mut h = HashMap::new();
+                h.insert("HTTP-Referer".to_string(), "https://nasus.app".to_string());
+                h.insert("X-Title".to_string(), "Nasus".to_string());
+                h
+            },
+        },
+        GatewayConfig {
+            id: "deepseek".to_string(),
+            gateway_type: GatewayType::Deepseek,
+            label: "DeepSeek (Direct)".to_string(),
+            api_base: "https://api.deepseek.com/v1".to_string(),
+            api_key: String::new(),
+            priority: 5,
+            enabled: false,
+            native_routing: false,
+            max_retries: 2,
+            timeout_ms: 180_000,
             extra_headers: HashMap::new(),
         },
         GatewayConfig {
@@ -299,7 +342,7 @@ pub fn default_gateways() -> Vec<GatewayConfig> {
             label: "LiteLLM Proxy".to_string(),
             api_base: "http://localhost:4000/v1".to_string(),
             api_key: String::new(),
-            priority: 5,
+            priority: 15,
             enabled: false,
             native_routing: true,
             max_retries: 2,

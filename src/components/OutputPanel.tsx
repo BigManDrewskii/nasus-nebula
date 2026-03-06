@@ -5,6 +5,7 @@ import { CodePane } from './CodePane'
 import { FilesPane } from './FilesPane'
 import { BrowserPreview } from './BrowserPreview'
 import { Pxi } from './Pxi'
+import { RailButton } from './sidebar/SidebarComponents'
 
 export type Tab = 'preview' | 'code' | 'files' | 'browser'
 

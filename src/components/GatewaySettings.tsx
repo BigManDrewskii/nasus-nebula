@@ -267,16 +267,26 @@ function GatewayItem({
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>API Key</label>
-            <input
-              type="password"
-              value={gateway.apiKey}
-              onChange={(e) => onUpdate({ apiKey: e.target.value })}
-              placeholder={gateway.type === 'ollama' ? 'Not required for local' : 'sk-or-v1-...'}
-              style={inputStyle}
-            />
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>API Key</label>
+              <input
+                type="password"
+                value={gateway.apiKey}
+                onChange={(e) => onUpdate({ apiKey: e.target.value })}
+                placeholder={
+                  gateway.type === 'ollama' ? 'Not required for local' :
+                  gateway.type === 'deepseek' ? 'sk-… (from platform.deepseek.com/api-keys)' :
+                  gateway.type === 'requesty' ? 'req_… (from app.requesty.ai)' :
+                  'sk-or-v1-…'
+                }
+                style={inputStyle}
+              />
+              {gateway.type === 'deepseek' && (
+                <span style={{ fontSize: 9, color: 'var(--tx-tertiary)', marginLeft: 4, lineHeight: 1.4 }}>
+                  Supported models: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>deepseek-chat</code> (V3), <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>deepseek-reasoner</code> (R1 / R1-0528)
+                </span>
+              )}
+            </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
             <div style={{ display: 'flex', gap: 8 }}>

@@ -288,6 +288,19 @@ export async function tauriListen<T>(
   event: string,
   handler: (payload: T) => void,
 ): Promise<() => void> {
+  // Guard: only attempt to subscribe when running inside Tauri.
+  // Accessing @tauri-apps/api/event outside Tauri throws
+  // "Cannot read properties of undefined (reading 'transformCallback')"
+  // because the internals object is not initialised in a plain browser.
+  const win = window as typeof globalThis & {
+    __TAURI_INTERNALS__?: unknown
+    __TAURI__?: unknown
+  }
+  if (!win.__TAURI_INTERNALS__ && !win.__TAURI__) {
+    // Not running in Tauri — silently return a no-op unsubscriber
+    return () => {}
+  }
+
   try {
     const { listen } = await import('@tauri-apps/api/event')
     const unlisten = await listen<T>(event, (e) => handler(e.payload))
