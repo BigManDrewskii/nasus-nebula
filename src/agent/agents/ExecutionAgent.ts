@@ -685,6 +685,7 @@ export class ExecutionAgent extends BaseAgent {
           role: 'tool',
           content: `Error: ${output}`,
           tool_call_id: callId,
+          tool_name: fnName,
         })
         continue
       }
@@ -743,6 +744,7 @@ export class ExecutionAgent extends BaseAgent {
         role: 'tool',
         content: isError ? `Error: ${output}` : output,
         tool_call_id: callId,
+        tool_name: fnName,
       })
 
       // Auto-update task plan progress on success

@@ -397,6 +397,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         // Ollama has its own enabled flag — enable/disable based on active provider.
         updateGateway('ollama',     { enabled: isOllama })
 
+        // Persist keys to sessionStorage so that loadGatewayConfig's browser-mode
+        // fallback path (Tauri not available) can recover them across HMR reloads.
+        // Gateway keys are intentionally excluded from Zustand's localStorage persist
+        // (partialize strips them), so sessionStorage is the in-memory bridge.
+        try {
+          if (localOpenRouterKey.trim()) sessionStorage.setItem('nasus:key:openrouter', localOpenRouterKey.trim())
+          if (localRequestyKey.trim())   sessionStorage.setItem('nasus:key:requesty',   localRequestyKey.trim())
+          if (localDeepSeekKey.trim())   sessionStorage.setItem('nasus:key:deepseek',   localDeepSeekKey.trim())
+          sessionStorage.setItem('nasus:active-provider', finalProvider)
+        } catch { /* sessionStorage not available in this context */ }
+
       // The legacy/active apiKey in the store is the one for the currently active provider
       const finalApiKey = isOpenRouter ? localOpenRouterKey.trim()
         : isRequesty ? localRequestyKey.trim()

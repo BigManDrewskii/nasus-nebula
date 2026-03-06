@@ -59,30 +59,34 @@ export function getUnifiedModel(
       },
     });
     model = openrouter(modelId);
-  } else if (provider === 'deepseek' || (apiBase && apiBase.includes('api.deepseek.com'))) {
-    // DeepSeek Direct — OpenAI-compatible, no special headers needed
-    const deepseek = createOpenAI({
-      apiKey,
-      baseURL: apiBase ?? 'https://api.deepseek.com/v1',
-      headers: extraHeaders,
-    });
-    model = deepseek(modelId);
-  } else {
-    // OpenAI-compatible fallback: Requesty, custom OpenRouter base URL, Ollama, custom endpoints.
-    // Requesty is intentionally handled here — it uses a different base URL from openrouter.ai
-    // and the @openrouter/ai-sdk-provider ignores baseURL overrides.
-    const headers: Record<string, string> = { ...extraHeaders };
-    // Inject attribution for Requesty (required for their attribution tracking)
-    if (provider === 'requesty' || (apiBase && apiBase.includes('requesty.ai'))) {
-      Object.assign(headers, OR_ATTRIBUTION);
+    } else if (provider === 'deepseek' || (apiBase && apiBase.includes('api.deepseek.com'))) {
+      // DeepSeek Direct — OpenAI-compatible /chat/completions endpoint.
+      // Must use .chat() — @ai-sdk/openai v3+ defaults to the Responses API (/responses)
+      // which DeepSeek does not support (returns 404).
+      const deepseek = createOpenAI({
+        apiKey,
+        baseURL: apiBase ?? 'https://api.deepseek.com/v1',
+        headers: extraHeaders,
+      });
+      model = deepseek.chat(modelId);
+    } else {
+      // OpenAI-compatible fallback: Requesty, custom OpenRouter base URL, Ollama, custom endpoints.
+      // Requesty is intentionally handled here — it uses a different base URL from openrouter.ai
+      // and the @openrouter/ai-sdk-provider ignores baseURL overrides.
+      // Must use .chat() — @ai-sdk/openai v3+ defaults to the Responses API (/responses)
+      // which these providers do not support.
+      const headers: Record<string, string> = { ...extraHeaders };
+      // Inject attribution for Requesty (required for their attribution tracking)
+      if (provider === 'requesty' || (apiBase && apiBase.includes('requesty.ai'))) {
+        Object.assign(headers, OR_ATTRIBUTION);
+      }
+      const openai = createOpenAI({
+        apiKey,
+        baseURL: apiBase,
+        headers,
+      });
+      model = openai.chat(modelId);
     }
-    const openai = createOpenAI({
-      apiKey,
-      baseURL: apiBase,
-      headers,
-    });
-    model = openai(modelId);
-  }
 
   // Wrap with health tracking if gatewayId is provided
   if (gatewayId) {

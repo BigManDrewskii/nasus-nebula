@@ -3,7 +3,7 @@
  * Handles streaming completions, retries, rich model fetching.
  */
 
-import { streamText, generateText } from 'ai';
+import { streamText, generateText, jsonSchema } from 'ai';
 import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
@@ -13,6 +13,7 @@ export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
   content: string | null | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>
   tool_call_id?: string
+  tool_name?: string
   tool_calls?: ToolCall[]
 }
 
@@ -111,67 +112,64 @@ export async function streamCompletion(
   // Must be computed before building coreMessages so we can adapt history format.
   const toolsEnabled = !cb.jsonMode && modelSupportsTools(model)
 
-  // Convert LlmMessage to AI SDK message format
-  const coreMessages: any[] = messages.map(m => {
+    // Convert LlmMessage to AI SDK v6 ModelMessage format
+    const coreMessages: any[] = messages.map(m => {
       if (m.role === 'tool') {
-        // If tools are disabled for this model, convert tool results to plain user messages
-        // so the conversation history remains valid without function-call scaffolding
+        // If tools are disabled, convert tool results to plain user messages
         if (!toolsEnabled) {
           return {
             role: 'user',
             content: `[Tool result] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`,
-          } as any
+          }
         }
-        // Vercel AI SDK v4 CoreToolMessage requires content as ToolResultPart[]:
-        // { type: 'tool-result', toolCallId: string, result: unknown }
+        // AI SDK v6 ToolModelMessage: content must be ToolResultPart[]
+        // ToolResultPart: { type: 'tool-result', toolCallId, toolName, output }
         const toolCallId = m.tool_call_id || ''
-        const resultText = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+        const toolName = m.tool_name || 'unknown'
+        const output = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
         return {
           role: 'tool',
-          content: [{ type: 'tool-result', toolCallId, result: resultText }],
-        } as any;
+          content: [{ type: 'tool-result', toolCallId, toolName, output }],
+        }
       }
-    if (m.role === 'assistant' && !toolsEnabled) {
-      // Strip tool_calls and reasoning_content from assistant messages when tools are disabled
-      return {
-        role: 'assistant',
-        content: m.content || '',
-      } as any
-    }
-      // Assistant message with tool calls: map to Vercel AI SDK v4 CoreAssistantMessage format.
-      // The SDK uses toolInvocations[] not tool_calls[] for history messages.
-      if (m.tool_calls && m.tool_calls.length > 0) {
-        return {
-          role: 'assistant',
-          content: m.content || '',
-          toolInvocations: m.tool_calls.map((tc: ToolCall) => {
-            let args: unknown = {}
-            try { args = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
-            return {
-              state: 'call' as const,
-              toolCallId: tc.id,
-              toolName: tc.function.name,
-              args,
-            }
-          }),
-        } as any
+
+      if (m.role === 'assistant') {
+        // Strip tool_calls when tools are disabled
+        if (!toolsEnabled) {
+          return { role: 'assistant', content: m.content || '' }
+        }
+        // AI SDK v6 AssistantModelMessage with tool calls:
+        // content is an array of TextPart | ToolCallPart
+        // ToolCallPart: { type: 'tool-call', toolCallId, toolName, input }
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          const parts: any[] = []
+          if (m.content) parts.push({ type: 'text', text: m.content })
+          for (const tc of m.tool_calls) {
+            let input: unknown = {}
+            try { input = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
+            parts.push({ type: 'tool-call', toolCallId: tc.id, toolName: tc.function.name, input })
+          }
+          return { role: 'assistant', content: parts }
+        }
+        return { role: 'assistant', content: m.content || '' }
       }
+
       return {
         role: m.role as any,
         content: m.content || '',
-      };
-  });
+      }
+    });
 
   // Convert ToolDefinition to AI SDK Tool
   const sdkTools: Record<string, any> = {}
   // Strip tools for models that don't support function calling (e.g., DeepSeek R1 pre-0528)
   if (toolsEnabled) {
     tools.filter(t => !t.inactive).forEach(t => {
-      sdkTools[t.function.name] = {
-        description: t.function.description,
-        parameters: t.function.parameters as any,
-      };
-    });
+        sdkTools[t.function.name] = {
+          description: t.function.description,
+          inputSchema: jsonSchema(t.function.parameters as any),
+        };
+      });
   }
 
   try {

@@ -252,35 +252,47 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
           // Mark config as loaded so handleSend can proceed
           set({ gatewayConfigReady: true })
       } catch (err) {
-        // Tauri not available (browser mode) — sync apiKey from the zustand persisted store
-        // so callWithFailover has a valid key without requiring Tauri
+        // Tauri not available (browser mode) — recover keys from sessionStorage.
+        // Gateway keys are intentionally stripped from Zustand's localStorage persist
+        // (partialize zeroes them out). When the user saves settings, SettingsPanel
+        // writes each provider's key to sessionStorage under 'nasus:key:<provider>'.
+        // We read them back here so the gateway layer has valid keys during dev/HMR.
         try {
-          const { useAppStore } = await import('../../store')
-          const appState = useAppStore.getState()
-          if (appState.apiKey) {
-            const { gateways } = get()
-            // Only sync the persisted apiKey to the gateway whose type matches the
-            // persisted provider. Blasting it to ALL non-ollama gateways would write
-            // an OpenRouter key into DeepSeek/Requesty/custom slots, causing 401s.
-              const activeProvider = appState.provider || 'openrouter'
-              const synced = gateways.map((g) => {
-                if (g.type === activeProvider && g.type !== 'ollama') {
-                  return { ...g, apiKey: appState.apiKey, enabled: true }
-                }
-                // Disable all other non-ollama gateways to prevent a keyed-less
-                // high-priority gateway from shadowing the active one.
-                if (g.type !== 'ollama') {
-                  return { ...g, enabled: false }
-                }
-                return g
-              })
-              set({ gateways: synced })
-              const { gatewayService } = get()
-              gatewayService?.updateGateways(synced)
-            }
-          } catch {
-            // ignore
+          const activeProvider = (() => {
+            try { return sessionStorage.getItem('nasus:active-provider') } catch { return null }
+          })() || (await import('../../store')).useAppStore.getState().provider || 'openrouter'
+
+          const keyForProvider = (id: string) => {
+            try { return sessionStorage.getItem(`nasus:key:${id}`) ?? '' } catch { return '' }
           }
+
+          const { gateways } = get()
+          const synced = gateways.map((g) => {
+            const key = keyForProvider(g.type)
+            if (g.type === activeProvider && g.type !== 'ollama') {
+              return { ...g, apiKey: key, enabled: true }
+            }
+            if (g.type !== 'ollama') {
+              // Keep the key in case the user has it stored, but disable the gateway
+              return { ...g, apiKey: key || g.apiKey, enabled: false }
+            }
+            return g
+          })
+          set({ gateways: synced })
+          const { gatewayService } = get()
+          gatewayService?.updateGateways(synced)
+
+          // Also sync the active key back into store.apiKey for the needsKey guard
+          const activeKey = keyForProvider(activeProvider)
+          if (activeKey) {
+            try {
+              const { useAppStore } = await import('../../store')
+              useAppStore.getState().setApiKey(activeKey)
+            } catch { /* ignore */ }
+          }
+        } catch {
+          // ignore
+        }
         console.error('[gateway] Failed to load config:', err)
         // Mark ready even on error so the UI doesn't stay stuck waiting
         set({ gatewayConfigReady: true })
@@ -312,12 +324,29 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       custom: '',
     }
 
+    // Grab the legacy store key as a last-resort fallback.
+    // store.apiKey is populated by loadGatewayConfig (via setApiKey) and by
+    // SettingsPanel.checkAndSave. It will be '' after a cold rehydration
+    // (partialize strips it) but non-empty once loadGatewayConfig has run.
+    const legacyKey = (() => {
+      try {
+        return (get() as any).apiKey as string ?? ''
+      } catch { return '' }
+    })()
+
     if (!primary) {
+      // No enabled gateway — best-effort: use the legacy key with the persisted provider
+      const legacyProvider = (() => {
+        try { return (get() as any).provider as string ?? 'openrouter' } catch { return 'openrouter' }
+      })()
+      const legacyBase = (() => {
+        try { return (get() as any).apiBase as string ?? 'https://openrouter.ai/api/v1' } catch { return 'https://openrouter.ai/api/v1' }
+      })()
       return {
-        apiBase: 'https://openrouter.ai/api/v1',
-        apiKey: '',
-        model: FALLBACK_MODELS['openrouter']!,
-        provider: 'openrouter',
+        apiBase: legacyBase,
+        apiKey: legacyKey,
+        model: FALLBACK_MODELS[legacyProvider] ?? FALLBACK_MODELS['openrouter']!,
+        provider: legacyProvider,
         extraHeaders: {},
       }
     }
@@ -339,9 +368,13 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       modelId = selection?.modelId ?? fallbackModel
     }
 
+    // If the gateway's own key is empty (e.g., after rehydration wipes it), fall
+    // back to the store-level apiKey so we always have the best available key.
+    const resolvedKey = primary.apiKey || legacyKey
+
     return {
       apiBase: primary.apiBase,
-      apiKey: primary.apiKey,
+      apiKey: resolvedKey,
       model: modelId,
       provider: primary.type,
       gatewayId: primary.id,
