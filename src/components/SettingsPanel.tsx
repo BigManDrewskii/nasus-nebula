@@ -69,6 +69,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
   const [localRequestyKey, setLocalRequestyKey] = useState('')
+  const [localDeepSeekKey, setLocalDeepSeekKey] = useState('')
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
@@ -126,12 +127,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         setLocalRequestyKey(requestyGateway.apiKey)
       }
 
+      const deepseekGateway = state.gateways.find((g) => g.id === 'deepseek')
+      if (deepseekGateway?.apiKey) {
+        setLocalDeepSeekKey(deepseekGateway.apiKey)
+      }
+
       if (state.provider === 'openrouter') {
         setActiveProvider('openrouter')
       } else if (state.provider === 'requesty') {
         setActiveProvider('requesty')
       } else if (state.provider === 'ollama') {
         setActiveProvider('ollama')
+      } else if (state.provider === 'deepseek') {
+        setActiveProvider('deepseek')
       }
     }, [])
 
@@ -174,7 +182,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     openRouterModels.length > 0 ? openRouterModels.length : null
   )
 
-    // The active model list: for Ollama show local models; for cloud show fetched/fallback OR list
+    // The active model list: for Ollama show local models; for DeepSeek show native models; for cloud show fetched/fallback OR list
+    const DEEPSEEK_MODELS: OpenRouterModel[] = [
+      { id: 'deepseek-chat',     name: 'DeepSeek V3',     description: 'Latest V3 — strong coding, tool calling', context_length: 128000, architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] }, pricing: { prompt: '0.00000027', completion: '0.0000011' }, top_provider: { context_length: null, is_moderated: false } },
+      { id: 'deepseek-reasoner', name: 'DeepSeek R1',     description: 'Reasoning model (R1 / R1-0528)', context_length: 128000, architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] }, pricing: { prompt: '0.00000055', completion: '0.00000219' }, top_provider: { context_length: null, is_moderated: false } },
+    ]
     const modelList: OpenRouterModel[] = activeProvider === 'ollama'
       ? ollamaModels.map((m) => ({
           id: m.name,
@@ -185,7 +197,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           pricing: { prompt: '0', completion: '0' },
           top_provider: { context_length: null, is_moderated: false },
         }))
-      : openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS
+      : activeProvider === 'deepseek'
+        ? DEEPSEEK_MODELS
+        : openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS
 
   // Filter + group models by family
   const filteredModels = useMemo(() => {
@@ -296,6 +310,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         errs.apiKey = 'Requesty keys start with req_… — get one at app.requesty.ai'
       }
     }
+    if (activeProvider === 'deepseek') {
+      if (!localDeepSeekKey.trim()) {
+        errs.apiKey = 'API key is required'
+      } else if (!localDeepSeekKey.trim().startsWith('sk-')) {
+        errs.apiKey = 'DeepSeek keys start with sk-… — get one at platform.deepseek.com/api-keys'
+      }
+    }
     if (localWorkspace.trim() && !localWorkspace.trim().startsWith('/')) {
       errs.workspacePath = 'Must be an absolute path (starting with /)'
     }
@@ -306,6 +327,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     if (!confirm('Reset all settings to defaults? This will clear your API keys and preferences.')) return
     setLocalOpenRouterKey('')
     setLocalRequestyKey('')
+    setLocalDeepSeekKey('')
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
     setLocalExaKey('')
@@ -322,7 +344,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     async function checkAndSave() {
       const errs = validate()
-      if ((activeProvider === 'openrouter' || activeProvider === 'requesty') && Object.keys(errs).length > 0) { setErrors(errs); return }
+      if ((activeProvider === 'openrouter' || activeProvider === 'requesty' || activeProvider === 'deepseek') && Object.keys(errs).length > 0) { setErrors(errs); return }
       setErrors({})
       setSaving(true)
       setSaveError(null)
@@ -330,19 +352,23 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       const isOllama = activeProvider === 'ollama'
       const isOpenRouter = activeProvider === 'openrouter'
       const isRequesty = activeProvider === 'requesty'
+      const isDeepSeek = activeProvider === 'deepseek'
 
       // Determine API base and provider
       const REQUESTY_BASE = 'https://router.requesty.ai/v1'
-      const finalApiBase = isOllama ? OLLAMA_BASE : isRequesty ? REQUESTY_BASE : localApiBase
-      const finalProvider = isOllama ? 'ollama' : isRequesty ? 'requesty' : 'openrouter'
+      const DEEPSEEK_BASE = 'https://api.deepseek.com/v1'
+      const finalApiBase = isOllama ? OLLAMA_BASE : isRequesty ? REQUESTY_BASE : isDeepSeek ? DEEPSEEK_BASE : localApiBase
+      const finalProvider = isOllama ? 'ollama' : isRequesty ? 'requesty' : isDeepSeek ? 'deepseek' : 'openrouter'
 
       // Save keys to their respective gateways
       updateGateway('openrouter', { apiKey: localOpenRouterKey.trim() })
       updateGateway('requesty', { apiKey: localRequestyKey.trim() })
+      updateGateway('deepseek', { apiKey: localDeepSeekKey.trim(), enabled: isDeepSeek })
 
       // The legacy/active apiKey in the store is the one for the currently active provider
       const finalApiKey = isOpenRouter ? localOpenRouterKey.trim()
         : isRequesty ? localRequestyKey.trim()
+        : isDeepSeek ? localDeepSeekKey.trim()
         : ''
 
         setApiKey(finalApiKey)
@@ -654,35 +680,43 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   AI Provider
                 </label>
 
-                {/* Radio options */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {[
-                    {
-                      id: 'openrouter',
-                      label: 'OpenRouter',
-                      description: 'Cloud models via OpenRouter — widest selection',
-                      healthKey: 'openrouter' as const,
-                    },
-                    {
-                      id: 'requesty',
-                      label: 'Requesty',
-                      description: 'LLM router with automatic failover & caching',
-                      healthKey: 'requesty' as const,
-                    },
-                    {
-                      id: 'ollama',
-                      label: 'Ollama (Local)',
-                      description: 'Run models locally on your machine',
-                      healthKey: 'ollama' as const,
-                    },
-                  ].map((opt) => {
-                    const isSelected = activeProvider === opt.id
-                    const health = gatewayHealth.find(h => h.gatewayId === opt.healthKey)
-                    const hasKey = opt.id === 'openrouter'
-                      ? Boolean(localOpenRouterKey.trim())
-                      : opt.id === 'requesty'
-                        ? Boolean(localRequestyKey.trim())
-                        : true // Ollama doesn't need a key
+                  {/* Radio options */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {[
+                      {
+                        id: 'openrouter',
+                        label: 'OpenRouter',
+                        description: 'Cloud models via OpenRouter — widest selection',
+                        healthKey: 'openrouter' as const,
+                      },
+                      {
+                        id: 'requesty',
+                        label: 'Requesty',
+                        description: 'LLM router with automatic failover & caching',
+                        healthKey: 'requesty' as const,
+                      },
+                      {
+                        id: 'deepseek',
+                        label: 'DeepSeek (Direct)',
+                        description: 'DeepSeek V3 & R1 — direct API, lowest cost',
+                        healthKey: 'deepseek' as const,
+                      },
+                      {
+                        id: 'ollama',
+                        label: 'Ollama (Local)',
+                        description: 'Run models locally on your machine',
+                        healthKey: 'ollama' as const,
+                      },
+                    ].map((opt) => {
+                      const isSelected = activeProvider === opt.id
+                      const health = gatewayHealth.find(h => h.gatewayId === opt.healthKey)
+                      const hasKey = opt.id === 'openrouter'
+                        ? Boolean(localOpenRouterKey.trim())
+                        : opt.id === 'requesty'
+                          ? Boolean(localRequestyKey.trim())
+                          : opt.id === 'deepseek'
+                            ? Boolean(localDeepSeekKey.trim())
+                            : true // Ollama doesn't need a key
 
                     const statusColor = health?.status === 'healthy' ? '#22c55e'
                       : health?.status === 'degraded' ? '#eab308'
@@ -693,24 +727,27 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       <button
                         key={opt.id}
                         type="button"
-                        onClick={() => {
-                          setActiveProvider(opt.id)
-                          // Auto-fetch models when switching providers (if key exists)
-                          if (opt.id === 'openrouter' && localOpenRouterKey.trim()) {
-                            handleFetchModels()
-                          } else if (opt.id === 'requesty' && localRequestyKey.trim()) {
-                            // Requesty uses the same API as OpenRouter, so we can fetch models the same way
-                            handleFetchModels()
-                          } else if (opt.id === 'ollama') {
-                            // Fetch Ollama models
-                            fetch('http://localhost:11434/api/tags')
-                              .then(r => r.json())
-                              .then(data => {
-                                useAppStore.getState().setOllamaModels(data.models || [])
-                              })
-                              .catch(() => {})
-                          }
-                        }}
+                          onClick={() => {
+                            setActiveProvider(opt.id)
+                            // Auto-fetch models when switching providers (if key exists)
+                            if (opt.id === 'openrouter' && localOpenRouterKey.trim()) {
+                              handleFetchModels()
+                            } else if (opt.id === 'requesty' && localRequestyKey.trim()) {
+                              // Requesty uses the same API as OpenRouter, so we can fetch models the same way
+                              handleFetchModels()
+                            } else if (opt.id === 'deepseek') {
+                              // DeepSeek direct — pre-select deepseek-chat as default model
+                              setLocalModel('deepseek-chat')
+                            } else if (opt.id === 'ollama') {
+                              // Fetch Ollama models
+                              fetch('http://localhost:11434/api/tags')
+                                .then(r => r.json())
+                                .then(data => {
+                                  useAppStore.getState().setOllamaModels(data.models || [])
+                                })
+                                .catch(() => {})
+                            }
+                          }}
                         style={{
                           width: '100%',
                           padding: '10px 12px',
@@ -812,33 +849,61 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </Field>
                 )}
 
-                {activeProvider === 'requesty' && (
-                  <Field
-                    label="Requesty API Key"
-                    icon="key"
-                    hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>app.requesty.ai</a></>}
-                    error={errors.apiKey}
-                  >
-                    <input
-                      type="password"
-                      value={localRequestyKey}
-                      onChange={(e) => {
-                        setLocalRequestyKey(e.target.value)
-                        setErrors((p) => ({ ...p, apiKey: undefined }))
-                      }}
-                      placeholder="req_..."
-                      style={{
-                        width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                        color: 'var(--tx-primary)', background: '#0d0d0d',
-                        border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        transition: 'border-color 0.12s',
-                      }}
-                      className="placeholder-[var(--tx-muted)]"
-                      onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-                    />
-                  </Field>
-                )}
+                  {activeProvider === 'requesty' && (
+                    <Field
+                      label="Requesty API Key"
+                      icon="key"
+                      hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>app.requesty.ai</a></>}
+                      error={errors.apiKey}
+                    >
+                      <input
+                        type="password"
+                        value={localRequestyKey}
+                        onChange={(e) => {
+                          setLocalRequestyKey(e.target.value)
+                          setErrors((p) => ({ ...p, apiKey: undefined }))
+                        }}
+                        placeholder="req_..."
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                          color: 'var(--tx-primary)', background: '#0d0d0d',
+                          border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                          transition: 'border-color 0.12s',
+                        }}
+                        className="placeholder-[var(--tx-muted)]"
+                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                      />
+                    </Field>
+                  )}
+
+                  {activeProvider === 'deepseek' && (
+                    <Field
+                      label="DeepSeek API Key"
+                      icon="key"
+                      hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>platform.deepseek.com/api-keys</a></>}
+                      error={errors.apiKey}
+                    >
+                      <input
+                        type="password"
+                        value={localDeepSeekKey}
+                        onChange={(e) => {
+                          setLocalDeepSeekKey(e.target.value)
+                          setErrors((p) => ({ ...p, apiKey: undefined }))
+                        }}
+                        placeholder="sk-..."
+                        style={{
+                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                          color: 'var(--tx-primary)', background: '#0d0d0d',
+                          border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                          transition: 'border-color 0.12s',
+                        }}
+                        className="placeholder-[var(--tx-muted)]"
+                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                      />
+                    </Field>
+                  )}
 
                   {activeProvider === 'ollama' && (
                     <OllamaStatusBanner />

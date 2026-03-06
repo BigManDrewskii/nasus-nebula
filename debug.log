@@ -240,3 +240,7 @@ data: {"id"... [truncated]
 2026-03-06T08:15:02.538Z [console][debug] [vite] hot updated: /src/index.css
 2026-03-06T08:15:15.614Z [console][debug] [vite] hot updated: /src/components/OutputPanel.tsx
 2026-03-06T08:15:15.614Z [console][debug] [vite] hot updated: /src/index.css
+2026-03-06T11:06:23.986Z [console][log] [vite] connecting...
+2026-03-06T11:06:23.989Z [console][log] [vite] connected.
+2026-03-06T11:06:24.060Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-03-06T11:08:21.217Z [console][warn] [vite] server connection lost. Polling for restart...
