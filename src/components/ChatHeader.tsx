@@ -154,7 +154,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     model: manualModel,
     provider: manualProvider,
     routingMode,
-    routerConfig,
+      routerConfig: _routerConfig,
     sandboxStatus,
     outputVisible,
     workspaceFileCount = 0,
@@ -166,7 +166,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     userTurns = 0,
     rightCollapsed,
     onToggleRight,
-    onToggleSidebar,
+      onToggleSidebar: _onToggleSidebar,
   }: ChatHeaderProps) {
     // Current model info from either the live task state or the store defaults
     const activeModelId = taskRouterState?.modelId || manualModel

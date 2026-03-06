@@ -11,7 +11,7 @@
  * The core runtime (web-tree-sitter.wasm) is also loaded lazily.
  */
 
-import type Parser from 'web-tree-sitter'
+import Parser from 'web-tree-sitter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -168,8 +168,9 @@ function extractSymbols(root: Parser.SyntaxNode, lang: string): AstSymbol[] {
           symbols.push({ kind: 'variable', name, line, parent: parentClass })
         }
       } else if (t === 'import_statement' || t === 'import_declaration') {
-        const src = node.childForFieldName('source') ?? childText(node, 'string')
-        if (src) symbols.push({ kind: 'import', name: cleanString(src), line })
+          const srcNode = node.childForFieldName('source')
+          const src = srcNode ? srcNode.text : childText(node, 'string')
+          if (src) symbols.push({ kind: 'import', name: cleanString(src), line })
       } else if (t === 'export_statement' || t === 'export_declaration') {
         const name = childText(node, 'identifier') ?? 'default'
         symbols.push({ kind: 'export', name, line })

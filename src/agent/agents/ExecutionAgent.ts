@@ -23,7 +23,7 @@ import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
-import { TraceLogger, type TraceSpan } from '../TraceLogger'
+import { TraceLogger } from '../TraceLogger'
 import { buildContext } from '../context/ContextBuilder'
 
 const MAX_CORRECTION_ATTEMPTS = 3
@@ -779,7 +779,7 @@ export class ExecutionAgent extends BaseAgent {
     const coreTools = [
       'read_file', 'write_file', 'edit_file', 'patch_file', 'list_files', 'search_files', 'undo_file',
       'search_web', 'http_fetch',
-      'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll', 'browser_screenshot', 'browser_extract', 'browser_extract_links', 'browser_wait_for', 'browser_eval', 'browser_select', 'browser_get_tabs',
+      'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll', 'browser_screenshot', 'browser_extract', 'browser_extract_links', 'browser_wait_for', 'browser_aria_snapshot',
       'think', 'save_memory', 'save_preference', 'complete', 'update_plan'
     ].join(', ')
 

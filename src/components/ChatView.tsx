@@ -14,7 +14,7 @@ import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
 import { PlanView } from './PlanConfirmationModal'
-import { isPaidRoute, getRouteLabel, resolveModelLocally } from '../lib/routing'
+import { resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
 
@@ -66,7 +66,7 @@ interface ChatViewProps {
     extensionVersion,
     gatewayHealth,
     lastGatewayEvent,
-    addStep,
+      addStep: _addStep,
   } = useAppStore(
     useShallow((s) => ({
       messages: s.messages,
@@ -156,8 +156,8 @@ interface ChatViewProps {
     const [showNewMsgPill, setShowNewMsgPill] = useState(false)
     const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
     const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
-    const [showWorkspacePicker, setShowWorkspacePicker] = useState(false)
-    const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
+      const [_showWorkspacePicker, _setShowWorkspacePicker] = useState(false)
+      const [_localWorkspace, setLocalWorkspace] = useState(workspacePath)
     const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null)
     const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
 
@@ -167,8 +167,7 @@ interface ChatViewProps {
 
   const sandboxStatus = globalSandboxStatus
   const isActive = agentRunning
-  const isPaid = isPaidRoute(provider, routerConfig, model)
-  const routeLabel = getRouteLabel(provider, routerConfig, model)
+
   const messages = task ? (allMessages[task.id] ?? getMessages(task.id)) : []
   const taskWorkspacePath = workspacePath || (task?.id ? `workspace-${task.id}` : null)
 
@@ -345,35 +344,7 @@ interface ChatViewProps {
               const resolvedApiBase = conn.apiBase || cfg.apiBase || 'https://openrouter.ai/api/v1'
               const resolvedProvider = conn.provider || cfg.provider || 'openrouter'
 
-              // Notify Rust backend for tracking (placeholder, but keeps state in sync)
-              await tauriInvoke('run_agent', {
-                taskId,
-                messageId: agentMsgId,
-                userMessages: history,
-                apiKey: resolvedApiKey,
-                model: modelToUse,
-                apiBase: resolvedApiBase,
-                provider: resolvedProvider,
-                workspacePath: cfg.workspacePath || '',
-                searchConfig: {
-                  exaKey: cfg.exaKey || '',
-                },
-                executionConfig: {
-                  executionMode: 'docker' as const,
-                  taskId: taskId,
-                },
-                routerMode: cfg.routerConfig.mode === 'auto' ? ('auto' as const) : ('manual' as const),
-                routerBudget: cfg.routerConfig.budget === 'free' ? ('free' as const) : ('paid' as const),
-                routerModelOverrides: cfg.routerConfig.modelOverrides ?? {},
-                maxIterations: cfg.maxIterations ?? 50,
-                taskTitle,
-                usePlanning: true,
-                orchestratorConfig: {
-                  enableVerification: cfg.enableVerification ?? true,
-                },
-              })
-
-              // Run the actual web agent (TypeScript orchestrator)
+                // Run the actual web agent (TypeScript orchestrator)
               await runWebAgent({
                 taskId,
                 taskTitle,

@@ -96,6 +96,8 @@ export interface GatewayHealth {
   avgLatencyMs: number
   /** Number of consecutive failures */
   consecutiveFailures: number
+  /** Total number of requests processed */
+  requestCount?: number
   /** Timestamp when the gateway will be retried after being marked down */
   retryAfter?: number
 }

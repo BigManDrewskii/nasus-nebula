@@ -44,10 +44,7 @@ import { BrowserExtractTool } from './browser/BrowserExtractTool'
 import { BrowserExtractLinksTool } from './browser/BrowserExtractLinksTool'
 import { BrowserScreenshotTool } from './browser/BrowserScreenshotTool'
 import { BrowserScrollTool } from './browser/BrowserScrollTool'
-import { BrowserGetTabsTool } from './browser/BrowserGetTabsTool'
 import { BrowserWaitForTool } from './browser/BrowserWaitForTool'
-import { BrowserEvalTool } from './browser/BrowserEvalTool'
-import { BrowserSelectTool } from './browser/BrowserSelectTool'
 import { BrowserAriaSnapshotTool } from './browser/BrowserAriaSnapshotTool'
 
 /**
@@ -86,10 +83,7 @@ toolRegistry.registerConstructor('browser_extract', BrowserExtractTool)
 toolRegistry.registerConstructor('browser_extract_links', BrowserExtractLinksTool)
 toolRegistry.registerConstructor('browser_screenshot', BrowserScreenshotTool)
 toolRegistry.registerConstructor('browser_scroll', BrowserScrollTool)
-toolRegistry.registerConstructor('browser_get_tabs', BrowserGetTabsTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
-toolRegistry.registerConstructor('browser_eval', BrowserEvalTool)
-toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
 
 /**
@@ -193,9 +187,6 @@ export {
   BrowserExtractTool,
   BrowserScreenshotTool,
   BrowserScrollTool,
-  BrowserGetTabsTool,
   BrowserWaitForTool,
-  BrowserEvalTool,
-  BrowserSelectTool,
   BrowserAriaSnapshotTool,
 } from './browser'

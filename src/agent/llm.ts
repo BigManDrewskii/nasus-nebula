@@ -238,21 +238,14 @@ export async function streamCompletion(
 
       for await (const chunk of fullStream) {
         if (chunk.type === 'text-delta') {
-          fullContent += chunk.textDelta;
-          cb.onDelta(chunk.textDelta);
-        } else if (chunk.type === 'reasoning') {
-          // Vercel AI SDK 4.x exposes DeepSeek reasoning_content as a 'reasoning' chunk type
-          const reasoningDelta = (chunk as any).textDelta ?? (chunk as any).reasoning ?? '';
+          fullContent += chunk.text;
+          cb.onDelta(chunk.text);
+        } else if (chunk.type === 'reasoning-delta') {
+          // AI SDK v5+ emits reasoning tokens as 'reasoning-delta' with .text
+          const reasoningDelta = chunk.text ?? '';
           if (reasoningDelta) {
             fullReasoning += reasoningDelta;
             cb.onReasoning?.(reasoningDelta);
-          }
-        } else if (chunk.type === 'provider-defined') {
-          // Fallback: some SDK versions surface reasoning in provider-defined chunks
-          const delta = (chunk as any).value?.reasoning_content ?? (chunk as any).value?.reasoning ?? '';
-          if (delta) {
-            fullReasoning += delta;
-            cb.onReasoning?.(delta);
           }
         }
         // Other chunk types (tool-call, tool-result, finish, error) are handled by onFinish/toolCalls

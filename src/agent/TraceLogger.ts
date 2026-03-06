@@ -17,13 +17,21 @@ import { dbAppendTrace, type DbTraceStep } from '../tauri'
 export class TraceSpan {
   private startMs: number
   private closed = false
+  readonly id: string
+  private readonly toolName: string
+  private readonly inputJson: string
+  private readonly logger: TraceLogger
 
   constructor(
-    private readonly logger: TraceLogger,
-    readonly id: string,
-    private readonly toolName: string,
-    private readonly inputJson: string,
+    logger: TraceLogger,
+    id: string,
+    toolName: string,
+    inputJson: string,
   ) {
+    this.logger = logger
+    this.id = id
+    this.toolName = toolName
+    this.inputJson = inputJson
     this.startMs = Date.now()
   }
 

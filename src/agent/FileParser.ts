@@ -63,10 +63,10 @@ async function parsePdf(buffer: Uint8Array): Promise<ParsedFile> {
     try {
       const page = await pdf.getPage(p)
       const content = await page.getTextContent()
-      const pageText = content.items
-        .filter((item): item is import('pdfjs-dist').TextItem => 'str' in item)
-        .map(item => item.str)
-        .join(' ')
+        const pageText = content.items
+            .filter((item): item is { str: string } & typeof item => 'str' in item && typeof (item as any).str === 'string')
+            .map(item => item.str)
+          .join(' ')
       if (pageText.trim()) parts.push(`[Page ${p}]\n${pageText.trim()}`)
     } catch (err) {
       warnings.push(`Failed to extract page ${p}: ${String(err)}`)

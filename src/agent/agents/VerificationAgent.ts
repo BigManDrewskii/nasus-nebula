@@ -20,6 +20,8 @@ import { useAppStore } from '../../store'
  * Verification context parameters.
  */
 export interface VerificationContext extends AgentContext {
+  /** The task ID being verified */
+  taskId: string
   /** The plan to verify against */
   plan: ExecutionPlan
   /** Execution output to verify */

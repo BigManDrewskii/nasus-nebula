@@ -21,11 +21,11 @@ import { createSimpleEmbedding } from './MemoryStore'
 // ─── Configure ORT WASM paths BEFORE any pipeline call ───────────────────────
 // Prevents Transformers.js from loading worker scripts from cdn.jsdelivr.net,
 // which violates Tauri's script-src 'self' CSP.
-env.backends.onnx.wasm.numThreads = 1
+env.backends.onnx!.wasm!.numThreads = 1
 // Use an absolute URL so the browser fetches the WASM files directly from
 // the static server without going through Vite's transform middleware (which
 // rejects /public .mjs files imported from source code).
-env.backends.onnx.wasm.wasmPaths = `${location.origin}/ort/`
+env.backends.onnx!.wasm!.wasmPaths = `${location.origin}/ort/`
 env.allowRemoteModels = true
 env.allowLocalModels = false
 // ─────────────────────────────────────────────────────────────────────────────

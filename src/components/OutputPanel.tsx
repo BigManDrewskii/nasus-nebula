@@ -33,7 +33,7 @@ export function OutputPanel({
   activeTab: activeTabProp,
   onTabChange,
   onCollapse,
-  onExpand,
+  onExpand: _onExpand,
 }: OutputPanelProps) {
   // Uncontrolled fallback if parent doesn't pass activeTab
   const [localTab, setLocalTab] = useState<Tab>('files')

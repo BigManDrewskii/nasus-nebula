@@ -567,7 +567,7 @@ function ProviderSection() {
   // Health dot
   function healthOf(gwId: string) {
     if (!gatewayHealth) return null
-    return gatewayHealth.find(h => h.id === gwId)
+    return gatewayHealth.find(h => h.gatewayId === gwId)
   }
 
   return (
