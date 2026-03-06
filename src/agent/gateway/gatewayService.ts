@@ -44,11 +44,23 @@ const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504, 529])
 /** HTTP status codes that indicate a permanent error (don't retry, don't failover) */
 const PERMANENT_ERROR_CODES = new Set([401, 403])
 
+function isAbortError(error: unknown): boolean {
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') return true
+    const msg = error.message.toLowerCase()
+    if (msg.includes('aborted') || msg.includes('aborterror') || msg.includes('the operation was aborted')) return true
+  }
+  return false
+}
+
 function isRetryableError(error: unknown): boolean {
+  // Never retry aborts — they are intentional cancellations
+  if (isAbortError(error)) return false
+
   if (error instanceof Error) {
     const msg = error.message.toLowerCase()
-    // Network errors
-    if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout') || msg.includes('econnrefused') || msg.includes('aborted')) {
+    // Network errors (excluding abort which is handled above)
+    if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout') || msg.includes('econnrefused')) {
       return true
     }
     // HTTP status codes embedded in error messages
@@ -217,10 +229,15 @@ export class GatewayService {
               totalLatencyMs: Date.now() - startTime,
             },
           }
-        } catch (err) {
-          lastError = err
+          } catch (err) {
+            lastError = err
 
-            // Permanent errors — don't retry, don't failover for auth errors
+              // Abort — user cancelled, propagate immediately without retry or failover
+              if (isAbortError(err)) {
+                throw err
+              }
+
+              // Permanent errors — don't retry, don't failover for auth errors
             if (isPermanentError(err)) {
               this.recordFailure(gw.id)
               failureRecorded = true

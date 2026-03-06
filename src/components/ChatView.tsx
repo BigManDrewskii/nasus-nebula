@@ -397,8 +397,16 @@ interface ChatViewProps {
                 },
               })
           } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (!msg.includes('AbortError') && !msg.includes('Aborted')) {
+      const isAbort = err instanceof Error && (
+        err.name === 'AbortError' ||
+        err.message.includes('AbortError') ||
+        err.message.includes('Aborted') ||
+        err.message.includes('aborted') ||
+        err.message.includes('operation was aborted') ||
+        err.message.includes('No output generated')
+      )
+      if (!isAbort) {
+        const msg = err instanceof Error ? err.message : String(err)
         setError(taskId, agentMsgId, `Agent error: ${msg}`)
       } else {
         useAppStore.getState().updateTaskStatus(taskId, 'stopped')

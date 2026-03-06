@@ -3,7 +3,7 @@
  * Handles streaming completions, retries, rich model fetching.
  */
 
-import { streamText, generateText, jsonSchema } from 'ai';
+import { streamText, jsonSchema } from 'ai';
 import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
@@ -112,38 +112,55 @@ export async function streamCompletion(
   // Must be computed before building coreMessages so we can adapt history format.
   const toolsEnabled = !cb.jsonMode && modelSupportsTools(model)
 
-    // Convert LlmMessage to AI SDK v6 ModelMessage format
+    // Convert LlmMessage → AI SDK v6 ModelMessage format.
+    // Strict rules per SDK schema:
+    //   system   → content: string (never null/array)
+    //   user     → content: string | TextPart[]  (image_url → image, no null)
+    //   assistant→ content: string | (TextPart | ToolCallPart)[]  (no null)
+    //   tool     → content: ToolResultPart[]
+    const contentToString = (c: LlmMessage['content']): string => {
+      if (c == null) return ''
+      if (typeof c === 'string') return c
+      // Array — flatten to text (images are dropped for text-only models)
+      return c.map(p => (p.type === 'text' ? (p.text ?? '') : '')).join('').trim()
+    }
+
     const coreMessages: any[] = messages.map(m => {
+      // ── tool ──────────────────────────────────────────────────────────────
       if (m.role === 'tool') {
-        // If tools are disabled, convert tool results to plain user messages
         if (!toolsEnabled) {
           return {
             role: 'user',
-            content: `[Tool result] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`,
+            content: `[Tool result] ${contentToString(m.content)}`,
           }
         }
-        // AI SDK v6 ToolModelMessage: content must be ToolResultPart[]
-        // ToolResultPart: { type: 'tool-result', toolCallId, toolName, output }
-        const toolCallId = m.tool_call_id || ''
-        const toolName = m.tool_name || 'unknown'
-        const output = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-        return {
-          role: 'tool',
-          content: [{ type: 'tool-result', toolCallId, toolName, output }],
-        }
+          const toolCallId = m.tool_call_id || ''
+          const toolName   = m.tool_name   || 'unknown'
+          const output     = contentToString(m.content)
+          return {
+            role: 'tool',
+            content: [{
+              type: 'tool-result',
+              toolCallId,
+              toolName,
+              output: { type: 'text', value: output },
+            }],
+          }
       }
 
+      // ── assistant ─────────────────────────────────────────────────────────
       if (m.role === 'assistant') {
-        // Strip tool_calls when tools are disabled
+        const textContent = typeof m.content === 'string'
+          ? m.content
+          : contentToString(m.content)
+
         if (!toolsEnabled) {
-          return { role: 'assistant', content: m.content || '' }
+          return { role: 'assistant', content: textContent || '' }
         }
-        // AI SDK v6 AssistantModelMessage with tool calls:
-        // content is an array of TextPart | ToolCallPart
-        // ToolCallPart: { type: 'tool-call', toolCallId, toolName, input }
+
         if (m.tool_calls && m.tool_calls.length > 0) {
           const parts: any[] = []
-          if (m.content) parts.push({ type: 'text', text: m.content })
+          if (textContent) parts.push({ type: 'text', text: textContent })
           for (const tc of m.tool_calls) {
             let input: unknown = {}
             try { input = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
@@ -151,12 +168,29 @@ export async function streamCompletion(
           }
           return { role: 'assistant', content: parts }
         }
-        return { role: 'assistant', content: m.content || '' }
+        return { role: 'assistant', content: textContent || '' }
       }
 
+      // ── system ────────────────────────────────────────────────────────────
+      if (m.role === 'system') {
+        // System content MUST be a plain string per AI SDK schema
+        return { role: 'system', content: contentToString(m.content) }
+      }
+
+      // ── user (and any unknown roles) ──────────────────────────────────────
+      // Convert OpenAI image_url format → AI SDK image format
+      if (Array.isArray(m.content) && m.content.length > 0) {
+        const parts: any[] = m.content.map(p => {
+          if (p.type === 'image_url' && p.image_url?.url) {
+            return { type: 'image', image: p.image_url.url }
+          }
+          return { type: 'text', text: p.text ?? '' }
+        }).filter(p => p.type !== 'text' || p.text)
+        return { role: m.role, content: parts.length > 0 ? parts : '' }
+      }
       return {
         role: m.role as any,
-        content: m.content || '',
+        content: contentToString(m.content) || '',
       }
     });
 
@@ -244,16 +278,39 @@ export async function streamCompletion(
         reasoningContent: fullReasoning || null,
       };
   } catch (err) {
+    // Suppress abort errors — they are expected on user-initiated stop, not real errors.
+    const isAbort =
+      err instanceof Error && (
+        err.name === 'AbortError' ||
+        err.message.includes('aborted') ||
+        err.message.includes('Aborted') ||
+        err.message.includes('AbortError') ||
+        // AI SDK wraps abort in AI_NoOutputGeneratedError
+        err.message.includes('No output generated')
+      )
+
+    if (isAbort) {
+      // Don't surface abort as an error — just re-throw so callers can check signal.aborted
+      throw err
+    }
+
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
-    console.error('[streamCompletion] Error:', {
-      message: errorMsg,
-      stack: errorStack,
-      provider,
-      apiBase,
-      model,
-      hasApiKey: Boolean(apiKey && apiKey.length > 0),
-    })
+    // Surface Zod cause for AI_InvalidPromptError to identify the exact bad message
+      const cause = (err as any)?.cause
+      console.error('[streamCompletion] Error:', {
+        message: errorMsg,
+        stack: errorStack,
+        provider,
+        apiBase,
+        model,
+        hasApiKey: Boolean(apiKey && apiKey.length > 0),
+        ...(cause ? { cause: cause?.message ?? String(cause), causeErrors: cause?.errors } : {}),
+      })
+      // For schema validation errors, log the exact messages that failed so we can debug
+      if (errorMsg.includes('ModelMessage') || errorMsg.includes('Invalid prompt')) {
+        console.error('[streamCompletion] Failing messages:', JSON.stringify(coreMessages, null, 2))
+      }
     cb.onError(errorMsg);
     throw err;
   }
@@ -261,70 +318,93 @@ export async function streamCompletion(
 
 /**
  * Non-streaming call — used for auto-title (cheap single-turn).
+ * Uses a direct fetch instead of generateText to avoid SDK response-parsing
+ * issues with chunked-encoded responses from DeepSeek and other providers.
  */
 export async function chatOnce(
   apiBase: string,
   apiKey: string,
-  provider: string,
+  _provider: string,
   model: string,
   userPrompt: string,
   extraHeaders?: Record<string, string>,
 ): Promise<string> {
-  const unifiedModel = getUnifiedModel({
-    provider: provider as ProviderConfig['provider'],
-    apiKey,
-    apiBase,
-    extraHeaders,
-  }, model);
-
   try {
-    // Rate limiting for non-streaming calls too
     await getGlobalRateLimiter().acquire()
 
-    const { text } = await generateText({
-      model: unifiedModel,
-      prompt: userPrompt,
-    });
-    return text.trim();
+    const base = (apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+    const url = `${base}/chat/completions`
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      ...extraHeaders,
+    }
+    const body = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: userPrompt }],
+      max_tokens: 500,
+      stream: false,
+    })
+
+    const resp = await fetch(url, { method: 'POST', headers, body })
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '')
+      console.error('[LLM] chatOnce HTTP error:', resp.status, errText)
+      return ''
+    }
+
+    const json = await resp.json()
+    return (json?.choices?.[0]?.message?.content ?? '').trim()
   } catch (err) {
-    console.error('[LLM] chatOnce failed:', err);
-    return '';
+    const cause = (err as any)?.cause
+    console.error('[LLM] chatOnce failed:', err, cause ? `\nCause: ${cause?.message ?? cause}` : '')
+    return ''
   }
 }
 
 /**
  * One-shot JSON completion.
+ * Uses a direct fetch to avoid SDK response-parsing issues.
  */
 export async function chatJson<T>(
   apiBase: string,
   apiKey: string,
-  provider: string,
+  _provider: string,
   model: string,
   prompt: string,
   _maxTokens = 1000,
   extraHeaders?: Record<string, string>,
 ): Promise<T | null> {
-  const unifiedModel = getUnifiedModel({
-    provider: provider as ProviderConfig['provider'],
-    apiKey,
-    apiBase,
-    extraHeaders,
-  }, model);
-
   try {
-    // Rate limiting for non-streaming calls too
     await getGlobalRateLimiter().acquire()
 
-    const { text } = await generateText({
-      model: unifiedModel,
-      prompt,
-    });
+    const base = (apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')
+    const url = `${base}/chat/completions`
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      ...extraHeaders,
+    }
+    const body = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: _maxTokens,
+      stream: false,
+    })
 
-    // Clean potential markdown fences
+    const resp = await fetch(url, { method: 'POST', headers, body })
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '')
+      console.error('[LLM] chatJson HTTP error:', resp.status, errText)
+      return null
+    }
+
+    const json = await resp.json()
+    const text = (json?.choices?.[0]?.message?.content ?? '').trim()
     const clean = text.replace(/```json\n?|```\n?/g, '').trim()
     return JSON.parse(clean) as T
   } catch (err) {
-    console.error('[LLM] chatJson failed:', err);
+    console.error('[LLM] chatJson failed:', err)
     return null
   }
 }

@@ -35,8 +35,15 @@ export interface RunWebAgentParams {
 }
 
 export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
-  // Cancel any existing run for this task
-  stopWebAgent(params.taskId)
+  // Cancel any concurrent run for this task before starting a new one.
+  // Only abort if there's already a controller registered (i.e., a true concurrent run).
+  // Don't call stopWebAgent here — that also disposes the sandbox, which we don't want
+  // on a normal new-message send. Just abort the signal and replace the controller.
+  const existing = controllers.get(params.taskId)
+  if (existing) {
+    existing.abort()
+    controllers.delete(params.taskId)
+  }
 
   const controller = new AbortController()
   controllers.set(params.taskId, controller)

@@ -26,7 +26,7 @@ import type {
   RoutingMode,
 } from './gatewayTypes'
 import { DEFAULT_GATEWAYS } from './gatewayTypes'
-import { selectModel, translateModelId } from './modelRegistry'
+import { selectModel, translateModelId, findModelById } from './modelRegistry'
 
 // ─── Slice Interface ────────────────────────────────────────────────────────
 
@@ -356,13 +356,38 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
     // Resolve model ID
     let modelId: string
 
-    if (routingMode === 'manual' && manualModelId) {
-      // Translate model ID to the primary gateway's format
-      modelId = manualModelId
-      // Check if it needs translation (e.g., user picked an OpenRouter ID but primary is Direct)
-      const translated = translateModelId(manualModelId, 'openrouter', primary.type)
-      if (translated !== manualModelId) modelId = translated
-    } else {
+      if (routingMode === 'manual' && manualModelId) {
+        // Find the registry entry for this model ID regardless of which gateway format it's in.
+        // e.g. manualModelId='deepseek-chat' (DeepSeek direct) on an OpenRouter gateway
+        // must resolve to 'deepseek/deepseek-chat', not pass through unchanged.
+        const registryEntry = findModelById(manualModelId)
+        if (registryEntry) {
+          // We have a canonical entry — use the ID for the active gateway, fall back to
+          // the stored ID only if the active gateway doesn't have a mapping.
+          modelId = registryEntry.ids[primary.type] ?? manualModelId
+        } else {
+          // Not in registry — try a directional translate from every known gateway format.
+          // This handles cases like OpenRouter slugs stored while on a direct gateway.
+          const allGatewayTypes: Array<import('./gatewayTypes').GatewayType> = ['openrouter', 'deepseek', 'requesty', 'ollama', 'custom']
+          let resolved = manualModelId
+          for (const fromGateway of allGatewayTypes) {
+            if (fromGateway === primary.type) continue
+            const candidate = translateModelId(manualModelId, fromGateway, primary.type)
+            if (candidate !== manualModelId) { resolved = candidate; break }
+          }
+          modelId = resolved
+        }
+
+        // Sanity-check: OpenRouter/Requesty require slugs with a '/' (e.g. 'anthropic/claude-...')
+        // If the resolved ID has no '/' and the gateway is a router, the ID is from a direct
+        // provider and wasn't translated — fall back to auto-select to avoid a 400.
+        const isRouter = primary.type === 'openrouter' || primary.type === 'requesty'
+        if (isRouter && !modelId.includes('/')) {
+          const fallback = selectModel('auto-paid', primary.type, undefined, get().openRouterModels)
+          modelId = fallback?.modelId ?? fallbackModel
+          console.warn(`[gateway] manualModelId '${manualModelId}' is not valid for ${primary.type} — using auto-select: ${modelId}`)
+        }
+      } else {
       // Auto-select based on mode and gateway
       const selection = selectModel(routingMode, primary.type, manualModelId, get().openRouterModels)
       modelId = selection?.modelId ?? fallbackModel
