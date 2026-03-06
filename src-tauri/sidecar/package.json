@@ -9,7 +9,7 @@
     "install": "node install.js"
   },
   "dependencies": {
-    "playwright": "^1.48.0",
+    "playwright-core": "^1.58.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {},

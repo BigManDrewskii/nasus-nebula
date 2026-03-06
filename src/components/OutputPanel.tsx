@@ -5,7 +5,6 @@ import { CodePane } from './CodePane'
 import { FilesPane } from './FilesPane'
 import { BrowserPreview } from './BrowserPreview'
 import { Pxi } from './Pxi'
-import { RailButton } from './sidebar/SidebarComponents'
 
 export type Tab = 'preview' | 'code' | 'files' | 'browser'
 
@@ -36,7 +35,7 @@ export function OutputPanel({
   onExpand,
 }: OutputPanelProps) {
   // Uncontrolled fallback if parent doesn't pass activeTab
-  const [localTab, setLocalTab] = useState<Tab>('preview')
+  const [localTab, setLocalTab] = useState<Tab>('files')
   const tab = activeTabProp ?? localTab
 
   // Track new content indicators
@@ -124,20 +123,9 @@ export function OutputPanel({
     { id: 'code',    icon: 'code',    label: 'Code'    },
   ]
 
-  // ── Collapsed rail ──────────────────────────────────────────────────────────
+  // ── Collapsed: render nothing (panel width is 0 via CSS; ChatHeader toggle handles expand) ──
   if (collapsed) {
-    return (
-      <div className="output-collapsed-rail" role="complementary" aria-label="Output panel (collapsed)">
-        <button
-          className="output-collapsed-expand-btn"
-          onClick={() => onExpand?.()}
-          title="Expand output panel (⌘⇧\)"
-          aria-label="Expand output panel"
-        >
-            <Pxi name="angle-left" size={10} />
-        </button>
-      </div>
-    )
+    return null
   }
 
   // ── Expanded panel ──────────────────────────────────────────────────────────

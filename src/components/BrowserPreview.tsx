@@ -792,40 +792,19 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 </div>
               )}
             </>
-          ) : (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: 'var(--tx-tertiary)',
-              gap: 'var(--space-3)',
-            }}>
-              <div style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid var(--sidebar-border)',
-              }}>
-                <Pxi name="globe" size={24} style={{ opacity: 0.4 }} />
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: 'var(--text-sm)', fontWeight: 500 }}>
+            ) : (
+              <div className="preview-empty">
+                <Pxi name="globe" size={28} style={{ color: 'var(--tx-dim)', marginBottom: 12 }} />
+                <span style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 500 }}>
+                  {sidecarStatus === 'running' ? 'Enter a URL to browse' : 'Browser not started'}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
                   {sidecarStatus === 'running'
-                    ? 'Enter a URL to begin browsing'
-                    : 'Start the browser to begin'}
-                </p>
-                <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)', opacity: 0.7 }}>
-                  The agent can navigate websites and interact with pages
-                </p>
+                    ? 'Type a URL above and press Enter,\nor let the agent navigate for you.'
+                    : 'Click "Start Browser" above to launch\nthe agent-controlled browser session.'}
+                </span>
               </div>
-            </div>
-          )}
+            )}
         </div>
 
         {/* History sidebar */}

@@ -651,6 +651,44 @@ pub struct ExtractResult {
     pub length: usize,
 }
 
+/// Capture an ARIA accessibility snapshot (YAML) of the current page.
+/// Uses locator.ariaSnapshot() — the v1.49+ replacement for page.accessibility.snapshot().
+#[tauri::command]
+pub async fn browser_aria_snapshot(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: Option<String>,
+) -> Result<AriaSnapshotResult, String> {
+    println!("[Browser] AriaSnapshot session {} selector {:?}", session_id, selector);
+
+    let mut params = serde_json::Map::new();
+    if let Some(sel) = selector {
+        params.insert("selector".into(), serde_json::Value::String(sel));
+    }
+
+    let response = send_sidecar_command(
+        &session_id,
+        "aria_snapshot",
+        Some(serde_json::Value::Object(params)),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(AriaSnapshotResult {
+        url: response.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        title: response.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        snapshot: response.get("snapshot").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AriaSnapshotResult {
+    pub url: String,
+    pub title: String,
+    /// YAML accessibility tree returned by locator.ariaSnapshot()
+    pub snapshot: String,
+}
+
 /// Upload a file to an input element
 #[tauri::command]
 pub async fn browser_upload_file(

@@ -109,55 +109,91 @@ export interface MemoryStore {
 }
 
 /**
- * In-memory vector store using simple cosine similarity.
+ * In-memory vector store using Voy (WASM) for fast ANN search.
+ * Falls back to cosine similarity if Voy fails to load.
  */
 export class LocalVectorStore implements VectorStore {
+  private voy: import('voy-search').Voy | null = null
   private vectors: Map<string, number[]> = new Map()
+  private voyReady = false
+
+  private async getVoy(): Promise<import('voy-search').Voy | null> {
+    if (this.voyReady) return this.voy
+    try {
+      const { Voy } = await import('voy-search')
+      this.voy = new Voy()
+      this.voyReady = true
+    } catch {
+      this.voyReady = true
+      this.voy = null
+    }
+    return this.voy
+  }
 
   async storeVector(id: string, vector: number[]): Promise<void> {
     this.vectors.set(id, vector)
+    const voy = await this.getVoy()
+    if (voy) {
+      try {
+        voy.add({ embeddings: [{ id, title: id, url: id, embeddings: vector }] })
+      } catch {
+        // Voy index corrupt; rebuild on next search
+      }
+    }
   }
 
   async search(query: number[], k = 10): Promise<Array<{ id: string; similarity: number }>> {
-    const results: Array<{ id: string; similarity: number }> = []
-
-    for (const [id, vector] of this.vectors.entries()) {
-      const similarity = this.cosineSimilarity(query, vector)
-      results.push({ id, similarity })
+    const voy = await this.getVoy()
+    if (voy && this.vectors.size > 0) {
+      try {
+        const result = voy.search(new Float32Array(query), k)
+        return result.neighbors
+          .filter((n) => this.vectors.has(n.id))
+          .map((n) => {
+            // Voy returns L2 distances — convert to a [0,1] similarity score
+            const dist = parseFloat(n.url) || 0
+            return { id: n.id, similarity: 1 / (1 + dist) }
+          })
+      } catch {
+        // Fall through to cosine fallback
+      }
     }
 
-    // Sort by similarity descending and return top-k
+    // Cosine similarity fallback
+    const results: Array<{ id: string; similarity: number }> = []
+    for (const [id, vector] of this.vectors.entries()) {
+      results.push({ id, similarity: this.cosineSimilarity(query, vector) })
+    }
     results.sort((a, b) => b.similarity - a.similarity)
     return results.slice(0, k)
   }
 
   async deleteVector(id: string): Promise<void> {
     this.vectors.delete(id)
+    const voy = await this.getVoy()
+    if (voy) {
+      try {
+        voy.remove({ embeddings: [{ id, title: id, url: id, embeddings: [] }] })
+      } catch { /* ok */ }
+    }
   }
 
   async clear(): Promise<void> {
     this.vectors.clear()
+    const voy = await this.getVoy()
+    if (voy) {
+      try { voy.clear() } catch { /* ok */ }
+    }
   }
 
-  /**
-   * Calculate cosine similarity between two vectors.
-   */
   private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) return 0
-
-    let dotProduct = 0
-    let normA = 0
-    let normB = 0
-
+    let dot = 0, na = 0, nb = 0
     for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i]
-      normA += a[i] * a[i]
-      normB += b[i] * b[i]
+      dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]
     }
-
-    const denominator = Math.sqrt(normA) * Math.sqrt(normB)
-    if (denominator === 0) return 0
-    return dotProduct / denominator
+    const denom = Math.sqrt(na) * Math.sqrt(nb)
+    return denom === 0 ? 0 : dot / denom
   }
 }
 

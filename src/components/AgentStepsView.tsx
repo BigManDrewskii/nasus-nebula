@@ -2,6 +2,8 @@ import { useState, memo, useMemo } from 'react'
 import type { AgentStep } from '../types'
 import { Pxi } from './Pxi'
 import { BashOutput } from './BashOutput'
+import { DiffView, DiffModeEnum } from '@git-diff-view/react'
+import '@git-diff-view/react/styles/diff-view-pure.css'
 
 interface Props {
   steps: AgentStep[]
@@ -471,21 +473,51 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
 
 // ─── Diff block ───────────────────────────────────────────────────────────────
 
+/**
+ * Build a minimal unified diff hunk from two string snippets.
+ * The hunk header uses placeholder line numbers since we don't have the
+ * actual file context here — the diff viewer just needs valid syntax.
+ */
+function buildUnifiedHunk(removed: string, added: string): string {
+  const oldLines = removed.split('\n')
+  const newLines = added.split('\n')
+  const header = `@@ -1,${oldLines.length} +1,${newLines.length} @@`
+  const body = [
+    ...oldLines.map((l) => `-${l}`),
+    ...newLines.map((l) => `+${l}`),
+  ].join('\n')
+  return `${header}\n${body}`
+}
+
 function DiffBlock({ removed, added }: { removed: string; added: string }) {
+  const hunk = useMemo(() => buildUnifiedHunk(removed, added), [removed, added])
+
   return (
-    <div style={{ padding: '7px 12px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <div style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.1)', borderRadius: 6, padding: '6px 9px' }}>
-        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(248,113,113,0.5)', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>removed</span>
-        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: '#fca5a5', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 90, overflowY: 'auto' }}>
-          {removed}
-        </pre>
-      </div>
-      <div style={{ background: 'rgba(52,211,153,0.04)', border: '1px solid rgba(52,211,153,0.1)', borderRadius: 6, padding: '6px 9px' }}>
-        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'rgba(52,211,153,0.5)', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.08em' }}>added</span>
-        <pre style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'rgba(167,243,208,0.85)', margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.55, maxHeight: 90, overflowY: 'auto' }}>
-          {added}
-        </pre>
-      </div>
+    <div style={{
+      margin: '7px 12px',
+      borderRadius: 7,
+      overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.07)',
+      fontSize: 11,
+      // Override diff-view-pure.css tokens for dark theme
+      '--diff-add-line-bg': 'rgba(52,211,153,0.08)',
+      '--diff-del-line-bg': 'rgba(239,68,68,0.08)',
+      '--diff-add-text-color': 'rgba(167,243,208,0.9)',
+      '--diff-del-text-color': '#fca5a5',
+      '--diff-font-size': '11px',
+    } as React.CSSProperties}
+    >
+      <DiffView
+        data={{
+          oldFile: { content: removed },
+          newFile: { content: added },
+          hunks: [hunk],
+        }}
+        diffViewMode={DiffModeEnum.Unified}
+        diffViewTheme="dark"
+        diffViewFontSize={11}
+        diffViewWrap
+      />
     </div>
   )
 }

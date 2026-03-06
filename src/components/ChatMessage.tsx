@@ -8,6 +8,7 @@ import { formatBytes } from '../hooks/useAttachments'
 import { OutputCardRenderer } from './OutputCards'
 import { useDebouncedStreaming } from '../hooks/useStreaming'
 import { logger } from '../lib/logger'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 // ─── Copy button ──────────────────────────────────────────────────────────────
 
@@ -119,213 +120,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
   )
 }
 
-// ─── Inline markdown ──────────────────────────────────────────────────────────
 
-function inlineMarkdown(text: string, keyPrefix: string): React.ReactNode {
-  const pattern = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|~~(.+?)~~|`([^`]+?)`|\[([^\]]+?)\]\(([^)]+?)\))/g
-  const parts: React.ReactNode[] = []
-  let last = 0
-  let idx = 0
-  let match: RegExpExecArray | null
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > last) parts.push(text.slice(last, match.index))
-    const full = match[0]
-    const k = `${keyPrefix}-il-${idx++}`
-    if (full.startsWith('***')) {
-      parts.push(<strong key={k}><em>{match[2]}</em></strong>)
-    } else if (full.startsWith('**') || full.startsWith('__')) {
-      /* Bold: white — maximum contrast for emphasis */
-      parts.push(<strong key={k} style={{ fontWeight: 600, color: '#ffffff' }}>{match[3] ?? match[4]}</strong>)
-    } else if (full.startsWith('_') || full.startsWith('*')) {
-      /* Italic: primary text, slightly raised */
-      parts.push(<em key={k} style={{ fontStyle: 'italic', color: 'var(--tx-primary)' }}>{match[5] ?? match[6]}</em>)
-    } else if (full.startsWith('~~')) {
-      parts.push(<del key={k} style={{ textDecoration: 'line-through', opacity: 0.55 }}>{match[7]}</del>)
-    } else if (full.startsWith('`')) {
-      /* Inline code — amber-soft on a near-black tinted bg */
-      parts.push(
-        <code
-          key={k}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: 'var(--amber-soft)',   /* oklch(79% 0.164 30.1) ≈ high contrast on dark */
-            fontSize: '0.8em',
-            fontFamily: 'var(--font-mono)',
-            padding: '1px 5px',
-            borderRadius: 4,
-            lineHeight: 1,
-          }}
-        >
-          {match[8]}
-        </code>,
-      )
-    } else if (full.startsWith('[')) {
-      parts.push(
-        <a key={k} href={match[10]} target="_blank" rel="noopener noreferrer"
-          style={{ color: 'var(--amber)', textDecorationColor: 'oklch(64% 0.214 40.1 / 0.4)', textDecoration: 'underline', textUnderlineOffset: 2 }}
-          onMouseOver={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--amber)' }}
-        >
-          {match[9]}
-        </a>,
-      )
-    }
-    last = match.index + full.length
-  }
-  if (last < text.length) parts.push(text.slice(last))
-  return parts.length === 1 && typeof parts[0] === 'string' ? parts[0] : <>{parts}</>
-}
-
-// ─── Block markdown renderer ──────────────────────────────────────────────────
-
-function renderMarkdown(text: string): React.ReactNode {
-  const nodes: React.ReactNode[] = []
-  let key = 0
-  const k = () => `md-${key++}`
-
-  const fencedParts = text.split(/(```[\w]*\n[\s\S]*?```)/g)
-
-  for (const part of fencedParts) {
-    if (part.startsWith('```')) {
-      const rest = part.slice(3)
-      const nlIdx = rest.indexOf('\n')
-      const lang = nlIdx !== -1 ? rest.slice(0, nlIdx).trim() : ''
-      const code = nlIdx !== -1 ? rest.slice(nlIdx + 1).replace(/```$/, '').trimEnd() : rest.replace(/```$/, '').trimEnd()
-      nodes.push(
-        <div key={k()} style={{ margin: '14px 0', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', background: '#0a0a0a' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Pxi name="code-block" size={14} style={{ color: 'var(--tx-tertiary)' }} />
-              {lang && (
-                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  {lang}
-                </span>
-              )}
-            </div>
-            <CopyButton text={code} />
-          </div>
-          {/* Code body: #c8c8c8 on #0a0a0a ≈ 10.4:1 */}
-          <pre style={{ overflow: 'auto', fontSize: 12, fontFamily: 'var(--font-mono)', color: '#c8c8c8', padding: '14px 16px', lineHeight: 1.65, margin: 0 }}>
-            <code>{code}</code>
-          </pre>
-        </div>,
-      )
-      continue
-    }
-
-    const lines = part.split('\n')
-    let i = 0
-    while (i < lines.length) {
-      const line = lines[i]
-      if (!line.trim()) { i++; continue }
-
-      if (/^[-*_]{3,}\s*$/.test(line)) {
-        nodes.push(<hr key={k()} style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)', margin: '16px 0' }} />)
-        i++; continue
-      }
-
-      const h3 = line.match(/^###\s+(.+)/)
-      const h2 = line.match(/^##\s+(.+)/)
-      const h1 = line.match(/^#\s+(.+)/)
-      if (h1) {
-        /* h1: white, 16px */
-        nodes.push(<h1 key={k()} className="para-in" style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginTop: 20, marginBottom: 6, lineHeight: 1.35 }}>{inlineMarkdown(h1[1], k())}</h1>)
-        i++; continue
-      }
-      if (h2) {
-        nodes.push(<h2 key={k()} className="para-in" style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 16, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h2[1], k())}</h2>)
-        i++; continue
-      }
-      if (h3) {
-        nodes.push(<h3 key={k()} className="para-in" style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx-primary)', marginTop: 12, marginBottom: 4, lineHeight: 1.35 }}>{inlineMarkdown(h3[1], k())}</h3>)
-        i++; continue
-      }
-
-      if (line.startsWith('> ')) {
-        const quoteLines: string[] = []
-        while (i < lines.length && lines[i].startsWith('> ')) { quoteLines.push(lines[i].slice(2)); i++ }
-        nodes.push(
-          <blockquote key={k()} style={{ borderLeft: '2px solid oklch(64% 0.214 40.1 / 0.45)', paddingLeft: 14, margin: '12px 0' }}>
-            {quoteLines.map((ql, qi) => (
-              /* Blockquote text: #ababab on #0d0d0d ≈ 7.9:1 */
-              <p key={qi} style={{ fontSize: 13, color: 'var(--tx-secondary)', fontStyle: 'italic', lineHeight: 1.7, margin: '2px 0' }}>{inlineMarkdown(ql, `bq-${qi}`)}</p>
-            ))}
-          </blockquote>,
-        ); continue
-      }
-
-      if (/^[-*+]\s/.test(line)) {
-        const items: string[] = []
-        while (i < lines.length && /^[-*+]\s/.test(lines[i])) { items.push(lines[i].replace(/^[-*+]\s/, '')); i++ }
-          nodes.push(
-            <ul key={k()} className="para-in" style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
-            {items.map((item, ii) => (
-              <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
-                {/* Bullet: amber — visible without being noisy */}
-                <span style={{ marginTop: '0.5em', width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', flexShrink: 0 }} />
-                <span>{inlineMarkdown(item, `ul-${ii}`)}</span>
-              </li>
-            ))}
-          </ul>,
-        ); continue
-      }
-
-      if (/^\d+\.\s/.test(line)) {
-        const items: string[] = []
-        while (i < lines.length && /^\d+\.\s/.test(lines[i])) { items.push(lines[i].replace(/^\d+\.\s+/, '')); i++ }
-          nodes.push(
-            <ol key={k()} className="para-in" style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
-            {items.map((item, ii) => (
-              <li key={ii} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--tx-secondary)' }}>
-                {/* Number: tertiary (#757575 ≈ 4.6:1) — clearly readable */}
-                  <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, minWidth: 16, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{ii + 1}.</span>
-                <span>{inlineMarkdown(item, `ol-${ii}`)}</span>
-              </li>
-            ))}
-          </ol>,
-        ); continue
-      }
-
-          // Agents often stream a wall of text with no newlines. Split into
-          // separate paragraphs at sentence boundaries.
-          if (lines[i].trim() && !/^(#{1,3}\s|> |[-*+]\s|\d+\. |```|[-*_]{3,})/.test(lines[i])) {
-            const rawLine = lines[i]
-
-            let segments: string[]
-            if (rawLine.length > 200) {
-              // Long lines: split at sentence boundaries (. ! ?) followed by a space
-              // and an uppercase letter. Avoids splitting on "e.g.", "i.e.", "Mr.", etc.
-              // by requiring the next word to start with a capital letter.
-              segments = rawLine
-                .split(/(?<=[.!?:])(\s{2,}|\s(?=[A-Z]))/)
-                .filter((s) => s && !/^(\s+)$/.test(s))
-                .map((s) => s.trim())
-                .filter(Boolean)
-              // If splitting produced only 1 segment (no boundaries found), keep as-is
-              if (segments.length <= 1) segments = [rawLine.trim()]
-            } else {
-              // Short lines: keep as one paragraph
-              segments = [rawLine.trim()].filter(Boolean)
-            }
-
-            for (const seg of segments) {
-              nodes.push(
-                <p key={k()} className="para-in" style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--tx-secondary)', margin: '0 0 8px 0' }}>
-                  {inlineMarkdown(seg, k())}
-                </p>,
-              )
-            }
-            i++
-          } else {
-            i++
-          }
-    }
-  }
-
-  return <>{nodes}</>
-}
 
 // ─── Sent attachment grid ─────────────────────────────────────────────────────
 
@@ -462,18 +257,18 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
           style={{
             /* User bubble text: #e2e2e2 on #1c1c1e ≈ 11.5:1 */
             color: 'var(--tx-primary)',
-            fontSize: 13,
-            lineHeight: 1.7,
-            padding: '10px 14px',
-            borderRadius: '14px 14px 4px 14px',
-            background: '#1c1c1e',
-            border: '1px solid rgba(255,255,255,0.08)',
+            fontSize: 13.5,
+            lineHeight: 1.65,
+            padding: '9px 13px',
+            borderRadius: '12px 12px 3px 12px',
+            background: '#1d1d1f',
+            border: '1px solid rgba(255,255,255,0.09)',
           }}
         >
-          {isSimple
-            ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
-            : <div style={{ whiteSpace: 'pre-wrap' }}>{renderMarkdown(content)}</div>
-          }
+    {isSimple
+          ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
+          : <div style={{ whiteSpace: 'pre-wrap' }}><MarkdownRenderer content={content} /></div>
+        }
           {attachments && attachments.length > 0 && (
             <AttachmentGrid attachments={attachments} />
           )}
@@ -497,7 +292,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
 
   const renderedContent = useMemo(
-    () => hasContent ? renderMarkdown(debouncedContent) : null,
+    () => hasContent ? <MarkdownRenderer content={debouncedContent} /> : null,
     [debouncedContent, hasContent],
   )
 
@@ -529,7 +324,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
   return (
     <div
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -542,12 +337,13 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
         <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
           {/* Model info badge — shown when content starts appearing or steps are present */}
           {(hasContent || hasSteps) && message.modelName && (
-            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, opacity: 0.6 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.04)', padding: '1px 5px', borderRadius: 4, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: 'var(--tx-muted)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                 {message.modelName}
               </span>
-              <span style={{ fontSize: 9, color: 'var(--tx-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-                via {message.provider || 'AI'}
+              <span style={{ width: 2, height: 2, borderRadius: '50%', background: 'var(--tx-muted)', opacity: 0.4 }} />
+              <span style={{ fontSize: 9, color: 'var(--tx-muted)', opacity: 0.6, letterSpacing: '0.03em' }}>
+                {message.provider || 'AI'}
               </span>
             </div>
           )}

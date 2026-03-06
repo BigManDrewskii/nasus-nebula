@@ -92,10 +92,10 @@ export function CodePane({ files }: CodePaneProps) {
   if (files.length === 0) {
     return (
       <div className="preview-empty">
-        <Pxi name="folder-open" size={24} style={{ color: 'var(--tx-muted)', marginBottom: 10 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-tertiary)' }}>Workspace is empty</span>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 4 }}>
-          Files the agent creates will appear here
+        <Pxi name="code" size={28} style={{ color: 'var(--tx-dim)', marginBottom: 12 }} />
+        <span style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 500 }}>No code yet</span>
+        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+          Source files the agent writes<br />will be viewable here.
         </span>
       </div>
     )

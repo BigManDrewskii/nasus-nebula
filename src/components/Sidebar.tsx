@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
 import type { Task } from '../types'
+import { useAppStore } from '../store'
 import { TaskListItem } from './TaskListItem'
 import { SidebarEmptyState } from './sidebar/SidebarComponents'
-import { ModelIndicatorRow } from './ModelIndicatorRow'
 
 interface SidebarProps {
   tasks: Task[]
@@ -48,10 +48,10 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings }: SidebarProps) {
-  const [search, setSearch]                   = useState('')
-  const [searchOpen, setSearchOpen]           = useState(false)
+  const [search, setSearch]         = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
-  const searchRef                             = useRef<HTMLInputElement>(null)
+  const searchRef                   = useRef<HTMLInputElement>(null)
 
   const pinnedTasks = useMemo(() => tasks.filter((t) => t.pinned), [tasks])
   const groups      = useMemo(() => groupTasks(tasks), [tasks])
@@ -87,67 +87,90 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
     groups.every(({ items }) => filter(items).length === 0) &&
     filter(pinnedTasks).length === 0
 
-  return (
-    <aside
-      className="sidebar"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        width: '100%',
-        background: '#090909',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
-      <>
+    return (
+      <aside
+        className="sidebar"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          width: '100%',
+          background: '#090909',
+          borderRight: '1px solid rgba(255,255,255,0.05)',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        {/* ── Expanded full sidebar ── */}
         <SidebarBrand />
 
-          <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
-            <NewTaskButton onClick={onNewTask} />
-          </div>
+        <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
+          <NewTaskButton onClick={onNewTask} />
+        </div>
 
-          <div style={{ padding: '0 var(--space-2-5) var(--space-2-5)' }}>
-            <SearchBar
-              open={searchOpen}
-              value={search}
-              inputRef={searchRef}
-              onChange={setSearch}
-              onOpen={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }}
-              onClose={() => { setSearch(''); setSearchOpen(false) }}
+        <div style={{ padding: '0 var(--space-2-5) var(--space-2-5)' }}>
+          <SearchBar
+            open={searchOpen}
+            value={search}
+            inputRef={searchRef}
+            onChange={setSearch}
+            onOpen={() => { setSearchOpen(true); setTimeout(() => searchRef.current?.focus(), 50) }}
+            onClose={() => { setSearch(''); setSearchOpen(false) }}
+          />
+        </div>
+
+        <div style={{ height: 1, background: 'var(--sidebar-border)', margin: '0 var(--space-2-5) var(--space-1)' }} />
+
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            paddingBottom: 'var(--space-2)',
+            scrollbarWidth: 'thin',
+          }}
+        >
+          {tasks.length === 0 ? (
+            <SidebarEmptyState
+              icon="sparkles"
+              title="No tasks yet"
+              subtitle="Create your first task to get started"
+              action={{ label: 'New task', onClick: onNewTask }}
             />
-          </div>
+          ) : (
+            <div style={{ padding: 'var(--space-1) var(--space-2-5) 0' }}>
+                {pinnedTasks.length > 0 && (
+                  <SidebarSection
+                    label="Pinned"
+                    badge={pinnedTasks.length}
+                    collapsed={collapsedGroups.has('Pinned')}
+                    onToggle={() => toggleGroup('Pinned')}
+                    accent="amber"
+                  >
+                  {filter(pinnedTasks).map((task) => (
+                    <TaskListItem
+                      key={task.id}
+                      task={task}
+                      isActive={task.id === activeTaskId}
+                      onClick={() => onSelectTask(task.id)}
+                    />
+                  ))}
+                </SidebarSection>
+              )}
 
-          <div style={{ height: 1, background: 'var(--sidebar-border)', margin: '0 var(--space-2-5) var(--space-1)' }} />
-
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              paddingBottom: 'var(--space-2)',
-              scrollbarWidth: 'thin',
-            }}
-          >
-            {tasks.length === 0 ? (
-              <SidebarEmptyState
-                icon="sparkles"
-                title="No tasks yet"
-                subtitle="Create your first task to get started"
-                action={{ label: 'New task', onClick: onNewTask }}
-              />
-            ) : (
-              <div style={{ padding: 'var(--space-1) var(--space-2-5) 0' }}>
-                  {pinnedTasks.length > 0 && (
-                    <SidebarSection
-                      label="Pinned"
-                      badge={pinnedTasks.length}
-                      collapsed={collapsedGroups.has('Pinned')}
-                      onToggle={() => toggleGroup('Pinned')}
-                      accent="amber"
-                    >
-                    {filter(pinnedTasks).map((task) => (
+              {groups.map(({ label, date, items }) => {
+                const filtered = filter(items)
+                if (q && filtered.length === 0) return null
+                return (
+                  <SidebarSection
+                    key={label}
+                    label={label}
+                    date={date ?? undefined}
+                    badge={items.length}
+                    collapsed={collapsedGroups.has(label)}
+                    onToggle={() => toggleGroup(label)}
+                  >
+                    {filtered.map((task) => (
                       <TaskListItem
                         key={task.id}
                         task={task}
@@ -156,61 +179,31 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
                       />
                     ))}
                   </SidebarSection>
-                )}
+                )
+              })}
 
-                {groups.map(({ label, date, items }) => {
-                  const filtered = filter(items)
-                  if (q && filtered.length === 0) return null
-                  return (
-                    <SidebarSection
-                      key={label}
-                      label={label}
-                      date={date ?? undefined}
-                      badge={items.length}
-                      collapsed={collapsedGroups.has(label)}
-                      onToggle={() => toggleGroup(label)}
-                    >
-                      {filtered.map((task) => (
-                        <TaskListItem
-                          key={task.id}
-                          task={task}
-                          isActive={task.id === activeTaskId}
-                          onClick={() => onSelectTask(task.id)}
-                        />
-                      ))}
-                    </SidebarSection>
-                  )
-                })}
-
-                {noResults && (
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--tx-tertiary)',
-                      textAlign: 'center',
-                      marginTop: 28,
-                      lineHeight: 1.5,
-                      padding: '0 12px',
-                    }}
-                  >
-                    No tasks match<br />
-                    <span style={{ color: 'var(--tx-secondary)' }}>"{search}"</span>
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Model indicator row */}
-          <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
-            <ModelIndicatorRow />
-          </div>
+              {noResults && (
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: 'var(--tx-tertiary)',
+                    textAlign: 'center',
+                    marginTop: 28,
+                    lineHeight: 1.5,
+                    padding: '0 12px',
+                  }}
+                >
+                  No tasks match<br />
+                  <span style={{ color: 'var(--tx-secondary)' }}>"{search}"</span>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
 
           <SidebarFooter onSettings={onOpenSettings} />
-        </>
-      )}
-    </aside>
-  )
+      </aside>
+    )
 }
 
 // ── Brand ─────────────────────────────────────────────────────────────────────
@@ -218,7 +211,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 // Traffic lights (Close/Minimise/Maximise) on macOS sit at x:16 y:16.
 // When running inside Tauri with titleBarStyle:Overlay we need ~76px left padding
 // to clear them.
-function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
+function SidebarBrand() {
   return (
     <div
       data-tauri-drag-region
@@ -243,43 +236,22 @@ function SidebarBrand({ onToggleCollapse }: { onToggleCollapse?: () => void }) {
           />
           <NasusLogo size={22} fill="var(--amber)" />
         </div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1-5)', flex: 1 }}>
-        <span
-          className="font-display"
-          style={{
-            fontSize: 12.5,
-            fontWeight: 800,
-            letterSpacing: '0.12em',
-            color: 'var(--amber-light)',
-            lineHeight: 1,
-            textShadow: '0 0 12px oklch(64% 0.214 40.1 / 0.3)',
-          }}
-        >
-          NASUS
-        </span>
-        <span
-          style={{
-            fontSize: 8.5,
-            fontWeight: 600,
-            letterSpacing: '0.04em',
-            color: 'var(--tx-muted)',
-            fontFamily: 'var(--font-mono)',
-            lineHeight: 1,
-            background: 'rgba(255,255,255,0.05)',
-            padding: '1px 3px',
-            borderRadius: 3,
-          }}
-        >
-          V1
-        </span>
-      </div>
-      {onToggleCollapse && (
-        <RailButton
-          icon="angle-left"
-          title="Collapse sidebar"
-          onClick={onToggleCollapse}
-        />
-      )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1-5)', flex: 1 }}>
+          <span
+            className="font-display"
+            style={{
+              fontSize: 12.5,
+              fontWeight: 800,
+              letterSpacing: '0.12em',
+              color: 'var(--amber-light)',
+              lineHeight: 1,
+              textShadow: '0 0 12px oklch(64% 0.214 40.1 / 0.3)',
+            }}
+          >
+            NASUS
+          </span>
+        </div>
+
     </div>
   )
 }
@@ -595,81 +567,109 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
   )
 }
 
+
 // ── Footer ────────────────────────────────────────────────────────────────────
 
 function SidebarFooter({ onSettings }: { onSettings: () => void }) {
+  const [hov, setHov] = useState(false)
   return (
     <div
       style={{
         borderTop: '1px solid var(--sidebar-border)',
-        padding: '8px 10px 10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
+        padding: '6px 8px 8px',
       }}
     >
-      <SettingsLink onSettings={onSettings} />
+      {/* Unified single-row footer: health dot · provider · model name · ⌘, · gear */}
+      <button
+        onClick={onSettings}
+        onMouseEnter={() => setHov(true)}
+        onMouseLeave={() => setHov(false)}
+        title="Settings (⌘,)"
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 8px',
+          borderRadius: 6,
+          background: hov ? 'rgba(255,255,255,0.04)' : 'transparent',
+          border: `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
+          cursor: 'pointer',
+          transition: 'background 0.12s, border-color 0.12s',
+          textAlign: 'left',
+        }}
+      >
+        <FooterModelInfo />
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontSize: 9,
+            color: hov ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
+            fontFamily: 'var(--font-mono)',
+            letterSpacing: '0.02em',
+            flexShrink: 0,
+            transition: 'color 0.12s',
+          }}
+        >
+          ⌘,
+        </span>
+        <Pxi
+          name="cog"
+          size={12}
+          style={{
+            color: hov ? 'var(--tx-primary)' : 'var(--tx-muted)',
+            transition: 'color 0.12s, transform 0.35s',
+            transform: hov ? 'rotate(60deg)' : 'rotate(0deg)',
+            flexShrink: 0,
+          }}
+        />
+      </button>
     </div>
   )
 }
 
-// ── SettingsLink — clickable "Settings" label ─────────────────────────────────
+// ── FooterModelInfo — inline health dot + provider + model ────────────────────
 
-function SettingsLink({ onSettings }: { onSettings: () => void }) {
-  const [hov, setHov] = useState(false)
+function FooterModelInfo() {
+  const provider      = useAppStore((s) => s.provider)
+  const model         = useAppStore((s) => s.model)
+  const gatewayHealth = useAppStore((s) => s.gatewayHealth)
+
+  const healthStatus = gatewayHealth.find((h) => h.gatewayId === provider)?.status ?? 'unknown'
+  const healthColor  = {
+    healthy:  '#22c55e',
+    degraded: '#f59e0b',
+    down:     '#f87171',
+    unknown:  'rgba(255,255,255,0.2)',
+  }[healthStatus]
+
+  const shortModel   = model.includes('/') ? model.split('/').pop()! : model
+  const displayModel = shortModel.length > 22 ? shortModel.slice(0, 20) + '…' : shortModel
+
+  const providerLabel =
+    provider === 'ollama' ? 'Local'      :
+    provider === 'vercel' ? 'Vercel'     :
+                            'OpenRouter'
+
   return (
-    <button
-      onClick={onSettings}
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      title="System settings — API keys, workspace (⌘,)"
-      style={{
-        flex: 1,
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '5px 8px',
-        background: hov ? 'var(--sidebar-item-hover)' : 'var(--sidebar-item-bg, rgba(255,255,255,0.04))',
-        border: '1px solid',
-        borderColor: hov ? 'var(--sidebar-border-strong, rgba(255,255,255,0.12))' : 'var(--sidebar-border)',
-        cursor: 'pointer',
-        borderRadius: 5,
-        transition: 'background 0.12s, border-color 0.12s',
-      }}
-    >
-        <Pxi
-          name="cog"
-          size={16}
-          style={{
-            color: hov ? 'var(--amber-light)' : 'var(--tx-secondary)',
-            transition: 'color 0.15s, transform 0.4s cubic-bezier(0.4,0,0.2,1)',
-            transform: hov ? 'rotate(72deg)' : 'rotate(0deg)',
-            flexShrink: 0,
-          }}
-        />
-        <span style={{
-          fontSize: 11.5, fontWeight: 500,
-          color: hov ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-          transition: 'color 0.15s',
-          lineHeight: 1,
-          letterSpacing: '0.01em',
-        }}>
-          Settings
-        </span>
-        <kbd style={{
-          marginLeft: 'auto',
-          fontSize: 9,
-          color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)',
-          fontFamily: 'var(--font-mono)',
-          letterSpacing: '0.02em',
-          background: hov ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 3,
-          padding: '1px 4px',
-          transition: 'background 0.15s, color 0.15s',
-          lineHeight: '14px',
-        }}>
-          ⌘,
-        </kbd>
-    </button>
+    <>
+      <span
+        style={{
+          width: 5, height: 5,
+          borderRadius: '50%',
+          flexShrink: 0,
+          backgroundColor: healthColor,
+          boxShadow: healthStatus === 'healthy' ? `0 0 5px ${healthColor}90` : undefined,
+        }}
+      />
+      <span style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {providerLabel}
+      </span>
+      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.12)', flexShrink: 0 }}>·</span>
+      <span style={{ flex: 1, fontSize: 10.5, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {displayModel}
+      </span>
+    </>
   )
 }
 

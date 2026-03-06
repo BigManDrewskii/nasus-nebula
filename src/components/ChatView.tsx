@@ -21,20 +21,16 @@ interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
   onOpenSettings: () => void
-  outputVisible?: boolean
-  onShowOutput?: () => void
-  workspaceFileCount?: number
-  /** Whether the left sidebar is currently collapsed */
-  leftCollapsed?: boolean
-  /** Whether the right output panel is currently collapsed */
-  rightCollapsed?: boolean
-  /** Toggle the left sidebar */
-  onToggleLeft?: () => void
-  /** Toggle the right output panel */
-  onToggleRight?: () => void
-}
-
-export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, leftCollapsed: _leftCollapsed = false, rightCollapsed: _rightCollapsed = false, onToggleLeft: _onToggleLeft, onToggleRight: _onToggleRight }: ChatViewProps) {
+    outputVisible?: boolean
+    onShowOutput?: () => void
+    workspaceFileCount?: number
+    /** Whether the right output panel is currently collapsed */
+    rightCollapsed?: boolean
+    /** Toggle the right output panel */
+    onToggleRight?: () => void
+  }
+  
+  export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
     const {
       messages: allMessages,
       getMessages,
@@ -610,43 +606,32 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 outputVisible={outputVisible}
                 workspaceFileCount={workspaceFileCount}
                 onShowOutput={onShowOutput}
-                onShowMemory={() => setShowMemory(true)}
-                onOpenSettings={onOpenSettings}
                 onStop={handleStop}
                 taskRouterState={taskRouterEntry}
                 gatewayHealth={gatewayHealth}
                 messageCount={messageCount}
                 userTurns={userTurns}
+                rightCollapsed={_rightCollapsed}
+                onToggleRight={_onToggleRight}
               />
 
 
 
         {/* Empty state */}
       {showEmptyState ? (
-        <ChatEmptyState
-          workspacePath={workspacePath}
-          localWorkspace={localWorkspace}
-          showWorkspacePicker={showWorkspacePicker}
-          setShowWorkspacePicker={setShowWorkspacePicker}
-          setLocalWorkspace={setLocalWorkspace}
-          setWorkspacePath={setWorkspacePath}
-          addRecentWorkspacePath={addRecentWorkspacePath}
-          onSend={handleSend}
-          onPrefill={(p) => inputRef.current?.prefill(p)}
-          inputRef={inputRef}
-          attachments={attachments}
-          onAddFiles={addFiles}
-          onRemoveAttachment={removeAttachment}
-          isOverLimit={isOverLimit}
-          totalAttachmentSize={totalSize}
-          provider={provider}
-          routerConfig={routerConfig}
-          extensionConnected={extensionConnected}
-          extensionVersion={extensionVersion}
-          isPaid={isPaid}
-          routeLabel={routeLabel}
-          onContentChange={updateRoutingPreview}
-        />
+          <ChatEmptyState
+            onSend={handleSend}
+            onPrefill={(p) => inputRef.current?.prefill(p)}
+            inputRef={inputRef}
+            attachments={attachments}
+            onAddFiles={addFiles}
+            onRemoveAttachment={removeAttachment}
+            isOverLimit={isOverLimit}
+            totalAttachmentSize={totalSize}
+            extensionConnected={extensionConnected}
+            extensionVersion={extensionVersion}
+            onContentChange={updateRoutingPreview}
+          />
       ) : (
         <>
             {/* Message list */}
@@ -736,94 +721,85 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               {/* Input */}
               <div className="flex-shrink-0 px-5 pb-5 pt-1">
                 <div className="max-w-[780px] mx-auto">
-                    {/* Model badge + cost indicator row */}
-                    {(activeModelBadge || routingPreview || taskCostBadge) && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                        {activeModelBadge && (
-                          <span
-                            title={activeModelBadge.reason}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              fontSize: 10, padding: '2px 8px', borderRadius: 6,
-                              background: 'rgba(234,179,8,0.08)',
-                              border: '1px solid rgba(234,179,8,0.18)',
-                              color: 'var(--amber)',
-                              cursor: 'default',
-                            }}
-                          >
-                            <Pxi name="sparkles" size={8} />
-                            {activeModelBadge.displayName}
-                          </span>
-                        )}
-                        {!isActive && routingPreview && (
-                          <span
-                            title={routingPreview.reason}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 4,
-                              fontSize: 10, padding: '2px 8px', borderRadius: 6,
-                              background: 'rgba(255,255,255,0.04)',
-                              border: '1px solid rgba(255,255,255,0.08)',
-                              color: 'var(--tx-tertiary)',
-                              cursor: 'default',
-                              animation: 'fadeIn 0.2s ease',
-                            }}
-                          >
-                            <Pxi name="route" size={8} />
-                            Auto-route: {routingPreview.displayName}
-                          </span>
-                        )}
-                        {taskCostBadge && taskCostBadge.callCount > 0 && (
-
-                        <span
-                          title={`${taskCostBadge.callCount} LLM call${taskCostBadge.callCount !== 1 ? 's' : ''}`}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            fontSize: 10, padding: '2px 8px', borderRadius: 6,
-                            background: 'rgba(255,255,255,0.04)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            color: 'var(--tx-tertiary)',
-                            cursor: 'default',
-                          }}
-                        >
-                          <Pxi name="coin" size={8} />
-                          {taskCostBadge.isFree
-                            ? 'Free'
-                            : taskCostBadge.costUsd < 0.001
-                            ? '<$0.001'
-                            : `$${taskCostBadge.costUsd.toFixed(4)}`}
-                        </span>
-                      )}
-                    </div>
+              {/* Meta strip — routing preview + cost, consolidated */}
+              {(activeModelBadge || routingPreview || taskCostBadge) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+                  {activeModelBadge && (
+                    <span
+                      title={activeModelBadge.reason}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
+                        background: 'rgba(234,179,8,0.07)',
+                        border: '1px solid rgba(234,179,8,0.16)',
+                        color: 'var(--amber)',
+                        fontFamily: 'var(--font-mono)',
+                        cursor: 'default',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      <Pxi name="sparkles" size={8} />
+                      {activeModelBadge.displayName}
+                    </span>
                   )}
-                          <div className="relative">
-                            <div style={{
-                              position: 'absolute', top: -16, right: 0,
-                              display: 'flex', alignItems: 'center', gap: 4,
-                              fontSize: 9, fontWeight: 700, color: isPaid ? 'var(--amber)' : '#4ade80',
-                              opacity: 0.6, letterSpacing: '0.04em'
-                            }}>
-                              <Pxi name={provider === 'ollama' ? 'server' : 'cloud'} size={8} />
-                              {routeLabel}
-                            </div>
+                  {!isActive && routingPreview && (
+                    <span
+                      title={routingPreview.reason}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.07)',
+                        color: 'var(--tx-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        cursor: 'default',
+                        animation: 'fadeIn 0.2s ease',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      <Pxi name="route" size={8} />
+                      {routingPreview.displayName}
+                    </span>
+                  )}
+                  {taskCostBadge && taskCostBadge.callCount > 0 && (
+                    <span
+                      title={`${taskCostBadge.callCount} LLM call${taskCostBadge.callCount !== 1 ? 's' : ''}`}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.07)',
+                        color: 'var(--tx-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        cursor: 'default',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      <Pxi name="coin" size={8} />
+                      {taskCostBadge.isFree
+                        ? 'free'
+                        : taskCostBadge.costUsd < 0.001
+                        ? '<$0.001'
+                        : `$${taskCostBadge.costUsd.toFixed(4)}`}
+                    </span>
+                  )}
+                </div>
+              )}
 
-
-                        <UserInputArea
-                          ref={inputRef}
-                          onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
-                          onStop={handleStop}
-                          onContentChange={updateRoutingPreview}
-                          isRunning={isActive}
-                          inputState={inputState}
-                          queuedMsg={queuedMsg}
-                          attachments={attachments}
-                          onAddFiles={addFiles}
-                          onRemoveAttachment={removeAttachment}
-                          isOverLimit={isOverLimit}
-                          totalAttachmentSize={totalSize}
-                        />
-                      </div>
-
-
+              <UserInputArea
+                ref={inputRef}
+                onSend={(c) => { setRoutingPreview(null); handleSend(c) }}
+                onStop={handleStop}
+                onContentChange={updateRoutingPreview}
+                isRunning={isActive}
+                inputState={inputState}
+                queuedMsg={queuedMsg}
+                attachments={attachments}
+                onAddFiles={addFiles}
+                onRemoveAttachment={removeAttachment}
+                isOverLimit={isOverLimit}
+                totalAttachmentSize={totalSize}
+              />
                 </div>
               </div>
         </>

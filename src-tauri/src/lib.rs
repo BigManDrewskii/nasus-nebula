@@ -376,6 +376,18 @@ async fn workspace_read(taskId: String, path: String, workspacePath: String) -> 
 
 #[allow(non_snake_case)]
 #[tauri::command]
+async fn workspace_read_binary(taskId: String, path: String, workspacePath: String) -> Result<String, String> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
+    let target = Path::new(&path);
+    validate_path_no_traversal(&base, target)?;
+    let full_path = base.join(target);
+    let bytes = std::fs::read(full_path).map_err(|e| e.to_string())?;
+    Ok(STANDARD.encode(&bytes))
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
 async fn workspace_write(taskId: String, path: String, content: String, workspacePath: String) -> Result<(), String> {
     let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
     let target = Path::new(&path);
@@ -649,6 +661,265 @@ async fn delete_task_history(app: AppHandle, taskId: String) -> Result<(), Strin
     Ok(())
 }
 
+// ── DB schema helper ──────────────────────────────────────────────────────────
+
+/// Ensure the extended tables exist in nasus.db.
+/// Called lazily before any operation that needs them.
+fn ensure_extended_schema(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS memories (
+            id          TEXT PRIMARY KEY,
+            task_id     TEXT NOT NULL,
+            content     TEXT NOT NULL,
+            content_type TEXT,
+            tags        TEXT,
+            timestamp   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_memories_task ON memories(task_id);
+
+        CREATE TABLE IF NOT EXISTS trace_steps (
+            id          TEXT PRIMARY KEY,
+            task_id     TEXT NOT NULL,
+            message_id  TEXT NOT NULL,
+            step_kind   TEXT NOT NULL,
+            tool_name   TEXT,
+            input_json  TEXT,
+            output_text TEXT,
+            is_error    INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            timestamp   INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_trace_task ON trace_steps(task_id);
+        CREATE INDEX IF NOT EXISTS idx_trace_msg  ON trace_steps(message_id);
+
+        CREATE TABLE IF NOT EXISTS agent_tasks (
+            id          TEXT PRIMARY KEY,
+            title       TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  INTEGER NOT NULL,
+            updated_at  INTEGER NOT NULL,
+            model_id    TEXT,
+            total_tokens INTEGER DEFAULT 0,
+            estimated_cost_usd REAL DEFAULT 0.0
+        );"
+    ).map_err(|e| e.to_string())
+}
+
+// ── Memory persistence commands ───────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbMemory {
+    pub id: String,
+    pub task_id: String,
+    pub content: String,
+    pub content_type: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub timestamp: i64,
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_save_memory(app: AppHandle, memory: DbMemory) -> Result<(), String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    let tags_json = memory.tags.map(|t| serde_json::to_string(&t).unwrap_or_default());
+    conn.execute(
+        "INSERT OR REPLACE INTO memories (id, task_id, content, content_type, tags, timestamp)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![memory.id, memory.task_id, memory.content, memory.content_type, tags_json, memory.timestamp],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_query_memories(app: AppHandle, taskId: Option<String>, limit: Option<i64>) -> Result<Vec<DbMemory>, String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    if !db_path.exists() { return Ok(vec![]); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    let lim = limit.unwrap_or(100);
+    let mut stmt = if let Some(tid) = &taskId {
+        let mut s = conn.prepare(
+            "SELECT id, task_id, content, content_type, tags, timestamp
+             FROM memories WHERE task_id = ?1 ORDER BY timestamp DESC LIMIT ?2"
+        ).map_err(|e| e.to_string())?;
+        let rows: Vec<DbMemory> = s.query_map(params![tid, lim], |row| {
+            let tags_str: Option<String> = row.get(4)?;
+            let tags = tags_str.as_deref().and_then(|s| serde_json::from_str(s).ok());
+            Ok(DbMemory { id: row.get(0)?, task_id: row.get(1)?, content: row.get(2)?, content_type: row.get(3)?, tags, timestamp: row.get(5)? })
+        }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+        return Ok(rows);
+    } else {
+        conn.prepare(
+            "SELECT id, task_id, content, content_type, tags, timestamp
+             FROM memories ORDER BY timestamp DESC LIMIT ?1"
+        ).map_err(|e| e.to_string())?
+    };
+    let rows: Vec<DbMemory> = stmt.query_map(params![lim], |row| {
+        let tags_str: Option<String> = row.get(4)?;
+        let tags = tags_str.as_deref().and_then(|s| serde_json::from_str(s).ok());
+        Ok(DbMemory { id: row.get(0)?, task_id: row.get(1)?, content: row.get(2)?, content_type: row.get(3)?, tags, timestamp: row.get(5)? })
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_delete_memory(app: AppHandle, memoryId: String) -> Result<(), String> {
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
+    if !db_path.exists() { return Ok(()); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM memories WHERE id = ?1", params![memoryId]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Trace step commands ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbTraceStep {
+    pub id: String,
+    pub task_id: String,
+    pub message_id: String,
+    pub step_kind: String,
+    pub tool_name: Option<String>,
+    pub input_json: Option<String>,
+    pub output_text: Option<String>,
+    pub is_error: bool,
+    pub duration_ms: Option<i64>,
+    pub timestamp: i64,
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_append_trace(app: AppHandle, step: DbTraceStep) -> Result<(), String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    conn.execute(
+        "INSERT OR IGNORE INTO trace_steps
+         (id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![step.id, step.task_id, step.message_id, step.step_kind,
+                step.tool_name, step.input_json, step.output_text,
+                step.is_error as i32, step.duration_ms, step.timestamp],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_get_trace(app: AppHandle, taskId: String) -> Result<Vec<DbTraceStep>, String> {
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
+    if !db_path.exists() { return Ok(vec![]); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp
+         FROM trace_steps WHERE task_id = ?1 ORDER BY timestamp ASC"
+    ).map_err(|e| e.to_string())?;
+    let rows: Vec<DbTraceStep> = stmt.query_map(params![taskId], |row| {
+        Ok(DbTraceStep {
+            id: row.get(0)?,
+            task_id: row.get(1)?,
+            message_id: row.get(2)?,
+            step_kind: row.get(3)?,
+            tool_name: row.get(4)?,
+            input_json: row.get(5)?,
+            output_text: row.get(6)?,
+            is_error: row.get::<_, i32>(7)? != 0,
+            duration_ms: row.get(8)?,
+            timestamp: row.get(9)?,
+        })
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_delete_trace(app: AppHandle, taskId: String) -> Result<(), String> {
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
+    if !db_path.exists() { return Ok(()); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM trace_steps WHERE task_id = ?1", params![taskId]).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ── Agent task registry commands ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbAgentTask {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub model_id: Option<String>,
+    pub total_tokens: i64,
+    pub estimated_cost_usd: f64,
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_upsert_task(app: AppHandle, task: DbAgentTask) -> Result<(), String> {
+    let db_path = app.path().app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("nasus.db");
+    if let Some(p) = db_path.parent() { let _ = std::fs::create_dir_all(p); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    conn.execute(
+        "INSERT INTO agent_tasks (id, title, status, created_at, updated_at, model_id, total_tokens, estimated_cost_usd)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(id) DO UPDATE SET
+           title=excluded.title, status=excluded.status, updated_at=excluded.updated_at,
+           model_id=excluded.model_id, total_tokens=excluded.total_tokens,
+           estimated_cost_usd=excluded.estimated_cost_usd",
+        params![task.id, task.title, task.status, task.created_at, task.updated_at,
+                task.model_id, task.total_tokens, task.estimated_cost_usd],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[allow(non_snake_case)]
+#[tauri::command]
+async fn db_list_tasks(app: AppHandle, limit: Option<i64>) -> Result<Vec<DbAgentTask>, String> {
+    let db_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("nasus.db");
+    if !db_path.exists() { return Ok(vec![]); }
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    ensure_extended_schema(&conn)?;
+    let lim = limit.unwrap_or(50);
+    let mut stmt = conn.prepare(
+        "SELECT id, title, status, created_at, updated_at, model_id, total_tokens, estimated_cost_usd
+         FROM agent_tasks ORDER BY updated_at DESC LIMIT ?1"
+    ).map_err(|e| e.to_string())?;
+    let rows: Vec<DbAgentTask> = stmt.query_map(params![lim], |row| {
+        Ok(DbAgentTask {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            status: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+            model_id: row.get(5)?,
+            total_tokens: row.get(6)?,
+            estimated_cost_usd: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+    Ok(rows)
+}
+
 #[tauri::command]
 async fn is_ollama_running() -> bool {
     match reqwest::get("http://localhost:11434/api/tags").await {
@@ -723,8 +994,9 @@ pub fn run() {
         save_search_config,
         get_search_config,
         workspace_list,
-        workspace_read,
-        workspace_write,
+          workspace_read,
+          workspace_read_binary,
+          workspace_write,
         workspace_delete,
         workspace_delete_all,
         read_file,
@@ -735,9 +1007,17 @@ pub fn run() {
         save_task_history,
         load_task_history,
         delete_task_history,
-        check_docker,
-        is_ollama_running,
-        get_fallback_chain,
+          check_docker,
+          is_ollama_running,
+          get_fallback_chain,
+          db_save_memory,
+          db_query_memories,
+          db_delete_memory,
+          db_append_trace,
+          db_get_trace,
+          db_delete_trace,
+          db_upsert_task,
+          db_list_tasks,
         gateway::get_gateways,
         gateway::save_gateways,
         gateway::get_gateway_health,
@@ -763,6 +1043,7 @@ pub fn run() {
         sidecar::browser_upload_file,
         sidecar::browser_cookies,
         sidecar::browser_set_stealth,
+        sidecar::browser_aria_snapshot,
         sidecar::browser_check_sidecar_installed,
         sidecar::browser_install_sidecar,
     ])

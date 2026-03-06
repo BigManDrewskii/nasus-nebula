@@ -60,6 +60,7 @@ import { FileText }        from 'pixelarticons/react/FileText'
 import { Flatten }         from 'pixelarticons/react/Flatten'
 import { Folder }          from 'pixelarticons/react/Folder'
 import { FolderPlus }      from 'pixelarticons/react/FolderPlus'
+import { Frame }           from 'pixelarticons/react/Frame'
 import { Globe }           from 'pixelarticons/react/Globe'
 import { Grid3x3 }         from 'pixelarticons/react/Grid3x3'
 import { Image }           from 'pixelarticons/react/Image'
@@ -82,6 +83,7 @@ import { Robot }           from 'pixelarticons/react/Robot'
 import { Search }          from 'pixelarticons/react/Search'
 import { Server }          from 'pixelarticons/react/Server'
 import { Settings2 }       from 'pixelarticons/react/Settings2'
+import { SettingsCog }     from 'pixelarticons/react/SettingsCog'
 import { Sparkles }        from 'pixelarticons/react/Sparkles'
 import { SquareAlert }     from 'pixelarticons/react/SquareAlert'
 import { Terminal }        from 'pixelarticons/react/Terminal'
@@ -90,8 +92,10 @@ import { Upload }          from 'pixelarticons/react/Upload'
 import { User }            from 'pixelarticons/react/User'
 import { UserX }           from 'pixelarticons/react/UserX'
 import { WarningDiamond }  from 'pixelarticons/react/WarningDiamond'
+import { TextColums }      from 'pixelarticons/react/TextColums'
 import { Wifi }            from 'pixelarticons/react/Wifi'
 import { Zap }             from 'pixelarticons/react/Zap'
+import { SpeedMedium }     from 'pixelarticons/react/SpeedMedium'
 
 // ── Type alias ────────────────────────────────────────────────────────────────
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>
@@ -151,6 +155,8 @@ const iconMap: Record<string, IconComponent> = {
   'user-x':           UserX,
   wifi:               Wifi,
   zap:                Zap,
+  gauge:              SpeedMedium,
+  'speed-medium':     SpeedMedium,
 
   // Aliases & mapped equivalents
 
@@ -274,6 +280,8 @@ const iconMap: Record<string, IconComponent> = {
 
   // Table / grid
   table:              Grid3x3,
+  columns:            TextColums,
+  'text-columns':     TextColums,
 
   // Tag
   tag:                Bookmark,

@@ -1,51 +1,38 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { visualizer } from 'rollup-plugin-visualizer'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    // Bundle analyzer - generates stats.html after build
-    visualizer({
-      filename: './dist/stats.html',
-      open: false,
-      gzipSize: true,
-      brotliSize: true,
+    nodePolyfills({
+      // Polyfill globals (Buffer, process, etc.) needed by e2b
+      globals: { Buffer: true, process: true, global: true },
+      // Include node: protocol imports (e.g. node:stream, node:buffer)
+      protocolImports: true,
+      exclude: ['fs'],
     }),
   ],
+  resolve: {
+    alias: {
+      // Stub out Node-only packages from e2b's dependency chain that are
+      // never called in browser mode but import node:stream at eval time.
+      'tar': path.resolve(__dirname, 'src/stubs/tar.js'),
+      'minipass': path.resolve(__dirname, 'src/stubs/minipass.js'),
+    },
+  },
+  optimizeDeps: {
+    // Exclude e2b packages from pre-bundling — they contain Node-only
+    // imports that will be resolved at runtime via dynamic import().
+    exclude: ['@e2b/code-interpreter', 'e2b'],
+  },
   clearScreen: false,
   server: {
     port: 5173,
     strictPort: true,
-  },
-  build: {
-    // Enable terser for better minification
-    minify: 'terser',
-    // Chunk size warning limit
-    chunkSizeWarningLimit: 1000,
-    rollupOptions: {
-      output: {
-        // Manual chunk splitting for better caching
-        manualChunks: (id) => {
-          // React vendor chunk
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'react-vendor'
-          }
-          // State management chunk
-          if (id.includes('node_modules/zustand')) {
-            return 'state'
-          }
-          // Tauri API chunk
-          if (id.includes('@tauri-apps/api')) {
-            return 'tauri-api'
-          }
-        },
-      },
-    },
-    // CSS code splitting
-    cssCodeSplit: true,
   },
 })

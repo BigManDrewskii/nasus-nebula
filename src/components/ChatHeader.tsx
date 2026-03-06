@@ -134,13 +134,14 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     outputVisible?: boolean
     workspaceFileCount?: number
     onShowOutput?: () => void
-    onShowMemory: () => void
-    onOpenSettings?: () => void
     onStop: () => void
     taskRouterState?: any
     gatewayHealth?: any[]
     messageCount?: number
     userTurns?: number
+    rightCollapsed?: boolean
+    onToggleRight?: () => void
+    onToggleSidebar?: () => void
   }
 
   export function ChatHeader({
@@ -156,13 +157,14 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     outputVisible,
     workspaceFileCount = 0,
     onShowOutput,
-    onShowMemory,
-    onOpenSettings,
     onStop,
     taskRouterState,
     gatewayHealth = [],
     messageCount = 0,
     userTurns = 0,
+    rightCollapsed,
+    onToggleRight,
+    onToggleSidebar,
   }: ChatHeaderProps) {
     // Current model info from either the live task state or the store defaults
     const activeModelId = taskRouterState?.modelId || manualModel
@@ -211,40 +213,23 @@ Requests: ${health.requestCount || 0}
               title={healthTooltip}
               style={{
                 display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6,
-                background: isAutoFree ? 'rgba(34,197,94,0.08)' : 'rgba(234,179,8,0.08)',
-                border: `1px solid ${isAutoFree ? 'rgba(34,197,94,0.18)' : 'rgba(234,179,8,0.18)'}`,
-                color: isAutoFree ? '#4ade80' : 'var(--tx-primary)',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: 'var(--tx-secondary)',
                 flexShrink: 0,
                 cursor: 'help',
               }}
             >
               {/* Health dot */}
               <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}` }} />
-              <Pxi name={providerIcon} size={10} style={{ opacity: 0.7 }} />
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.02em' }}>{providerLabel}</span>
+              <Pxi name={providerIcon} size={10} style={{ opacity: 0.6 }} />
+              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em' }}>{providerLabel}</span>
               <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.1)' }} />
-              <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-secondary)' }}>{activeModelName}</span>
-              {isAutoFree && <Pxi name="leaf" size={10} style={{ marginLeft: 2, color: '#4ade80' }} />}
+              <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-tertiary)' }}>{activeModelName}</span>
+              {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 600, marginLeft: 2 }}>free</span>}
             </div>
 
-            {/* Route Badge */}
-            {routerConfig?.budget && (
-              <span
-                style={{
-                  fontSize: 8,
-                  fontWeight: 700,
-                  letterSpacing: '0.05em',
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  background: routerConfig.budget === 'free' ? 'rgba(34,197,94,0.15)' : 'rgba(234,179,8,0.15)',
-                  color: routerConfig.budget === 'free' ? '#4ade80' : 'var(--amber)',
-                  border: `1px solid ${routerConfig.budget === 'free' ? 'rgba(34,197,94,0.25)' : 'rgba(234,179,8,0.25)'}`,
-                  flexShrink: 0,
-                }}
-              >
-                {routerConfig.budget === 'free' ? 'FREE' : 'PAID'}
-              </span>
-            )}
+            {/* Route Badge — hidden, info already in provider badge */}
 
           {isActive && iteration > 0 && (
             <span
@@ -295,25 +280,16 @@ Requests: ${health.requestCount || 0}
           </button>
         )}
 
-        {/* Settings */}
-        {onOpenSettings && (
+        {/* Workspace panel toggle [◧] */}
+        {onToggleRight && (
           <button
-            onClick={onOpenSettings}
-            title="Settings (⌘,)"
+            onClick={onToggleRight}
+            title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
             className="header-sidebar-toggle"
           >
-            <Pxi name="cog" size={14} />
+            <Pxi name={rightCollapsed ? 'columns' : 'columns'} size={14} />
           </button>
         )}
-
-        {/* Memory */}
-        <button
-          onClick={onShowMemory}
-          title="Agent memory"
-          className="header-sidebar-toggle"
-        >
-          <Pxi name="bookmark" size={14} />
-        </button>
 
         {/* Stop / status */}
         {isActive ? (

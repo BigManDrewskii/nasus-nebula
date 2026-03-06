@@ -8,7 +8,7 @@
  */
 
 import { WebSocketServer } from 'ws';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -282,6 +282,27 @@ async function handleCookies(session, { action, domain, name, value }) {
 }
 
 /**
+ * Handle ariaSnapshot — returns a YAML accessibility tree via locator.ariaSnapshot().
+ * This is the v1.49+ replacement for the removed page.accessibility.snapshot() API.
+ * The YAML output is optimised for LLM consumption.
+ */
+async function handleAriaSnapshot(session, { selector } = {}) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+
+  const locator = selector
+    ? session.page.locator(selector).first()
+    : session.page.locator('body');
+
+  const snapshot = await locator.ariaSnapshot();
+  const url = session.page.url();
+  const title = await session.page.title();
+
+  return { url, title, snapshot };
+}
+
+/**
  * Handle stealth mode toggle
  */
 async function handleSetStealth(session, { enabled }) {
@@ -353,11 +374,15 @@ async function handleMessage(ws, sessionId, message) {
         send(ws, 'cookies_result', await handleCookies(session, params));
         break;
 
-      case 'set_stealth':
-        send(ws, 'set_stealth_result', await handleSetStealth(session, params));
-        break;
+       case 'set_stealth':
+          send(ws, 'set_stealth_result', await handleSetStealth(session, params));
+          break;
 
-      case 'ping':
+        case 'aria_snapshot':
+          send(ws, 'aria_snapshot_result', await handleAriaSnapshot(session, params ?? {}));
+          break;
+
+        case 'ping':
         send(ws, 'pong');
         break;
 
@@ -375,14 +400,17 @@ async function handleMessage(ws, sessionId, message) {
 async function startSession(ws, sessionId) {
   console.log(`[Sidecar] Starting session: ${sessionId}`);
 
-  try {
-    const browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--disable-features=IsolateOrigins,site-per-process',
-      ],
-    });
+    try {
+      const browser = await chromium.launch({
+        // Use system Chrome — playwright-core ships no bundled browser.
+        // Falls back to headless mode if system Chrome is not found.
+        channel: 'chrome',
+        headless: true,
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=IsolateOrigins,site-per-process',
+        ],
+      });
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

@@ -63,16 +63,15 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
       // Suppress expected non-errors:
       // - "No such file / os error 2" = workspace file not found (expected)
       // - "Cannot read properties of undefined (reading 'invoke')" = running in browser without Tauri
-        const errorMsg = String(e)
-        if (
-          !errorMsg.includes('No such file') &&
-          !errorMsg.includes('os error 2') &&
-          !errorMsg.includes('File not found') &&
-          !errorMsg.includes("reading 'invoke'") &&
-          !errorMsg.includes('invoke')
-        ) {
-          log.error(`Error calling ${cmd}`, e)
-        }
+      const errorMsg = String(e)
+      if (
+        !errorMsg.includes('No such file') &&
+        !errorMsg.includes('os error 2') &&
+        !errorMsg.includes("reading 'invoke'") &&
+        !errorMsg.includes('invoke')
+      ) {
+        log.error(`Error calling ${cmd}`, e)
+      }
     }
 
   return undefined
@@ -121,6 +120,19 @@ export async function getPersistedTaskHistory(taskId: string): Promise<LlmMessag
  */
 export async function deletePersistedTaskHistory(taskId: string): Promise<void> {
   await tauriInvoke('delete_task_history', { taskId })
+}
+
+/**
+ * Read a workspace file as raw bytes (returned as a base64 string).
+ * Use this for binary files like PDF, DOCX, XLSX.
+ */
+export async function workspaceReadBinary(taskId: string, path: string, workspacePath: string): Promise<Uint8Array | undefined> {
+  const b64 = await tauriInvoke<string>('workspace_read_binary', { taskId, path, workspacePath })
+  if (!b64) return undefined
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
 }
 
 /**
@@ -180,6 +192,95 @@ export async function browserCheckSidecarInstalled(): Promise<SidecarInstallStat
 export async function browserInstallSidecar(): Promise<string> {
   const result = await tauriInvokeOrThrow<string>('browser_install_sidecar')
   return result
+}
+
+export interface AriaSnapshotResult {
+  url: string
+  title: string
+  /** YAML accessibility tree returned by locator.ariaSnapshot() (Playwright v1.49+) */
+  snapshot: string
+}
+
+/**
+ * Capture an ARIA accessibility snapshot of the current page via the sidecar.
+ * Returns a YAML string optimised for LLM consumption.
+ * This is the replacement for the removed page.accessibility.snapshot() API (removed in Playwright v1.57).
+ */
+export async function browserAriaSnapshot(
+  sessionId: string,
+  selector?: string,
+): Promise<AriaSnapshotResult | undefined> {
+  return await tauriInvoke<AriaSnapshotResult>('browser_aria_snapshot', {
+    session_id: sessionId,
+    selector,
+  })
+}
+
+// ── Extended DB commands ──────────────────────────────────────────────────────
+
+export interface DbMemory {
+  id: string
+  taskId: string
+  content: string
+  contentType?: string | null
+  tags?: string[] | null
+  timestamp: number
+}
+
+export interface DbTraceStep {
+  id: string
+  taskId: string
+  messageId: string
+  stepKind: string
+  toolName?: string | null
+  inputJson?: string | null
+  outputText?: string | null
+  isError: boolean
+  durationMs?: number | null
+  timestamp: number
+}
+
+export interface DbAgentTask {
+  id: string
+  title: string
+  status: string
+  createdAt: number
+  updatedAt: number
+  modelId?: string | null
+  totalTokens: number
+  estimatedCostUsd: number
+}
+
+export async function dbSaveMemory(memory: DbMemory): Promise<void> {
+  await tauriInvoke('db_save_memory', { memory })
+}
+
+export async function dbQueryMemories(taskId?: string, limit?: number): Promise<DbMemory[]> {
+  return (await tauriInvoke<DbMemory[]>('db_query_memories', { taskId, limit })) ?? []
+}
+
+export async function dbDeleteMemory(memoryId: string): Promise<void> {
+  await tauriInvoke('db_delete_memory', { memoryId })
+}
+
+export async function dbAppendTrace(step: DbTraceStep): Promise<void> {
+  await tauriInvoke('db_append_trace', { step })
+}
+
+export async function dbGetTrace(taskId: string): Promise<DbTraceStep[]> {
+  return (await tauriInvoke<DbTraceStep[]>('db_get_trace', { taskId })) ?? []
+}
+
+export async function dbDeleteTrace(taskId: string): Promise<void> {
+  await tauriInvoke('db_delete_trace', { taskId })
+}
+
+export async function dbUpsertTask(task: DbAgentTask): Promise<void> {
+  await tauriInvoke('db_upsert_task', { task })
+}
+
+export async function dbListTasks(limit?: number): Promise<DbAgentTask[]> {
+  return (await tauriInvoke<DbAgentTask[]>('db_list_tasks', { limit })) ?? []
 }
 
 export async function tauriListen<T>(

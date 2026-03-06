@@ -65,30 +65,13 @@ export async function streamCompletion(
   tools: ToolDefinition[],
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
-  // === DIAGNOSTIC LOGGING ===
-  console.log('[streamCompletion] Entry:', {
-    provider,
-    apiBase,
-    hasApiKey: Boolean(apiKey && apiKey.length > 0),
-    apiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : 'none',
-    model,
-    messageCount: messages.length,
-    toolCount: tools.filter(t => !t.inactive).length,
-    gatewayId: cb.gatewayId,
-  })
-  // ===========================
-
-  const unifiedModel = getUnifiedModel({
+    const unifiedModel = getUnifiedModel({
     provider: provider as 'openrouter' | 'ollama' | 'custom',
     apiKey,
     apiBase,
     gatewayId: cb.gatewayId,
     extraHeaders: cb.extraHeaders,
   }, model);
-
-  console.log('[streamCompletion] Unified model created:', {
-    modelType: unifiedModel?.constructor?.name || 'unknown',
-  })
 
   // Convert LlmMessage to AI SDK message format
   const coreMessages: any[] = messages.map(m => {
@@ -118,23 +101,15 @@ export async function streamCompletion(
   }
 
   try {
-    console.log('[streamCompletion] Calling streamText...')
-
-    // Proactive rate limiting — wait before making request if needed
-    const rateLimiter = getGlobalRateLimiter()
-    const waitMs = await rateLimiter.acquire()
-    if (waitMs > 100) {
-      console.log(`[streamCompletion] Rate limited: waited ${Math.round(waitMs)}ms`)
-    }
+      // Proactive rate limiting — wait before making request if needed
+      const rateLimiter = getGlobalRateLimiter()
+      await rateLimiter.acquire()
 
       const { textStream, toolCalls, usage, finishReason } = await streamText({
         model: unifiedModel,
         messages: coreMessages as any,
         tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
-        // Don't retry on billing/auth errors — they won't recover with retries
-        maxRetries: 2,
         onFinish: async (event) => {
-        console.log('[streamCompletion] onFinish:', { usage: event.usage, toolCallsCount: event.toolCalls?.length })
         if (event.usage) {
           const input = event.usage.inputTokens ?? 0;
           const output = event.usage.outputTokens ?? 0;
@@ -149,26 +124,14 @@ export async function streamCompletion(
           })));
         }
       },
-        abortSignal: cb.signal,
+      abortSignal: cb.signal,
       });
 
-      // Attach no-op catch handlers to prevent unhandled rejection noise when
-      // the stream errors — these promises reject in parallel with textStream.
-      toolCalls.catch(() => {});
-      usage.catch(() => {});
-      finishReason.catch(() => {});
-
-    console.log('[streamCompletion] streamText returned, starting stream read...')
-
-    let fullContent = '';
-    let deltaCount = 0;
+      let fullContent = '';
     for await (const delta of textStream) {
       fullContent += delta;
-      deltaCount++;
       cb.onDelta(delta);
     }
-
-    console.log('[streamCompletion] Stream complete:', { deltaCount, contentLength: fullContent.length })
 
     const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
       id: tc.toolCallId,
@@ -188,31 +151,20 @@ export async function streamCompletion(
         totalTokens: resolvedUsage.totalTokens ?? (resolvedUsage.inputTokens ?? 0) + (resolvedUsage.outputTokens ?? 0),
       } : null,
     };
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      const errorStack = err instanceof Error ? err.stack : undefined;
-
-      // Map HTTP status codes to user-friendly messages
-      let userMessage = errorMsg;
-      if (errorMsg.includes('402') || errorMsg.toLowerCase().includes('insufficient credits') || errorMsg.toLowerCase().includes('insufficient_credits')) {
-        userMessage = 'OpenRouter account has insufficient credits. Add more at https://openrouter.ai/settings/credits';
-      } else if (errorMsg.includes('401') || errorMsg.toLowerCase().includes('unauthorized') || errorMsg.toLowerCase().includes('invalid api key')) {
-        userMessage = 'Invalid or missing API key. Check your API key in Settings.';
-      } else if (errorMsg.includes('429') || errorMsg.toLowerCase().includes('rate limit') || errorMsg.toLowerCase().includes('too many requests')) {
-        userMessage = 'Rate limit reached. Please wait a moment before trying again.';
-      }
-
-      console.error('[streamCompletion] Error:', {
-        message: errorMsg,
-        stack: errorStack,
-        provider,
-        apiBase,
-        model,
-        hasApiKey: Boolean(apiKey && apiKey.length > 0),
-      })
-      cb.onError(userMessage);
-      throw err;
-    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorStack = err instanceof Error ? err.stack : undefined;
+    console.error('[streamCompletion] Error:', {
+      message: errorMsg,
+      stack: errorStack,
+      provider,
+      apiBase,
+      model,
+      hasApiKey: Boolean(apiKey && apiKey.length > 0),
+    })
+    cb.onError(errorMsg);
+    throw err;
+  }
 }
 
 /**

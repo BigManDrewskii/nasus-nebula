@@ -7,8 +7,8 @@
 
 import {
   LocalVectorStore,
-  createSimpleEmbedding,
 } from './MemoryStore'
+import { createSemanticEmbedding } from './transformersEmbedding'
 import type {
   MemoryStore,
   MemoryItem,
@@ -81,7 +81,7 @@ export class LocalMemoryStore implements MemoryStore {
     await this.ensureInit()
 
     const id = crypto.randomUUID()
-    const embedding = createSimpleEmbedding(content)
+      const embedding = await createSemanticEmbedding(content)
 
     const memory: MemoryItem = {
       id,
@@ -106,7 +106,7 @@ export class LocalMemoryStore implements MemoryStore {
   async search(query: string, k = 10): Promise<MemoryResult[]> {
     await this.ensureInit()
 
-    const queryEmbedding = createSimpleEmbedding(query)
+      const queryEmbedding = await createSemanticEmbedding(query)
     const searchResults = await this.vectorStore.search(queryEmbedding, k * 2) // Get more to filter
 
     const results: MemoryResult[] = []

@@ -66,69 +66,70 @@ export function ModelSelectorTrigger() {
         />
       )}
 
-      <button
-        ref={triggerRef}
-        onClick={() => setOpen(!open)}
-        type="button"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
-          padding: '5px 9px',
-          borderRadius: 7,
-          background: open ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
-          border: open ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid rgba(255, 255, 255, 0.06)',
-          cursor: 'pointer',
-          transition: 'background 0.12s ease, border-color 0.12s ease',
-        }}
-        onMouseEnter={(e) => {
-          if (!open) {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
-          }
-        }}
-        onMouseLeave={(e) => {
-          if (!open) {
-            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'
-            e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.06)'
-          }
-        }}
-        title={model}
-      >
-        <span
+        <button
+          ref={triggerRef}
+          onClick={() => setOpen(!open)}
+          type="button"
           style={{
-            fontSize: 11,
-            fontFamily: 'var(--font-mono)',
-            color: open ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-            maxWidth: 100,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '4px 8px',
+            borderRadius: 6,
+            background: open ? 'rgba(234,179,8,0.1)' : 'rgba(234,179,8,0.05)',
+            border: open ? '1px solid rgba(234,179,8,0.28)' : '1px solid rgba(234,179,8,0.14)',
+            cursor: 'pointer',
+            transition: 'background 0.12s ease, border-color 0.12s ease',
           }}
-        >
-          {shortName}
-        </span>
-        <svg
-          width="8"
-          height="8"
-          viewBox="0 0 8 8"
-          style={{
-            flexShrink: 0,
-            color: open ? 'var(--tx-secondary)' : 'var(--tx-tertiary)',
-            transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.14s ease',
+          onMouseEnter={(e) => {
+            if (!open) {
+              e.currentTarget.style.background = 'rgba(234,179,8,0.08)'
+              e.currentTarget.style.borderColor = 'rgba(234,179,8,0.22)'
+            }
           }}
+          onMouseLeave={(e) => {
+            if (!open) {
+              e.currentTarget.style.background = 'rgba(234,179,8,0.05)'
+              e.currentTarget.style.borderColor = 'rgba(234,179,8,0.14)'
+            }
+          }}
+          title={model}
         >
-          <path
-            d="M1 3l3 3 3-3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+          <span
+            style={{
+              fontSize: 10.5,
+              fontFamily: 'var(--font-mono)',
+              color: open ? 'var(--amber)' : 'rgba(234,179,8,0.85)',
+              maxWidth: 100,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {shortName}
+          </span>
+          <svg
+            width="7"
+            height="7"
+            viewBox="0 0 8 8"
+            style={{
+              flexShrink: 0,
+              color: open ? 'var(--amber)' : 'rgba(234,179,8,0.6)',
+              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.14s ease',
+            }}
+          >
+            <path
+              d="M1 3l3 3 3-3"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
     </div>
   )
 }

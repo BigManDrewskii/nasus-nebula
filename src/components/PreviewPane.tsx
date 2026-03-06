@@ -98,12 +98,10 @@ export function PreviewPane({ files }: PreviewPaneProps) {
   if (!htmlFile || !srcDoc) {
     return (
       <div className="preview-empty">
-        <Pxi name="browser" size={24} style={{ color: 'var(--tx-muted)', marginBottom: 10 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-tertiary)' }}>
-          No HTML file in workspace yet
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 4 }}>
-          The agent will write an index.html when ready
+        <Pxi name="browser" size={28} style={{ color: 'var(--tx-dim)', marginBottom: 12 }} />
+        <span style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 500 }}>No preview yet</span>
+        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+          Ask the agent to build an HTML page<br />and it will render live here.
         </span>
       </div>
     )

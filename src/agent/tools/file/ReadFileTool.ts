@@ -5,11 +5,12 @@ import { workspaceManager } from '../../workspace/WorkspaceManager'
 
 /**
  * Tool for reading file contents from the workspace.
+ * Automatically parses binary formats (PDF, DOCX, CSV) to plain text.
  */
 export class ReadFileTool extends BaseTool {
   readonly name = 'read_file'
   readonly description =
-    "Read the contents of a file from the workspace. Use to check task_plan.md, findings.md, progress.md."
+    "Read the contents of a file from the workspace. Supports plain text, PDF, DOCX, and CSV files. Use to check task_plan.md, findings.md, progress.md."
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
@@ -27,10 +28,8 @@ export class ReadFileTool extends BaseTool {
     }
 
     try {
-      // taskId comes from context - we'll need to inject this
-      // For now, get it from the agent context
       const taskId = (args as any).__taskId || 'initial'
-      const content = await workspaceManager.readFile(taskId, path)
+      const content = await workspaceManager.readFileParsed(taskId, path)
       return toolSuccess(content)
     } catch (error) {
       return toolFailure(`Failed to read file: ${error}`)

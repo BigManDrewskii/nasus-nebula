@@ -5,7 +5,7 @@ interface ActionChip {
   prompt: string
   icon: string
   description: string
-  autoSend?: boolean  // true = complete prompt, fire immediately; false = prefill textarea
+  autoSend?: boolean
 }
 
 const chips: ActionChip[] = [
@@ -37,62 +37,69 @@ const chips: ActionChip[] = [
     description: 'Stats, charts',
     autoSend: false,
   },
-  {
-    label: 'Write a document',
-    prompt: 'Write a comprehensive, well-structured document about: ',
-    icon: 'pen-nib',
-    description: 'Markdown',
-    autoSend: false,
-  },
-  {
-    label: 'Automate a task',
-    prompt: 'Automate the following task using a script or tool: ',
-    icon: 'bolt',
-    description: 'Scripts, APIs',
-    autoSend: false,
-  },
 ]
 
 interface ActionChipsProps {
   onSend: (prompt: string) => void
   onPrefill: (prompt: string) => void
-  centered?: boolean
 }
 
-export function ActionChips({ onSend, onPrefill, centered }: ActionChipsProps) {
+export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: centered ? 'center' : 'flex-start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, width: '100%' }}>
       {chips.map((chip) => (
         <button
           key={chip.label}
           onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
           style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 12px',
+            alignItems: 'flex-start',
+            gap: 9,
+            padding: '8px 11px',
             borderRadius: 8,
-            fontSize: 12,
             border: '1px solid rgba(255,255,255,0.07)',
-            background: 'rgba(255,255,255,0.035)',
+            background: 'rgba(255,255,255,0.025)',
             cursor: 'pointer',
-            /* Chips at rest: secondary #ababab ≈ 7.9:1 */
             color: 'var(--tx-secondary)',
-            transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+            textAlign: 'left',
+            transition: 'background 0.12s, border-color 0.12s, color 0.12s',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.1)'
-            e.currentTarget.style.color = 'var(--amber-soft)'
-            e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.28)'
+            e.currentTarget.style.background = 'rgba(234,179,8,0.06)'
+            e.currentTarget.style.borderColor = 'rgba(234,179,8,0.18)'
+            e.currentTarget.style.color = 'var(--tx-primary)'
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.035)'
-            e.currentTarget.style.color = 'var(--tx-secondary)'
+            e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
             e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
+            e.currentTarget.style.color = 'var(--tx-secondary)'
           }}
         >
-          <Pxi name={chip.icon} size={14} />
-          <span>{chip.label}</span>
+          {/* Icon */}
+          <div style={{
+            width: 24,
+            height: 24,
+            borderRadius: 6,
+            background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.14)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            marginTop: 1,
+          }}>
+            <Pxi name={chip.icon} size={12} style={{ color: 'var(--amber)' }} />
+          </div>
+
+          {/* Label + description */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {chip.label}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--tx-muted)', marginTop: 1, letterSpacing: '0.01em' }}>
+              {chip.description}
+            </div>
+          </div>
         </button>
       ))}
     </div>

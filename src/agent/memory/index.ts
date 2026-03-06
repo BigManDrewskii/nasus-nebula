@@ -21,6 +21,13 @@ export {
   initMemoryStore,
     storeTaskCompletion,
   } from './LocalMemoryStore'
+
+export {
+  warmEmbeddingModel,
+  getEmbeddingStatus,
+  createSemanticEmbedding,
+} from './transformersEmbedding'
+export type { EmbeddingStatus } from './transformersEmbedding'
   
   export {
     loadUserPreferences,

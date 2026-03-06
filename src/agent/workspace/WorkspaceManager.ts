@@ -1,4 +1,5 @@
-import { tauriInvoke } from '../../tauri'
+import { tauriInvoke, workspaceReadBinary } from '../../tauri'
+import { parseFileBuffer, isSupportedBinaryFormat } from '../FileParser'
 
 /**
  * Workspace Manager — filesystem-based persistence for task workspaces.
@@ -196,6 +197,31 @@ export class WorkspaceManager {
     const workspacePath = await this.getWorkspacePath(taskId)
     const result = await tauriInvoke<string>('workspace_read', { taskId, path: filePath, workspacePath })
     return result ?? ''
+  }
+
+  /**
+   * Read a file, auto-parsing binary formats (PDF, DOCX, CSV) to plain text.
+   * Falls back to readFile for plain-text formats.
+   */
+  async readFileParsed(taskId: string, filePath: string): Promise<string> {
+    const filename = filePath.split('/').pop() ?? filePath
+    if (!isSupportedBinaryFormat(filename)) {
+      return this.readFile(taskId, filePath)
+    }
+    if (!this.initialized) await this.init()
+    const workspacePath = await this.getWorkspacePath(taskId)
+    const bytes = await workspaceReadBinary(taskId, filePath, workspacePath!)
+    if (!bytes) return `[Binary file: ${filename} — could not read]`
+    try {
+      const parsed = await parseFileBuffer(bytes, filename)
+      const header = `[${parsed.format} — ${parsed.words} words]\n\n`
+      const warnings = parsed.warnings?.length
+        ? `\n\n[Parser warnings: ${parsed.warnings.join('; ')}]`
+        : ''
+      return header + parsed.text + warnings
+    } catch (err) {
+      return `[Failed to parse ${filename}: ${err}]`
+    }
   }
 
   /**

@@ -103,7 +103,6 @@ function App() {
 
   // Layout state — loaded from localStorage
   const [savedLayout] = useState<LayoutState>(loadLayout)
-  const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
   const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
@@ -134,24 +133,18 @@ function App() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Responsive hook for window-size-aware sidebar behavior
-  const responsive = useSidebarResponsive({
-    leftManual: leftCollapsed,
-    rightManual: rightCollapsed,
-    userPreference: sidebarPreference,
-  })
+    const responsive = useSidebarResponsive({
+      leftManual: false,
+      rightManual: rightCollapsed,
+      userPreference: sidebarPreference,
+    })
 
-  // Auto-collapse panels based on window size
-  // Respects manual overrides - only auto-collapses when appropriate
-  useEffect(() => {
-    // Only auto-collapse when thresholds are hit, don't auto-expand
-    // This allows user to manually keep panels collapsed even at larger sizes
-    if (responsive.shouldAutoCollapseLeft && !leftCollapsed) {
-      setLeftCollapsed(true)
-    }
-    if (responsive.shouldAutoCollapseRight && !rightCollapsed) {
-      setRightCollapsed(true)
-    }
-  }, [responsive.shouldAutoCollapseLeft, responsive.shouldAutoCollapseRight])
+    // Auto-collapse panels based on window size
+    useEffect(() => {
+      if (responsive.shouldAutoCollapseRight && !rightCollapsed) {
+        setRightCollapsed(true)
+      }
+    }, [responsive.shouldAutoCollapseRight])
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()
@@ -166,8 +159,8 @@ function App() {
 
   // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: outputVisible, configSections: useAppStore.getState().configSections, sidebarPreference })
-  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, outputVisible, sidebarPreference])
+    saveLayout({ leftCollapsed: false, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: outputVisible, configSections: useAppStore.getState().configSections, sidebarPreference })
+  }, [rightCollapsed, rightActiveTab, rightPanelWidth, outputVisible, sidebarPreference])
 
     // Auto-show + expand right panel when the agent creates its first file,
     // or when switching to a task that already has files.
@@ -182,22 +175,18 @@ function App() {
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
-      // Toggle left sidebar: ⌘ \ or ⌘ B
-      if (e.key === '\\' && !e.shiftKey) { e.preventDefault(); setLeftCollapsed((v) => !v) }
-      if (e.key === 'b') { e.preventDefault(); setLeftCollapsed((v) => !v) }
-      // Toggle right panel: ⌘ . (new)
-      if (e.key === '.') { e.preventDefault(); setOutputVisible((v) => !v) }
-      // Toggle right panel collapse: ⌘ Shift \
-      if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
-      // Open model selector: ⌘ M
-      if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
+        if (!mod) return
+        // Toggle right panel: ⌘ .
+        if (e.key === '.') { e.preventDefault(); setOutputVisible((v) => !v) }
+        // Toggle right panel collapse: ⌘ Shift \
+        if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
+        // Open model selector: ⌘ M
+        if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const toggleLeft    = useCallback(() => setLeftCollapsed((v) => !v),    [])
   const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
 
   useEffect(() => {
@@ -265,36 +254,32 @@ function App() {
           <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
           <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
 
-        {/* ── Left Sidebar ── */}
-        <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
-          <Sidebar
-            tasks={tasks}
-            activeTaskId={activeTaskId}
-            onSelectTask={setActiveTaskId}
-            onNewTask={handleNewTask}
-            onOpenSettings={() => openSettings()}
-            collapsed={leftCollapsed}
-            onToggleCollapse={toggleLeft}
-          />
+          {/* ── Left Sidebar ── */}
+          <div className="app-sidebar-left">
+            <Sidebar
+              tasks={tasks}
+              activeTaskId={activeTaskId}
+              onSelectTask={setActiveTaskId}
+              onNewTask={handleNewTask}
+              onOpenSettings={() => openSettings()}
+            />
         </div>
 
         {/* ── Chat ── */}
         <main id="main-content" className="app-chat">
           <ChatView
-            task={activeTask}
-            onNewTask={handleNewTask}
-            onOpenSettings={() => openSettings()}
-            outputVisible={outputVisible}
-            onShowOutput={() => {
-              setOutputVisible(true)
-              setRightCollapsed(false)
-            }}
-            workspaceFileCount={workspaceFiles.length}
-            leftCollapsed={leftCollapsed}
-            rightCollapsed={rightCollapsed}
-            onToggleLeft={toggleLeft}
-            onToggleRight={toggleRight}
-          />
+              task={activeTask}
+              onNewTask={handleNewTask}
+              onOpenSettings={() => openSettings()}
+              outputVisible={outputVisible}
+              onShowOutput={() => {
+                setOutputVisible(true)
+                setRightCollapsed(false)
+              }}
+              workspaceFileCount={workspaceFiles.length}
+              rightCollapsed={rightCollapsed}
+              onToggleRight={toggleRight}
+            />
         </main>
 
         {/* ── Right Output Panel ── */}
@@ -331,7 +316,46 @@ function App() {
           </div>
         )}
 
-        {settingsOpen && <SettingsPanel onClose={closeSettings} />}
+          {settingsOpen && <SettingsPanel onClose={closeSettings} />}
+
+          {/* Floating re-open tab — shown when output panel is visible but collapsed to 0px */}
+          {outputVisible && rightCollapsed && (
+            <button
+              onClick={toggleRight}
+              title="Open workspace panel (⌘⇧\\)"
+              style={{
+                position: 'fixed',
+                right: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 120,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                width: 20,
+                paddingTop: 14,
+                paddingBottom: 14,
+                background: 'var(--sidebar-bg)',
+                border: '1px solid var(--sidebar-border)',
+                borderRight: 'none',
+                borderRadius: '6px 0 0 6px',
+                cursor: 'pointer',
+                color: 'var(--tx-secondary)',
+                writingMode: 'vertical-rl',
+                fontSize: 10,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--sidebar-hover-bg)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--tx-primary)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--sidebar-bg)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--tx-secondary)' }}
+            >
+              Workspace
+            </button>
+          )}
 
         {/* Offline banner */}
         {isOffline && (

@@ -24,6 +24,7 @@ import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
+import { TraceLogger, type TraceSpan } from '../TraceLogger'
 
 const MAX_CORRECTION_ATTEMPTS = 3
 
@@ -167,10 +168,13 @@ export class ExecutionAgent extends BaseAgent {
 
     const maxIter = params.maxIterations ?? DEFAULT_MAX_ITERATIONS
 
-    // Reset per-task counters at the start of each execution
-    this.searchBrowseCount = 0
-    this.completedCheckboxes = 0
-    this.contextWarningIssued = false
+      // Reset per-task counters at the start of each execution
+      this.searchBrowseCount = 0
+      this.completedCheckboxes = 0
+      this.contextWarningIssued = false
+
+      // Observability: create a trace logger for this execution
+      const tracer = new TraceLogger(taskId, messageId)
     
     // Set powerful model if plan complexity is high
     if (params.plan?.complexity === 'high') {
@@ -343,18 +347,19 @@ export class ExecutionAgent extends BaseAgent {
       // Find the complete call to get its summary if needed, but the tool execution will handle it
     }
 
-    // Process tool calls
-    const toolResult = await this.processToolCalls(
-      toolCalls,
-      content,
-      messages,
-      taskId,
-      messageId,
-      params.executionConfig,
-      signal,
-      iteration,
-      warnIter,
-    )
+      // Process tool calls
+      const toolResult = await this.processToolCalls(
+        toolCalls,
+        content,
+        messages,
+        taskId,
+        messageId,
+        params.executionConfig,
+        signal,
+        iteration,
+        warnIter,
+        tracer,
+      )
 
     if (toolResult === 'aborted' || toolResult === 'complete') {
       this.emitDone(taskId, messageId)
@@ -531,17 +536,6 @@ export class ExecutionAgent extends BaseAgent {
       ? powerfulModel(store.openRouterModels)
       : (resolved.model || store.model)
 
-    // === DIAGNOSTIC LOGGING ===
-    console.log('[callLLM] Provider Configuration:', {
-      provider,
-      apiBase,
-      hasApiKey: Boolean(apiKey && apiKey.length > 0),
-      apiKeyPrefix: apiKey ? `${apiKey.slice(0, 8)}...` : 'none',
-      model,
-      gatewayId: resolved.gatewayId,
-      extraHeaders: Object.keys(resolved.extraHeaders || {}),
-    })
-    // ===========================
 
     // Early validation for missing API key - provide visible error instead of silent hang
     if (!apiKey || apiKey.length === 0) {
@@ -588,17 +582,18 @@ export class ExecutionAgent extends BaseAgent {
   /**
    * Process tool calls from the assistant.
    */
-  private async processToolCalls(
-    toolCalls: ToolCall[],
-    content: string | null,
-    messages: LlmMessage[],
-    taskId: string,
-    messageId: string,
-    executionConfig?: ExecutionConfig,
-    signal?: AbortSignal,
-    iteration = 0,
-    warnIter = 40,
-  ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
+    private async processToolCalls(
+      toolCalls: ToolCall[],
+      content: string | null,
+      messages: LlmMessage[],
+      taskId: string,
+      messageId: string,
+      executionConfig?: ExecutionConfig,
+      signal?: AbortSignal,
+      iteration = 0,
+      warnIter = 40,
+      tracer?: TraceLogger,
+    ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
@@ -648,28 +643,31 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
-      // Execute the tool
-      const { output: rawOutput, isError } = await executeRegistryTool(
-        fnName,
-        args,
-        {
-          taskId,
-          executionConfig: executionConfig ? {
-            ...executionConfig,
-            onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
-              useAppStore.getState().setSandboxStatus(status, message)
-            },
-          } : undefined,
-          onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
-        }
-      )
+        // Execute the tool
+        const traceSpan = tracer?.startToolCall(fnName, args)
+        const { output: rawOutput, isError } = await executeRegistryTool(
+          fnName,
+          args,
+          {
+            taskId,
+            executionConfig: executionConfig ? {
+              ...executionConfig,
+              onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
+                useAppStore.getState().setSandboxStatus(status, message)
+              },
+            } : undefined,
+            onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
+          }
+        )
 
-      // Truncate tool output
-      const output = typeof rawOutput === 'string'
-        ? rawOutput.length > 15_000
-          ? rawOutput.slice(0, 7_500) + '\n\n[…truncated…]\n\n' + rawOutput.slice(-5_000)
-          : rawOutput
-        : JSON.stringify(rawOutput)
+        // Truncate tool output
+        const output = typeof rawOutput === 'string'
+          ? rawOutput.length > 15_000
+            ? rawOutput.slice(0, 7_500) + '\n\n[…truncated…]\n\n' + rawOutput.slice(-5_000)
+            : rawOutput
+          : JSON.stringify(rawOutput)
+
+        traceSpan?.end(output, isError)
 
       this.emitToolResult(taskId, messageId, callId, output, isError)
 

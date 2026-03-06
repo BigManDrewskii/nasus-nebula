@@ -23,6 +23,7 @@ import { EditFileTool } from './file/EditFileTool'
 import { UndoFileTool } from './file/UndoFileTool'
 import { ListFilesTool } from './file/ListFilesTool'
 import { SearchFilesTool } from './file/SearchFilesTool'
+import { AnalyzeCodeTool } from './file/AnalyzeCodeTool'
 
 // Web tools
 import { HttpFetchTool } from './web/HttpFetchTool'
@@ -47,6 +48,7 @@ import { BrowserGetTabsTool } from './browser/BrowserGetTabsTool'
 import { BrowserWaitForTool } from './browser/BrowserWaitForTool'
 import { BrowserEvalTool } from './browser/BrowserEvalTool'
 import { BrowserSelectTool } from './browser/BrowserSelectTool'
+import { BrowserAriaSnapshotTool } from './browser/BrowserAriaSnapshotTool'
 
 /**
  * Global tool registry instance.
@@ -66,6 +68,7 @@ toolRegistry.registerConstructor('edit_file', EditFileTool)
 toolRegistry.registerConstructor('undo_file', UndoFileTool)
 toolRegistry.registerConstructor('list_files', ListFilesTool)
 toolRegistry.registerConstructor('search_files', SearchFilesTool)
+toolRegistry.registerConstructor('analyze_code', AnalyzeCodeTool)
 
 toolRegistry.registerConstructor('http_fetch', HttpFetchTool)
 toolRegistry.registerConstructor('search_web', SearchWebTool)
@@ -87,6 +90,7 @@ toolRegistry.registerConstructor('browser_get_tabs', BrowserGetTabsTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_eval', BrowserEvalTool)
 toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
+toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
 
 /**
  * Get tool function definitions for OpenAI function calling.
@@ -125,21 +129,20 @@ export async function executeTool(
     (augmentedArgs as any).__taskId = context.taskId
   }
 
-  // Set search config/status on tools that need it (e.g. SearchWebTool)
+  // Configure tools before execution
   const tool = toolRegistry.get(name)
+
+  // Set execution config on tools that need it (must be before execute)
+  if (context?.executionConfig && tool && 'setExecutionConfig' in tool) {
+    (tool as any).setExecutionConfig(context.executionConfig)
+  }
+
+  // Set search config/status on tools that need it (e.g. SearchWebTool)
   if (tool && 'withConfig' in tool && typeof (tool as any).withConfig === 'function') {
     (tool as any).withConfig(undefined, context?.onSearchStatus)
   }
 
   const result = await toolRegistry.execute(name, augmentedArgs)
-
-  // Set execution config on tools that need it
-  if (context?.executionConfig) {
-    const tool = toolRegistry.get(name)
-    if (tool && 'setExecutionConfig' in tool) {
-      (tool as any).setExecutionConfig(context.executionConfig)
-    }
-  }
 
   return {
     output: String(result.output ?? ''),
@@ -174,7 +177,7 @@ export { BaseTool } from './core/BaseTool'
 export { SaveMemoryTool } from './core/SaveMemoryTool'
 
 // File tools
-export { ReadFileTool, WriteFileTool, PatchFileTool, EditFileTool, UndoFileTool, ListFilesTool, SearchFilesTool } from './file'
+export { ReadFileTool, WriteFileTool, PatchFileTool, EditFileTool, UndoFileTool, ListFilesTool, SearchFilesTool, AnalyzeCodeTool } from './file'
 
 // Web tools
 export { HttpFetchTool, SearchWebTool } from './web'
@@ -194,4 +197,5 @@ export {
   BrowserWaitForTool,
   BrowserEvalTool,
   BrowserSelectTool,
+  BrowserAriaSnapshotTool,
 } from './browser'

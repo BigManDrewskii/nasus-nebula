@@ -13,6 +13,7 @@
 
 import { useState, useCallback } from 'react'
 import type { Attachment, AttachmentCategory } from '../types'
+import { parseFileBuffer, isSupportedBinaryFormat } from '../agent/FileParser'
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 
@@ -34,8 +35,10 @@ const CATEGORY_RULES: Array<{
   {
     category: 'document',
     maxSize: 25 * 1024 * 1024,
-    mimes: ['application/pdf', 'text/plain', 'text/markdown', 'text/csv'],
-    exts: ['.pdf', '.txt', '.md', '.csv'],
+    mimes: ['application/pdf', 'text/plain', 'text/markdown', 'text/csv',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/msword'],
+    exts: ['.pdf', '.txt', '.md', '.csv', '.docx', '.doc'],
   },
   {
     category: 'spreadsheet',
@@ -186,19 +189,28 @@ export function useAttachments(): AttachmentsState {
         if (placeholder.status === 'error') return
         const file = incoming[idx]
 
-        const enrich = async () => {
-          const updates: Partial<Attachment> = {}
+          const enrich = async () => {
+            const updates: Partial<Attachment> = {}
 
-          if (placeholder.category === 'image') {
-            updates.previewUrl = URL.createObjectURL(file)
-            updates.base64 = await toBase64(file).catch(() => null)
-          } else if (
-            placeholder.category === 'code' ||
-            placeholder.category === 'document' ||
-            file.type.startsWith('text/')
-          ) {
-            updates.textContent = await readText(file).catch(() => null)
-          }
+            if (placeholder.category === 'image') {
+              updates.previewUrl = URL.createObjectURL(file)
+              updates.base64 = await toBase64(file).catch(() => null)
+            } else if (isSupportedBinaryFormat(file.name)) {
+              // PDF, DOCX, CSV — parse to text via FileParser
+              try {
+                const buffer = new Uint8Array(await file.arrayBuffer())
+                const parsed = await parseFileBuffer(buffer, file.name)
+                updates.textContent = parsed.text
+              } catch {
+                updates.textContent = await readText(file).catch(() => null)
+              }
+            } else if (
+              placeholder.category === 'code' ||
+              placeholder.category === 'document' ||
+              file.type.startsWith('text/')
+            ) {
+              updates.textContent = await readText(file).catch(() => null)
+            }
 
           setAttachments((current) =>
             current.map((a) => (a.id === placeholder.id ? { ...a, ...updates } : a)),

@@ -51,6 +51,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         model, workspacePath,
         setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
         openRouterModels, setOpenRouterModels,
+        ollamaModels, setOllamaModels,
         exaKey, setExaKey,
         maxIterations, setMaxIterations,
         addRecentWorkspacePath,
@@ -59,6 +60,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         settingsTab,
         setSettingsTab,
         gatewayHealth,
+        rateLimitEnabled, setRateLimitEnabled,
+        maxRequestsPerMinute, setMaxRequestsPerMinute,
       } = useAppStore()
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
@@ -80,6 +83,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     enableVerification, setEnableVerification,
   } = useAppStore()
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
+
+  // Rate limiting state
+  const [localRateLimitEnabled, setLocalRateLimitEnabled] = useState(rateLimitEnabled ?? true)
+  const [localMaxRPM, setLocalMaxRPM] = useState(String(maxRequestsPerMinute ?? 60))
 
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
@@ -164,8 +171,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     openRouterModels.length > 0 ? openRouterModels.length : null
   )
 
-  // The active model list: fetched rich list if available, else curated fallback
-  const modelList: OpenRouterModel[] = openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS
+    // The active model list: for Ollama show local models; for cloud show fetched/fallback OR list
+    const modelList: OpenRouterModel[] = activeProvider === 'ollama'
+      ? ollamaModels.map((m) => ({
+          id: m.name,
+          name: m.name,
+          description: m.size ? `${(m.size / 1e9).toFixed(1)} GB` : 'Local model',
+          context_length: 128000,
+          architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] },
+          pricing: { prompt: '0', completion: '0' },
+          top_provider: { context_length: null, is_moderated: false },
+        }))
+      : openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS
 
   // Filter + group models by family
   const filteredModels = useMemo(() => {
@@ -214,33 +231,51 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     scrollableRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [settingsTab])
 
-  async function handleFetchModels() {
-    if (activeProvider === 'openrouter' && !localOpenRouterKey.trim()) {
-      setFetchModelsError('Enter your OpenRouter API key first')
-      return
-    }
-    if (activeProvider === 'requesty' && !localRequestyKey.trim()) {
-      setFetchModelsError('Enter your Requesty API key first')
-      return
-    }
-    setFetchingModels(true)
-    setFetchModelsError(null)
-    try {
-      // Requesty uses the same API format as OpenRouter, so we use the same fetch function
-      const key = activeProvider === 'requesty'
-        ? localRequestyKey.trim()
-        : localOpenRouterKey.trim()
-      const models = await fetchOpenRouterModels(key)
-      setOpenRouterModels(models)
-      setFetchedCount(models.length)
+    async function handleFetchModels() {
+      if (activeProvider === 'ollama') {
+        setFetchingModels(true)
+        setFetchModelsError(null)
+        try {
+          const resp = await fetch('http://localhost:11434/api/tags')
+          if (!resp.ok) throw new Error(`Ollama returned HTTP ${resp.status}`)
+          const data = await resp.json()
+          const models = data.models || []
+          setOllamaModels(models)
+          setFetchedCount(models.length)
+          if (models.length > 0 && !localModel) setLocalModel(models[0].name)
+        } catch (e) {
+          setFetchModelsError(e instanceof Error ? e.message : String(e))
+        } finally {
+          setFetchingModels(false)
+        }
+        return
+      }
+      if (activeProvider === 'openrouter' && !localOpenRouterKey.trim()) {
+        setFetchModelsError('Enter your OpenRouter API key first')
+        return
+      }
+      if (activeProvider === 'requesty' && !localRequestyKey.trim()) {
+        setFetchModelsError('Enter your Requesty API key first')
+        return
+      }
+      setFetchingModels(true)
       setFetchModelsError(null)
-      // If current model not in new list, keep it anyway — user may have typed custom ID
-    } catch (e) {
-      setFetchModelsError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setFetchingModels(false)
+      try {
+        // Requesty uses the same API format as OpenRouter, so we use the same fetch function
+        const key = activeProvider === 'requesty'
+          ? localRequestyKey.trim()
+          : localOpenRouterKey.trim()
+        const models = await fetchOpenRouterModels(key)
+        setOpenRouterModels(models)
+        setFetchedCount(models.length)
+        setFetchModelsError(null)
+        // If current model not in new list, keep it anyway — user may have typed custom ID
+      } catch (e) {
+        setFetchModelsError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setFetchingModels(false)
+      }
     }
-  }
 
   function validate(): ValidationErrors {
     const errs: ValidationErrors = {}
@@ -273,6 +308,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalExaKey('')
     setLocalMaxIterations('50')
     setLocalEnableVerification(true)
+    setLocalRateLimitEnabled(true)
+    setLocalMaxRPM('60')
     setLocalRouterMode('auto')
     setLocalRouterBudget('free')
     setLocalModelOverrides({})
@@ -324,9 +361,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         // Non-fatal, continue
       }
 
-      const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
-      setMaxIterations(parsedIter)
-      setEnableVerification(localEnableVerification)
+        const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
+        setMaxIterations(parsedIter)
+        setEnableVerification(localEnableVerification)
+
+        // Save rate limiting settings
+        const parsedRPM = Math.max(1, Math.min(600, parseInt(localMaxRPM, 10) || 60))
+        setRateLimitEnabled(localRateLimitEnabled)
+        setMaxRequestsPerMinute(parsedRPM)
+
       // Save router config (force manual for Ollama)
       setRouterConfig({
         mode: isOllama ? 'manual' : localRouterMode,
@@ -502,24 +545,93 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </button>
             </div>
 
-            {/* ── Max Iterations ── */}
-            <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
-              <input
-                type="number"
-                min={1}
-                max={200}
-                value={localMaxIterations}
-                onChange={(e) => setLocalMaxIterations(e.target.value)}
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                  color: 'var(--tx-primary)', background: '#0d0d0d',
-                  border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-                }}
-                className="placeholder-[var(--tx-muted)]"
-                onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-              />
-            </Field>
+              {/* ── Max Iterations ── */}
+              <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={localMaxIterations}
+                  onChange={(e) => setLocalMaxIterations(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                    color: 'var(--tx-primary)', background: '#0d0d0d',
+                    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
+                  }}
+                  className="placeholder-[var(--tx-muted)]"
+                  onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                />
+              </Field>
+
+              {/* ── Rate Limiting ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
+                  textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
+                }}>
+                  <Pxi name="gauge" size={12} style={{ color: 'var(--tx-tertiary)' }} />
+                  Rate Limiting
+                </label>
+
+                {/* Enable toggle row */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
+                      Enable rate limiting
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
+                      Throttle outbound API requests to avoid provider rate-limit errors
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocalRateLimitEnabled(!localRateLimitEnabled)}
+                    style={{
+                      width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+                      border: 'none', cursor: 'pointer', position: 'relative',
+                      background: localRateLimitEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
+                      transition: 'background 0.15s', padding: 0,
+                    }}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 2, borderRadius: '50%',
+                      width: 18, height: 18, background: '#fff',
+                      left: localRateLimitEnabled ? 'calc(100% - 20px)' : 2,
+                      transition: 'left 0.15s', display: 'block',
+                    }} />
+                  </button>
+                </div>
+
+                {/* RPM input — only shown when enabled */}
+                {localRateLimitEnabled && (
+                  <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={localMaxRPM}
+                        onChange={(e) => setLocalMaxRPM(e.target.value)}
+                        style={{
+                          flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
+                          color: 'var(--tx-primary)', background: '#0d0d0d',
+                          border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
+                        }}
+                        className="placeholder-[var(--tx-muted)]"
+                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                      />
+                      <span style={{ fontSize: 11, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>req / min</span>
+                    </div>
+                  </Field>
+                )}
+              </div>
             </>
             )}
 
@@ -725,18 +837,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </Field>
                 )}
 
-                {activeProvider === 'ollama' && (
-                  <div style={{
-                    padding: '10px 12px', borderRadius: 8,
-                    background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                  }}>
-                    <Pxi name="check-circle" size={14} style={{ color: '#22c55e' }} />
-                    <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>
-                      No API key needed. Make sure Ollama is running on localhost:11434.
-                    </span>
-                  </div>
-                )}
+                  {activeProvider === 'ollama' && (
+                    <OllamaStatusBanner />
+                  )}
               </div>
 
               <GatewaySettings />
@@ -746,25 +849,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {/* Fetch row */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button
-                      type="button"
-                      onClick={handleFetchModels}
-                      disabled={fetchingModels}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 6,
-                        padding: '4px 10px', borderRadius: 8, fontSize: 11,
-                        background: 'rgba(255,255,255,0.07)', border: 'none',
-                        cursor: fetchingModels ? 'default' : 'pointer',
-                        color: 'var(--tx-secondary)', transition: 'color 0.12s',
-                        opacity: fetchingModels ? 0.45 : 1,
-                      }}
-                      onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
-                      onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
-                      title="Fetch all available models from OpenRouter"
-                    >
-                      <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
-                      {fetchingModels ? 'Fetching…' : 'Fetch all models'}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={handleFetchModels}
+                        disabled={fetchingModels}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          padding: '4px 10px', borderRadius: 8, fontSize: 11,
+                          background: 'rgba(255,255,255,0.07)', border: 'none',
+                          cursor: fetchingModels ? 'default' : 'pointer',
+                          color: 'var(--tx-secondary)', transition: 'color 0.12s',
+                          opacity: fetchingModels ? 0.45 : 1,
+                        }}
+                        onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
+                        onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
+                        title={activeProvider === 'ollama' ? 'Refresh models from local Ollama' : 'Fetch all available models from OpenRouter'}
+                      >
+                        <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
+                        {fetchingModels ? 'Fetching…' : activeProvider === 'ollama' ? 'Refresh Ollama models' : 'Fetch all models'}
+                      </button>
                     {fetchModelsError && (
                       <span style={{ fontSize: 11, color: '#f87171', flex: 1 }}>{fetchModelsError}</span>
                     )}
@@ -1111,7 +1214,53 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   )
 }
 
-// ─── SearchSection ────────────────────────────────────────────────────────────
+// ─── OllamaStatusBanner ───────────────────────────────────────────────────────
+
+function OllamaStatusBanner() {
+  const [status, setStatus] = useState<'checking' | 'running' | 'stopped'>('checking')
+
+  useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      try {
+        const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(2000) })
+        if (!cancelled) setStatus(resp.ok ? 'running' : 'stopped')
+      } catch {
+        if (!cancelled) setStatus('stopped')
+      }
+    }
+    check()
+    return () => { cancelled = true }
+  }, [])
+
+  if (status === 'checking') {
+    return (
+      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Pxi name="spinner-third" size={14} style={{ color: 'var(--tx-tertiary)' }} />
+        <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Checking Ollama status…</span>
+      </div>
+    )
+  }
+
+  if (status === 'running') {
+    return (
+      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e60', flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Ollama is running on localhost:11434. No API key needed.</span>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 11, color: '#f87171', fontWeight: 500 }}>Ollama is not running</span>
+        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>Start Ollama with <code style={{ fontFamily: 'var(--font-mono)' }}>ollama serve</code> and pull a model with <code style={{ fontFamily: 'var(--font-mono)' }}>ollama pull llama3.2</code></span>
+      </div>
+    </div>
+  )
+}
 
 function SearchSection({
   exaKey, onExaKeyChange,

@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;1,14..32,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
   --font-display: 'Unbounded', sans-serif;
@@ -96,6 +97,43 @@
   --amber-light:  oklch(89% 0.135 55.1);
   --amber-pale:   oklch(99% 0.116 70.1);
 
+  /* ── Amber alpha variants (replaces raw rgba(234,179,8, x)) ── */
+  --amber-a05: rgba(234, 179, 8, 0.05);
+  --amber-a07: rgba(234, 179, 8, 0.07);
+  --amber-a08: rgba(234, 179, 8, 0.08);
+  --amber-a10: rgba(234, 179, 8, 0.10);
+  --amber-a12: rgba(234, 179, 8, 0.12);
+  --amber-a13: rgba(234, 179, 8, 0.13);
+  --amber-a16: rgba(234, 179, 8, 0.16);
+  --amber-a20: rgba(234, 179, 8, 0.20);
+  --amber-a22: rgba(234, 179, 8, 0.22);
+  --amber-a25: rgba(234, 179, 8, 0.25);
+  --amber-a35: rgba(234, 179, 8, 0.35);
+  --amber-a38: rgba(234, 179, 8, 0.38);
+
+  /* ── Red / destructive semantic tokens ── */
+  --red:      #ef4444;
+  --red-fg:   #f87171;
+  --red-a07:  rgba(239, 68, 68, 0.07);
+  --red-a13:  rgba(239, 68, 68, 0.13);
+  --red-a22:  rgba(239, 68, 68, 0.22);
+  --red-a38:  rgba(239, 68, 68, 0.38);
+
+  /* ── Dark background surface tokens ── */
+  --bg-base:    #0a0a0a;   /* app root bg         */
+  --bg-deep:    #080808;   /* darkest (gradient end) */
+  --bg-surface: #0b0b0b;   /* panel / output surface */
+  --bg-code:    #090909;   /* range thumb border     */
+
+  /* ── Syntax token colors ── */
+  --tok-key:     #7dd3fc;
+  --tok-str:     #86efac;
+  --tok-kw:      #c084fc;
+  --tok-num:     #fb923c;
+  --tok-comment: #6b7280;
+  --tok-tag:     #7dd3fc;
+  --tok-attr:    #fbbf24;
+
   /* Glass constants */
   --glass-bg: rgba(255, 255, 255, 0.025);
   --glass-border: rgba(255, 255, 255, 0.06);
@@ -136,7 +174,7 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #0d0d0d;
+  background-color: var(--bg-base);
   /* Primary body text: #e2e2e2 on #0d0d0d ≈ 14.6:1 */
   color: var(--tx-primary);
   font-family: 'Inter', system-ui, sans-serif;
@@ -316,7 +354,7 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: linear-gradient(180deg, #0b0b0b 0%, #080808 100%);
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-deep) 100%);
   border-left: 1px solid rgba(255,255,255,0.06);
   overflow: hidden;
 }
@@ -347,7 +385,7 @@ html, body, #root {
   border: 1px solid transparent;
   background: transparent;
   color: var(--tx-tertiary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-sans);
   font-weight: 500;
   cursor: pointer;
@@ -403,7 +441,7 @@ html, body, #root {
   justify-content: center;
   background: rgba(255,255,255,0.08);
   color: var(--tx-secondary);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
 }
 
@@ -430,7 +468,7 @@ html, body, #root {
 }
 
 .output-pane-meta-path {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   color: var(--tx-tertiary);
   white-space: nowrap;
@@ -439,7 +477,7 @@ html, body, #root {
 }
 
 .output-pane-meta-chip {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--tx-muted);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 999px;
@@ -516,12 +554,12 @@ html, body, #root {
 }
 
 .output-file-tab--active {
-  background: rgba(234,179,8,0.08);
-  border-color: rgba(234,179,8,0.2);
+  background: var(--amber-a08);
+  border-color: var(--amber-a20);
 }
 
 .output-file-tab-name {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--tx-secondary);
   max-width: 120px;
@@ -577,7 +615,7 @@ html, body, #root {
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--tx-tertiary);
 }
 
@@ -592,17 +630,17 @@ html, body, #root {
   gap: 5px;
   padding: 5px 10px;
   border-radius: 8px;
-  background: rgba(234,179,8,0.1);
-  border: 1px solid rgba(234,179,8,0.25);
+  background: var(--amber-a10);
+  border: 1px solid var(--amber-a25);
   color: var(--amber);
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   transition: background 0.14s;
 }
 
 .output-files-zip-btn:hover {
-  background: rgba(234,179,8,0.16);
+  background: var(--amber-a16);
 }
 
 .output-files-zip-btn:disabled {
@@ -634,13 +672,13 @@ html, body, #root {
 }
 
 .output-file-row--selected {
-  background: rgba(234,179,8,0.05);
-  border-color: rgba(234,179,8,0.16);
+  background: var(--amber-a05);
+  border-color: var(--amber-a16);
 }
 
 .output-file-row-name {
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: var(--font-mono);
   color: var(--tx-secondary);
   overflow: hidden;
@@ -649,7 +687,7 @@ html, body, #root {
 }
 
 .output-file-row-size {
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--tx-muted);
 }
 
@@ -667,7 +705,7 @@ html, body, #root {
 
 .output-file-row-download:hover {
   color: var(--amber);
-  background: rgba(234, 179, 8, 0.08);
+  background: var(--amber-a08);
 }
 
 /* ── Artifact Preview ─────────────────────────────────────── */
@@ -699,26 +737,26 @@ html, body, #root {
   display: inline-flex;
   align-items: center;
   transition: color 0.14s, background 0.14s;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   gap: 4px;
   font-weight: 500;
 }
 
 .output-file-row-preview:hover {
   color: var(--amber);
-  background: rgba(234, 179, 8, 0.08);
+  background: var(--amber-a08);
 }
 
 .output-file-row-preview--active {
   color: var(--amber);
-  background: rgba(234, 179, 8, 0.12);
-  border: 1px solid rgba(234, 179, 8, 0.2);
+  background: var(--amber-a12);
+  border: 1px solid var(--amber-a20);
 }
 
 .output-files-footer {
   padding: 7px 12px;
   border-top: 1px solid rgba(255,255,255,0.06);
-  font-size: 10px;
+  font-size: var(--text-2xs);
   color: var(--tx-muted);
   flex-shrink: 0;
   background: rgba(255,255,255,0.015);
@@ -884,7 +922,7 @@ html, body, #root {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: #0a0a0a;
+  background: var(--bg-base);
   background-image: var(--mesh-gradient);
   padding-top: 28px;
 }
@@ -922,9 +960,10 @@ html, body, #root {
 }
 
 .app-sidebar-right.app-sidebar--collapsed {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  overflow: hidden;
 }
 
 /* Disable transition during active drag for immediate response */
@@ -971,40 +1010,13 @@ html, body, #root {
 .output-collapsed-rail {
   width: 100%;
   height: 100%;
-  background: var(--bg-base);
-  border-left: 1px solid rgba(255,255,255,0.05);
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-deep) 100%);
+  border-left: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  padding: 0 0 6px;
   overflow: hidden;
-}
-
-.output-collapsed-expand-btn {
-  /* Vertically centered within the 40px tab-bar height */
-  width: 28px;
-  height: 32px;
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: rgba(255,255,255,0.25);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
-}
-
-.output-collapsed-expand-btn:hover {
-  background: rgba(255,255,255,0.06);
-  color: rgba(255,255,255,0.65);
-}
-
-.output-collapsed-expand-btn:active {
-  background: rgba(255,255,255,0.10);
-  color: rgba(255,255,255,0.9);
 }
 
 /* Shared rail header — identical structure on both sides */
@@ -1046,7 +1058,7 @@ html, body, #root {
 }
 
 .rail-toggle-btn:hover {
-  background: oklch(64% 0.214 40.1 / 0.12);
+  background: var(--amber-a12);
   border-color: oklch(64% 0.214 40.1 / 0.4);
   color: var(--amber-soft);
 }
@@ -1107,8 +1119,8 @@ html, body, #root {
 
 .output-rail-tab-btn--active {
   color: var(--amber-soft);
-  background: oklch(64% 0.214 40.1 / 0.1);
-  border-color: oklch(64% 0.214 40.1 / 0.25);
+  background: var(--amber-a10);
+  border-color: var(--amber-a25);
 }
 
 .output-rail-badge {
@@ -1161,8 +1173,8 @@ html, body, #root {
   padding: 0 8px;
   height: 26px;
   border-radius: 7px;
-  border: 1px solid rgba(234,179,8,0.22);
-  background: rgba(234,179,8,0.07);
+  border: 1px solid var(--amber-a22);
+  background: var(--amber-a07);
   color: var(--amber-soft);
   cursor: pointer;
   flex-shrink: 0;
@@ -1171,8 +1183,8 @@ html, body, #root {
 }
 
 .header-action-btn:hover {
-  background: rgba(234,179,8,0.13);
-  border-color: rgba(234,179,8,0.35);
+  background: var(--amber-a13);
+  border-color: var(--amber-a35);
 }
 
 /* Stop button */
@@ -1183,10 +1195,10 @@ html, body, #root {
   padding: 0 10px;
   height: 26px;
   border-radius: 7px;
-  border: 1px solid rgba(239,68,68,0.22);
-  background: rgba(239,68,68,0.07);
-  color: #f87171;
-  font-size: 11px;
+  border: 1px solid var(--red-a22);
+  background: var(--red-a07);
+  color: var(--red-fg);
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
@@ -1194,30 +1206,35 @@ html, body, #root {
 }
 
 .header-stop-btn:hover {
-  background: rgba(239,68,68,0.13);
-  border-color: rgba(239,68,68,0.38);
+  background: var(--red-a13);
+  border-color: var(--red-a38);
 }
 
 /* Syntax token colours (used by CodePane) */
-.tok-key     { color: #7dd3fc; }   /* light-blue  — JSON keys */
-.tok-str     { color: #86efac; }   /* green       — strings   */
-.tok-kw      { color: #c084fc; }   /* purple      — keywords  */
-.tok-num     { color: #fb923c; }   /* orange      — numbers   */
-.tok-comment { color: #6b7280; font-style: italic; }
-.tok-tag     { color: #7dd3fc; }   /* light-blue  — HTML tags */
-.tok-attr    { color: #fbbf24; }   /* amber       — HTML attrs */
+.tok-key     { color: var(--tok-key); }     /* light-blue  — JSON keys */
+.tok-str     { color: var(--tok-str); }     /* green       — strings   */
+.tok-kw      { color: var(--tok-kw); }      /* purple      — keywords  */
+.tok-num     { color: var(--tok-num); }     /* orange      — numbers   */
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-tag     { color: var(--tok-tag); }     /* light-blue  — HTML tags */
+.tok-attr    { color: var(--tok-attr); }    /* amber       — HTML attrs */
 
 /* ── Input state machine ────────────────────────────────────────────────────── */
 
 @keyframes inputPulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(234,179,8,0.1); }
-  50%       { box-shadow: 0 0 0 4px rgba(234,179,8,0.05); }
+  0%, 100% { box-shadow: 0 0 0 2px var(--amber-a10); }
+  50%       { box-shadow: 0 0 0 4px var(--amber-a05); }
 }
 
 /* Button appear — used by Send/Stop on state transition */
 @keyframes buttonAppear {
   from { opacity: 0; transform: scale(0.8); }
   to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes micPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.15); }
 }
 
 /* Drop-up menu — model picker in input area */
@@ -1280,7 +1297,7 @@ html, body, #root {
 
 /* Shimmer label */
 .thinking-label {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   color: var(--tx-secondary);
   background: linear-gradient(
     90deg,
@@ -1397,7 +1414,7 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 50%;
   background: oklch(64% 0.214 40.1);
   cursor: pointer;
-  border: 2px solid #090909;
+  border: 2px solid var(--bg-code);
   box-shadow: 0 0 0 1px oklch(64% 0.214 40.1 / 0.5);
   transition: box-shadow 0.12s;
 }
@@ -1410,7 +1427,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 50%;
   background: oklch(64% 0.214 40.1);
   cursor: pointer;
-  border: 2px solid #090909;
+  border: 2px solid var(--bg-code);
 }
 
 /* Mobile: full-width drawers */

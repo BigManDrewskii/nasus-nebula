@@ -182,7 +182,7 @@ interface AppState extends GatewaySlice {
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
   updateTokenUsage: (taskId: string, usage: { promptTokens: number; completionTokens: number }, modelId: string) => void
   setConfigSection: (section: string, open: boolean) => void
-  toggleConfigSection: (section: string) => void
+
   setRightPanelWidth: (width: number) => void
   setRightPanelVisible: (visible: boolean) => void
   openSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
@@ -736,15 +736,11 @@ export const useAppStore = create<AppState>()(
               }
             }
           }),
-        setConfigSection: (section, open) =>
-          set((s) => ({
-            configSections: { ...s.configSections, [section]: open },
-          })),
-        toggleConfigSection: (section) =>
-          set((s) => ({
-            configSections: { ...s.configSections, [section]: !s.configSections[section] },
-          })),
-        setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
+          setConfigSection: (section, open) =>
+            set((s) => ({
+              configSections: { ...s.configSections, [section]: open },
+            })),
+          setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
         setRightPanelVisible: (visible) => set({ rightPanelVisible: visible }),
         openSettings: (tab) => set({ settingsOpen: true, settingsTab: tab ?? 'general' }),
         closeSettings: () => set({ settingsOpen: false }),
