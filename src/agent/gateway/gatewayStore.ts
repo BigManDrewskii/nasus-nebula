@@ -206,17 +206,23 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
         } catch { /* ignore */ }
       }
 
-      const updatedGateways = gateways.map((g) => {
-        // Migrate legacy config: the stored provider becomes the enabled gateway
-        if (g.type === config.provider) {
-          return { ...g, apiBase: config.api_base || g.apiBase, apiKey: resolvedKey, enabled: true }
-        }
-        // Also sync OpenRouter if provider was 'openrouter' (legacy naming)
-        if (config.provider === 'openrouter' && g.type === 'openrouter') {
-          return { ...g, apiKey: resolvedKey, enabled: true }
-        }
-        return g
-      })
+       const updatedGateways = gateways.map((g) => {
+          // Migrate legacy config: the stored provider becomes the enabled gateway
+          if (g.type === config.provider) {
+            return { ...g, apiBase: config.api_base || g.apiBase, apiKey: resolvedKey, enabled: true }
+          }
+          // Also sync OpenRouter if provider was 'openrouter' (legacy naming)
+          if (config.provider === 'openrouter' && g.type === 'openrouter') {
+            return { ...g, apiKey: resolvedKey, enabled: true }
+          }
+          // Disable all other gateways so that resolveConnection() doesn't accidentally
+          // pick a higher-priority gateway (e.g. openrouter at priority 0) with no key.
+          // Ollama is never touched by the legacy config path, so preserve its state.
+          if (g.type !== 'ollama') {
+            return { ...g, enabled: false }
+          }
+          return g
+        })
 
       set({ gateways: updatedGateways })
 
@@ -241,13 +247,18 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
             // Only sync the persisted apiKey to the gateway whose type matches the
             // persisted provider. Blasting it to ALL non-ollama gateways would write
             // an OpenRouter key into DeepSeek/Requesty/custom slots, causing 401s.
-            const activeProvider = appState.provider || 'openrouter'
-            const synced = gateways.map((g) => {
-              if (g.type === activeProvider && g.type !== 'ollama') {
-                return { ...g, apiKey: appState.apiKey }
-              }
-              return g
-            })
+              const activeProvider = appState.provider || 'openrouter'
+              const synced = gateways.map((g) => {
+                if (g.type === activeProvider && g.type !== 'ollama') {
+                  return { ...g, apiKey: appState.apiKey, enabled: true }
+                }
+                // Disable all other non-ollama gateways to prevent a keyed-less
+                // high-priority gateway from shadowing the active one.
+                if (g.type !== 'ollama') {
+                  return { ...g, enabled: false }
+                }
+                return g
+              })
             set({ gateways: synced })
             const { gatewayService } = get()
             gatewayService?.updateGateways(synced)

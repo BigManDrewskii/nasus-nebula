@@ -386,10 +386,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       const finalApiBase = isOllama ? OLLAMA_BASE : isRequesty ? REQUESTY_BASE : isDeepSeek ? DEEPSEEK_BASE : localApiBase
       const finalProvider = isOllama ? 'ollama' : isRequesty ? 'requesty' : isDeepSeek ? 'deepseek' : 'openrouter'
 
-      // Save keys to their respective gateways
-      updateGateway('openrouter', { apiKey: localOpenRouterKey.trim() })
-      updateGateway('requesty', { apiKey: localRequestyKey.trim() })
-      updateGateway('deepseek', { apiKey: localDeepSeekKey.trim(), enabled: isDeepSeek })
+        // Save keys to their respective gateways.
+        // Each gateway's enabled state must reflect the active provider so that
+        // resolveConnection() (which picks the lowest-priority enabled gateway)
+        // always returns the gateway the user actually configured — not a higher-
+        // priority gateway (e.g. OpenRouter at priority 0) with an empty key.
+        updateGateway('openrouter', { apiKey: localOpenRouterKey.trim(), enabled: isOpenRouter })
+        updateGateway('requesty',   { apiKey: localRequestyKey.trim(),   enabled: isRequesty })
+        updateGateway('deepseek',   { apiKey: localDeepSeekKey.trim(),   enabled: isDeepSeek })
+        // Ollama has its own enabled flag — enable/disable based on active provider.
+        updateGateway('ollama',     { enabled: isOllama })
 
       // The legacy/active apiKey in the store is the one for the currently active provider
       const finalApiKey = isOpenRouter ? localOpenRouterKey.trim()
