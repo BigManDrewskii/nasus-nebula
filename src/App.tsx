@@ -92,19 +92,11 @@ function App() {
     }
   }, [workspacePath])
 
-  // Initialize gateway service on startup
-  useEffect(() => {
-    const store = useAppStore.getState()
-
-    // gateways are NOT persisted, so gateways[0].apiKey = '' on every cold start.
-    // store.apiKey IS persisted via zustand. Seed it in synchronously so the first
-    // LLM call (which may happen before loadGatewayConfig resolves) has a valid key.
-    if (store.apiKey) {
-      store.updateGateway('openrouter', { apiKey: store.apiKey })
-    }
-
-    store.initGatewayService()
-    store.loadGatewayConfig().catch(console.error)
+    // Initialize gateway service on startup
+    useEffect(() => {
+      const store = useAppStore.getState()
+      store.initGatewayService()
+      store.loadGatewayConfig().catch(console.error)
 
     // Initialize config sections from saved layout (use the action, not direct mutation)
     if (savedLayout.configSections) {

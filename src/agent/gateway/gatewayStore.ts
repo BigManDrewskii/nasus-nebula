@@ -224,18 +224,27 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
           return g
         })
 
-      set({ gateways: updatedGateways })
+        set({ gateways: updatedGateways })
 
-      // Determine routing mode from legacy model field
-      if (config.model === 'auto' || !config.model) {
-        set({ routingMode: 'auto-paid' })
-      } else {
-        set({ routingMode: 'manual', manualModelId: config.model })
-      }
+        // Sync the resolved key back into store.apiKey so that ChatView's
+        // needsKey guard (which checks store.apiKey) allows the call through.
+        if (resolvedKey) {
+          try {
+            const { useAppStore } = await import('../../store')
+            useAppStore.getState().setApiKey(resolvedKey)
+          } catch { /* ignore */ }
+        }
 
-      // Sync to service
-      const { gatewayService } = get()
-      gatewayService?.updateGateways(updatedGateways)
+        // Determine routing mode from legacy model field
+        if (config.model === 'auto' || !config.model) {
+          set({ routingMode: 'auto-paid' })
+        } else {
+          set({ routingMode: 'manual', manualModelId: config.model })
+        }
+
+        // Sync to service
+        const { gatewayService } = get()
+        gatewayService?.updateGateways(updatedGateways)
     } catch (err) {
         // Tauri not available (browser mode) — sync apiKey from the zustand persisted store
         // so callWithFailover has a valid key without requiring Tauri

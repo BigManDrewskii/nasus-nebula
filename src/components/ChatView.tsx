@@ -336,15 +336,24 @@ interface ChatViewProps {
               }
 
             try {
+              // Resolve the actual connection params from the gateway system.
+              // cfg.apiKey / cfg.apiBase / cfg.provider are legacy store fields that are
+              // zeroed on rehydration (partialize strips apiKey). resolveConnection() reads
+              // from the gateway slice which is correctly populated by loadGatewayConfig.
+              const conn = useAppStore.getState().resolveConnection()
+              const resolvedApiKey = conn.apiKey || cfg.apiKey || ''
+              const resolvedApiBase = conn.apiBase || cfg.apiBase || 'https://openrouter.ai/api/v1'
+              const resolvedProvider = conn.provider || cfg.provider || 'openrouter'
+
               // Notify Rust backend for tracking (placeholder, but keeps state in sync)
               await tauriInvoke('run_agent', {
                 taskId,
                 messageId: agentMsgId,
                 userMessages: history,
-                apiKey: cfg.apiKey || '',
+                apiKey: resolvedApiKey,
                 model: modelToUse,
-                apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-                provider: cfg.provider || 'openrouter',
+                apiBase: resolvedApiBase,
+                provider: resolvedProvider,
                 workspacePath: cfg.workspacePath || '',
                 searchConfig: {
                   exaKey: cfg.exaKey || '',
@@ -370,10 +379,10 @@ interface ChatViewProps {
                 taskTitle,
                 messageId: agentMsgId,
                 userMessages: history,
-                apiKey: cfg.apiKey || '',
+                apiKey: resolvedApiKey,
                 model: modelToUse,
-                apiBase: cfg.apiBase || 'https://openrouter.ai/api/v1',
-                provider: cfg.provider || 'openrouter',
+                apiBase: resolvedApiBase,
+                provider: resolvedProvider,
                 searchConfig: {
                   exaKey: cfg.exaKey || '',
                 },
@@ -418,15 +427,21 @@ interface ChatViewProps {
           return
         }
 
-        // Require an API key for non-Ollama providers before firing any LLM calls
-        const cfg0 = configRef.current
-        const needsKey = cfg0.provider !== 'ollama' && !cfg0.apiKey?.trim()
-        if (needsKey) {
-          setRateLimitWarning('Add your OpenRouter API key in Settings before sending.')
-          setTimeout(() => setRateLimitWarning(null), 5000)
-          onOpenSettings()
-          return
-        }
+          // Require an API key for non-Ollama providers before firing any LLM calls.
+          // Use resolveConnection() — cfg0.apiKey is the legacy store field which is
+          // always '' after rehydration (partialize strips it). The gateway system
+          // (populated by loadGatewayConfig) holds the real key.
+          const cfg0 = configRef.current
+          const conn0 = useAppStore.getState().resolveConnection()
+          const effectiveKey = conn0.apiKey || cfg0.apiKey || ''
+          const effectiveProvider = conn0.provider || cfg0.provider || 'openrouter'
+          const needsKey = effectiveProvider !== 'ollama' && !effectiveKey.trim()
+          if (needsKey) {
+            setRateLimitWarning('Add your API key in Settings before sending.')
+            setTimeout(() => setRateLimitWarning(null), 5000)
+            onOpenSettings()
+            return
+          }
 
         // Rate limit: max 10 new agent runs per 60 seconds
       const now = Date.now()

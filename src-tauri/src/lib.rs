@@ -166,8 +166,32 @@ fn validate_path_no_traversal(base: &Path, path: &Path) -> Result<(), String> {
 // --- Commands ---
 
 #[tauri::command]
-async fn get_config(state: State<'_, AppState>) -> Result<Config, String> {
-    let config = state.config.lock().await;
+async fn get_config(app: AppHandle, state: State<'_, AppState>) -> Result<Config, String> {
+    let mut config = state.config.lock().await;
+    // If the in-memory key is empty, try to reload it from the persisted store.
+    // This handles the cold-start case where the process was restarted but the
+    // key was written on a previous run.
+    if config.api_key.is_empty() {
+        if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
+            if let Some(v) = store.get("apiKey") {
+                if let Some(k) = v.as_str() {
+                    if !k.is_empty() {
+                        config.api_key = k.to_string();
+                    }
+                }
+            }
+            // Also restore provider/model/apiBase from store if in-memory defaults are still set
+            if let Some(v) = store.get("provider") {
+                if let Some(s) = v.as_str() { if !s.is_empty() { config.provider = s.to_string(); } }
+            }
+            if let Some(v) = store.get("model") {
+                if let Some(s) = v.as_str() { if !s.is_empty() { config.model = s.to_string(); } }
+            }
+            if let Some(v) = store.get("apiBase") {
+                if let Some(s) = v.as_str() { if !s.is_empty() { config.api_base = s.to_string(); } }
+            }
+        }
+    }
     Ok(config.clone())
 }
 
@@ -194,9 +218,13 @@ async fn save_config(
         config.provider = provider.clone();
     }
 
-    // Persist to tauri-plugin-store so settings survive restarts
+    // Persist to tauri-plugin-store so settings survive restarts.
+    // This file lives in the app's private data directory (not web-accessible),
+    // so storing the key here is equivalent to localStorage on a desktop app.
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
-        // Never persist the raw API key to disk — the frontend's Zustand persist handles it
+        if !apiKey.is_empty() {
+            let _ = store.set("apiKey", serde_json::Value::String(apiKey));
+        }
         let _ = store.set("model", serde_json::Value::String(model));
         if !workspacePath.is_empty() {
             let _ = store.set("workspacePath", serde_json::Value::String(workspacePath));

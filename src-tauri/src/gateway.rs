@@ -360,18 +360,12 @@ pub fn get_gateways(
     app: tauri::AppHandle,
     state: tauri::State<'_, GatewayState>,
 ) -> Vec<GatewayConfig> {
-    // Try to load persisted gateway metadata from tauri-plugin-store
+    // Try to load persisted gateway config (including API keys) from tauri-plugin-store
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         if let Some(saved) = store.get("gateways") {
-            if let Ok(mut saved_gateways) =
+            if let Ok(saved_gateways) =
                 serde_json::from_value::<Vec<GatewayConfig>>(saved.clone())
             {
-                // Strip masked keys — real keys come from the zustand-persisted apiKey
-                for gw in &mut saved_gateways {
-                    if gw.api_key == "***" {
-                        gw.api_key = String::new();
-                    }
-                }
                 // Update in-memory manager to stay in sync
                 let mut manager = state.manager.lock().unwrap();
                 manager.update_gateways(saved_gateways.clone());
@@ -397,30 +391,12 @@ pub fn save_gateways(
         manager.update_gateways(gateways.clone());
     }
 
-    // Persist to tauri-plugin-store so gateways survive restarts
-    // Strip API keys — they are persisted separately via the zustand store
-    let safe_gateways: Vec<serde_json::Value> = gateways
-        .iter()
-        .map(|g| {
-            let mut v = serde_json::to_value(g).unwrap_or_default();
-            if let Some(obj) = v.as_object_mut() {
-                // Keep the key masked so we know the field exists, but don't store plaintext
-                let has_key = obj
-                    .get("apiKey")
-                    .and_then(|k| k.as_str())
-                    .map(|k| !k.is_empty())
-                    .unwrap_or(false);
-                obj.insert(
-                    "apiKey".to_string(),
-                    serde_json::Value::String(if has_key { "***" } else { "" }.to_string()),
-                );
-            }
-            v
-        })
-        .collect();
-
+    // Persist to tauri-plugin-store including API keys.
+    // nasus_config.json lives in the app's private data directory and is not
+    // web-accessible, so this is safe for a desktop app.
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
-        let _ = store.set("gateways", serde_json::Value::Array(safe_gateways));
+        let serialized = serde_json::to_value(&gateways).unwrap_or_default();
+        let _ = store.set("gateways", serialized);
         let _ = store.save();
     }
 }
