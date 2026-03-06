@@ -419,15 +419,33 @@ interface ChatViewProps {
       }
   }, [setError]) // eslint-disable-line react-hooks/exhaustive-deps
 
-      async function handleSend(content: string) {
-        if (!task) return
-        if (runningRef.current) {
-          queuedMsgRef.current = content
-          setQueuedMsg(content)
-          return
-        }
+        async function handleSend(content: string) {
+          if (!task) return
+          if (runningRef.current) {
+            queuedMsgRef.current = content
+            setQueuedMsg(content)
+            return
+          }
 
-          // Require an API key for non-Ollama providers before firing any LLM calls.
+          // Wait for gateway config to finish loading before checking the key.
+          // loadGatewayConfig is async (Tauri round-trip) — if the user sends
+          // immediately on cold start the key is not yet populated, causing a
+          // spurious "Add your API key" prompt or a 401 against the wrong gateway.
+          if (!useAppStore.getState().gatewayConfigReady) {
+            // Poll every 50ms up to 3 seconds
+            let waited = 0
+            await new Promise<void>((resolve) => {
+              const iv = setInterval(() => {
+                waited += 50
+                if (useAppStore.getState().gatewayConfigReady || waited >= 3000) {
+                  clearInterval(iv)
+                  resolve()
+                }
+              }, 50)
+            })
+          }
+
+            // Require an API key for non-Ollama providers before firing any LLM calls.
           // Use resolveConnection() — cfg0.apiKey is the legacy store field which is
           // always '' after rehydration (partialize strips it). The gateway system
           // (populated by loadGatewayConfig) holds the real key.

@@ -576,14 +576,18 @@ export const useAppStore = create<AppState>()(
               setProvider: (provider) => {
                 set({ provider })
 
-                // Only ensure the selected gateway is enabled — do NOT disable others.
-                // Disabling every other gateway breaks multi-gateway failover: if the
-                // primary is down, there would be no fallback available.
+                // Enable the selected gateway, disable all other non-Ollama gateways.
+                // Multiple enabled gateways cause resolveConnection() to pick the
+                // lowest-priority one (openrouter at priority 0) — which may have no
+                // key. Disabling non-active gateways ensures the correct one is used.
                 const { gateways, updateGateway } = get()
-                const target = gateways.find((g) => g.id === provider || g.type === provider)
-                if (target && !target.enabled) {
-                  updateGateway(target.id, { enabled: true })
-                }
+                gateways.forEach((g) => {
+                  if (g.id === provider || g.type === provider) {
+                    if (!g.enabled) updateGateway(g.id, { enabled: true })
+                  } else if (g.type !== 'ollama' && g.enabled) {
+                    updateGateway(g.id, { enabled: false })
+                  }
+                })
 
                 // Fetch models for the new provider
                 get().fetchModelsForProvider(provider)

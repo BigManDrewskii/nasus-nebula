@@ -40,6 +40,8 @@ export interface GatewaySlice {
   lastGatewayEvent: GatewayEvent | null
   openRouterModels: any[]
   modelsLastFetched: number
+  /** True once loadGatewayConfig has finished its first run. */
+  gatewayConfigReady: boolean
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
   lastGatewayEvent: null,
   openRouterModels: [],
   modelsLastFetched: 0,
+  gatewayConfigReady: false,
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -242,10 +245,13 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
           set({ routingMode: 'manual', manualModelId: config.model })
         }
 
-        // Sync to service
-        const { gatewayService } = get()
-        gatewayService?.updateGateways(updatedGateways)
-    } catch (err) {
+          // Sync to service
+          const { gatewayService } = get()
+          gatewayService?.updateGateways(updatedGateways)
+
+          // Mark config as loaded so handleSend can proceed
+          set({ gatewayConfigReady: true })
+      } catch (err) {
         // Tauri not available (browser mode) — sync apiKey from the zustand persisted store
         // so callWithFailover has a valid key without requiring Tauri
         try {
@@ -268,16 +274,18 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
                 }
                 return g
               })
-            set({ gateways: synced })
-            const { gatewayService } = get()
-            gatewayService?.updateGateways(synced)
+              set({ gateways: synced })
+              const { gatewayService } = get()
+              gatewayService?.updateGateways(synced)
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
-        }
-      console.error('[gateway] Failed to load config:', err)
-    }
-  },
+        console.error('[gateway] Failed to load config:', err)
+        // Mark ready even on error so the UI doesn't stay stuck waiting
+        set({ gatewayConfigReady: true })
+      }
+    },
 
   checkGatewayHealth: async (id) => {
     const { gatewayService } = get()
