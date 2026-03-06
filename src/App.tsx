@@ -49,59 +49,25 @@ function saveLayout(state: LayoutState) {
 
 function App() {
   const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, setBrowserActivityActive } = useAppStore(
-    useShallow((s) => ({
-      tasks: s.tasks,
-      activeTaskId: s.activeTaskId,
-      setActiveTaskId: s.setActiveTaskId,
-      addTask: s.addTask,
-      onboardingComplete: s.onboardingComplete,
-      workspacePath: s.workspacePath,
-      routerConfig: s.routerConfig,
-      settingsOpen: s.settingsOpen,
-      closeSettings: s.closeSettings,
-      openSettings: s.openSettings,
-      checkSidecarInstalled: s.checkSidecarInstalled,
-      setBrowserActivityActive: s.setBrowserActivityActive,
-    })),
-  )
-  
-  // Sync global workspace path to manager
-    useEffect(() => {
-      if (workspacePath) {
-        import('./agent/workspace/WorkspaceManager').then((mod) => {
-          const manager = mod.workspaceManager || mod.default
-          if (manager) {
-            manager.init(workspacePath)
-          }
-        }).catch(console.error)
-      }
-    }, [workspacePath])
+      useShallow((s) => ({
+        tasks: s.tasks,
+        activeTaskId: s.activeTaskId,
+        setActiveTaskId: s.setActiveTaskId,
+        addTask: s.addTask,
+        onboardingComplete: s.onboardingComplete,
+        workspacePath: s.workspacePath,
+        routerConfig: s.routerConfig,
+        settingsOpen: s.settingsOpen,
+        closeSettings: s.closeSettings,
+        openSettings: s.openSettings,
+        checkSidecarInstalled: s.checkSidecarInstalled,
+        setBrowserActivityActive: s.setBrowserActivityActive,
+      })),
+    )
 
-    // Initialize gateway service on startup
-    useEffect(() => {
-      const store = useAppStore.getState()
-
-      // gateways are NOT persisted, so gateways[0].apiKey = '' on every cold start.
-      // store.apiKey IS persisted via zustand. Seed it in synchronously so the first
-      // LLM call (which may happen before loadGatewayConfig resolves) has a valid key.
-      if (store.apiKey) {
-        store.updateGateway('openrouter', { apiKey: store.apiKey })
-      }
-
-      store.initGatewayService()
-      store.loadGatewayConfig().catch(console.error)
-
-      // Initialize config sections from saved layout
-      if (savedLayout.configSections) {
-        // Merge saved config sections into store
-        Object.entries(savedLayout.configSections).forEach(([key, value]) => {
-          store.configSections[key] = value
-        })
-      }
-    }, [])
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
 
-  // Layout state — loaded from localStorage
+  // Layout state — loaded from localStorage BEFORE any effects that reference it
   const [savedLayout] = useState<LayoutState>(loadLayout)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
@@ -114,23 +80,63 @@ function App() {
   // Ref for the right sidebar element, used by PanelDivider to toggle resize class
   const sidebarRef = useRef<HTMLDivElement>(null)
 
+  // Sync global workspace path to manager
+  useEffect(() => {
+    if (workspacePath) {
+      import('./agent/workspace/WorkspaceManager').then((mod) => {
+        const manager = mod.workspaceManager || mod.default
+        if (manager) {
+          manager.init(workspacePath)
+        }
+      }).catch(console.error)
+    }
+  }, [workspacePath])
+
+  // Initialize gateway service on startup
+  useEffect(() => {
+    const store = useAppStore.getState()
+
+    // gateways are NOT persisted, so gateways[0].apiKey = '' on every cold start.
+    // store.apiKey IS persisted via zustand. Seed it in synchronously so the first
+    // LLM call (which may happen before loadGatewayConfig resolves) has a valid key.
+    if (store.apiKey) {
+      store.updateGateway('openrouter', { apiKey: store.apiKey })
+    }
+
+    store.initGatewayService()
+    store.loadGatewayConfig().catch(console.error)
+
+    // Initialize config sections from saved layout
+    if (savedLayout.configSections) {
+      Object.entries(savedLayout.configSections).forEach(([key, value]) => {
+        store.configSections[key] = value
+      })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Check sidecar installation status on startup
   useEffect(() => {
     checkSidecarInstalled()
   }, [checkSidecarInstalled])
 
   // Listen for browser activity events and auto-open browser panel
+  // Use refs for the setters so the handler is never stale without re-registering
+  const outputVisibleRef = useRef(outputVisible)
+  const rightCollapsedRef = useRef(rightCollapsed)
+  useEffect(() => { outputVisibleRef.current = outputVisible }, [outputVisible])
+  useEffect(() => { rightCollapsedRef.current = rightCollapsed }, [rightCollapsed])
+
   useEffect(() => {
     const handler = () => {
       setBrowserActivityActive(true)
       // Auto-open and show browser panel
-      if (!outputVisible) setOutputVisible(true)
-      if (rightCollapsed) setRightCollapsed(false)
+      if (!outputVisibleRef.current) setOutputVisible(true)
+      if (rightCollapsedRef.current) setRightCollapsed(false)
       setRightActiveTab('browser')
     }
     window.addEventListener('nasus:browser-activity', handler as EventListener)
     return () => window.removeEventListener('nasus:browser-activity', handler as EventListener)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setBrowserActivityActive])
 
   // Responsive hook for window-size-aware sidebar behavior
     const responsive = useSidebarResponsive({
@@ -144,7 +150,7 @@ function App() {
       if (responsive.shouldAutoCollapseRight && !rightCollapsed) {
         setRightCollapsed(true)
       }
-    }, [responsive.shouldAutoCollapseRight])
+    }, [responsive.shouldAutoCollapseRight, rightCollapsed])
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()

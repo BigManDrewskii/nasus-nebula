@@ -58,6 +58,7 @@ export function OutputPanel({
   }
 
   // Smart tab auto-switching based on file creation events
+  // Registered once at mount — no dependency on files.length to avoid accumulating listeners
   useEffect(() => {
     const handleToolComplete = (e: Event) => {
       const detail = (e as CustomEvent<{
@@ -98,14 +99,16 @@ export function OutputPanel({
       }
     }
 
-    // Track file count changes
+    window.addEventListener('nasus:tool-complete', handleToolComplete)
+    return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track file count changes separately from the tool-complete listener
+  useEffect(() => {
     if (files.length > prevFileCountRef.current) {
       setNewContent(prev => ({ ...prev, files: true }))
     }
     prevFileCountRef.current = files.length
-
-    window.addEventListener('nasus:tool-complete', handleToolComplete)
-    return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
   }, [files.length])
 
   // Clear new content indicator when viewing the tab
@@ -150,7 +153,7 @@ export function OutputPanel({
               <span className="output-tab-badge">{t.count}</span>
             )}
             {/* New content indicator dot */}
-            {newContent[t.id] && !effectiveTab.includes(t.id) && (
+            {newContent[t.id] && effectiveTab !== t.id && (
               <span
                 style={{
                   position: 'absolute',

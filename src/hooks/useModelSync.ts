@@ -18,7 +18,7 @@ const log = createLogger('useModelSync')
 export function useModelSync() {
   const apiKey = useAppStore((s) => s.apiKey)
   const modelsLastFetched = useAppStore((s) => s.modelsLastFetched)
-  const openRouterModels = useAppStore((s) => s.openRouterModels)
+  // Read length via getState() inside the effect to avoid it being a dep that causes a refetch loop
   const setOpenRouterModels = useAppStore((s) => s.setOpenRouterModels)
 
   // Track the keys we last fetched with so we re-fetch on key change
@@ -37,13 +37,14 @@ export function useModelSync() {
         // Non-blocking: stale registry or static fallback remains usable
       })
 
-    // Fetch OpenRouter models
-    if (apiKey?.trim()) {
-      const keyChanged = lastFetchedKey.current !== apiKey.trim()
-      const cacheStale = Date.now() - modelsLastFetched > MODEL_REFRESH_INTERVAL_MS
-      const noCache = openRouterModels.length === 0
+      // Fetch OpenRouter models
+      if (apiKey?.trim()) {
+        const keyChanged = lastFetchedKey.current !== apiKey.trim()
+        const cacheStale = Date.now() - modelsLastFetched > MODEL_REFRESH_INTERVAL_MS
+        // Read current length from store snapshot to avoid adding it as a dep
+        const noCache = useAppStore.getState().openRouterModels.length === 0
 
-      if (keyChanged || cacheStale || noCache) {
+        if (keyChanged || cacheStale || noCache) {
         lastFetchedKey.current = apiKey.trim()
 
         fetchOpenRouterModels(apiKey.trim())
@@ -58,7 +59,6 @@ export function useModelSync() {
   }, [
     apiKey,
     modelsLastFetched,
-    openRouterModels.length,
     setOpenRouterModels,
   ])
 }

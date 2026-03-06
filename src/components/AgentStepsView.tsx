@@ -16,6 +16,9 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
 
   const rows = useMemo(() => buildRows(steps || []), [steps])
 
+  // Derive count once — used in header label and badge
+  const toolPairCount = useMemo(() => rows.filter(r => r.kind === 'tool_pair').length, [rows])
+
   // Find the most recently active / pending action for the live header label
   const liveLabel = useMemo(() => {
     for (let i = rows.length - 1; i >= 0; i--) {
@@ -61,34 +64,34 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
           )}
         </span>
 
-        {/* Current action label */}
-        <span style={{
-          flex: 1,
-          fontSize: 13,
-          fontWeight: 500,
-          color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-          lineHeight: 1.4,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {isStreaming ? liveLabel : `${rows.filter(r => r.kind === 'tool_pair').length} action${rows.filter(r => r.kind === 'tool_pair').length !== 1 ? 's' : ''} completed`}
-        </span>
-
-        {/* Step count badge */}
-        {rows.filter(r => r.kind === 'tool_pair').length > 0 && (
+          {/* Current action label */}
           <span style={{
-            fontSize: 10,
-            fontFamily: 'var(--font-mono)',
-            color: 'var(--tx-tertiary)',
-            background: 'rgba(255,255,255,0.06)',
-            padding: '1px 6px',
-            borderRadius: 4,
-            flexShrink: 0,
+            flex: 1,
+            fontSize: 13,
+            fontWeight: 500,
+            color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+            lineHeight: 1.4,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}>
-            {rows.filter(r => r.kind === 'tool_pair').length}
+            {isStreaming ? liveLabel : `${toolPairCount} action${toolPairCount !== 1 ? 's' : ''} completed`}
           </span>
-        )}
+
+          {/* Step count badge */}
+          {toolPairCount > 0 && (
+            <span style={{
+              fontSize: 10,
+              fontFamily: 'var(--font-mono)',
+              color: 'var(--tx-tertiary)',
+              background: 'rgba(255,255,255,0.06)',
+              padding: '1px 6px',
+              borderRadius: 4,
+              flexShrink: 0,
+            }}>
+              {toolPairCount}
+            </span>
+          )}
 
         <Pxi
           name={collapsed ? 'chevron-down' : 'chevron-up'}

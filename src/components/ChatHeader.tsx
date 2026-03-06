@@ -6,6 +6,8 @@
  */
 
 import type { Task } from '../types'
+import type { TaskRouterState } from '../store'
+import type { GatewayHealth } from '../agent/gateway/gatewayTypes'
 import { Pxi } from './Pxi'
 import { estimateCost } from '../lib/costEstimate'
 
@@ -135,8 +137,8 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     workspaceFileCount?: number
     onShowOutput?: () => void
     onStop: () => void
-    taskRouterState?: any
-    gatewayHealth?: any[]
+    taskRouterState?: TaskRouterState | null
+    gatewayHealth?: GatewayHealth[]
     messageCount?: number
     userTurns?: number
     rightCollapsed?: boolean
@@ -287,7 +289,7 @@ Requests: ${health.requestCount || 0}
             title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
             className="header-sidebar-toggle"
           >
-            <Pxi name={rightCollapsed ? 'columns' : 'columns'} size={14} />
+            <Pxi name={rightCollapsed ? 'columns' : 'angle-right'} size={14} />
           </button>
         )}
 

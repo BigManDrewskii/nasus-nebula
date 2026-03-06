@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { tauriInvoke } from '../tauri'
 import { runWebAgent, stopWebAgent } from '../agent/index'
 import type { Task, Message, LlmMessage } from '../types'
@@ -31,42 +32,79 @@ interface ChatViewProps {
   }
   
   export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
-    const {
-      messages: allMessages,
-      getMessages,
-      getRawHistory,
-      addMessage,
-      setStreaming,
-      setError,
-      appendRawHistory,
-      updateTaskTitle,
-      updateTaskStatus,
-      apiKey,
-      model,
-      workspacePath,
-      apiBase,
-      provider,
-      exaKey,
-      maxIterations,
-      setWorkspacePath,
-      addRecentWorkspacePath,
-      enableVerification,
-      routerConfig,
-      routingMode,
-      pendingPlan,
-      approvePlan,
-      rejectPlan,
-      currentPlan,
-      currentPhase,
-      currentStep,
-      setSandboxStatus,
-      sandboxStatus: globalSandboxStatus,
-      extensionConnected,
-      extensionVersion,
-      gatewayHealth,
-      lastGatewayEvent,
-      addStep,
-    } = useAppStore()
+  const {
+    messages: allMessages,
+    getMessages,
+    getRawHistory,
+    addMessage,
+    setStreaming,
+    setError,
+    appendRawHistory,
+    updateTaskTitle,
+    updateTaskStatus,
+    apiKey,
+    model,
+    workspacePath,
+    apiBase,
+    provider,
+    exaKey,
+    maxIterations,
+    setWorkspacePath,
+    addRecentWorkspacePath,
+    enableVerification,
+    routerConfig,
+    routingMode,
+    pendingPlan,
+    approvePlan,
+    rejectPlan,
+    currentPlan,
+    currentPhase,
+    currentStep,
+    setSandboxStatus,
+    sandboxStatus: globalSandboxStatus,
+    extensionConnected,
+    extensionVersion,
+    gatewayHealth,
+    lastGatewayEvent,
+    addStep,
+  } = useAppStore(
+    useShallow((s) => ({
+      messages: s.messages,
+      getMessages: s.getMessages,
+      getRawHistory: s.getRawHistory,
+      addMessage: s.addMessage,
+      setStreaming: s.setStreaming,
+      setError: s.setError,
+      appendRawHistory: s.appendRawHistory,
+      updateTaskTitle: s.updateTaskTitle,
+      updateTaskStatus: s.updateTaskStatus,
+      apiKey: s.apiKey,
+      model: s.model,
+      workspacePath: s.workspacePath,
+      apiBase: s.apiBase,
+      provider: s.provider,
+      exaKey: s.exaKey,
+      maxIterations: s.maxIterations,
+      setWorkspacePath: s.setWorkspacePath,
+      addRecentWorkspacePath: s.addRecentWorkspacePath,
+      enableVerification: s.enableVerification,
+      routerConfig: s.routerConfig,
+      routingMode: s.routerConfig.mode,
+      pendingPlan: s.pendingPlan,
+      approvePlan: s.approvePlan,
+      rejectPlan: s.rejectPlan,
+      currentPlan: s.currentPlan,
+      currentPhase: s.currentPhase,
+      currentStep: s.currentStep,
+      setSandboxStatus: s.setSandboxStatus,
+      sandboxStatus: s.sandboxStatus,
+      extensionConnected: s.extensionConnected,
+      extensionVersion: s.extensionVersion,
+      gatewayHealth: s.gatewayHealth,
+      lastGatewayEvent: s.lastGatewayEvent,
+      addStep: s.addStep,
+    })),
+  )
 
     // Monitor gateway failovers and show notifications
     useEffect(() => {
@@ -101,7 +139,13 @@ interface ChatViewProps {
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
     const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
     // Routing preview from store
-    const { routingPreview, setRoutingPreview, taskRouterState } = useAppStore()
+    const { routingPreview, setRoutingPreview, taskRouterState } = useAppStore(
+      useShallow((s) => ({
+        routingPreview: s.routingPreview,
+        setRoutingPreview: s.setRoutingPreview,
+        taskRouterState: s.taskRouterState,
+      }))
+    )
     // Cost badge derived from live task router state
     const taskRouterEntry = task ? (taskRouterState[task.id] ?? null) : null
     const taskCostBadge = taskRouterEntry && taskRouterEntry.callCount > 0
@@ -495,7 +539,7 @@ interface ChatViewProps {
   // Keep ref always pointing to the latest handleSend to avoid stale closures
   handleSendRef.current = handleSend
 
-  async function handleRetry(failedMsgId: string) {
+        async function handleRetry(failedMsgId: string) {
     if (!task || runningRef.current) return
     const history = getRawHistory(task.id)
     if (history.length === 0) return

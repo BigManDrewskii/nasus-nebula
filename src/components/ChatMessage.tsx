@@ -440,6 +440,14 @@ export const ChatMessage = memo(function ChatMessage({ message, onRetry }: { mes
   const nextStepsLen = next.steps?.length ?? 0
   if (prevStepsLen !== nextStepsLen) return false
 
+  // Last step content changed (e.g. tool_result embedded into tool_call, or search_status phase update)
+  // Compare by reference so any mutation to the last step triggers a re-render
+  if (prevStepsLen > 0 && nextStepsLen > 0) {
+    const prevLast = prev.steps![prevStepsLen - 1]
+    const nextLast = next.steps![nextStepsLen - 1]
+    if (prevLast !== nextLast) return false
+  }
+
   // For user messages: content change triggers re-render
   if (prev.author === 'user' && prev.content !== next.content) return false
 

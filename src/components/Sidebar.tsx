@@ -28,7 +28,8 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
   }
 
   for (const task of tasks.filter((t) => !t.pinned)) {
-    const d   = new Date(task.createdAt)
+    // createdAt is a Date at runtime but may be a string after zustand rehydration from JSON
+    const d = new Date(task.createdAt)
     const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
     if      (day >= today)     groups['Today'].push(task)
     else if (day >= yesterday) groups['Yesterday'].push(task)

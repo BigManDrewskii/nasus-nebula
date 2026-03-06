@@ -144,12 +144,6 @@ export function useAttachments(): AttachmentsState {
 
   const addFiles = useCallback(async (files: File[]) => {
     setAttachments((prev) => {
-      const remaining = MAX_FILES - prev.length
-      if (remaining <= 0) return prev
-      return prev // will be updated after async processing below
-    })
-
-    setAttachments((prev) => {
       const slotsLeft = MAX_FILES - prev.length
       if (slotsLeft <= 0) return prev
 

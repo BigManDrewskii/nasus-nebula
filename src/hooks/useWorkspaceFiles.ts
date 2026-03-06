@@ -1,9 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 export interface WorkspaceFile {
   name: string
   content: string
   ext: string
+}
+
+// Minimal interface matching what we use from WorkspaceManager
+interface IWorkspaceManager {
+  listFiles(taskId: string): Promise<{ path: string }[]>
+  readFile(taskId: string, path: string): Promise<string | null>
 }
 
 /**
@@ -13,6 +19,8 @@ export interface WorkspaceFile {
  */
 export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
   const [files, setFiles] = useState<WorkspaceFile[]>([])
+  // Cache the manager reference so we don't re-import on every event
+  const managerRef = useRef<IWorkspaceManager | null>(null)
 
   useEffect(() => {
     if (!taskId) {
@@ -23,11 +31,19 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
     const id = taskId
     let isMounted = true
 
+    // Resolve the manager once and cache it
+    const getManager = async () => {
+      if (!managerRef.current) {
+        const module = await import('../agent/workspace/WorkspaceManager')
+        managerRef.current = module.workspaceManager
+      }
+      return managerRef.current
+    }
+
     const updateFiles = async () => {
       try {
-        const module = await import('../agent/workspace/WorkspaceManager')
-        const manager = module.workspaceManager
-        
+        const manager = await getManager()
+
         if (!manager) {
           console.warn('[useWorkspaceFiles] WorkspaceManager not found in module')
           return
