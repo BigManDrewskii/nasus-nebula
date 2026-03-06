@@ -60,10 +60,9 @@ export class RateLimiter {
     const oldMax = this.config.maxRequests
     this.config = { ...this.config, ...config }
 
-    // If capacity increased, add tokens proportionally
+    // If capacity increased, add the delta tokens so the bucket reflects the new max
     if (this.config.maxRequests > oldMax) {
-      const ratio = this.tokens / oldMax
-      this.tokens = Math.min(this.config.maxRequests, this.config.maxRequests * ratio)
+      this.tokens = Math.min(this.config.maxRequests, this.tokens + (this.config.maxRequests - oldMax))
     }
   }
 
@@ -95,10 +94,12 @@ export class RateLimiter {
     const startTime = Date.now()
     this.refill()
 
-    // If no tokens available, wait for refill
-    if (this.tokens < 1) {
+    // Wait until a token is available.
+    // Using `while` instead of `if` ensures concurrent callers that both wake
+    // from sleep re-check availability rather than racing to consume the same token.
+    while (this.tokens < 1) {
       const waitTime = this.estimateWaitTime()
-      await sleep(waitTime)
+      await sleep(Math.max(waitTime, 10)) // minimum 10ms to avoid busy-spin
       this.refill()
     }
 

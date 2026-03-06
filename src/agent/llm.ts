@@ -4,9 +4,10 @@
  */
 
 import { streamText, generateText } from 'ai';
-import { getUnifiedModel } from './gateway/provider';
+import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
+import { findModelById } from './gateway/modelRegistry';
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -60,13 +61,27 @@ export interface LlmResponse {
 // DeepSeek R1 (pre-0528) does not support function/tool calling.
 // Sending tools: [...] to the API returns HTTP 400.
 // R1-0528+ does support tools. The free variant (:free) maps to the same checkpoint.
-// We strip tools for all R1 variants EXCEPT the confirmed tool-capable checkpoints.
+//
+// IMPORTANT: 'deepseek-reasoner' is the model ID for BOTH R1 and R1-0528 on
+// api.deepseek.com. We must check the model registry supportsTools field first
+// before falling back to name-based heuristics to handle this ambiguity.
 function modelSupportsTools(model: string): boolean {
+  // Registry lookup takes precedence — it has the definitive supportsTools value
+  // for each canonical model, including the ambiguous deepseek-reasoner case.
+  const registryEntry = findModelById(model)
+  if (registryEntry && registryEntry.supportsTools !== undefined) {
+    return registryEntry.supportsTools
+  }
+
+  // Fallback: string-based heuristics for models not in the registry
   const id = model.toLowerCase()
-  // Explicitly tool-capable R1 checkpoints
+  // Explicitly tool-capable R1 checkpoints (OpenRouter slugs)
   if (id.includes('deepseek-r1-0528')) return true
-  // Base R1 (all sub-variants) — no tools
-  if (id.includes('deepseek-r1') || id.includes('deepseek-reasoner')) return false
+  // Base R1 (all sub-variants) — no tools (pre-0528)
+  if (id.includes('deepseek-r1')) return false
+  // deepseek-reasoner without a version suffix: conservatively disable tools
+  // because we can't tell if it's R1 or R1-0528 without registry context.
+  if (id === 'deepseek-reasoner' || id.endsWith('/deepseek-reasoner')) return false
   // All other models default to supporting tools
   return true
 }
@@ -85,7 +100,7 @@ export async function streamCompletion(
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
     const unifiedModel = getUnifiedModel({
-    provider: provider as 'openrouter' | 'ollama' | 'custom',
+    provider: provider as ProviderConfig['provider'],
     apiKey,
     apiBase,
     gatewayId: cb.gatewayId,
@@ -98,21 +113,24 @@ export async function streamCompletion(
 
   // Convert LlmMessage to AI SDK message format
   const coreMessages: any[] = messages.map(m => {
-    if (m.role === 'tool') {
-      // If tools are disabled for this model, convert tool results to plain user messages
-      // so the conversation history remains valid without function-call scaffolding
-      if (!toolsEnabled) {
+      if (m.role === 'tool') {
+        // If tools are disabled for this model, convert tool results to plain user messages
+        // so the conversation history remains valid without function-call scaffolding
+        if (!toolsEnabled) {
+          return {
+            role: 'user',
+            content: `[Tool result] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`,
+          } as any
+        }
+        // Vercel AI SDK v4 CoreToolMessage requires content as ToolResultPart[]:
+        // { type: 'tool-result', toolCallId: string, result: unknown }
+        const toolCallId = m.tool_call_id || ''
+        const resultText = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
         return {
-          role: 'user',
-          content: `[Tool result] ${m.content || ''}`,
-        } as any
+          role: 'tool',
+          content: [{ type: 'tool-result', toolCallId, result: resultText }],
+        } as any;
       }
-      return {
-        role: 'tool',
-        content: Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content || '' }],
-        tool_call_id: m.tool_call_id || '',
-      } as any;
-    }
     if (m.role === 'assistant' && !toolsEnabled) {
       // Strip tool_calls and reasoning_content from assistant messages when tools are disabled
       return {
@@ -120,11 +138,28 @@ export async function streamCompletion(
         content: m.content || '',
       } as any
     }
-    return {
-      role: m.role as any,
-      content: m.content || '',
-      tool_calls: m.tool_calls as any,
-    };
+      // Assistant message with tool calls: map to Vercel AI SDK v4 CoreAssistantMessage format.
+      // The SDK uses toolInvocations[] not tool_calls[] for history messages.
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        return {
+          role: 'assistant',
+          content: m.content || '',
+          toolInvocations: m.tool_calls.map((tc: ToolCall) => {
+            let args: unknown = {}
+            try { args = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
+            return {
+              state: 'call' as const,
+              toolCallId: tc.id,
+              toolName: tc.function.name,
+              args,
+            }
+          }),
+        } as any
+      }
+      return {
+        role: m.role as any,
+        content: m.content || '',
+      };
   });
 
   // Convert ToolDefinition to AI SDK Tool
@@ -238,7 +273,7 @@ export async function chatOnce(
   extraHeaders?: Record<string, string>,
 ): Promise<string> {
   const unifiedModel = getUnifiedModel({
-    provider: provider as 'openrouter' | 'ollama' | 'custom',
+    provider: provider as ProviderConfig['provider'],
     apiKey,
     apiBase,
     extraHeaders,
@@ -272,7 +307,7 @@ export async function chatJson<T>(
   extraHeaders?: Record<string, string>,
 ): Promise<T | null> {
   const unifiedModel = getUnifiedModel({
-    provider: provider as 'openrouter' | 'ollama' | 'custom',
+    provider: provider as ProviderConfig['provider'],
     apiKey,
     apiBase,
     extraHeaders,
@@ -466,14 +501,19 @@ export function cheapestModel(models: OpenRouterModel[]): string {
  */
 export function powerfulModel(models: OpenRouterModel[]): string {
   const powerfulIds = [
+    // Prefer latest Claude Sonnet (tool-capable, strong coding)
     'anthropic/claude-sonnet-4-20250514',
-    'anthropic/claude-3.7-sonnet',
+    'anthropic/claude-sonnet-4',
     'anthropic/claude-3.5-sonnet',
+    // GPT-4.1 family (1M context, strong tools)
     'openai/gpt-4.1',
-    'openai/o3-mini',
+    'openai/o4-mini',
+    'openai/o3',
+    // Gemini 2.5 Pro
     'google/gemini-2.5-pro-preview',
-    'google/gemini-2.0-pro-exp-02-05:free',
+    'google/gemini-2.5-pro',
     'google/gemini-2.0-flash-001',
+    // DeepSeek (good coding fallback)
     'deepseek/deepseek-r1-0528',   // R1-0528: reasoning + tool calling
     'deepseek/deepseek-chat',      // V3: strong coding, cheap
   ]

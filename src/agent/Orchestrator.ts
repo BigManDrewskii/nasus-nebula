@@ -158,16 +158,25 @@ export class AgentOrchestrator {
     this.emitPlanApproved(params.taskId, params.messageId, plan)
 
     // Inject plan context into the final user message (not as a system role,
-    // which breaks Anthropic providers that reject mid-conversation system messages)
+    // which breaks Anthropic providers that reject mid-conversation system messages).
+    // Find the LAST user-role message specifically — the last element of userMessages
+    // may be a tool result on task resume, which would corrupt it.
     const planContext = this.buildPlanContext(plan)
-    const lastMsg = params.userMessages[params.userMessages.length - 1]
+    const lastUserIdx = (() => {
+      for (let i = params.userMessages.length - 1; i >= 0; i--) {
+        if (params.userMessages[i].role === 'user') return i
+      }
+      return params.userMessages.length - 1
+    })()
+    const targetMsg = params.userMessages[lastUserIdx]
     const augmentedLastMsg: LlmMessage = {
       role: 'user',
-      content: (typeof lastMsg?.content === 'string' ? lastMsg.content : '') + '\n\n' + planContext,
+      content: (typeof targetMsg?.content === 'string' ? targetMsg.content : '') + '\n\n' + planContext,
     }
     const messagesWithPlan: LlmMessage[] = [
-      ...params.userMessages.slice(0, -1),
+      ...params.userMessages.slice(0, lastUserIdx),
       augmentedLastMsg,
+      ...params.userMessages.slice(lastUserIdx + 1),
     ]
 
     const executionParams: ExecutionConfigParams = {

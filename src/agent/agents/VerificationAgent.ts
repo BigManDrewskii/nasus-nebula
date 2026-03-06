@@ -14,6 +14,7 @@ import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
 import { chatOnceViaGateway } from '../llm'
 import { getWorkspace } from '../tools'
+import { useAppStore } from '../../store'
 
 /**
  * Verification context parameters.
@@ -225,12 +226,45 @@ export class VerificationAgent extends BaseAgent {
 
   /**
    * Check if code has balanced brackets.
+   *
+   * Skips characters inside string literals and line comments to avoid
+   * false-positives from brackets in string values like `const x = "{"`.
    */
   private hasBalancedBrackets(content: string): boolean {
     const stack: string[] = []
     const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' }
+    let i = 0
 
-    for (const char of content) {
+    while (i < content.length) {
+      const char = content[i]
+
+      // Skip single-line comments
+      if (char === '/' && content[i + 1] === '/') {
+        while (i < content.length && content[i] !== '\n') i++
+        continue
+      }
+
+      // Skip multi-line comments
+      if (char === '/' && content[i + 1] === '*') {
+        i += 2
+        while (i < content.length - 1 && !(content[i] === '*' && content[i + 1] === '/')) i++
+        i += 2
+        continue
+      }
+
+      // Skip string literals (single-quoted, double-quoted, template)
+      if (char === '"' || char === "'" || char === '`') {
+        const quote = char
+        i++
+        while (i < content.length) {
+          if (content[i] === '\\') { i += 2; continue } // escape
+          if (content[i] === quote) { i++; break }
+          i++
+        }
+        continue
+      }
+
+      // Check brackets (outside strings/comments)
       if (char in pairs) {
         stack.push(char)
       } else if (char === ')' || char === ']' || char === '}') {
@@ -239,6 +273,8 @@ export class VerificationAgent extends BaseAgent {
           return false
         }
       }
+
+      i++
     }
 
     return stack.length === 0
@@ -342,9 +378,14 @@ export class VerificationAgent extends BaseAgent {
    * Use LLM to analyze execution for deeper issues.
    */
   private async analyzeWithLLM(context: VerificationContext): Promise<AgentIssue[]> {
-    const { executionOutput, plan, model } = context
+    const { executionOutput, plan } = context
 
-    const verifyModel: string = model || 'anthropic/claude-3-haiku'
+    // Resolve a gateway-aware model for verification.
+    // context.model is typed on AgentContext but may be undefined at call sites
+    // (e.g. ExecutionAgent.runVerification). Fall through to resolveConnection() so
+    // we always pick a model valid for the active gateway rather than an OR hardcode.
+    const conn = useAppStore.getState().resolveConnection()
+    const verifyModel: string = conn.model || 'anthropic/claude-3-haiku'
 
     const prompt = `You are a Verification Agent. Review the following execution results and identify any issues.
 

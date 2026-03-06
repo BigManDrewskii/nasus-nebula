@@ -82,7 +82,8 @@ export class PermissionSystem {
   async checkPermission(
     tool: string,
     args: Record<string, any>,
-    taskId: string
+    taskId: string,
+    signal?: AbortSignal,
   ): Promise<{ approved: boolean; reason?: string }> {
     const level = this.state.toolLevels[tool] || this.state.defaultLevel
 
@@ -91,12 +92,12 @@ export class PermissionSystem {
       if (tool === 'bash' || tool === 'bash_execute') {
         const command = args.command || args.script || ''
         if (this.isDangerous(command)) {
-          return this.requestApproval(tool, args, taskId, 'Dangerous command detected')
+          return this.requestApproval(tool, args, taskId, 'Dangerous command detected', signal)
         }
         if (this.state.autoApproveSafe && this.isSafe(command)) {
           return { approved: true }
         }
-        return this.requestApproval(tool, args, taskId, 'Bash execution requires confirmation')
+        return this.requestApproval(tool, args, taskId, 'Bash execution requires confirmation', signal)
       }
       return { approved: true }
     }
@@ -106,7 +107,7 @@ export class PermissionSystem {
     }
 
     // Default to 'ask'
-    return this.requestApproval(tool, args, taskId)
+    return this.requestApproval(tool, args, taskId, undefined, signal)
   }
 
   /**
@@ -125,12 +126,19 @@ export class PermissionSystem {
 
   /**
    * Request user approval for a tool call via the UI.
+   *
+   * Resolves automatically after APPROVAL_TIMEOUT_MS (default 60s) by
+   * denying dangerous commands and allowing safe ones, so the agent never
+   * hangs indefinitely. Wired to AbortSignal so task cancellation unblocks it.
    */
+  private static readonly APPROVAL_TIMEOUT_MS = 60_000
+
   private async requestApproval(
     tool: string,
     args: Record<string, any>,
     taskId: string,
-    reason?: string
+    reason?: string,
+    signal?: AbortSignal,
   ): Promise<{ approved: boolean }> {
     return new Promise((resolve) => {
       // Dispatch event for UI to show approval modal
@@ -154,13 +162,36 @@ export class PermissionSystem {
         }
       }
 
+      const handleAbort = () => {
+        cleanup()
+        resolve({ approved: false })
+      }
+
+      // Auto-deny after timeout — never hang the agent loop
+      const timeoutId = setTimeout(() => {
+        cleanup()
+        // Auto-deny dangerous commands; auto-approve safe ones on timeout
+        const command = args.command || args.script || ''
+        resolve({ approved: this.isSafe(command) && !this.isDangerous(command) })
+      }, PermissionSystem.APPROVAL_TIMEOUT_MS)
+
       const cleanup = () => {
+        clearTimeout(timeoutId)
         window.removeEventListener(`nasus:tool-approved-${taskId}`, handleApprove)
         window.removeEventListener(`nasus:tool-rejected-${taskId}`, handleReject)
+        signal?.removeEventListener('abort', handleAbort)
       }
 
       window.addEventListener(`nasus:tool-approved-${taskId}`, handleApprove)
       window.addEventListener(`nasus:tool-rejected-${taskId}`, handleReject)
+      signal?.addEventListener('abort', handleAbort)
+
+      // If already aborted, resolve immediately
+      if (signal?.aborted) {
+        cleanup()
+        resolve({ approved: false })
+        return
+      }
 
       // Update store to show the approval UI
       useAppStore.getState().setPendingToolApproval({ tool, args, reason, taskId })

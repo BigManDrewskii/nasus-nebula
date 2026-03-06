@@ -89,18 +89,15 @@ export class WorkspaceManager {
     const taskHistory = this.getHistory(taskId)
     const versions = taskHistory.get(filePath)
     if (!versions || versions.length === 0) return null
-    
-    // The top of the stack is the CURRENT version, so we need the one before it
-    // Wait, if we just wrote a file, the current version is in the cache.
-    // Let's say we have [v1, v2]. Current is v2. Undo should restore v1.
-    versions.pop() // Remove current
-    const previous = versions.length > 0 ? versions[versions.length - 1] : null
-    
-    if (previous !== null) {
-      await this.writeFile(taskId, filePath, previous, true) // Pass true to skip history push
-      return previous
-    }
-    return null
+
+    // The top of the stack is the CURRENT version, so we need the one before it.
+    // [v1, v2] → pop v2 → restore v1.
+    versions.pop() // Remove current version
+    const previous = versions.length > 0 ? versions[versions.length - 1] : ''
+
+    // Write previous version (or empty string if all history exhausted)
+    await this.writeFile(taskId, filePath, previous, true) // skipHistoryPush=true
+    return previous
   }
 
   /**

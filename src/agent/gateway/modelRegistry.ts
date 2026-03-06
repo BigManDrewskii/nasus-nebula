@@ -76,8 +76,13 @@ export const MODEL_REGISTRY: GatewayModel[] = [
   {
     canonicalName: 'DeepSeek V3.2',
     ids: {
+      // On OpenRouter the V3.2 checkpoint has its own slug
       openrouter: 'deepseek/deepseek-v3.2',
-      deepseek: 'deepseek-chat',
+      // On api.deepseek.com there is only one "chat" endpoint; it always resolves to the
+      // latest V3 checkpoint (currently 0324). There is no separate v3.2 endpoint.
+      // We intentionally leave the deepseek direct ID absent so that the registry
+      // never maps two separate entries to the same deepseek-chat string — which would
+      // cause translateModelId() to non-deterministically pick either entry.
     },
     freeOn: {},
     tier: 'coding',
@@ -90,11 +95,12 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     canonicalName: 'DeepSeek V3',
     ids: {
       openrouter: 'deepseek/deepseek-chat',
+      // deepseek-chat is the only V3-family model ID on api.deepseek.com
       deepseek: 'deepseek-chat',
     },
     freeOn: {},
     tier: 'coding',
-    contextWindow: 128_000,
+    contextWindow: 163_000,
     inputCostPer1M: 0.27,
     outputCostPer1M: 1.10,
     supportsTools: true,
@@ -324,19 +330,30 @@ export function selectModel(
   }
 
   if (mode === 'auto-paid') {
-    // Pick the best reasoning model, preferring larger context windows and lower cost
-    const reasoning = available
-      .filter((m) => m.tier === 'reasoning')
+    // Pick the best paid reasoning model. Free models (inputCostPer1M === 0) are excluded
+    // so that dynamic zero-cost models don't crowd out quality paid models in auto-paid mode.
+    const paidReasoning = available
+      .filter((m) => m.tier === 'reasoning' && m.inputCostPer1M > 0)
       .sort((a, b) => a.inputCostPer1M - b.inputCostPer1M)
 
-    if (reasoning.length > 0) {
-      const pick = reasoning[0]
+    if (paidReasoning.length > 0) {
+      const pick = paidReasoning[0]
       return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
     }
 
-    // No reasoning models — pick cheapest coding model
+    // Fall back to any reasoning model (including free ones as a last resort)
+    const anyReasoning = available
+      .filter((m) => m.tier === 'reasoning')
+      .sort((a, b) => b.inputCostPer1M - a.inputCostPer1M) // prefer more expensive (higher quality)
+
+    if (anyReasoning.length > 0) {
+      const pick = anyReasoning[0]
+      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
+    }
+
+    // No reasoning models — pick cheapest paid coding model
     const coding = available
-      .filter((m) => m.tier === 'coding')
+      .filter((m) => m.tier === 'coding' && m.inputCostPer1M > 0)
       .sort((a, b) => a.inputCostPer1M - b.inputCostPer1M)
 
     if (coding.length > 0) {
@@ -344,7 +361,7 @@ export function selectModel(
       return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
     }
 
-    // Fallback: cheapest available
+    // Final fallback: cheapest available (may be free)
     const cheapest = [...available].sort((a, b) => a.inputCostPer1M - b.inputCostPer1M)
     return { modelId: (cheapest[0].ids as any)[gatewayType]!, model: cheapest[0] }
   }

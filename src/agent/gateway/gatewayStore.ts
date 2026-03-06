@@ -231,29 +231,30 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       const { gatewayService } = get()
       gatewayService?.updateGateways(updatedGateways)
     } catch (err) {
-      // Tauri not available (browser mode) — sync apiKey from the zustand persisted store
-      // so callWithFailover has a valid key without requiring Tauri
-      try {
-        const { useAppStore } = await import('../../store')
-        const appState = useAppStore.getState()
-        if (appState.apiKey) {
-          const { gateways } = get()
-          // Sync API key to ALL gateways that require one (not just OpenRouter)
-          // This ensures all configured providers can attempt authentication
-          const synced = gateways.map((g) => {
-            // Ollama and local-only gateways don't need an API key
-            if (g.type === 'ollama') return g
-            // For all other gateway types (openrouter, litellm, direct, custom),
-            // sync the API key. Users can override per-gateway in settings.
-            return { ...g, apiKey: appState.apiKey }
-          })
-          set({ gateways: synced })
-          const { gatewayService } = get()
-          gatewayService?.updateGateways(synced)
+        // Tauri not available (browser mode) — sync apiKey from the zustand persisted store
+        // so callWithFailover has a valid key without requiring Tauri
+        try {
+          const { useAppStore } = await import('../../store')
+          const appState = useAppStore.getState()
+          if (appState.apiKey) {
+            const { gateways } = get()
+            // Only sync the persisted apiKey to the gateway whose type matches the
+            // persisted provider. Blasting it to ALL non-ollama gateways would write
+            // an OpenRouter key into DeepSeek/Requesty/custom slots, causing 401s.
+            const activeProvider = appState.provider || 'openrouter'
+            const synced = gateways.map((g) => {
+              if (g.type === activeProvider && g.type !== 'ollama') {
+                return { ...g, apiKey: appState.apiKey }
+              }
+              return g
+            })
+            set({ gateways: synced })
+            const { gatewayService } = get()
+            gatewayService?.updateGateways(synced)
+          }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
-      }
       console.error('[gateway] Failed to load config:', err)
     }
   },
@@ -274,15 +275,26 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
       .filter((g) => g.enabled)
       .sort((a, b) => a.priority - b.priority)[0]
 
+    // Sensible per-gateway fallback model IDs when auto-selection produces nothing
+    const FALLBACK_MODELS: Partial<Record<string, string>> = {
+      openrouter: 'anthropic/claude-sonnet-4-20250514',
+      requesty: 'anthropic/claude-sonnet-4-20250514',
+      deepseek: 'deepseek-chat',
+      ollama: 'llama3.3:70b',
+      custom: '',
+    }
+
     if (!primary) {
       return {
         apiBase: 'https://openrouter.ai/api/v1',
         apiKey: '',
-        model: 'anthropic/claude-sonnet-4-20250514',
+        model: FALLBACK_MODELS['openrouter']!,
         provider: 'openrouter',
         extraHeaders: {},
       }
     }
+
+    const fallbackModel = FALLBACK_MODELS[primary.type] ?? ''
 
     // Resolve model ID
     let modelId: string
@@ -296,7 +308,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
     } else {
       // Auto-select based on mode and gateway
       const selection = selectModel(routingMode, primary.type, manualModelId, get().openRouterModels)
-      modelId = selection?.modelId ?? 'anthropic/claude-sonnet-4-20250514'
+      modelId = selection?.modelId ?? fallbackModel
     }
 
     return {

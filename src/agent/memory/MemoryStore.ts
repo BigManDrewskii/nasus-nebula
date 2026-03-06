@@ -170,11 +170,24 @@ export class LocalVectorStore implements VectorStore {
 
   async deleteVector(id: string): Promise<void> {
     this.vectors.delete(id)
+    // Voy's remove() is unreliable across versions and silently no-ops in many builds,
+    // leaving stale entries in the WASM heap. Rebuild the entire index from the
+    // remaining vectors instead — this is the only safe way to evict an entry.
     const voy = await this.getVoy()
     if (voy) {
       try {
-        voy.remove({ embeddings: [{ id, title: id, url: id, embeddings: [] }] })
-      } catch { /* ok */ }
+        voy.clear()
+        if (this.vectors.size > 0) {
+          voy.add({
+            embeddings: Array.from(this.vectors.entries()).map(([vid, vec]) => ({
+              id: vid,
+              title: vid,
+              url: vid,
+              embeddings: vec,
+            })),
+          })
+        }
+      } catch { /* ok — cosine fallback will handle searches */ }
     }
   }
 

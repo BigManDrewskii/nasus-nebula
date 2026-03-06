@@ -57,6 +57,14 @@ export abstract class BaseAgent implements Agent {
    * Template method that sets up state, calls doExecute, and handles cleanup.
    */
   async execute(context: AgentContext): Promise<AgentResult> {
+    // Reset state when re-entering from a terminal state (FINISHED or ERROR).
+    // The shared singleton agents are reused across tasks; without this reset the
+    // history array grows unboundedly and the next transition(RUNNING) throws because
+    // FINISHED → RUNNING is not a valid transition.
+    if (this.stateManager.current === AgentState.FINISHED || this.stateManager.current === AgentState.ERROR) {
+      this.stateManager.reset()
+    }
+
     return this.stateManager.withState(AgentState.RUNNING, async () => {
       try {
         // Check for cancellation

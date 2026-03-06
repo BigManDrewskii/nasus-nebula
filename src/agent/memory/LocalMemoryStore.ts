@@ -243,6 +243,10 @@ export class LocalMemoryStore implements MemoryStore {
 
   /**
    * Persist memories to localStorage.
+   *
+   * When storage is over budget, truncates the oldest 20% — and synchronously
+   * removes the truncated entries from the in-memory Map and vector store so
+   * they don't become ghost vectors that waste ANN slots without matching data.
    */
   private async persist(): Promise<void> {
     try {
@@ -255,6 +259,16 @@ export class LocalMemoryStore implements MemoryStore {
         // Keep only the most recent memories
         const sorted = memories.sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
         const truncated = sorted.slice(0, Math.floor(MAX_MEMORIES * 0.8))
+        const truncatedIds = new Set(truncated.map(m => m.id))
+
+        // Remove dropped entries from in-memory structures so they don't ghost
+        for (const id of this.memories.keys()) {
+          if (!truncatedIds.has(id)) {
+            this.memories.delete(id)
+            await this.vectorStore.deleteVector(id)
+          }
+        }
+
         const truncatedSerialized = JSON.stringify(truncated)
         localStorage.setItem(STORAGE_KEY, truncatedSerialized)
       } else {

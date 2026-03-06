@@ -228,8 +228,8 @@ export const useAppStore = create<AppState>()(
       activeTaskId: 'initial',
       messages: { initial: [WELCOME_MESSAGE] },
       rawHistory: {},
-          apiKey: '',
-          model: 'anthropic/claude-3.7-sonnet',
+            apiKey: '',
+            model: 'anthropic/claude-sonnet-4-20250514',
         workspacePath: '',
         recentWorkspacePaths: [],
         apiBase: 'https://openrouter.ai/api/v1',
@@ -561,7 +561,15 @@ export const useAppStore = create<AppState>()(
             }),
 
 
-            setApiKey: (key) => set({ apiKey: key }),
+            setApiKey: (key) => {
+              set({ apiKey: key })
+              // Sync the key into whichever gateway is currently the active provider
+              const { provider, gateways, updateGateway } = get()
+              const gw = gateways.find((g) => g.id === provider || g.type === provider)
+              if (gw && gw.apiKey !== key) {
+                updateGateway(gw.id, { apiKey: key })
+              }
+            },
             setModel: (model) => set({ model }),
             setWorkspacePath: (path) => set({ workspacePath: path }),
             addRecentWorkspacePath: (path) =>
@@ -573,31 +581,54 @@ export const useAppStore = create<AppState>()(
                 }
               }),
             setApiBase: (base) => set({ apiBase: base }),
-            setProvider: (provider) => {
-              set({ provider })
+              setProvider: (provider) => {
+                set({ provider })
 
-              // Update the gateway system: enable the selected, disable others
-              const { gateways, updateGateway } = get()
-              for (const gw of gateways) {
-                const shouldEnable = gw.id === provider || gw.type === provider
-                if (gw.enabled !== shouldEnable) {
-                  updateGateway(gw.id, { enabled: shouldEnable })
+                // Only ensure the selected gateway is enabled — do NOT disable others.
+                // Disabling every other gateway breaks multi-gateway failover: if the
+                // primary is down, there would be no fallback available.
+                const { gateways, updateGateway } = get()
+                const target = gateways.find((g) => g.id === provider || g.type === provider)
+                if (target && !target.enabled) {
+                  updateGateway(target.id, { enabled: true })
                 }
-              }
 
-              // Fetch models for the new provider
-              get().fetchModelsForProvider(provider)
+                // Fetch models for the new provider
+                get().fetchModelsForProvider(provider)
 
-              // Reset model to a default for this provider if needed
-              const defaultModels: Record<string, string> = {
-                openrouter: 'anthropic/claude-3.5-sonnet',
-                ollama: 'llama3.3:latest',
-              }
-              const currentModel = get().model
-              if (!currentModel || !currentModel.includes(provider)) {
-                set({ model: defaultModels[provider] || currentModel })
-              }
-            },
+                // Reset model to a sensible default when switching providers.
+                // The previous guard `!currentModel.includes(provider)` was wrong:
+                // - "anthropic/claude-sonnet-4" doesn't include "openrouter" → always resets
+                // - It also never correctly detects foreign-provider models.
+                // New logic: reset if the current model is not in the openRouterModels list
+                // for OR/Requesty, or if it doesn't match known DeepSeek/Ollama model IDs.
+                const defaultModels: Record<string, string> = {
+                  openrouter: 'anthropic/claude-sonnet-4-20250514',
+                  requesty: 'anthropic/claude-sonnet-4-20250514',
+                  deepseek: 'deepseek-chat',
+                  ollama: 'llama3.3:latest',
+                  custom: '',
+                }
+                const currentModel = get().model
+                const deepseekModelIds = ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder']
+                const isModelValidForProvider = (() => {
+                  if (!currentModel) return false
+                  if (provider === 'openrouter' || provider === 'requesty') {
+                    // Valid if it's in the fetched model list (has a slash, OR-style)
+                    return get().openRouterModels.some(m => m.id === currentModel) || currentModel.includes('/')
+                  }
+                  if (provider === 'deepseek') {
+                    return deepseekModelIds.includes(currentModel)
+                  }
+                  if (provider === 'ollama') {
+                    return get().ollamaModels.some(m => m.name === currentModel)
+                  }
+                  return true
+                })()
+                if (!isModelValidForProvider) {
+                  set({ model: defaultModels[provider] ?? currentModel })
+                }
+              },
             setProviderKey: (provider, key) => {
               // Store the key for this specific provider
               const { gateways, updateGateway } = get()
@@ -627,9 +658,53 @@ export const useAppStore = create<AppState>()(
                     set({ openRouterModels: models })
                     break
                   }
+                  case 'requesty': {
+                    // Requesty exposes an OpenAI-compatible /models endpoint.
+                    // Reuse fetchModels from llm.ts — it just hits /<base>/models.
+                    const key = get().getProviderKey('requesty')
+                    const gw = get().gateways.find((g) => g.type === 'requesty')
+                    if (!key || !gw) return
+                    const { fetchModels } = await import('./agent/llm')
+                    const ids = await fetchModels(gw.apiBase, key).catch(() => [])
+                    // Map raw ID strings into minimal OpenRouterModel-compatible objects
+                    // so the existing model picker UI works without changes.
+                    const models = ids.map((id) => ({
+                      id,
+                      name: id,
+                      description: '',
+                      context_length: 128_000,
+                      architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] },
+                      pricing: { prompt: '0', completion: '0' },
+                      top_provider: { context_length: null, is_moderated: false },
+                    }))
+                    set({ openRouterModels: models })
+                    break
+                  }
+                  case 'deepseek': {
+                    // DeepSeek direct doesn't publish a useful /models list (returns fixed set).
+                    // Populate the picker with the known stable model IDs from the registry.
+                    const { getModelsForGateway } = await import('./agent/gateway/modelRegistry')
+                    const registryModels = getModelsForGateway('deepseek')
+                    const models = registryModels.map((m) => ({
+                      id: m.ids.deepseek!,
+                      name: m.canonicalName,
+                      description: m.description ?? '',
+                      context_length: m.contextWindow,
+                      architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] },
+                      pricing: {
+                        prompt: String(m.inputCostPer1M / 1_000_000),
+                        completion: String(m.outputCostPer1M / 1_000_000),
+                      },
+                      top_provider: { context_length: null, is_moderated: false },
+                    }))
+                    set({ openRouterModels: models })
+                    break
+                  }
                   case 'ollama': {
                     try {
-                      const resp = await fetch('http://localhost:11434/api/tags')
+                      const gw = get().gateways.find((g) => g.type === 'ollama')
+                      const base = gw?.apiBase?.replace('/v1', '') ?? 'http://localhost:11434'
+                      const resp = await fetch(`${base}/api/tags`)
                       const data = await resp.json()
                       set({ ollamaModels: data.models || [] })
                     } catch {
@@ -689,36 +764,39 @@ export const useAppStore = create<AppState>()(
               [taskId]: { ...(s.taskRouterState[taskId] ?? { modelId: '', displayName: '', reason: '', totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0, callCount: 0, isFree: false }), ...state },
             },
           })),
-        updateTokenUsage: (taskId, usage, modelId) =>
-          set((s) => {
-            const current = s.taskRouterState[taskId]?.tokenUsage ?? {
-              totalPromptTokens: 0,
-              totalCompletionTokens: 0,
-              totalTokens: 0,
-              estimatedCost: 0,
-              contextUtilization: 0,
-            }
-            
-            const totalPromptTokens = current.totalPromptTokens + usage.promptTokens
-            const totalCompletionTokens = current.totalCompletionTokens + usage.completionTokens
-            const totalTokens = totalPromptTokens + totalCompletionTokens
+          updateTokenUsage: (taskId, usage, modelId) =>
+            set((s) => {
+              const current = s.taskRouterState[taskId]?.tokenUsage ?? {
+                totalPromptTokens: 0,
+                totalCompletionTokens: 0,
+                totalTokens: 0,
+                estimatedCost: 0,
+                contextUtilization: 0,
+              }
+              
+              const totalPromptTokens = current.totalPromptTokens + usage.promptTokens
+              const totalCompletionTokens = current.totalCompletionTokens + usage.completionTokens
+              const totalTokens = totalPromptTokens + totalCompletionTokens
 
-            // Calculate cost
-            const { registry } = s.routerConfig
-            const modelInfo = (registry ?? []).find(m => m.id === modelId)
+              // Calculate cost — use the DELTA (this call's tokens only), not the cumulative total.
+              // Using totalTokens here causes quadratic growth: each update would add the entire
+              // running sum instead of just the incremental cost of this one call.
+              const deltaTokens = usage.promptTokens + usage.completionTokens
+              const { registry } = s.routerConfig
+              const modelInfo = (registry ?? []).find(m => m.id === modelId)
 
-            let estimatedCost = current.estimatedCost
-            if (modelInfo) {
-              // Use cost_tier to estimate (simplified)
-              const tierCost: Record<string, number> = { premium: 10, standard: 2, budget: 0.5, free: 0 }
-              const costPerMillion = tierCost[modelInfo.cost_tier] || 2
-              estimatedCost += (totalTokens / 1_000_000) * costPerMillion
-            } else {
-              // Fallback to a generic rate if not in registry
-              estimatedCost += (totalTokens / 1_000_000) * 5
-            }
+              let estimatedCost = current.estimatedCost
+              if (modelInfo) {
+                // Use cost_tier to estimate (simplified)
+                const tierCost: Record<string, number> = { premium: 10, standard: 2, budget: 0.5, free: 0 }
+                const costPerMillion = tierCost[modelInfo.cost_tier.toLowerCase()] ?? 2
+                estimatedCost += (deltaTokens / 1_000_000) * costPerMillion
+              } else {
+                // Fallback to a generic rate if not in registry
+                estimatedCost += (deltaTokens / 1_000_000) * 5
+              }
 
-            const contextUtilization = usage.promptTokens / (modelInfo?.context_window ?? 128_000)
+              const contextUtilization = usage.promptTokens / (modelInfo?.context_window ?? 128_000)
             
             return {
               taskRouterState: {
@@ -815,7 +893,9 @@ export const useAppStore = create<AppState>()(
             rawHistory: Object.fromEntries(
               Object.entries(state.rawHistory).map(([tid, msgs]) => [tid, msgs.slice(-5)])
             ),
-            apiKey: state.apiKey,
+              // Do NOT persist the API key to localStorage — it is sensitive and
+              // must only live in memory / the Tauri secure store.
+              apiKey: '',
           model: state.model,
             workspacePath: state.workspacePath,
             recentWorkspacePaths: state.recentWorkspacePaths,
@@ -832,7 +912,11 @@ export const useAppStore = create<AppState>()(
                 ollamaModels: state.ollamaModels,
                 modelsLastFetched: state.modelsLastFetched,
                 routerConfig: state.routerConfig,
-                gateways: state.gateways,
+                // Strip API keys from gateways before writing to localStorage.
+                // Keys are sensitive and must not be stored in plaintext in the
+                // browser's localStorage. They are held only in memory and in the
+                // Tauri secure store (written via saveGatewayConfig).
+                gateways: state.gateways.map(g => ({ ...g, apiKey: '' })),
                 extensionConnected: state.extensionConnected,
                 extensionVersion: state.extensionVersion,
                 sidecarPromptShown: state.sidecarPromptShown,

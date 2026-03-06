@@ -66,9 +66,18 @@ export class PlanningAgent extends BaseAgent {
     const params = context as PlanningContext
     const { userInput, model, useMemory } = params
 
-      // Use cheapest available model for planning to avoid burning premium tokens
-      const openRouterModels = useAppStore.getState().openRouterModels
-      const planModel = cheapestModel(openRouterModels) || model || 'anthropic/claude-3-haiku'
+        // Use cheapest available model for planning, but respect the active gateway.
+        // cheapestModel() returns OpenRouter slugs which are invalid on deepseek/ollama/custom.
+        const store = useAppStore.getState()
+        const conn = store.resolveConnection()
+        let planModel: string
+        if (conn.provider === 'deepseek') {
+          planModel = 'deepseek-chat'
+        } else if (conn.provider === 'ollama') {
+          planModel = conn.model || model || 'llama3.3:70b'
+        } else {
+          planModel = cheapestModel(store.openRouterModels) || model || 'anthropic/claude-3-haiku'
+        }
 
     // Build planning prompt (now async for memory lookup)
     const prompt = await this.buildPlanningPrompt(userInput, useMemory)

@@ -191,6 +191,7 @@ export class GatewayService {
 
       // Retry loop within this gateway
       let lastError: unknown = null
+      let failureRecorded = false
       for (let retry = 0; retry <= gw.maxRetries; retry++) {
         try {
           const headers = this.buildHeaders(gw)
@@ -219,10 +220,11 @@ export class GatewayService {
         } catch (err) {
           lastError = err
 
-          // Permanent errors — don't retry, don't failover for auth errors
-          if (isPermanentError(err)) {
-            this.recordFailure(gw.id)
-            this.emitEvent({
+            // Permanent errors — don't retry, don't failover for auth errors
+            if (isPermanentError(err)) {
+              this.recordFailure(gw.id)
+              failureRecorded = true
+              this.emitEvent({
               type: 'failed',
               gatewayId: gw.id,
               gatewayLabel: gw.label,
@@ -247,8 +249,11 @@ export class GatewayService {
         }
       }
 
-      // Gateway failed — record and move to next
-      this.recordFailure(gw.id)
+      // Gateway failed — record failure only if not already recorded inside the catch block
+      // (permanent auth errors call recordFailure there to avoid double-counting)
+      if (!failureRecorded) {
+        this.recordFailure(gw.id)
+      }
       failedGateways.push(gw.id)
 
       this.emitEvent({

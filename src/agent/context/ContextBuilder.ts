@@ -147,18 +147,17 @@ Follow this plan systematically. Complete each phase before moving to the next o
 export class ContextBuilder {
   private stablePrefix: LlmMessage[] = STABLE_CACHE_PREFIX
   private cacheBreakpoint: LlmMessage = CACHE_BREAKPOINT
-  private options: ContextBuilderOptions = {}
-
-  setOptions(options: ContextBuilderOptions): void {
-    this.options = { ...this.options, ...options }
-  }
 
   /**
    * Build context for an LLM request.
+   *
+   * Options are passed per-call so that concurrent or sequential tasks cannot
+   * leak options from one call into another via shared singleton state.
    */
   async build(
     userMessages: LlmMessage[],
     tools: ToolDefinition[],
+    options: ContextBuilderOptions = {},
     plan?: ExecutionPlan,
     envSummary?: string,
   ): Promise<BuiltContext> {
@@ -181,9 +180,9 @@ export class ContextBuilder {
 
     // 3. Tool definitions (cacheable)
     // Tools are added separately in the API call, but we track cacheability here
-    const processedTools = formatTools(tools, this.options)
+    const processedTools = formatTools(tools, options)
     // Add inactive note to system if masking
-    if (this.options.maskInactiveTools) {
+    if (options.maskInactiveTools) {
       const inactiveTools = processedTools.filter(t => t.inactive)
       if (inactiveTools.length > 0) {
         const inactiveNames = inactiveTools.map(t => t.function.name).join(', ')
@@ -199,11 +198,11 @@ export class ContextBuilder {
 
     // 5. Memory context (not cacheable - varies by request)
     let retrievedMemories: MemoryResult[] = []
-    if (this.options.includeMemory) {
+    if (options.includeMemory) {
       const query = this.extractQuery(userMessages)
       const { memories, context } = await memoryStore.retrieveContext(
         query,
-        this.options.maxMemoryItems || 3,
+        options.maxMemoryItems || 3,
       )
       retrievedMemories = memories
       if (context) {
@@ -212,7 +211,7 @@ export class ContextBuilder {
     }
 
     // 6. Plan context (not cacheable - varies by task)
-    if (this.options.includePlan && plan) {
+    if (options.includePlan && plan) {
       messages.push({ role: 'system', content: buildPlanContext(plan) })
     }
 
@@ -277,6 +276,7 @@ export const contextBuilder = new ContextBuilder()
 
 /**
  * Convenience function to build context.
+ * Options are forwarded per-call to avoid cross-task state leakage.
  */
 export async function buildContext(
   userMessages: LlmMessage[],
@@ -285,8 +285,5 @@ export async function buildContext(
   plan?: ExecutionPlan,
   envSummary?: string,
 ): Promise<BuiltContext> {
-  if (options) {
-    contextBuilder.setOptions(options)
-  }
-  return contextBuilder.build(userMessages, tools, plan, envSummary)
+  return contextBuilder.build(userMessages, tools, options ?? {}, plan, envSummary)
 }

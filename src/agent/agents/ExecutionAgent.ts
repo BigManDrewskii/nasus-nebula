@@ -173,6 +173,7 @@ export class ExecutionAgent extends BaseAgent {
       this.searchBrowseCount = 0
       this.completedCheckboxes = 0
       this.contextWarningIssued = false
+      this.errorTracker = new ErrorTracker()
 
       // Observability: create a trace logger for this execution
       const tracer = new TraceLogger(taskId, messageId)
@@ -299,7 +300,7 @@ export class ExecutionAgent extends BaseAgent {
       const model = useAppStore.getState().model
       const compressAt = this.compressThreshold(model)
       if (messages.length > compressAt) {
-        this.compressContext(messages, taskId, messageId)
+        await this.compressContext(messages, taskId, messageId)
       }
 
       // LLM call with automatic gateway failover
@@ -334,7 +335,7 @@ export class ExecutionAgent extends BaseAgent {
 
         // Force compression at 85%
         if (utilization > 0.85) {
-          this.compressContext(messages, taskId, messageId)
+          await this.compressContext(messages, taskId, messageId)
         }
       }
 
@@ -546,13 +547,31 @@ export class ExecutionAgent extends BaseAgent {
     const store = useAppStore.getState()
     const resolved = store.resolveConnection()
 
-    // Legacy support: prefer store/resolved values unless overridden
-    const apiBase = resolved.apiBase || store.apiBase
-    const apiKey = resolved.apiKey || store.apiKey
-    const provider = resolved.provider || store.provider
-    const model = this.forcePowerfulModel
-      ? powerfulModel(store.openRouterModels)
-      : (resolved.model || store.model)
+      // Legacy support: prefer store/resolved values unless overridden
+      const apiBase = resolved.apiBase || store.apiBase
+      const apiKey = resolved.apiKey || store.apiKey
+      const provider = resolved.provider || store.provider
+
+      // When forcePowerfulModel is set, pick the best model for the *active* gateway.
+      // We must not use powerfulModel(openRouterModels) for non-OR gateways — that
+      // returns an OR slug (e.g. "anthropic/claude-sonnet-4-20250514") which is invalid
+      // on api.deepseek.com or router.requesty.ai.
+      let model: string
+      if (this.forcePowerfulModel) {
+        if (provider === 'openrouter' || provider === 'requesty') {
+          model = powerfulModel(store.openRouterModels)
+        } else if (provider === 'deepseek') {
+          // Best tool-capable model on DeepSeek direct
+          model = 'deepseek-chat'
+        } else if (provider === 'ollama') {
+          // Use whatever is configured — no "powerful" concept for local models
+          model = resolved.model || store.model
+        } else {
+          model = resolved.model || store.model
+        }
+      } else {
+        model = resolved.model || store.model
+      }
 
 
     // Early validation for missing API key - provide visible error instead of silent hang
@@ -617,16 +636,25 @@ export class ExecutionAgent extends BaseAgent {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
-    // DeepSeek R1: must include reasoning_content in assistant message during tool call loops.
-    // The API returns 400 if reasoning_content is present in the stream but omitted here.
-    const assistantMsg: LlmMessage = {
-      role: 'assistant',
-      content: content || null,
-      tool_calls: singleToolCall,
-    }
-    if (reasoningContent) {
-      ;(assistantMsg as any).reasoning_content = reasoningContent
-    }
+      // DeepSeek R1: must include reasoning_content in assistant message during tool call loops.
+      // The API returns 400 if reasoning_content is present in the stream but omitted here.
+      // Guard: only inject if the model is actually an R1 reasoning model — injecting it for
+      // V3/chat models (which don't emit reasoning) causes a 400 on some providers.
+      const assistantMsg: LlmMessage = {
+        role: 'assistant',
+        content: content || null,
+        tool_calls: singleToolCall,
+      }
+      if (reasoningContent) {
+        const currentModel = useAppStore.getState().model
+        const isReasoningModel =
+          currentModel.includes('deepseek-r1') ||
+          currentModel.includes('deepseek-reasoner') ||
+          currentModel.includes('deepseek/deepseek-r1')
+        if (isReasoningModel) {
+          ;(assistantMsg as any).reasoning_content = reasoningContent
+        }
+      }
     messages.push(assistantMsg)
 
     startTurnTracking(taskId)
@@ -848,9 +876,18 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
 
       const store = useAppStore.getState()
       const { openRouterModels } = store
-      const cheapModel = openRouterModels.length > 0
-        ? cheapestModel(openRouterModels)
-        : 'anthropic/claude-3-haiku'
+      // Use a gateway-aware cheap model for context compression summaries.
+      // When gateway=deepseek, OR slugs like "deepseek/deepseek-chat-v3-0324:free"
+      // are invalid on api.deepseek.com — use the direct API model ID instead.
+      const conn = store.resolveConnection()
+      let cheapModel: string
+      if (conn.provider === 'deepseek') {
+        cheapModel = 'deepseek-chat'
+      } else {
+        cheapModel = openRouterModels.length > 0
+          ? cheapestModel(openRouterModels)
+          : 'anthropic/claude-3-haiku'
+      }
 
       summary = await chatOnceViaGateway(summaryPrompt, 500, cheapModel) || ''
     } catch (e) {
@@ -862,13 +899,21 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     const removedCount = toRemove.size
     const kept = messages.filter((_, i) => !toRemove.has(i))
 
-    // Insert the summary as a system message
-    if (kept.length > 1) {
-      kept.splice(1, 0, {
-        role: 'system',
-        content: `[Context compressed — ${removedCount} messages summarized]\n${summary}\n\n[Recovery: Read task_plan.md for current phase, findings.md for research, progress.md for action history.]`,
-      })
-    }
+      // Insert the summary as a system message, placed after all leading system
+      // messages (system prompt + preamble injections) to preserve cache prefix ordering.
+      if (kept.length > 1) {
+        // Find the insertion point: first non-system message index
+        let insertIdx = 0
+        while (insertIdx < kept.length && kept[insertIdx].role === 'system') {
+          insertIdx++
+        }
+        // Clamp to at least 1 (after the main system prompt) and at most kept.length
+        insertIdx = Math.max(1, Math.min(insertIdx, kept.length))
+        kept.splice(insertIdx, 0, {
+          role: 'system',
+          content: `[Context compressed — ${removedCount} messages summarized]\n${summary}\n\n[Recovery: Read task_plan.md for current phase, findings.md for research, progress.md for action history.]`,
+        })
+      }
 
     messages.length = 0
     messages.push(...kept)
@@ -949,11 +994,20 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     const store = useAppStore.getState()
     const { openRouterModels } = store
 
-    // Always use the cheapest available model for titling — no :free suffix,
-    // since OpenRouter `:free` variants are not guaranteed to exist.
-    const titleModel = openRouterModels.length > 0
-      ? cheapestModel(openRouterModels)
-      : 'anthropic/claude-3-haiku'
+    // Resolve the model for titling based on the active gateway.
+    // When gateway=deepseek, openRouterModels may contain OR slugs (e.g.
+    // "deepseek/deepseek-chat-v3-0324:free") which are invalid on api.deepseek.com.
+    // Use resolveConnection() to get the gateway-correct cheap model instead.
+    let titleModel: string
+    const conn = store.resolveConnection()
+    if (conn.provider === 'deepseek') {
+      // For DeepSeek direct, always use deepseek-chat (V3) for cheap operations
+      titleModel = 'deepseek-chat'
+    } else {
+      titleModel = openRouterModels.length > 0
+        ? cheapestModel(openRouterModels)
+        : 'anthropic/claude-3-haiku'
+    }
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`
     const title = await chatOnceViaGateway(prompt, 50, titleModel)

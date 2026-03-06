@@ -74,9 +74,18 @@ Return ONLY new bullet points to ADD, or "NONE" if nothing new. Each bullet must
 
   const store = useAppStore.getState()
   const { openRouterModels } = store
-  const cheapModel = openRouterModels.length > 0
-    ? cheapestModel(openRouterModels)
-    : 'anthropic/claude-3-haiku'
+  // Resolve cheap model against the active gateway — OR slugs are invalid on non-OR gateways
+  const conn = store.resolveConnection()
+  let cheapModel: string
+  if (conn.provider === 'deepseek') {
+    cheapModel = 'deepseek-chat'
+  } else if (conn.provider === 'ollama') {
+    cheapModel = conn.model || store.model
+  } else {
+    cheapModel = openRouterModels.length > 0
+      ? cheapestModel(openRouterModels)
+      : 'anthropic/claude-3-haiku'
+  }
 
   const newFacts = await chatOnceViaGateway(extractPrompt, 500, cheapModel)
 

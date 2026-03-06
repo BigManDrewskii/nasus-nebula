@@ -65,11 +65,17 @@ export class BashTool extends BaseTool {
       return toolSuccess('(directory created)')
     }
 
-    // echo command
-    const echoMatch = cmd.match(/^echo\s+(.+)$/)
-    if (echoMatch) {
-      return toolSuccess(echoMatch[1].replace(/['"]/g, ''))
-    }
+      // echo command — only strip outer wrapping quotes, not all quotes.
+      // Stripping all quotes mangles JSON-in-echo patterns like echo '{"key":"value"}'.
+      const echoMatch = cmd.match(/^echo\s+(.+)$/)
+      if (echoMatch) {
+        let text = echoMatch[1].trim()
+        // Strip a single matching pair of outer quotes if present
+        if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+          text = text.slice(1, -1)
+        }
+        return toolSuccess(text)
+      }
 
     // Intercept forbidden commands
     if (/\bnpx\b|\bnpm\b|\bnode\b|\byarn\b|\bpnpm\b|\bbun\b/.test(cmd)) {

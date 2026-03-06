@@ -32,19 +32,31 @@ export class PatchFileTool extends BaseTool {
     }
 
     try {
-      const taskId = (args as any).__taskId || 'initial'
-      const content = await workspaceManager.readFile(taskId, path)
+        const taskId = (args as any).__taskId || 'initial'
+        const content = await workspaceManager.readFile(taskId, path)
 
-      if (!content.includes(oldStr)) {
-        return toolFailure(`old_str not found in file: ${path}`)
+        if (!content.includes(oldStr)) {
+          return toolFailure(`old_str not found in file: ${path}`)
+        }
+
+        // Ensure old_str is unique — String.replace() only replaces the first occurrence.
+        // If multiple matches exist, the patch is ambiguous and must be rejected.
+        const firstIdx = content.indexOf(oldStr)
+        const lastIdx = content.lastIndexOf(oldStr)
+        if (firstIdx !== lastIdx) {
+          const matchCount = (content.split(oldStr).length - 1)
+          return toolFailure(
+            `old_str appears ${matchCount} times in ${path}. It must be unique. ` +
+            `Add more surrounding context to old_str to make it unambiguous.`
+          )
+        }
+
+        const patched = content.replace(oldStr, newStr)
+        await workspaceManager.writeFile(taskId, path, patched)
+
+        return toolSuccess(`File patched: ${path}`)
+      } catch (error) {
+        return toolFailure(`Failed to patch file: ${error}`)
       }
-
-      const patched = content.replace(oldStr, newStr)
-      await workspaceManager.writeFile(taskId, path, patched)
-
-      return toolSuccess(`File patched: ${path}`)
-    } catch (error) {
-      return toolFailure(`Failed to patch file: ${error}`)
-    }
   }
 }
