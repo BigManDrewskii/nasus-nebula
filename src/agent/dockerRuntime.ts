@@ -23,15 +23,15 @@ export interface DockerExecResult {
 
 export type DockerStatusCallback = (status: 'starting' | 'ready' | 'error', message?: string) => void
 
-// Rust types for Tauri commands
+// Rust types for Tauri commands (Tauri v2 does not convert snake_case → camelCase)
 interface DockerContainerResult {
-  containerId: string
+  container_id: string
 }
 
 interface DockerExecResultRaw {
   stdout: string
   stderr: string
-  exitCode: number
+  exit_code: number
 }
 
 // Active container state
@@ -71,11 +71,11 @@ async function getContainer(
       cpu: CONTAINER_CONFIG.cpu,
     })
 
-    if (!result?.containerId) {
-      throw new Error('Failed to create container: no container ID returned')
-    }
+      if (!result?.container_id) {
+        throw new Error('Failed to create container: no container ID returned')
+      }
 
-    activeContainerId = result.containerId
+      activeContainerId = result.container_id
     onStatus?.('ready', 'Container ready')
     return activeContainerId
   } catch (err) {
@@ -105,14 +105,14 @@ export async function dockerRunPython(
       throw new Error('No result from Docker execution')
     }
 
-    const error = result.exitCode !== 0 ? `Exit code ${result.exitCode}` : undefined
+      const error = result.exit_code !== 0 ? `Exit code ${result.exit_code}` : undefined
 
-    return {
-      stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
-      error,
-      exitCode: result.exitCode,
-    }
+      return {
+        stdout: result.stdout ?? '',
+        stderr: result.stderr ?? '',
+        error,
+        exitCode: result.exit_code,
+      }
   } catch (err) {
     return {
       stdout: '',
@@ -143,14 +143,14 @@ export async function dockerRunBash(
       throw new Error('No result from Docker execution')
     }
 
-    const error = result.exitCode !== 0 ? `Exit code ${result.exitCode}` : undefined
+      const error = result.exit_code !== 0 ? `Exit code ${result.exit_code}` : undefined
 
-    return {
-      stdout: result.stdout ?? '',
-      stderr: result.stderr ?? '',
-      error,
-      exitCode: result.exitCode,
-    }
+      return {
+        stdout: result.stdout ?? '',
+        stderr: result.stderr ?? '',
+        error,
+        exitCode: result.exit_code,
+      }
   } catch (err) {
     return {
       stdout: '',

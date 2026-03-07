@@ -357,10 +357,11 @@ interface ChatViewProps {
                 searchConfig: {
                   exaKey: cfg.exaKey || '',
                 },
-                executionConfig: {
-                  executionMode: 'docker' as const,
-                  taskId,
-                },
+                  executionConfig: {
+                    executionMode: 'docker' as const,
+                    taskId,
+                    workspacePath: await workspaceManager.getWorkspacePath(taskId),
+                  },
                 maxIterations: cfg.maxIterations ?? 50,
                 usePlanning: true,
                 orchestratorConfig: {

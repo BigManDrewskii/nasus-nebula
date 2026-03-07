@@ -69,8 +69,18 @@ pub async fn create_container(
     // Ensure the image is available
     ensure_image(&docker, &config.image).await?;
 
-    // Prepare volume mount for workspace
-    let workspace_full = std::path::Path::new(workspace_path).join(format!("task-{}", task_id));
+    // workspace_path already includes the task-specific subdirectory (set by TypeScript)
+    // Ensure it's absolute — if not, make it absolute from the current dir
+    let workspace_full = {
+        let p = std::path::Path::new(workspace_path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map_err(|e| format!("Cannot get cwd: {}", e))?
+                .join(p)
+        }
+    };
 
     // Create workspace directory if it doesn't exist
     std::fs::create_dir_all(&workspace_full)
