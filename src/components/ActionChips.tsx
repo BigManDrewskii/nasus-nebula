@@ -46,7 +46,7 @@ interface ActionChipsProps {
 
 export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, width: '100%' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%' }}>
       {chips.map((chip) => (
         <button
           key={chip.label}
@@ -54,9 +54,9 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
           style={{
             display: 'flex',
             alignItems: 'flex-start',
-            gap: 9,
-            padding: '8px 11px',
-            borderRadius: 8,
+            gap: 10,
+            padding: '9px 12px',
+            borderRadius: 10,
             border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.025)',
             cursor: 'pointer',
@@ -65,8 +65,8 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
             transition: 'background 0.12s, border-color 0.12s, color 0.12s',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(234,179,8,0.06)'
-            e.currentTarget.style.borderColor = 'rgba(234,179,8,0.18)'
+            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
             e.currentTarget.style.color = 'var(--tx-primary)'
           }}
           onMouseLeave={(e) => {
@@ -80,15 +80,15 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
             width: 24,
             height: 24,
             borderRadius: 6,
-            background: 'rgba(234,179,8,0.08)',
-            border: '1px solid rgba(234,179,8,0.14)',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.09)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
             marginTop: 1,
           }}>
-            <Pxi name={chip.icon} size={12} style={{ color: 'var(--amber)' }} />
+            <Pxi name={chip.icon} size={12} style={{ color: 'var(--tx-secondary)' }} />
           </div>
 
           {/* Label + description */}
@@ -96,7 +96,7 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
             <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {chip.label}
             </div>
-            <div style={{ fontSize: 10, color: 'var(--tx-muted)', marginTop: 1, letterSpacing: '0.01em' }}>
+            <div style={{ fontSize: 10.5, color: 'var(--tx-tertiary)', marginTop: 1 }}>
               {chip.description}
             </div>
           </div>

@@ -316,44 +316,19 @@ function App() {
 
           {settingsOpen && <SettingsPanel onClose={closeSettings} />}
 
-          {/* Floating re-open tab — shown when output panel is visible but collapsed to 0px */}
-          {outputVisible && rightCollapsed && (
-            <button
-              onClick={toggleRight}
-              title="Open workspace panel (⌘⇧\\)"
-              style={{
-                position: 'fixed',
-                right: 0,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                zIndex: 120,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                width: 20,
-                paddingTop: 14,
-                paddingBottom: 14,
-                background: 'var(--sidebar-bg)',
-                border: '1px solid var(--sidebar-border)',
-                borderRight: 'none',
-                borderRadius: '6px 0 0 6px',
-                cursor: 'pointer',
-                color: 'var(--tx-secondary)',
-                writingMode: 'vertical-rl',
-                fontSize: 10,
-                fontWeight: 500,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                transition: 'background 0.15s, color 0.15s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--sidebar-hover-bg)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--tx-primary)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--sidebar-bg)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--tx-secondary)' }}
-            >
-              Workspace
-            </button>
-          )}
+            {/* Floating re-open tab — shown when output panel is visible but collapsed to 0px */}
+              {outputVisible && rightCollapsed && (
+                <button
+                  onClick={toggleRight}
+                  title="Open workspace panel (⌘⇧\\)"
+                  className="workspace-reopen-tab"
+                >
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                    <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  <span className="tab-label">Workspace</span>
+                </button>
+              )}
 
         {/* Offline banner */}
         {isOffline && (

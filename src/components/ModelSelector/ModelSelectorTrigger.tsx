@@ -76,21 +76,21 @@ export function ModelSelectorTrigger() {
             gap: 4,
             padding: '4px 8px',
             borderRadius: 6,
-            background: open ? 'rgba(234,179,8,0.1)' : 'rgba(234,179,8,0.05)',
-            border: open ? '1px solid rgba(234,179,8,0.28)' : '1px solid rgba(234,179,8,0.14)',
+            background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+            border: open ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.07)',
             cursor: 'pointer',
             transition: 'background 0.12s ease, border-color 0.12s ease',
           }}
           onMouseEnter={(e) => {
             if (!open) {
-              e.currentTarget.style.background = 'rgba(234,179,8,0.08)'
-              e.currentTarget.style.borderColor = 'rgba(234,179,8,0.22)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
             }
           }}
           onMouseLeave={(e) => {
             if (!open) {
-              e.currentTarget.style.background = 'rgba(234,179,8,0.05)'
-              e.currentTarget.style.borderColor = 'rgba(234,179,8,0.14)'
+              e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
             }
           }}
           title={model}
@@ -99,7 +99,7 @@ export function ModelSelectorTrigger() {
             style={{
               fontSize: 10.5,
               fontFamily: 'var(--font-mono)',
-              color: open ? 'var(--amber)' : 'rgba(234,179,8,0.85)',
+              color: open ? 'var(--tx-primary)' : 'var(--tx-secondary)',
               maxWidth: 100,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -115,7 +115,7 @@ export function ModelSelectorTrigger() {
             viewBox="0 0 8 8"
             style={{
               flexShrink: 0,
-              color: open ? 'var(--amber)' : 'rgba(234,179,8,0.6)',
+              color: open ? 'var(--tx-secondary)' : 'var(--tx-muted)',
               transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
               transition: 'transform 0.14s ease',
             }}

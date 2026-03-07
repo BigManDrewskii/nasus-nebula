@@ -46,7 +46,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
   const placeholder = {
     idle:           'Message Nasus…',
     processing:     'Nasus is thinking…',
-    streaming:      'Agent running — type to queue a follow-up…',
+    streaming:      'Agent running — type to queue…',
     awaiting_input: 'Nasus is waiting for your answer…',
   }[inputState]
 
@@ -136,31 +136,32 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
 
   const canSend = !isTextareaDisabled && !isOverLimit
 
-  // Border/glow driven by state
+  // Border driven by state
   const borderColor = (() => {
-    if (inputState === 'awaiting_input') return 'var(--amber)'
-    if (isFocused)                       return 'rgba(234,179,8,0.35)'
-    if (inputState === 'streaming')      return 'rgba(234,179,8,0.12)'
+    if (inputState === 'awaiting_input') return 'rgba(234,179,8,0.55)'
+    if (isFocused)                       return 'rgba(255,255,255,0.14)'
+    if (inputState === 'streaming')      return 'rgba(255,255,255,0.07)'
     if (inputState === 'processing')     return 'rgba(255,255,255,0.04)'
     return 'rgba(255,255,255,0.08)'
   })()
 
   const boxShadow = (() => {
-    if (inputState === 'awaiting_input') return '0 0 0 3px rgba(234,179,8,0.1), 0 8px 32px rgba(0,0,0,0.4)'
-    if (isFocused)                       return '0 0 0 3px rgba(234,179,8,0.08), 0 6px 24px rgba(0,0,0,0.35)'
-    return '0 2px 12px rgba(0,0,0,0.25)'
+    if (inputState === 'awaiting_input') return '0 0 0 3px rgba(234,179,8,0.08), 0 4px 20px rgba(0,0,0,0.35)'
+    if (isFocused)                       return '0 0 0 3px rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.3)'
+    return '0 2px 8px rgba(0,0,0,0.2)'
   })()
 
-    return (
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       <div
         style={{
-          borderRadius: 12,
+          borderRadius: 14,
           border: `1px solid ${borderColor}`,
-          background: inputState === 'processing' ? '#0f0f0f' : '#161616',
-          transition: 'border-color 0.18s, box-shadow 0.18s',
+          background: inputState === 'processing' ? '#101010' : '#141414',
+          transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
           boxShadow,
           ...(inputState === 'awaiting_input' ? {
-            borderLeft: '3px solid var(--amber)',
+            borderLeft: '2px solid rgba(234,179,8,0.7)',
             animation: 'inputPulse 2s ease-in-out infinite',
           } : {}),
           ...(inputState === 'streaming' && !isFocused ? {
@@ -182,23 +183,23 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
 
       {/* Queued message banner */}
       {isWorking && queuedMsg && (
-        <div style={{ padding: '8px 12px 0' }}>
+        <div style={{ padding: '8px 14px 0' }}>
           <span style={{
             display: 'inline-flex',
             alignItems: 'center',
             gap: 5,
             fontSize: 11,
             color: 'var(--amber)',
-            background: 'rgba(234,179,8,0.07)',
-            border: '1px solid rgba(234,179,8,0.16)',
-            borderRadius: 5,
+            background: 'rgba(234,179,8,0.06)',
+            border: '1px solid rgba(234,179,8,0.14)',
+            borderRadius: 6,
             padding: '3px 8px',
             maxWidth: '100%',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}>
-            <Pxi name="clock" size={11} />
+            <Pxi name="clock" size={10} />
             Queued: {queuedMsg.length > 60 ? queuedMsg.slice(0, 60) + '…' : queuedMsg}
           </span>
         </div>
@@ -216,7 +217,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       )}
 
       {/* Textarea */}
-      <div style={{ padding: '11px 14px 4px' }}>
+      <div style={{ padding: '12px 14px 0' }}>
         <textarea
           ref={textareaRef}
           onChange={handleInput}
@@ -233,11 +234,11 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            fontSize: 14,
-              color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
-              fontStyle: inputState === 'processing' ? 'italic' : 'normal',
-              lineHeight: 1.6,
-              minHeight: 32,
+            fontSize: 13.5,
+            color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
+            fontStyle: inputState === 'processing' ? 'italic' : 'normal',
+            lineHeight: 1.6,
+            minHeight: 28,
             maxHeight: 144,
             fontFamily: 'inherit',
             cursor: isTextareaDisabled ? 'not-allowed' : 'text',
@@ -253,87 +254,36 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '2px 8px 8px',
-        gap: 6,
+        padding: '6px 10px 10px',
+        gap: 4,
       }}>
-        {/* Left: model selector + attach button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1 }}>
+        {/* Left: model selector + utility buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
           <ModelSelectorTrigger />
 
           {onAddFiles && (
-            <button
+            <ToolbarButton
               onClick={() => fileInputRef.current?.click()}
               disabled={isTextareaDisabled}
               title="Attach files"
               aria-label="Attach files"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 30,
-                height: 30,
-                borderRadius: 6,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--tx-muted)',
-                cursor: isTextareaDisabled ? 'not-allowed' : 'pointer',
-                flexShrink: 0,
-                padding: 0,
-                transition: 'color 0.12s, background 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!isTextareaDisabled) {
-                  e.currentTarget.style.color = 'var(--tx-secondary)'
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--tx-muted)'
-                e.currentTarget.style.background = 'transparent'
-              }}
             >
               <Pxi name="paperclip" size={13} />
-            </button>
+            </ToolbarButton>
           )}
 
-          {/* Mic button — only shown when Web Speech API is available */}
           {isVoiceSupported && (
-            <button
+            <ToolbarButton
               onClick={toggleVoice}
               disabled={isTextareaDisabled}
               title={micActive ? 'Stop recording' : 'Voice input'}
               aria-label={micActive ? 'Stop voice input' : 'Start voice input'}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 30,
-                height: 30,
-                borderRadius: 6,
-                border: 'none',
-                background: micActive ? 'rgba(239,68,68,0.1)' : 'transparent',
-                color: micActive ? 'var(--red-fg)' : 'var(--tx-muted)',
-                cursor: isTextareaDisabled ? 'not-allowed' : 'pointer',
-                flexShrink: 0,
-                padding: 0,
-                transition: 'color 0.12s, background 0.12s',
-                position: 'relative',
-              }}
-              onMouseEnter={(e) => {
-                if (!isTextareaDisabled && !micActive) {
-                  e.currentTarget.style.color = 'var(--tx-secondary)'
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!micActive) {
-                  e.currentTarget.style.color = 'var(--tx-muted)'
-                  e.currentTarget.style.background = 'transparent'
-                }
-              }}
+              active={micActive}
+              activeColor="rgba(239,68,68,0.1)"
+              activeTextColor="var(--red-fg)"
             >
               <MicIcon active={micActive} />
-            </button>
+            </ToolbarButton>
           )}
         </div>
 
@@ -347,100 +297,173 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                padding: '4px 10px',
-                borderRadius: 6,
+                padding: '5px 11px',
+                borderRadius: 8,
                 fontSize: 11,
                 fontWeight: 500,
                 background: 'rgba(239,68,68,0.07)',
-                border: '1px solid rgba(239,68,68,0.22)',
+                border: '1px solid rgba(239,68,68,0.2)',
                 color: 'var(--red-fg)',
                 cursor: 'pointer',
                 transition: 'background 0.12s, border-color 0.12s',
                 animation: 'buttonAppear 0.15s ease',
                 flexShrink: 0,
                 letterSpacing: '0.01em',
+                fontFamily: 'inherit',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.14)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.42)'
+                e.currentTarget.style.background = 'rgba(239,68,68,0.13)'
+                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.38)'
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = 'rgba(239,68,68,0.07)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.22)'
+                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
               }}
             >
               <StopIcon />
               Stop
             </button>
           ) : (
-              <button
-                onClick={handleSend}
-                disabled={!canSend}
-                title="Send (Enter) · Shift+Enter for newline"
-                aria-label="Send message"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 32,
-                  height: 32,
-                  borderRadius: 9,
-                  border: 'none',
-                  cursor: !canSend ? 'not-allowed' : 'pointer',
-                  background: !canSend ? 'rgba(255,255,255,0.06)' : 'var(--amber)',
-                  opacity: !canSend ? 0.35 : 1,
-                  transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
-                  animation: 'buttonAppear 0.15s ease',
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  if (canSend) {
-                    e.currentTarget.style.background = 'var(--amber-soft)'
-                    e.currentTarget.style.transform = 'scale(1.06)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (canSend) {
-                    e.currentTarget.style.background = 'var(--amber)'
-                    e.currentTarget.style.transform = 'scale(1)'
-                  }
-                }}
-              >
-                <Pxi name="arrow-up" size={13} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
-              </button>
+            <button
+              onClick={handleSend}
+              disabled={!canSend}
+              title="Send (Enter)"
+              aria-label="Send message"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                border: 'none',
+                cursor: !canSend ? 'not-allowed' : 'pointer',
+                background: !canSend ? 'rgba(255,255,255,0.06)' : 'var(--amber)',
+                color: !canSend ? 'var(--tx-muted)' : '#000',
+                opacity: !canSend ? 0.4 : 1,
+                transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
+                animation: 'buttonAppear 0.15s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                if (canSend) {
+                  e.currentTarget.style.background = 'var(--amber-soft)'
+                  e.currentTarget.style.transform = 'scale(1.05)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (canSend) {
+                  e.currentTarget.style.background = 'var(--amber)'
+                  e.currentTarget.style.transform = 'scale(1)'
+                }
+              }}
+            >
+              <Pxi name="arrow-up" size={12} />
+            </button>
           )}
         </div>
-
-          {/* Keyboard hints — fade in on focus */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 10,
-            padding: '0 10px 6px',
-            opacity: isFocused && !isWorking ? 0.7 : 0,
-            transition: 'opacity 0.2s ease',
-            pointerEvents: 'none',
-          }}>
-            <span style={{ fontSize: 9.5, color: 'var(--tx-ghost)' }}>
-              <kbd style={{ fontFamily: 'var(--font-mono)', padding: '0 3px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>↵</kbd>
-              {' '}send
-            </span>
-            <span style={{ fontSize: 9.5, color: 'var(--tx-ghost)' }}>
-              <kbd style={{ fontFamily: 'var(--font-mono)', padding: '0 3px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>⇧↵</kbd>
-              {' '}newline
-            </span>
-          </div>
       </div>
     </div>
+
+    {/* Keyboard hints — below the box, fade in on focus */}
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'flex-end',
+      gap: 12,
+      paddingTop: 5,
+      paddingRight: 4,
+      height: 16,
+      opacity: isFocused && !isWorking ? 0.55 : 0,
+      transition: 'opacity 0.2s ease',
+      pointerEvents: 'none',
+    }}>
+      <KbdHint shortcut="↵" label="send" />
+      <KbdHint shortcut="⇧↵" label="newline" />
+    </div>
+  </div>
   )
 },
 )
 
+// ── Shared toolbar icon button ─────────────────────────────────────────────────
+function ToolbarButton({
+  children, onClick, disabled, title, 'aria-label': ariaLabel,
+  active = false, activeColor, activeTextColor,
+}: {
+  children: React.ReactNode
+  onClick: () => void
+  disabled: boolean
+  title?: string
+  'aria-label'?: string
+  active?: boolean
+  activeColor?: string
+  activeTextColor?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={ariaLabel}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 28,
+        height: 28,
+        borderRadius: 6,
+        border: 'none',
+        background: active && activeColor ? activeColor : 'transparent',
+        color: active && activeTextColor ? activeTextColor : 'var(--tx-tertiary)',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        flexShrink: 0,
+        padding: 0,
+        transition: 'color 0.12s, background 0.12s',
+      }}
+      onMouseEnter={(e) => {
+        if (!disabled && !active) {
+          e.currentTarget.style.color = 'var(--tx-secondary)'
+          e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          e.currentTarget.style.color = 'var(--tx-tertiary)'
+          e.currentTarget.style.background = 'transparent'
+        }
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ── Keyboard hint chip ─────────────────────────────────────────────────────────
+function KbdHint({ shortcut, label }: { shortcut: string; label: string }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--tx-ghost)' }}>
+      <kbd style={{
+        fontFamily: 'var(--font-mono)',
+        padding: '1px 4px',
+        borderRadius: 4,
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        fontSize: 9.5,
+        lineHeight: 1.4,
+        color: 'var(--tx-muted)',
+      }}>
+        {shortcut}
+      </kbd>
+      <span style={{ color: 'var(--tx-muted)' }}>{label}</span>
+    </span>
+  )
+}
+
 // ── Stop icon ──────────────────────────────────────────────────────────────────
 function StopIcon() {
   return (
-    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+    <svg width="8" height="8" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
       <rect x="1.5" y="1.5" width="9" height="9" rx="2" fill="currentColor" />
     </svg>
   )

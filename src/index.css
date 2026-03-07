@@ -1115,6 +1115,65 @@ html, body, #root {
   transition: none !important;
 }
 
+/* ── Workspace collapsed re-open tab ─────────────────────────────────────── */
+.workspace-reopen-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 32px;
+  padding: 18px 0;
+  background: rgba(28, 28, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  cursor: pointer;
+  color: var(--tx-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: -3px 0 16px rgba(0, 0, 0, 0.4), inset 1px 0 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* No writing-mode on the container — handled on the span only */
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
+}
+
+.workspace-reopen-tab .tab-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.workspace-reopen-tab svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.workspace-reopen-tab:hover {
+  background: rgba(42, 42, 42, 0.96);
+  color: var(--tx-primary);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5), inset 1px 0 0 rgba(255,255,255,0.07);
+}
+
+.workspace-reopen-tab:active {
+  background: rgba(50, 50, 50, 0.98);
+  transform: translateY(-50%) translateX(1px);
+}
+
 /* ── Panel Divider (resizable right panel) ────────────────────────────────── */
 .panel-divider {
   position: relative;
@@ -1717,6 +1776,19 @@ input[type="range"]::-moz-range-thumb {
 .agent-prose > div > ul:last-child,
 .agent-prose > div > ol:last-child {
   margin-bottom: 0;
+}
+
+/* Tighten agent prose paragraph spacing */
+.agent-prose p {
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+.agent-prose h1,
+.agent-prose h2,
+.agent-prose h3 {
+  margin-top: 1em;
+  margin-bottom: 0.35em;
 }
 
 /* Plan card slide-up animation */

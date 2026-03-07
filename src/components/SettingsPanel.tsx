@@ -135,37 +135,30 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       init()
     }, [])
 
-    // Initialize provider-specific state from gateway configs
+    // Sync gateway keys into local state. Runs on mount AND whenever
+    // gatewayConfigReady flips to true (i.e. after loadGatewayConfig finishes).
+    // Without this, the panel opens with empty key fields because partialize
+    // strips all gateway apiKeys from localStorage — they're only restored
+    // asynchronously by loadGatewayConfig reading from the Tauri secure store.
+    const gatewayConfigReady = useAppStore((s) => s.gatewayConfigReady)
+
     useEffect(() => {
       const state = useAppStore.getState()
 
-      const orGateway = state.gateways.find((g) => g.id === 'openrouter')
-      if (orGateway?.apiKey) {
-        setLocalOpenRouterKey(orGateway.apiKey)
-      } else if (state.provider === 'openrouter') {
-        setLocalOpenRouterKey(state.apiKey)
-      }
+      const orKey = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
+      if (orKey) setLocalOpenRouterKey(orKey)
 
-      const requestyGateway = state.gateways.find((g) => g.id === 'requesty')
-      if (requestyGateway?.apiKey) {
-        setLocalRequestyKey(requestyGateway.apiKey)
-      }
+      const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey || ''
+      if (reqKey) setLocalRequestyKey(reqKey)
 
-      const deepseekGateway = state.gateways.find((g) => g.id === 'deepseek')
-      if (deepseekGateway?.apiKey) {
-        setLocalDeepSeekKey(deepseekGateway.apiKey)
-      }
+      const dsKey = state.gateways.find((g) => g.id === 'deepseek')?.apiKey || ''
+      if (dsKey) setLocalDeepSeekKey(dsKey)
 
-      if (state.provider === 'openrouter') {
-        setActiveProvider('openrouter')
-      } else if (state.provider === 'requesty') {
-        setActiveProvider('requesty')
-      } else if (state.provider === 'ollama') {
-        setActiveProvider('ollama')
-      } else if (state.provider === 'deepseek') {
-        setActiveProvider('deepseek')
+      const p = state.provider
+      if (p === 'openrouter' || p === 'requesty' || p === 'ollama' || p === 'deepseek') {
+        setActiveProvider(p)
       }
-    }, [])
+    }, [gatewayConfigReady])
 
     // Local router config state
 
@@ -394,6 +387,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         updateGateway('deepseek',   { apiKey: localDeepSeekKey.trim(),   enabled: isDeepSeek })
         // Ollama has its own enabled flag — enable/disable based on active provider.
         updateGateway('ollama',     { enabled: isOllama })
+
+        // Persist all gateway configs (including API keys) to the Tauri secure store.
+        // This is the primary persistence path — get_gateways reads them back on reload.
+        try {
+          const updatedGateways = useAppStore.getState().gateways
+          await tauriInvoke('save_gateways', { gateways: updatedGateways })
+        } catch (e) {
+          console.warn('Failed to save gateways:', e)
+          // Non-fatal — save_config below still persists the active key
+        }
 
         // Persist keys to sessionStorage so that loadGatewayConfig's browser-mode
         // fallback path (Tauri not available) can recover them across HMR reloads.

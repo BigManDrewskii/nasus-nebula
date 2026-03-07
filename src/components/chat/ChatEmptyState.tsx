@@ -31,17 +31,17 @@ export function ChatEmptyState({
 }: ChatEmptyStateProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <div style={{ width: '100%', maxWidth: 560, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+      <div style={{ width: '100%', maxWidth: 540, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
 
         {/* Headline block */}
-        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 5 }}>
           <h3
-            className="font-display font-semibold tracking-tight"
-            style={{ fontSize: 22, color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.02em', lineHeight: 1.2 }}
+            className="font-display font-semibold"
+            style={{ fontSize: 20, color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.025em', lineHeight: 1.2 }}
           >
             What would you like to build?
           </h3>
-          <p style={{ fontSize: 13, color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
+          <p style={{ fontSize: 12.5, color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
             Describe your task and Nasus will get to work
           </p>
         </div>
@@ -53,15 +53,15 @@ export function ChatEmptyState({
         <div className="w-full" style={{ position: 'relative' }}>
           {extensionConnected && (
             <div style={{
-              position: 'absolute', top: -20, right: 0,
+              position: 'absolute', top: -22, right: 2,
               display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 9, fontWeight: 600, color: '#22c55e', opacity: 0.75,
+              fontSize: 9.5, fontWeight: 500, color: '#22c55e', opacity: 0.8,
             }}>
               <span style={{
                 width: 5, height: 5, borderRadius: '50%', background: '#22c55e',
                 boxShadow: '0 0 6px rgba(34, 197, 94, 0.5)',
               }} />
-              Browser connected {extensionVersion && `v${extensionVersion}`}
+              Browser connected{extensionVersion ? ` v${extensionVersion}` : ''}
             </div>
           )}
           <UserInputArea
@@ -79,24 +79,22 @@ export function ChatEmptyState({
           />
         </div>
 
-        {/* Keyboard hints */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.4 }}>
+        {/* Keyboard shortcuts */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.35 }}>
           {[
             { key: '⌘N', label: 'New task' },
             { key: '⌘,', label: 'Settings' },
             { key: 'Esc', label: 'Stop' },
-            { key: '⇧⏎', label: 'New line' },
           ].map(({ key, label }) => (
             <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <kbd style={{
                 fontSize: 9, fontFamily: 'var(--font-mono)',
                 color: 'var(--tx-secondary)',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.09)',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 4, padding: '1px 5px',
-                letterSpacing: '0.02em',
               }}>{key}</kbd>
-              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontWeight: 400 }}>{label}</span>
+              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{label}</span>
             </span>
           ))}
         </div>

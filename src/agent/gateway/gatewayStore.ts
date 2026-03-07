@@ -184,53 +184,69 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
     }
   },
 
-  loadGatewayConfig: async () => {
-    try {
-      const { tauriInvoke } = await import('../../tauri')
-      const config = await tauriInvoke<{
-        api_key: string
-        model: string
-        workspace_path: string
-        api_base: string
-        provider: string
-      }>('get_config')
+    loadGatewayConfig: async () => {
+      try {
+        const { tauriInvoke } = await import('../../tauri')
 
-      if (!config) return
+        // Primary: restore full gateway configs (including per-provider keys) from
+        // the Tauri secure store via save_gateways / get_gateways.
+        const savedGateways = await tauriInvoke<GatewayConfig[]>('get_gateways').catch(() => null)
 
-      // Migrate from legacy single-gateway config to multi-gateway
-      const { gateways } = get()
+        // Fallback: read the legacy single-key config for backward compatibility
+        const config = await tauriInvoke<{
+          api_key: string
+          model: string
+          workspace_path: string
+          api_base: string
+          provider: string
+        }>('get_config').catch(() => null)
 
-      // If Tauri returned an empty key, fall back to the zustand-persisted key
-      let resolvedKey = config.api_key
-      if (!resolvedKey) {
-        try {
-          const { useAppStore } = await import('../../store')
-          resolvedKey = useAppStore.getState().apiKey
-        } catch { /* ignore */ }
-      }
+        const { gateways: currentGateways } = get()
 
-       const updatedGateways = gateways.map((g) => {
-          // Migrate legacy config: the stored provider becomes the enabled gateway
-          if (g.type === config.provider) {
-            return { ...g, apiBase: config.api_base || g.apiBase, apiKey: resolvedKey, enabled: true }
+        let updatedGateways: GatewayConfig[]
+
+        if (savedGateways && savedGateways.length > 0 && savedGateways.some((g: any) => g.apiKey)) {
+          // Use the full saved gateways (have real API keys) — this is the normal path
+          // after the user has saved settings at least once with the new code.
+          // Note: Rust serializes with camelCase, so apiKey/apiBase are correct but
+          // gatewayType != type — we merge only the fields that exist on the JS type.
+          updatedGateways = currentGateways.map(g => {
+            const saved = savedGateways.find((s: any) => s.id === g.id) as any
+            if (!saved) return g
+            return {
+              ...g,
+              apiKey: saved.apiKey ?? g.apiKey,
+              apiBase: saved.apiBase ?? g.apiBase,
+              enabled: saved.enabled ?? g.enabled,
+              priority: saved.priority ?? g.priority,
+            }
+          })
+        } else if (config) {
+          // Legacy migration path — only one key was ever saved
+          let resolvedKey = config.api_key
+          if (!resolvedKey) {
+            try {
+              const { useAppStore } = await import('../../store')
+              resolvedKey = useAppStore.getState().apiKey
+            } catch { /* ignore */ }
           }
-          // Also sync OpenRouter if provider was 'openrouter' (legacy naming)
-          if (config.provider === 'openrouter' && g.type === 'openrouter') {
-            return { ...g, apiKey: resolvedKey, enabled: true }
-          }
-          // Disable all other gateways so that resolveConnection() doesn't accidentally
-          // pick a higher-priority gateway (e.g. openrouter at priority 0) with no key.
-          // Ollama is never touched by the legacy config path, so preserve its state.
-          if (g.type !== 'ollama') {
-            return { ...g, enabled: false }
-          }
-          return g
-        })
+          updatedGateways = currentGateways.map((g) => {
+            if (g.type === config.provider || (config.provider === 'openrouter' && g.type === 'openrouter')) {
+              return { ...g, apiBase: config.api_base || g.apiBase, apiKey: resolvedKey, enabled: true }
+            }
+            if (g.type !== 'ollama') return { ...g, enabled: false }
+            return g
+          })
+        } else {
+          updatedGateways = currentGateways
+        }
 
         set({ gateways: updatedGateways })
 
-        // Sync the resolved key back into store.apiKey so that ChatView's
-        // needsKey guard (which checks store.apiKey) allows the call through.
+        // Sync the active provider's key into store.apiKey for the needsKey guard
+        const activeProvider = config?.provider || currentGateways.find(g => g.enabled)?.type || 'openrouter'
+        const activeGateway = updatedGateways.find(g => g.type === activeProvider || g.id === activeProvider)
+        const resolvedKey = activeGateway?.apiKey || config?.api_key || ''
         if (resolvedKey) {
           try {
             const { useAppStore } = await import('../../store')
@@ -239,18 +255,18 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice
         }
 
         // Determine routing mode from legacy model field
-        if (config.model === 'auto' || !config.model) {
+        if (!config || config.model === 'auto' || !config.model) {
           set({ routingMode: 'auto-paid' })
         } else {
           set({ routingMode: 'manual', manualModelId: config.model })
         }
 
-          // Sync to service
-          const { gatewayService } = get()
-          gatewayService?.updateGateways(updatedGateways)
+        // Sync to service
+        const { gatewayService } = get()
+        gatewayService?.updateGateways(updatedGateways)
 
-          // Mark config as loaded so handleSend can proceed
-          set({ gatewayConfigReady: true })
+        // Mark config as loaded so handleSend can proceed
+        set({ gatewayConfigReady: true })
       } catch (err) {
         // Tauri not available (browser mode) — recover keys from sessionStorage.
         // Gateway keys are intentionally stripped from Zustand's localStorage persist

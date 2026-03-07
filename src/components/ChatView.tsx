@@ -727,7 +727,7 @@ interface ChatViewProps {
               className="flex-1 overflow-y-auto custom-scrollbar"
               id="message-list"
             >
-              <div className="max-w-[780px] mx-auto px-5 py-10 flex flex-col gap-6">
+              <div className="max-w-[780px] mx-auto px-5 py-8 flex flex-col gap-5">
                     {visibleMessages.map((msg, i) => (
                       <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                         <ChatMessage

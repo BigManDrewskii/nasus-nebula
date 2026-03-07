@@ -304,15 +304,15 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
 function NasusAvatar({ isStreaming: _isStreaming }: { isStreaming?: boolean }) {
   return (
     <div style={{
-      width: 26,
-      height: 26,
-      borderRadius: 7,
+      width: 28,
+      height: 28,
+      borderRadius: 8,
       flexShrink: 0,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: '#111',
-      border: '1px solid rgba(234,179,8,0.18)',
+      border: '1px solid rgba(255,255,255,0.08)',
     }}>
       <NasusLogo size={13} fill="var(--amber)" />
     </div>
@@ -399,16 +399,16 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ maxWidth: '75%', minWidth: 0 }}>
+      <div style={{ maxWidth: '72%', minWidth: 0 }}>
         <div
           style={{
             color: 'var(--tx-primary)',
             fontSize: 13.5,
             lineHeight: 1.65,
-            padding: '10px 16px',
-            borderRadius: '18px 18px 4px 18px',
-            background: 'rgba(234,179,8,0.06)',
-            border: '1px solid rgba(234,179,8,0.12)',
+            padding: '9px 14px',
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.09)',
             maxWidth: '100%',
           }}
         >
@@ -421,7 +421,7 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
           )}
         </div>
 
-        {/* Timestamp on hover */}
+        {/* Label on hover */}
         <div style={{
           textAlign: 'right',
           marginTop: 3,
@@ -485,12 +485,12 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
     return (
       <div
-        style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         {/* Avatar */}
-        <div style={{ marginTop: 2, flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, paddingTop: 1 }}>
           <NasusAvatar isStreaming={isStreaming} />
         </div>
 
