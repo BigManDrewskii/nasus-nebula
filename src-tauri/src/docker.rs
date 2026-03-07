@@ -105,8 +105,15 @@ pub async fn create_container(
         ..Default::default()
     };
 
+    // Remove any stale container with the same name to avoid name collision
+    let container_name = format!("nasus-sandbox-{}", task_id);
+    let _ = docker
+        .stop_container(&container_name, Some(StopContainerOptions { t: 2 }))
+        .await;
+    let _ = docker.remove_container(&container_name, None).await;
+
     let options = Some(CreateContainerOptions {
-        name: format!("nasus-sandbox-{}", task_id),
+        name: container_name,
         platform: None,
     });
 
@@ -159,7 +166,7 @@ pub async fn execute_python(
     .map_err(|e| format!("Failed to start exec: {}", e))?;
 
     // Parse output
-    let (stdout, stderr) = parse_exec_output(exec_result);
+    let (stdout, stderr) = parse_exec_output(exec_result).await;
 
     // Inspect exec to get exit code
     let inspect = docker
@@ -209,7 +216,7 @@ pub async fn execute_bash(
     .map_err(|e| format!("Failed to start exec: {}", e))?;
 
     // Parse output
-    let (stdout, stderr) = parse_exec_output(exec_result);
+    let (stdout, stderr) = parse_exec_output(exec_result).await;
 
     // Inspect exec to get exit code
     let inspect = docker
@@ -275,6 +282,14 @@ async fn ensure_image(docker: &Docker, image: &str) -> Result<(), String> {
         return Ok(());
     }
 
+    // Local-only images (e.g. nasus-*) can't be pulled from Docker Hub
+    if image.starts_with("nasus-") {
+        return Err(format!(
+            "Image '{}' not found locally. Build it first with: docker build -t {} -f docker/Dockerfile.sandbox docker/",
+            image, image
+        ));
+    }
+
     // Pull the image - create_image returns a Stream directly
     let mut image_stream = docker.create_image(
         Some(CreateImageOptions {
@@ -297,31 +312,24 @@ async fn ensure_image(docker: &Docker, image: &str) -> Result<(), String> {
 }
 
 /// Parse exec output into stdout and stderr strings
-fn parse_exec_output(output: StartExecResults) -> (String, String) {
+async fn parse_exec_output(output: StartExecResults) -> (String, String) {
     let mut stdout = String::new();
     let mut stderr = String::new();
 
     match output {
         StartExecResults::Attached { mut output, .. } => {
-            let rt = tokio::runtime::Runtime::new()
-                .expect("Failed to create runtime for exec output parsing");
-
-            rt.block_on(async {
-                use futures_util::StreamExt;
-
-                while let Some(result) = output.next().await {
-                    match result {
-                        Ok(bollard::container::LogOutput::StdOut { message }) => {
-                            stdout.push_str(&String::from_utf8_lossy(&message));
-                        }
-                        Ok(bollard::container::LogOutput::StdErr { message }) => {
-                            stderr.push_str(&String::from_utf8_lossy(&message));
-                        }
-                        Err(_) => continue,
-                        _ => continue,
+            while let Some(result) = output.next().await {
+                match result {
+                    Ok(bollard::container::LogOutput::StdOut { message }) => {
+                        stdout.push_str(&String::from_utf8_lossy(&message));
                     }
+                    Ok(bollard::container::LogOutput::StdErr { message }) => {
+                        stderr.push_str(&String::from_utf8_lossy(&message));
+                    }
+                    Err(_) => continue,
+                    _ => continue,
                 }
-            });
+            }
         }
         _ => {}
     }

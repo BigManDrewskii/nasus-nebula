@@ -23,57 +23,71 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
     return undefined
   }
 
-    try {
-      // Fast path: check globals first (no async import needed)
-      const win = window as typeof globalThis & {
-        __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-        __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-        external?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
-      }
-      const globalInvoke = win.__TAURI_INTERNALS__?.invoke ?? win.__TAURI__?.invoke ?? win.external?.invoke
-      if (typeof globalInvoke === 'function') {
-        return await globalInvoke(cmd, args) as T
-      }
-
-      // Not running inside Tauri — skip the dynamic import entirely to avoid
-      // "Cannot read properties of undefined (reading 'invoke')" noise in browser dev mode.
-      if (!win.__TAURI_INTERNALS__ && !win.__TAURI__) {
-        return undefined
-      }
-
-      // Tauri v2: try to get invoke from @tauri-apps/api/core
-      const core = await import('@tauri-apps/api/core').catch(() => null) as TauriCoreModule | null
-
-      if (core) {
-        // Standard v2 invoke
-        if (typeof core.invoke === 'function') {
-          return await core.invoke(cmd, args) as T
-        }
-
-        // Fallback for different v2 build configurations
-        const altInvoke = core.invoke ?? core.default?.invoke
-        if (typeof altInvoke === 'function') {
-          return await altInvoke(cmd, args) as T
-        }
-      }
-
-      log.warn(`No invoke method found for ${cmd}`)
-      return undefined
-    } catch (e) {
-      // Suppress expected non-errors:
-      // - "No such file / os error 2" = workspace file not found (expected)
-      // - "Cannot read properties of undefined (reading 'invoke')" = running in browser without Tauri
-        const errorMsg = String(e)
-        if (
-          !errorMsg.includes('No such file') &&
-          !errorMsg.includes('os error 2') &&
-          !errorMsg.includes('File not found') &&
-          !errorMsg.includes("reading 'invoke'") &&
-          !errorMsg.includes('invoke')
-        ) {
-          log.error(`Error calling ${cmd}`, e)
-        }
+  // Docker commands must propagate errors — bypass the error-swallowing catch block
+  if (cmd.startsWith('docker_')) {
+    const win = window as typeof globalThis & {
+      __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+      external?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
     }
+    const globalInvoke = win.__TAURI_INTERNALS__?.invoke ?? win.__TAURI__?.invoke ?? win.external?.invoke
+    if (typeof globalInvoke === 'function') {
+      return await globalInvoke(cmd, args) as T
+    }
+    throw new Error(`Tauri invoke not available for ${cmd}`)
+  }
+
+      try {
+        // Fast path: check globals first (no async import needed)
+        const win = window as typeof globalThis & {
+          __TAURI_INTERNALS__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+          __TAURI__?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+          external?: { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+        }
+        const globalInvoke = win.__TAURI_INTERNALS__?.invoke ?? win.__TAURI__?.invoke ?? win.external?.invoke
+        if (typeof globalInvoke === 'function') {
+          return await globalInvoke(cmd, args) as T
+        }
+
+        // Not running inside Tauri — skip the dynamic import entirely to avoid
+        // "Cannot read properties of undefined (reading 'invoke')" noise in browser dev mode.
+        if (!win.__TAURI_INTERNALS__ && !win.__TAURI__) {
+          return undefined
+        }
+
+        // Tauri v2: try to get invoke from @tauri-apps/api/core
+        const core = await import('@tauri-apps/api/core').catch(() => null) as TauriCoreModule | null
+
+        if (core) {
+          // Standard v2 invoke
+          if (typeof core.invoke === 'function') {
+            return await core.invoke(cmd, args) as T
+          }
+
+          // Fallback for different v2 build configurations
+          const altInvoke = core.invoke ?? core.default?.invoke
+          if (typeof altInvoke === 'function') {
+            return await altInvoke(cmd, args) as T
+          }
+        }
+
+        log.warn(`No invoke method found for ${cmd}`)
+        return undefined
+      } catch (e) {
+        // Suppress expected non-errors:
+        // - "No such file / os error 2" = workspace file not found (expected)
+        // - "Cannot read properties of undefined (reading 'invoke')" = running in browser without Tauri
+          const errorMsg = String(e)
+          if (
+            !errorMsg.includes('No such file') &&
+            !errorMsg.includes('os error 2') &&
+            !errorMsg.includes('File not found') &&
+            !errorMsg.includes("reading 'invoke'") &&
+            !errorMsg.includes('invoke')
+          ) {
+            log.error(`Error calling ${cmd}`, e)
+          }
+      }
 
   return undefined
 }
