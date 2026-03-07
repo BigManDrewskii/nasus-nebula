@@ -13,6 +13,12 @@ pub enum NasusError {
 
     #[error("Command Execution Error: {0}")]
     Command(String),
+
+    #[error("Sidecar Error: {0}")]
+    Sidecar(String),
+
+    #[error("Database Error: {0}")]
+    Database(String),
 }
 
 /// Manual Serialize impl so NasusError can be returned from #[tauri::command] functions.

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use crate::{NasusError, NasusResult};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -410,7 +411,7 @@ pub fn get_gateway_health(state: tauri::State<'_, GatewayState>) -> Vec<GatewayH
 
 /// Quick connectivity test for a single gateway
 #[tauri::command]
-pub async fn test_gateway(api_base: String, api_key: String) -> Result<serde_json::Value, String> {
+pub async fn test_gateway(api_base: String, api_key: String) -> NasusResult<serde_json::Value> {
     let url = format!("{}/models", api_base.trim_end_matches('/'));
     let client = reqwest::Client::new();
     let mut req = client
@@ -422,13 +423,15 @@ pub async fn test_gateway(api_base: String, api_key: String) -> Result<serde_jso
         req = req.header("Authorization", format!("Bearer {api_key}"));
     }
 
-    let resp = req.send().await.map_err(|e| format!("Connection failed: {e}"))?;
+    let resp = req.send().await
+        .map_err(|e| NasusError::Command(format!("Connection failed: {e}")))?;
 
     if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
+        return Err(NasusError::Command(format!("HTTP {}", resp.status())));
     }
 
-    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let json: serde_json::Value = resp.json().await
+        .map_err(|e| NasusError::Command(e.to_string()))?;
     let model_count = json["data"].as_array().map(|a| a.len()).unwrap_or(0);
 
     Ok(serde_json::json!({

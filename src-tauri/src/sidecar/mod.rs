@@ -387,6 +387,7 @@ impl SidecarState {
 // ─── Tauri Commands ───────────────────────────────────────────────────────
 
 use crate::AppState;
+use crate::{NasusError, NasusResult};
 use tauri::{AppHandle, State};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -399,25 +400,25 @@ pub struct StartSessionResult {
 #[tauri::command]
 pub async fn browser_start_sidecar(
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> NasusResult<String> {
     let mut sidecar = state.sidecar.0.lock().await;
-    sidecar.start().await.map_err(|e| e.to_string())
+    sidecar.start().await.map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Stop the sidecar process
 #[tauri::command]
 pub async fn browser_stop_sidecar(
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> NasusResult<()> {
     let mut sidecar = state.sidecar.0.lock().await;
-    sidecar.stop().await.map_err(|e| e.to_string())
+    sidecar.stop().await.map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Check if sidecar is running
 #[tauri::command]
 pub async fn browser_is_sidecar_running(
     state: State<'_, AppState>,
-) -> Result<bool, String> {
+) -> NasusResult<bool> {
     let mut sidecar = state.sidecar.0.lock().await;
     Ok(sidecar.is_running())
 }
@@ -426,9 +427,10 @@ pub async fn browser_is_sidecar_running(
 #[tauri::command]
 pub async fn browser_start_session(
     state: State<'_, AppState>,
-) -> Result<StartSessionResult, String> {
+) -> NasusResult<StartSessionResult> {
     let mut sidecar = state.sidecar.0.lock().await;
-    let session = sidecar.create_session().await.map_err(|e| e.to_string())?;
+    let session = sidecar.create_session().await
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
     Ok(StartSessionResult {
         session_id: session.id,
         websocket_url: session.websocket_url,
@@ -440,9 +442,10 @@ pub async fn browser_start_session(
 pub async fn browser_stop_session(
     state: State<'_, AppState>,
     session_id: String,
-) -> Result<(), String> {
+) -> NasusResult<()> {
     let mut sidecar = state.sidecar.0.lock().await;
-    sidecar.remove_session(&session_id).map_err(|e| e.to_string())
+    sidecar.remove_session(&session_id)
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Navigate to a URL
@@ -451,15 +454,13 @@ pub async fn browser_navigate(
     _state: State<'_, AppState>,
     session_id: String,
     url: String,
-) -> Result<serde_json::Value, String> {
+) -> NasusResult<serde_json::Value> {
     println!("[Browser] Navigate session {} to {}", session_id, url);
 
     let params = serde_json::json!({ "url": url.clone() });
-    let response = send_sidecar_command(&session_id, "navigate", Some(params))
+    send_sidecar_command(&session_id, "navigate", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(response)
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Take a screenshot
@@ -468,18 +469,18 @@ pub async fn browser_screenshot(
     _state: State<'_, AppState>,
     session_id: String,
     full_page: bool,
-) -> Result<String, String> {
+) -> NasusResult<String> {
     println!("[Browser] Screenshot session {} (full_page={})", session_id, full_page);
 
     let params = serde_json::json!({ "fullPage": full_page });
     let response = send_sidecar_command(&session_id, "screenshot", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("dataUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Click an element
@@ -490,7 +491,7 @@ pub async fn browser_click(
     selector: Option<String>,
     x: Option<f64>,
     y: Option<f64>,
-) -> Result<(), String> {
+) -> NasusResult<()> {
     println!("[Browser] Click session {} selector {:?} coords {:?},{:?}", session_id, selector, x, y);
 
     let mut params = serde_json::Map::new();
@@ -506,7 +507,7 @@ pub async fn browser_click(
 
     send_sidecar_command(&session_id, "click", Some(serde_json::Value::Object(params)))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     Ok(())
 }
@@ -519,7 +520,7 @@ pub async fn browser_type(
     selector: Option<String>,
     text: String,
     clear_first: Option<bool>,
-) -> Result<usize, String> {
+) -> NasusResult<usize> {
     println!("[Browser] Type session {} text: {}", session_id, text);
 
     let mut params = serde_json::Map::new();
@@ -533,12 +534,12 @@ pub async fn browser_type(
 
     let response = send_sidecar_command(&session_id, "type", Some(serde_json::Value::Object(params)))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("typed")
         .and_then(|v| v.as_u64())
         .map(|v| v as usize)
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Scroll the page
@@ -548,7 +549,7 @@ pub async fn browser_scroll(
     session_id: String,
     direction: Option<String>,
     amount: Option<u32>,
-) -> Result<i32, String> {
+) -> NasusResult<i32> {
     println!("[Browser] Scroll session {} direction {:?}", session_id, direction);
 
     let dir = direction.unwrap_or_else(|| "down".to_string());
@@ -561,12 +562,12 @@ pub async fn browser_scroll(
 
     let response = send_sidecar_command(&session_id, "scroll", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("scrolled")
         .and_then(|v| v.as_i64())
         .map(|v| v as i32)
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Wait for a condition
@@ -577,7 +578,7 @@ pub async fn browser_wait_for(
     selector: Option<String>,
     url_pattern: Option<String>,
     timeout_ms: Option<u64>,
-) -> Result<String, String> {
+) -> NasusResult<String> {
     println!("[Browser] Wait for session {} selector {:?}", session_id, selector);
 
     let mut params = serde_json::Map::new();
@@ -593,12 +594,12 @@ pub async fn browser_wait_for(
 
     let response = send_sidecar_command(&session_id, "wait_for", Some(serde_json::Value::Object(params)))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("matched")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Execute JavaScript
@@ -608,7 +609,7 @@ pub async fn browser_execute(
     session_id: String,
     expression: String,
     await_promise: Option<bool>,
-) -> Result<serde_json::Value, String> {
+) -> NasusResult<serde_json::Value> {
     println!("[Browser] Execute session {}", session_id);
 
     let params = serde_json::json!({
@@ -618,11 +619,11 @@ pub async fn browser_execute(
 
     let response = send_sidecar_command(&session_id, "execute", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("result")
         .cloned()
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Extract content from page
@@ -631,7 +632,7 @@ pub async fn browser_extract(
     _state: State<'_, AppState>,
     session_id: String,
     selector: Option<String>,
-) -> Result<ExtractResult, String> {
+) -> NasusResult<ExtractResult> {
     println!("[Browser] Extract session {} selector {:?}", session_id, selector);
 
     let params = if let Some(sel) = selector {
@@ -642,7 +643,7 @@ pub async fn browser_extract(
 
     let response = send_sidecar_command(&session_id, "extract", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     Ok(ExtractResult {
         url: response.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -667,7 +668,7 @@ pub async fn browser_aria_snapshot(
     _state: State<'_, AppState>,
     session_id: String,
     selector: Option<String>,
-) -> Result<AriaSnapshotResult, String> {
+) -> NasusResult<AriaSnapshotResult> {
     println!("[Browser] AriaSnapshot session {} selector {:?}", session_id, selector);
 
     let mut params = serde_json::Map::new();
@@ -681,7 +682,7 @@ pub async fn browser_aria_snapshot(
         Some(serde_json::Value::Object(params)),
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     Ok(AriaSnapshotResult {
         url: response.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
@@ -705,7 +706,7 @@ pub async fn browser_upload_file(
     session_id: String,
     selector: String,
     file_path: String,
-) -> Result<String, String> {
+) -> NasusResult<String> {
     println!("[Browser] Upload file session {} selector {} file {}", session_id, selector, file_path);
 
     let params = serde_json::json!({
@@ -715,12 +716,12 @@ pub async fn browser_upload_file(
 
     let response = send_sidecar_command(&session_id, "upload_file", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("uploaded")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Manage cookies
@@ -732,7 +733,7 @@ pub async fn browser_cookies(
     domain: Option<String>,
     name: Option<String>,
     value: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> NasusResult<serde_json::Value> {
     println!("[Browser] Cookies session {} action {}", session_id, action);
 
     let mut params = serde_json::Map::new();
@@ -749,7 +750,7 @@ pub async fn browser_cookies(
 
     send_sidecar_command(&session_id, "cookies", Some(serde_json::Value::Object(params)))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Set stealth mode
@@ -758,17 +759,17 @@ pub async fn browser_set_stealth(
     _state: State<'_, AppState>,
     session_id: String,
     enabled: bool,
-) -> Result<bool, String> {
+) -> NasusResult<bool> {
     println!("[Browser] Set stealth session {} enabled {}", session_id, enabled);
 
     let params = serde_json::json!({ "enabled": enabled });
     let response = send_sidecar_command(&session_id, "set_stealth", Some(params))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| NasusError::Sidecar(e.to_string()))?;
 
     response.get("stealth")
         .and_then(|v| v.as_bool())
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+        .ok_or_else(|| NasusError::Sidecar("Invalid response from sidecar".to_string()))
 }
 
 /// Get all open tabs in the session
@@ -776,12 +777,12 @@ pub async fn browser_set_stealth(
 pub async fn browser_get_tabs(
     _state: State<'_, AppState>,
     session_id: String,
-) -> Result<serde_json::Value, String> {
+) -> NasusResult<serde_json::Value> {
     println!("[Browser] Get tabs session {}", session_id);
 
     send_sidecar_command(&session_id, "get_tabs", None)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 /// Select an option in a <select> element
@@ -792,7 +793,7 @@ pub async fn browser_select(
     selector: String,
     value: Option<String>,
     label: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> NasusResult<serde_json::Value> {
     println!("[Browser] Select session {} selector {}", session_id, selector);
 
     let mut params = serde_json::Map::new();
@@ -806,7 +807,7 @@ pub async fn browser_select(
 
     send_sidecar_command(&session_id, "select", Some(serde_json::Value::Object(params)))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
 // ─── Sidecar Installation Commands ─────────────────────────────────────────────
@@ -823,7 +824,7 @@ pub struct SidecarInstallStatus {
 #[tauri::command]
 pub async fn browser_check_sidecar_installed(
     state: State<'_, AppState>,
-) -> Result<SidecarInstallStatus, String> {
+) -> NasusResult<SidecarInstallStatus> {
     let sidecar = state.sidecar.0.lock().await;
     let node_modules_path = sidecar.sidecar_dir.join("node_modules");
     let has_node_modules = node_modules_path.exists();
@@ -870,7 +871,7 @@ pub async fn browser_check_sidecar_installed(
 pub async fn browser_install_sidecar(
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<String, String> {
+) -> NasusResult<String> {
     let sidecar_dir = {
         let sidecar = state.sidecar.0.lock().await;
         sidecar.sidecar_dir.clone()
@@ -913,19 +914,19 @@ pub async fn browser_install_sidecar(
                 }
                 Ok(output) => {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    Err(format!("Chromium installation failed: {}", stderr))
+                    Err(NasusError::Sidecar(format!("Chromium installation failed: {}", stderr)))
                 }
                 Err(e) => {
-                    Err(format!("Failed to run playwright install: {}", e))
+                    Err(NasusError::Sidecar(format!("Failed to run playwright install: {}", e)))
                 }
             }
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(format!("npm install failed: {}", stderr))
+            Err(NasusError::Sidecar(format!("npm install failed: {}", stderr)))
         }
         Err(e) => {
-            Err(format!("Failed to run npm install: {}", e))
+            Err(NasusError::Sidecar(format!("Failed to run npm install: {}", e)))
         }
     }
 }

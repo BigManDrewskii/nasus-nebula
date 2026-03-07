@@ -355,6 +355,7 @@ async fn parse_exec_output(output: StartExecResults) -> (String, String) {
 
 pub mod commands {
     use super::*;
+    use crate::{NasusError, NasusResult};
 
     /// Create a Docker sandbox container
     #[tauri::command]
@@ -364,7 +365,7 @@ pub mod commands {
         image: Option<String>,
         memory: Option<String>,
         cpu: Option<String>,
-    ) -> Result<ContainerResult, String> {
+    ) -> NasusResult<ContainerResult> {
         let config = if memory.is_some() || image.is_some() {
             SandboxConfig {
                 image: image.unwrap_or_else(|| "python:3.12-slim".to_string()),
@@ -379,7 +380,9 @@ pub mod commands {
             SandboxConfig::default()
         };
 
-        let response = create_container(&task_id, &workspace_path, &config).await?;
+        let response = create_container(&task_id, &workspace_path, &config)
+            .await
+            .map_err(|e| NasusError::Command(e))?;
         Ok(ContainerResult {
             container_id: response.container_id,
         })
@@ -391,8 +394,10 @@ pub mod commands {
         container_id: String,
         code: String,
         timeout: Option<u64>,
-    ) -> Result<ExecResult, String> {
-        execute_python(&container_id, &code, timeout.unwrap_or(120000)).await
+    ) -> NasusResult<ExecResult> {
+        execute_python(&container_id, &code, timeout.unwrap_or(120000))
+            .await
+            .map_err(|e| NasusError::Command(e))
     }
 
     /// Execute a bash command in a container
@@ -401,20 +406,26 @@ pub mod commands {
         container_id: String,
         command: String,
         timeout: Option<u64>,
-    ) -> Result<ExecResult, String> {
-        execute_bash(&container_id, &command, timeout.unwrap_or(120000)).await
+    ) -> NasusResult<ExecResult> {
+        execute_bash(&container_id, &command, timeout.unwrap_or(120000))
+            .await
+            .map_err(|e| NasusError::Command(e))
     }
 
     /// Stop and remove a container
     #[tauri::command]
-    pub async fn docker_dispose_container(container_id: String) -> Result<(), String> {
-        dispose_container(&container_id).await
+    pub async fn docker_dispose_container(container_id: String) -> NasusResult<()> {
+        dispose_container(&container_id)
+            .await
+            .map_err(|e| NasusError::Command(e))
     }
 
     /// Check Docker availability
     #[tauri::command]
-    pub async fn docker_check_status() -> Result<bool, String> {
-        check_docker_status().await
+    pub async fn docker_check_status() -> NasusResult<bool> {
+        check_docker_status()
+            .await
+            .map_err(|e| NasusError::Command(e))
     }
 }
 
