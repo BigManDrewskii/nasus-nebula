@@ -577,9 +577,6 @@ export const useAppStore = create<AppState>()(
                 set({ provider })
 
                 // Enable the selected gateway, disable all other non-Ollama gateways.
-                // Multiple enabled gateways cause resolveConnection() to pick the
-                // lowest-priority one (openrouter at priority 0) — which may have no
-                // key. Disabling non-active gateways ensures the correct one is used.
                 const { gateways, updateGateway } = get()
                 gateways.forEach((g) => {
                   if (g.id === provider || g.type === provider) {
@@ -588,6 +585,16 @@ export const useAppStore = create<AppState>()(
                     updateGateway(g.id, { enabled: false })
                   }
                 })
+
+                // When switching to a provider that has its own fixed routing
+                // (DeepSeek, Ollama, custom), lock routerConfig.mode to 'manual'
+                // so the auto-router never overrides the user's choice with a
+                // free OpenRouter model mid-task.
+                // OpenRouter and Requesty support auto-routing; leave mode alone.
+                const autoCapableProviders = ['openrouter', 'requesty']
+                if (!autoCapableProviders.includes(provider)) {
+                  set((s) => ({ routerConfig: { ...s.routerConfig, mode: 'manual' } }))
+                }
 
                 // Fetch models for the new provider
                 get().fetchModelsForProvider(provider)
@@ -824,11 +831,9 @@ export const useAppStore = create<AppState>()(
         setCurrentStep: (step) => set({ currentStep: step }),
         approvePlan: () => {
           const state = useAppStore.getState()
-          set({ planApprovalStatus: 'approved' })
-          // If we approved, set current plan
-          if (state.pendingPlan) {
-            set({ currentPlan: state.pendingPlan, currentPhase: 0, currentStep: 0 })
-          }
+          // Clear both pending and current plan — the card is for approval only.
+          // Once approved we don't keep it in the chat thread (Option A UX).
+          set({ planApprovalStatus: 'approved', pendingPlan: null, currentPlan: null })
           // Emit approval event for orchestrator
           if (state.activeTaskId) {
             window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${state.activeTaskId}`))

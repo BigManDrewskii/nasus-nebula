@@ -54,13 +54,10 @@ interface ChatViewProps {
     enableVerification,
     routerConfig,
     routingMode,
-    pendingPlan,
-    approvePlan,
-    rejectPlan,
-    currentPlan,
-    currentPhase,
-    currentStep,
-    setSandboxStatus,
+      pendingPlan,
+      approvePlan,
+      rejectPlan,
+      setSandboxStatus,
     sandboxStatus: globalSandboxStatus,
     extensionConnected,
     extensionVersion,
@@ -93,9 +90,6 @@ interface ChatViewProps {
       pendingPlan: s.pendingPlan,
       approvePlan: s.approvePlan,
       rejectPlan: s.rejectPlan,
-      currentPlan: s.currentPlan,
-      currentPhase: s.currentPhase,
-      currentStep: s.currentStep,
       setSandboxStatus: s.setSandboxStatus,
       sandboxStatus: s.sandboxStatus,
       extensionConnected: s.extensionConnected,
@@ -597,11 +591,11 @@ interface ChatViewProps {
     handleSend(resumePrompt)
   }
 
-  useEffect(() => {
-    if (pendingPlan || currentPlan) {
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-    }
-  }, [pendingPlan, currentPlan])
+    useEffect(() => {
+      if (pendingPlan) {
+        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+      }
+    }, [pendingPlan])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -737,45 +731,43 @@ interface ChatViewProps {
                       </div>
                     ))}
 
-                    {/* Planning View integrated inline */}
-                    {(pendingPlan || currentPlan) && (
+                    {/* Planning View — approval only, disappears once approved */}
+                    {pendingPlan && (
                       <div style={{ marginTop: 8 }} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Amber separator — "agent is presenting something" */}
+                        {/* Amber separator */}
                         <div style={{
                           height: 1,
                           background: 'linear-gradient(to right, rgba(234,179,8,0.15), rgba(255,255,255,0.04), transparent)',
                           margin: '0 0 16px 39px',
                         }} />
 
-                        {/* Plan intro — only shown when awaiting approval */}
-                        {pendingPlan && (
+                        {/* Plan intro */}
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 12,
+                        }}>
                           <div style={{
-                            display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 12,
+                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: '#111', border: '1px solid rgba(234,179,8,0.2)',
                           }}>
-                            <div style={{
-                              width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              background: '#111', border: '1px solid rgba(234,179,8,0.2)',
-                            }}>
-                              <NasusLogo size={15} fill="var(--amber)" />
-                            </div>
-                            <p style={{
-                              fontSize: 13, color: 'var(--tx-secondary)', lineHeight: 1.6,
-                              paddingTop: 4, margin: 0,
-                            }}>
-                              I've analyzed your request and created an execution plan. Review the phases below and approve to begin.
-                            </p>
+                            <NasusLogo size={15} fill="var(--amber)" />
                           </div>
-                        )}
+                          <p style={{
+                            fontSize: 13, color: 'var(--tx-secondary)', lineHeight: 1.6,
+                            paddingTop: 4, margin: 0,
+                          }}>
+                            I've analyzed your request and created an execution plan. Review the phases below and approve to begin.
+                          </p>
+                        </div>
 
-                        {/* Plan card — indented to align with agent content */}
+                        {/* Plan card */}
                         <div style={{ paddingLeft: 39 }}>
                           <PlanView
-                            plan={pendingPlan || currentPlan!}
-                            onApprove={pendingPlan ? approvePlan : undefined}
-                            onReject={pendingPlan ? rejectPlan : undefined}
-                            currentPhase={currentPhase}
-                            currentStep={currentStep}
+                            plan={pendingPlan}
+                            onApprove={approvePlan}
+                            onReject={rejectPlan}
+                            currentPhase={0}
+                            currentStep={0}
                           />
                         </div>
                       </div>

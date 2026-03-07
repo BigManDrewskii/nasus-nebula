@@ -40,7 +40,11 @@ export class ListFilesTool extends BaseTool {
         }
 
         if (filtered.length === 0) {
-          return toolSuccess('No files found.')
+          // Distinguish between "root workspace is empty" vs "subdirectory not found"
+          if (!normalizedFilter) {
+            return toolSuccess('Workspace is empty. No files have been created yet. Proceed to create files with write_file.')
+          }
+          return toolSuccess(`No files found in "${normalizedFilter}". The directory may not exist yet — use write_file to create files there.`)
         }
 
         // Show full relative paths so the agent knows where to read/write

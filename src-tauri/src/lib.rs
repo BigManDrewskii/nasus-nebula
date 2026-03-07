@@ -222,13 +222,16 @@ async fn get_config(app: AppHandle, state: State<'_, AppState>) -> Result<Config
             if let Some(v) = store.get("model") {
                 if let Some(s) = v.as_str() { if !s.is_empty() { config.model = s.to_string(); } }
             }
-            if let Some(v) = store.get("apiBase") {
-                if let Some(s) = v.as_str() { if !s.is_empty() { config.api_base = s.to_string(); } }
-            }
-        }
-    }
-    Ok(config.clone())
-}
+              if let Some(v) = store.get("apiBase") {
+                  if let Some(s) = v.as_str() { if !s.is_empty() { config.api_base = s.to_string(); } }
+              }
+              if let Some(v) = store.get("workspacePath") {
+                  if let Some(s) = v.as_str() { if !s.is_empty() { config.workspace_path = s.to_string(); } }
+              }
+          }
+      }
+      Ok(config.clone())
+  }
 
 #[allow(non_snake_case)]
 #[tauri::command]
