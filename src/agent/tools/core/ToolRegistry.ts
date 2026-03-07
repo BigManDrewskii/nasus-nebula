@@ -6,32 +6,45 @@
 
 import type { BaseTool, ToolConstructor } from './BaseTool'
 import type { ToolResult } from './ToolResult'
-// import { toolSuccess, toolFailure } from './ToolResult'
 
 /**
  * Registry for all available tools.
  * Provides tool lookup, registration, and execution.
+ *
+ * Tools are registered as constructors and instantiated lazily on first use.
+ * Instances are cached after the first call so that per-tool state (e.g.
+ * executionConfig) is preserved across calls within the same registry lifetime.
  */
 export class ToolRegistry {
-  private tools: Map<string, BaseTool> = new Map()
+  /** Registered tool constructors (source of truth). */
   private toolConstructors: Map<string, ToolConstructor> = new Map()
-
-  /**
-   * Register a tool instance.
-   */
-  register(tool: BaseTool): void {
-    this.tools.set(tool.name, tool)
-  }
+  /** Cached tool instances — populated lazily via get(). */
+  private instances: Map<string, BaseTool> = new Map()
 
   /**
    * Register a tool constructor for lazy instantiation.
    */
   registerConstructor(name: string, constructor: ToolConstructor): void {
     this.toolConstructors.set(name, constructor)
+    // Invalidate any cached instance so the next get() picks up the new constructor.
+    this.instances.delete(name)
   }
 
   /**
-   * Register multiple tools at once.
+   * @deprecated Use registerConstructor. Kept for API compatibility — registers
+   * a pre-built instance directly (bypasses lazy construction).
+   */
+  register(tool: BaseTool): void {
+    this.instances.set(tool.name, tool)
+    // Also register a pseudo-constructor so has() / getToolNames() stay consistent.
+    if (!this.toolConstructors.has(tool.name)) {
+      this.toolConstructors.set(tool.name, tool.constructor as ToolConstructor)
+    }
+  }
+
+  /**
+   * Register multiple tool instances at once.
+   * @deprecated Prefer registerConstructor for each tool.
    */
   registerAll(tools: BaseTool[]): void {
     for (const tool of tools) {
@@ -43,26 +56,22 @@ export class ToolRegistry {
    * Unregister a tool by name.
    */
   unregister(name: string): void {
-    this.tools.delete(name)
     this.toolConstructors.delete(name)
+    this.instances.delete(name)
   }
 
   /**
-   * Get a tool by name (instantiates if constructor-only).
+   * Get a tool by name, instantiating it lazily on first access.
    */
   get(name: string): BaseTool | undefined {
-    // Check for already instantiated tool
-    let tool = this.tools.get(name)
+    const cached = this.instances.get(name)
+    if (cached) return cached
 
-    // Try to instantiate from constructor
-    if (!tool) {
-      const Constructor = this.toolConstructors.get(name)
-      if (Constructor) {
-        tool = new Constructor()
-        this.tools.set(name, tool)
-      }
-    }
+    const Constructor = this.toolConstructors.get(name)
+    if (!Constructor) return undefined
 
+    const tool = new Constructor()
+    this.instances.set(name, tool)
     return tool
   }
 
@@ -70,43 +79,26 @@ export class ToolRegistry {
    * Check if a tool exists.
    */
   has(name: string): boolean {
-    return this.tools.has(name) || this.toolConstructors.has(name)
+    return this.toolConstructors.has(name)
   }
 
   /**
    * Get all registered tool names.
    */
   getToolNames(): string[] {
-    const names = new Set([
-      ...this.tools.keys(),
-      ...this.toolConstructors.keys(),
-    ])
-    return Array.from(names)
+    return Array.from(this.toolConstructors.keys())
   }
 
   /**
    * Get all tool definitions for function calling.
-   * Deduplicates by name — constructor-registered tools that were already
-   * instantiated via get() live in both maps; we must not emit them twice
-   * or OpenRouter will return 400 "duplicate function name".
+   * Each tool is instantiated at most once (via get()), so this is safe to call
+   * repeatedly without redundant construction.
    */
   getToolDefinitions(): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
-    const seen = new Set<string>()
     const definitions: Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> = []
 
-    // All unique tool names across both maps
-    const allNames = new Set([...this.tools.keys(), ...this.toolConstructors.keys()])
-
-    for (const name of allNames) {
-      if (seen.has(name)) continue
-      seen.add(name)
-
-      // Prefer already-instantiated tool; fall back to constructor
-      let tool = this.tools.get(name)
-      if (!tool) {
-        const Constructor = this.toolConstructors.get(name)
-        if (Constructor) tool = new Constructor()
-      }
+    for (const name of this.toolConstructors.keys()) {
+      const tool = this.get(name)
       if (tool) definitions.push(tool.toFunctionDefinition())
     }
 
@@ -142,17 +134,8 @@ export class ToolRegistry {
   filterByCapability(capability: 'sandbox' | 'browser'): BaseTool[] {
     const tools: BaseTool[] = []
 
-    for (const tool of this.tools.values()) {
-      if (capability === 'sandbox' && tool.requiresSandbox) {
-        tools.push(tool)
-      } else if (capability === 'browser' && tool.worksInBrowser) {
-        tools.push(tool)
-      }
-    }
-
-    // Also check constructor tools
-    for (const Constructor of this.toolConstructors.values()) {
-      const tool = new Constructor()
+    for (const name of this.toolConstructors.keys()) {
+      const tool = this.get(name)!
       if (capability === 'sandbox' && tool.requiresSandbox) {
         tools.push(tool)
       } else if (capability === 'browser' && tool.worksInBrowser) {
@@ -167,15 +150,15 @@ export class ToolRegistry {
    * Clear all tools (useful for testing or reset).
    */
   clear(): void {
-    this.tools.clear()
     this.toolConstructors.clear()
+    this.instances.clear()
   }
 
   /**
    * Get the count of registered tools.
    */
   get size(): number {
-    return new Set([...this.tools.keys(), ...this.toolConstructors.keys()]).size
+    return this.toolConstructors.size
   }
 }
 

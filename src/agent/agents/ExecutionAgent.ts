@@ -144,9 +144,7 @@ export class ExecutionAgent extends BaseAgent {
   // Track progress for auto-updating task_plan.md
   private completedCheckboxes = 0
   private contextWarningIssued = false
-  private forcePowerfulModel = false
-
-  constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
+    constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
     super(name, type)
   }
 
@@ -180,8 +178,8 @@ export class ExecutionAgent extends BaseAgent {
     const params = context as ExecutionConfigParams
     const { taskId, messageId, userMessages, signal } = params
 
-      // Get connection params from store (gateway resolution)
-      // Prefer the gateway's resolved apiKey as the source of truth
+      // Get connection params from store (gateway resolution) — resolved once per task,
+      // not re-resolved on every LLM call in the hot loop.
       const store = useAppStore.getState()
       const resolvedConnection = store.resolveConnection()
       const apiKey = params.apiKey || resolvedConnection.apiKey || store.apiKey
@@ -196,13 +194,14 @@ export class ExecutionAgent extends BaseAgent {
 
       // Observability: create a trace logger for this execution
       const tracer = new TraceLogger(taskId, messageId)
-    
-    // Set powerful model if plan complexity is high
-    if (params.plan?.complexity === 'high') {
-      this.forcePowerfulModel = true
-    } else {
-      this.forcePowerfulModel = false
-    }
+
+      // Determine environment and compute tool definitions once for this execution
+      const env = params.executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+      const toolDefs = getToolDefinitions(env)
+
+      // forcePowerfulModel is task-scoped — local var avoids leaking state between tasks
+      // on the shared singleton agent instance.
+      const forcePowerfulModel = params.plan?.complexity === 'high'
 
     // Validate API key
     if (!apiKey) {
@@ -241,9 +240,6 @@ export class ExecutionAgent extends BaseAgent {
         preambleParts.push(`[Project Context]\n${projectMemory.slice(0, 2000)}`)
       }
 
-      // Determine the active env so we can pass the right tool list
-      const env = params.executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
-
       // Stack template detection (first message only)
       const firstUserContent = typeof userMessages[0]?.content === 'string' ? userMessages[0].content : ''
       let stackInjection: string | undefined
@@ -259,7 +255,7 @@ export class ExecutionAgent extends BaseAgent {
       // It inserts: stable system prefix → env summary → cache breakpoint → memory → plan → user messages.
       const builtContext = await buildContext(
         userMessages,
-        getToolDefinitions(env),
+        toolDefs,
         {
           includeMemory: true,
           maxMemoryItems: 3,
@@ -323,7 +319,7 @@ export class ExecutionAgent extends BaseAgent {
       }
 
       // LLM call with automatic gateway failover
-      const llmResult = await this.callLLM(messages, taskId, messageId, signal!, params.executionConfig)
+      const llmResult = await this.callLLM(messages, taskId, messageId, signal!, toolDefs, resolvedConnection, forcePowerfulModel)
       if (!llmResult) {
         if (signal && !signal.aborted) {
           return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
@@ -402,11 +398,6 @@ export class ExecutionAgent extends BaseAgent {
         return { state: AgentState.FINISHED, done: true }
       }
 
-      const isComplete = toolCalls.some((tc: ToolCall) => tc.function.name === 'complete')
-      if (isComplete) {
-        // Find the complete call to get its summary if needed, but the tool execution will handle it
-      }
-
         // Process tool calls
         const toolResult = await this.processToolCalls(
           toolCalls,
@@ -420,6 +411,8 @@ export class ExecutionAgent extends BaseAgent {
           warnIter,
           tracer,
           reasoningContent,
+          toolDefs,
+          env,
         )
 
     if (toolResult === 'aborted' || toolResult === 'complete') {
@@ -584,37 +577,32 @@ export class ExecutionAgent extends BaseAgent {
     taskId: string,
     messageId: string,
     signal: AbortSignal,
-    executionConfig?: ExecutionConfig,
+    toolDefs: ReturnType<typeof getToolDefinitions>,
+    resolvedConnection: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
+    forcePowerfulModel: boolean,
   ): Promise<LlmResponse | null> {
     const store = useAppStore.getState()
-    const resolved = store.resolveConnection()
 
-      // Legacy support: prefer store/resolved values unless overridden
-      const apiBase = resolved.apiBase || store.apiBase
-      const apiKey = resolved.apiKey || store.apiKey
-      const provider = resolved.provider || store.provider
+    const apiBase = resolvedConnection.apiBase || store.apiBase
+    const apiKey = resolvedConnection.apiKey || store.apiKey
+    const provider = resolvedConnection.provider || store.provider
 
-      // When forcePowerfulModel is set, pick the best model for the *active* gateway.
-      // We must not use powerfulModel(openRouterModels) for non-OR gateways — that
-      // returns an OR slug (e.g. "anthropic/claude-sonnet-4-20250514") which is invalid
-      // on api.deepseek.com or router.requesty.ai.
-      let model: string
-      if (this.forcePowerfulModel) {
-        if (provider === 'openrouter' || provider === 'requesty') {
-          model = powerfulModel(store.openRouterModels)
-        } else if (provider === 'deepseek') {
-          // Best tool-capable model on DeepSeek direct
-          model = 'deepseek-chat'
-        } else if (provider === 'ollama') {
-          // Use whatever is configured — no "powerful" concept for local models
-          model = resolved.model || store.model
-        } else {
-          model = resolved.model || store.model
-        }
+    // When forcePowerfulModel is set, pick the best model for the *active* gateway.
+    // We must not use powerfulModel(openRouterModels) for non-OR gateways — that
+    // returns an OR slug (e.g. "anthropic/claude-sonnet-4-20250514") which is invalid
+    // on api.deepseek.com or router.requesty.ai.
+    let model: string
+    if (forcePowerfulModel) {
+      if (provider === 'openrouter' || provider === 'requesty') {
+        model = powerfulModel(store.openRouterModels)
+      } else if (provider === 'deepseek') {
+        model = 'deepseek-chat'
       } else {
-        model = resolved.model || store.model
+        model = resolvedConnection.model || store.model
       }
-
+    } else {
+      model = resolvedConnection.model || store.model
+    }
 
     // Early validation for missing API key - provide visible error instead of silent hang
     if (!apiKey || apiKey.length === 0) {
@@ -628,30 +616,28 @@ export class ExecutionAgent extends BaseAgent {
     }
 
     try {
-        this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
+      this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
 
-        const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+      const result = await streamCompletion(
+        apiBase,
+        apiKey,
+        provider,
+        model,
+        messages,
+        toolDefs,
+        {
+          onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
+          onToolCalls: () => {},
+          onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
+          onError: (err) => this.emitError(taskId, messageId, err),
+          onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
+          signal,
+          extraHeaders: resolvedConnection.extraHeaders,
+        },
+      )
 
-        const result = await streamCompletion(
-            apiBase,
-            apiKey,
-            provider,
-            model,
-            messages,
-            getToolDefinitions(env),
-            {
-              onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
-              onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
-              onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
-              onError: (err) => this.emitError(taskId, messageId, err),
-              onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
-              signal,
-              extraHeaders: resolved.extraHeaders,
-            },
-          )
-
-        return result
-      } catch (err) {
+      return result
+    } catch (err) {
         // Clean up a partial assistant+tool_calls message if the stream failed before
         // tool execution could complete. Without this, the next iteration would start
         // with a dangling assistant message that has no tool results — triggering the
@@ -674,19 +660,21 @@ export class ExecutionAgent extends BaseAgent {
   /**
    * Process tool calls from the assistant.
    */
-      private async processToolCalls(
-        toolCalls: ToolCall[],
-        content: string | null,
-        messages: LlmMessage[],
-        taskId: string,
-        messageId: string,
-        executionConfig?: ExecutionConfig,
-        signal?: AbortSignal,
-        iteration = 0,
-        warnIter = 40,
-        tracer?: TraceLogger,
-        reasoningContent?: string | null,
-      ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
+  private async processToolCalls(
+    toolCalls: ToolCall[],
+    content: string | null,
+    messages: LlmMessage[],
+    taskId: string,
+    messageId: string,
+    executionConfig: ExecutionConfig | undefined,
+    signal: AbortSignal | undefined,
+    iteration: number,
+    warnIter: number,
+    tracer: TraceLogger | undefined,
+    reasoningContent: string | null | undefined,
+    toolDefs: ReturnType<typeof getToolDefinitions>,
+    env: 'sandbox' | 'browser-only',
+  ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
@@ -725,8 +713,7 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolCall(taskId, messageId, fnName, args, callId)
 
-       const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
-       const availableTools = getToolDefinitions(env).map(t => t.function.name)
+       const availableTools = toolDefs.map(t => t.function.name)
 
        if (!availableTools.includes(fnName)) {
          const output = `Tool "${fnName}" is not available in the current environment. ${

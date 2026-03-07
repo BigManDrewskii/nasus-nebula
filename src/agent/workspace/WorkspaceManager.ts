@@ -16,23 +16,13 @@ export function slugify(text: string): string {
 }
 
 /**
- * Workspace file metadata.
+ * Workspace file metadata (used by listFiles).
  */
 export interface WorkspaceFile {
   path: string
   filename: string
   size: number
   modifiedAt: Date
-}
-
-/**
- * Workspace data structure.
- */
-export interface Workspace {
-  taskId: string
-  path: string
-  files: Map<string, WorkspaceFile>
-  version: number
 }
 
 /**
@@ -49,16 +39,18 @@ interface RustWorkspaceFile {
  * Manager for task workspaces using filesystem storage.
  */
 export class WorkspaceManager {
-  private workspaces: Map<string, Workspace> = new Map()
+  /** In-memory content cache: taskId → (filePath → content) */
   private contentCache: Map<string, Map<string, string>> = new Map()
+  /** Per-file edit history for undo support: taskId → (filePath → versions[]) */
   private history: Map<string, Map<string, string[]>> = new Map()
+  /** Simple version counter for React subscriptions: taskId → version */
+  private versions: Map<string, number> = new Map()
   private basePath: string | null = null
   private taskTitles: Map<string, string> = new Map()
   private initialized = false
 
-  /**
-   * Get the history for a specific task.
-   */
+  // ── History helpers ──────────────────────────────────────────────────────────
+
   private getHistory(taskId: string): Map<string, string[]> {
     if (!this.history.has(taskId)) {
       this.history.set(taskId, new Map())
@@ -66,9 +58,6 @@ export class WorkspaceManager {
     return this.history.get(taskId)!
   }
 
-  /**
-   * Push a new version to the history.
-   */
   private pushHistory(taskId: string, filePath: string, content: string): void {
     const taskHistory = this.getHistory(taskId)
     if (!taskHistory.has(filePath)) {
@@ -82,23 +71,19 @@ export class WorkspaceManager {
     }
   }
 
-  /**
-   * Pop the last version from history (Undo).
-   */
   async undoFile(taskId: string, filePath: string): Promise<string | null> {
     const taskHistory = this.getHistory(taskId)
     const versions = taskHistory.get(filePath)
     if (!versions || versions.length === 0) return null
 
-    // The top of the stack is the CURRENT version, so we need the one before it.
-    // [v1, v2] → pop v2 → restore v1.
     versions.pop() // Remove current version
     const previous = versions.length > 0 ? versions[versions.length - 1] : ''
 
-    // Write previous version (or empty string if all history exhausted)
     await this.writeFile(taskId, filePath, previous, true) // skipHistoryPush=true
     return previous
   }
+
+  // ── Content cache ────────────────────────────────────────────────────────────
 
   /**
    * Ensure workspace files are loaded into memory cache.
@@ -111,7 +96,6 @@ export class WorkspaceManager {
       try {
         const content = await this.readFile(taskId, file.path)
         map.set(file.path, content)
-        // Initialize history with current content
         this.getHistory(taskId).set(file.path, [content])
       } catch {}
     }
@@ -127,14 +111,12 @@ export class WorkspaceManager {
     return this.contentCache.get(taskId)!
   }
 
-  /**
-   * Initialize the workspace manager with the base directory.
-   */
+  // ── Initialisation ───────────────────────────────────────────────────────────
+
   async init(basePath?: string): Promise<void> {
     if (basePath) {
       this.basePath = basePath
     } else {
-      // Get workspace path from backend config
       try {
         const config = await tauriInvoke<any>('get_config')
         if (config?.workspace_path) {
@@ -152,42 +134,22 @@ export class WorkspaceManager {
     this.initialized = true
   }
 
-  /**
-   * Update task title for descriptive folder naming.
-   */
   setTaskTitle(taskId: string, title: string): void {
     this.taskTitles.set(taskId, title)
   }
 
   /**
-   * Get or create a workspace for a task.
+   * Ensure the workspace for a task is loaded.
+   * Replaces the old async getWorkspace() that returned a now-removed Workspace struct.
+   * Returns the content Map so callers can await this and immediately query files.
    */
-  async getWorkspace(taskId: string): Promise<Workspace> {
-    if (!this.initialized) await this.init()
-
-    if (this.workspaces.has(taskId)) {
-      return this.workspaces.get(taskId)!
-    }
-
-    const workspacePath = await this.getWorkspacePath(taskId)
-
-    // Load existing files
-    const files = await this.listFiles(taskId)
-
-    const workspace: Workspace = {
-      taskId,
-      path: workspacePath,
-      files: new Map(files.map((f) => [f.path, f])),
-      version: 0,
-    }
-
-    this.workspaces.set(taskId, workspace)
-    return workspace
+  async getWorkspace(taskId: string): Promise<Map<string, string>> {
+    await this.ensureLoaded(taskId)
+    return this.getWorkspaceSync(taskId)
   }
 
-  /**
-   * Read a file from a workspace.
-   */
+  // ── File I/O ─────────────────────────────────────────────────────────────────
+
   async readFile(taskId: string, filePath: string): Promise<string> {
     if (!this.initialized) await this.init()
 
@@ -196,10 +158,6 @@ export class WorkspaceManager {
     return result ?? ''
   }
 
-  /**
-   * Read a file, auto-parsing binary formats (PDF, DOCX, CSV) to plain text.
-   * Falls back to readFile for plain-text formats.
-   */
   async readFileParsed(taskId: string, filePath: string): Promise<string> {
     const filename = filePath.split('/').pop() ?? filePath
     if (!isSupportedBinaryFormat(filename)) {
@@ -221,30 +179,18 @@ export class WorkspaceManager {
     }
   }
 
-  /**
-   * Write a file to a workspace.
-   */
   async writeFile(taskId: string, filePath: string, content: string, skipHistoryPush = false): Promise<void> {
     if (!this.initialized) await this.init()
 
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_write', { taskId, path: filePath, content, workspacePath })
 
-    // Update metadata and version
-    const workspace = await this.getWorkspace(taskId)
-    const file: WorkspaceFile = {
-      path: filePath,
-      filename: filePath.split('/').pop() || filePath,
-      size: new TextEncoder().encode(content).length,
-      modifiedAt: new Date(),
-    }
-    workspace.files.set(filePath, file)
-    workspace.version++
-
     // Update content cache
     this.getWorkspaceSync(taskId).set(filePath, content)
 
-    // Update history
+    // Increment version counter for React subscriptions
+    this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)
+
     if (!skipHistoryPush) {
       this.pushHistory(taskId, filePath, content)
     }
@@ -252,9 +198,6 @@ export class WorkspaceManager {
     this.emitWorkspaceEvent(taskId)
   }
 
-  /**
-   * List all files in a workspace.
-   */
   async listFiles(taskId: string): Promise<WorkspaceFile[]> {
     if (!this.initialized) await this.init()
 
@@ -268,46 +211,32 @@ export class WorkspaceManager {
     }))
   }
 
-  /**
-   * Delete a file from a workspace.
-   */
   async deleteFile(taskId: string, filePath: string): Promise<void> {
     if (!this.initialized) await this.init()
 
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_delete', { taskId, path: filePath, workspacePath })
 
-    const workspace = await this.getWorkspace(taskId)
-    workspace.files.delete(filePath)
-    workspace.version++
-
-    // Update content cache
     this.getWorkspaceSync(taskId).delete(filePath)
+    this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)
 
     this.emitWorkspaceEvent(taskId)
   }
 
-  /**
-   * Delete an entire workspace.
-   */
   async deleteWorkspace(taskId: string): Promise<void> {
     if (!this.initialized) await this.init()
 
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_delete_all', { taskId, workspacePath })
 
-    this.workspaces.delete(taskId)
     this.contentCache.delete(taskId)
+    this.versions.delete(taskId)
   }
 
-  /**
-   * Force a refresh of the workspace from disk.
-   */
   async refresh(taskId: string): Promise<void> {
     this.contentCache.delete(taskId)
     await this.ensureLoaded(taskId)
-    const workspace = await this.getWorkspace(taskId)
-    workspace.version++
+    this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)
     this.emitWorkspaceEvent(taskId)
   }
 
@@ -321,11 +250,9 @@ export class WorkspaceManager {
 
     const base = this.basePath?.trim() || '/tmp/nasus-workspace'
 
-    // Already absolute — return as-is
     if (base.startsWith('/') || base.includes(':')) {
       return base
     }
-    // Relative base — resolve against home dir
     try {
       const { homeDir, join } = await import('@tauri-apps/api/path')
       const home = await homeDir()
@@ -339,7 +266,7 @@ export class WorkspaceManager {
    * Get the workspace version for React subscriptions.
    */
   getVersion(taskId: string): number {
-    return this.workspaces.get(taskId)?.version ?? 0
+    return this.versions.get(taskId) ?? 0
   }
 
   private emitWorkspaceEvent(taskId: string): void {
@@ -357,33 +284,21 @@ export class WorkspaceManager {
 export const workspaceManager = new WorkspaceManager()
 export default workspaceManager
 
-// ── Legacy compatibility layer (bridges old API to new WorkspaceManager) ───
+// ── Legacy compatibility layer ──────────────────────────────────────────────
 
-/**
- * Legacy: Get workspace files as a Map (for backward compatibility).
- */
 export async function getWorkspace(taskId: string): Promise<Map<string, string>> {
   await workspaceManager.ensureLoaded(taskId)
   return workspaceManager.getWorkspaceSync(taskId)
 }
 
-/**
- * Legacy: Get workspace version.
- */
 export async function getWorkspaceVersion(taskId: string): Promise<number> {
   return workspaceManager.getVersion(taskId)
 }
 
-/**
- * Legacy: Clear workspace files.
- */
 export async function clearWorkspace(taskId: string): Promise<void> {
   await workspaceManager.deleteWorkspace(taskId)
 }
 
-/**
- * Legacy: Copy workspace from one task to another.
- */
 export async function copyWorkspace(sourceTaskId: string, destTaskId: string): Promise<void> {
   const source = await getWorkspace(sourceTaskId)
   for (const [path, content] of source) {

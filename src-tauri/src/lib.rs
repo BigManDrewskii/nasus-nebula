@@ -365,26 +365,26 @@ async fn search(
 
     // Determine which config to use
     let config = if let Some(c) = searchConfig {
-        println!("[Search] Using provided searchConfig, key_length={}", c.exa_key.len());
+        log::debug!("[Search] Using provided searchConfig, key_length={}", c.exa_key.len());
         c
     } else {
         let cfg = state.search_config.lock().await.clone();
-        println!("[Search] Using state searchConfig, key_length={}", cfg.exa_key.len());
+        log::debug!("[Search] Using state searchConfig, key_length={}", cfg.exa_key.len());
         cfg
     };
 
     // Use Exa as the sole search provider
     if !config.exa_key.is_empty() {
-        println!("[Search] Adding Exa provider");
+        log::debug!("[Search] Adding Exa provider");
         providers.push(Box::new(search::providers::exa::ExaProvider {
             api_key: config.exa_key,
             client: client.clone(),
         }));
     } else {
-        println!("[Search] WARNING: exa_key is empty, no providers added!");
+        log::warn!("[Search] exa_key is empty, no providers added!");
     }
 
-    println!("[Search] Total providers: {}", providers.len());
+    log::debug!("[Search] Total providers: {}", providers.len());
     state.search_service.search(&query, numResults, providers).await.map_err(|e| e.to_string())
 }
 
@@ -394,7 +394,7 @@ async fn save_search_config(
     state: State<'_, AppState>,
     searchConfig: SearchConfig,
 ) -> Result<(), String> {
-    println!("[save_search_config] Saving config, key_length={}", searchConfig.exa_key.len());
+    log::debug!("[save_search_config] Saving config, key_length={}", searchConfig.exa_key.len());
     let mut config = state.search_config.lock().await;
     *config = searchConfig;
     Ok(())
@@ -403,7 +403,7 @@ async fn save_search_config(
 #[tauri::command]
 async fn get_search_config(state: State<'_, AppState>) -> Result<SearchConfig, String> {
     let config = state.search_config.lock().await;
-    println!("[get_search_config] Returning config, key_length={}", config.exa_key.len());
+    log::debug!("[get_search_config] Returning config, key_length={}", config.exa_key.len());
     Ok(config.clone())
 }
 

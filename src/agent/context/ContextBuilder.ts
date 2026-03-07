@@ -5,7 +5,6 @@
  * 1. Stable prompt prefixes for KV cache hits
  * 2. Append-only context (never modify existing)
  * 3. Mask tools instead of removing
- * 4. Explicit cache breakpoints
  *
  * This improves performance by maximizing prompt cache hits
  * and reduces token usage through intelligent context management.
@@ -71,17 +70,6 @@ const STABLE_CACHE_PREFIX = [
 ]
 
 /**
- * Cache breakpoint marker.
- *
- * Everything before this marker is cacheable; everything after
- * is request-specific and will not benefit from caching.
- */
-const CACHE_BREAKPOINT = {
-  role: 'system' as const,
-  content: '--- CACHE BREAKPOINT ---',
-}
-
-/**
  * Token estimation (rough approximation).
  */
 function estimateTokens(messages: LlmMessage[]): number {
@@ -139,14 +127,12 @@ Follow this plan systematically. Complete each phase before moving to the next o
  *
  * Features:
  * - Stable prefix for cache hits
- * - Explicit cache breakpoint
  * - Tool masking instead of removal
  * - Memory injection from RAG
  * - Plan-aware context
  */
 export class ContextBuilder {
   private stablePrefix: LlmMessage[] = STABLE_CACHE_PREFIX
-  private cacheBreakpoint: LlmMessage = CACHE_BREAKPOINT
 
   /**
    * Build context for an LLM request.
@@ -178,25 +164,22 @@ export class ContextBuilder {
       }
     }
 
-    // 3. Tool definitions (cacheable)
-    // Tools are added separately in the API call, but we track cacheability here
-    const processedTools = formatTools(tools, options)
-    // Add inactive note to system if masking
-    if (options.maskInactiveTools) {
-      const inactiveTools = processedTools.filter(t => t.inactive)
-      if (inactiveTools.length > 0) {
-        const inactiveNames = inactiveTools.map(t => t.function.name).join(', ')
-        messages.push({
-          role: 'system',
-          content: `Note: Some tools are temporarily unavailable: ${inactiveNames}. Use the available tools.`,
-        })
+      // 3. Tool definitions (cacheable)
+      // Tools are added separately in the API call, but we track cacheability here
+      const processedTools = formatTools(tools, options)
+      // Add inactive note to system if masking
+      if (options.maskInactiveTools) {
+        const inactiveTools = processedTools.filter(t => t.inactive)
+        if (inactiveTools.length > 0) {
+          const inactiveNames = inactiveTools.map(t => t.function.name).join(', ')
+          messages.push({
+            role: 'system',
+            content: `Note: Some tools are temporarily unavailable: ${inactiveNames}. Use the available tools.`,
+          })
+        }
       }
-    }
 
-    // 4. Cache breakpoint (everything before is cacheable)
-    messages.push(this.cacheBreakpoint)
-
-    // 5. Memory context (not cacheable - varies by request)
+      // 4. Memory context (not cacheable - varies by request)
     let retrievedMemories: MemoryResult[] = []
     if (options.includeMemory) {
       const query = this.extractQuery(userMessages)
@@ -210,13 +193,13 @@ export class ContextBuilder {
       }
     }
 
-    // 6. Plan context (not cacheable - varies by task)
-    if (options.includePlan && plan) {
-      messages.push({ role: 'system', content: buildPlanContext(plan) })
-    }
+      // 5. Plan context (not cacheable - varies by task)
+      if (options.includePlan && plan) {
+        messages.push({ role: 'system', content: buildPlanContext(plan) })
+      }
 
-    // 7. User messages (not cacheable)
-    messages.push(...userMessages)
+      // 6. User messages (not cacheable)
+      messages.push(...userMessages)
 
     // Calculate cache breakpoint (first non-cacheable message index)
     const cacheBreakpoint = cacheableMessages.length

@@ -1,7 +1,7 @@
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { cheapestModel, chatOnceViaGateway } from './llm'
-import { getWorkspace } from './tools'
+import { workspaceManager } from './workspace/WorkspaceManager'
 
 /**
  * Project Memory — manages persistent project-level context across tasks.
@@ -45,7 +45,7 @@ export async function updateProjectMemory(taskId: string): Promise<void> {
   }
 
   // Read this task's findings
-  const workspace = await getWorkspace(taskId)
+  const workspace = workspaceManager.getWorkspaceSync(taskId)
   const findings = workspace.get('findings.md') ?? ''
   const plan = workspace.get('task_plan.md') ?? ''
 
