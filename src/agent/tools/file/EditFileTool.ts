@@ -31,14 +31,19 @@ export class EditFileTool extends BaseTool {
     required: ['path', 'edits'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const path = args.path as string
-    const edits = args.edits as Array<{ startLine: number; endLine: number; newContent: string }>
-    const taskId = (args as any).__taskId || 'initial'
+    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+      const rawPath = args.path as string
+      const edits = args.edits as Array<{ startLine: number; endLine: number; newContent: string }>
+      const taskId = (args as any).__taskId || 'initial'
 
-    if (!path || !edits) {
-      return toolFailure('path and edits are required')
-    }
+      if (!rawPath || !edits) {
+        return toolFailure('path and edits are required')
+      }
+
+      const path = rawPath
+        .replace(/^\/workspace\/?/, '')
+        .replace(/^\.\//, '')
+        .replace(/^\//, '')
 
       try {
         const content = await workspaceManager.readFile(taskId, path)

@@ -1387,16 +1387,13 @@ html, body, #root {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── ThinkingIndicator ───────────────────────────────────────────────────────── */
-
-.thinking-indicator {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 2px 0;
-  animation: fadeInUp 0.28s cubic-bezier(0.22,1,0.36,1) forwards;
+/* ── slideUp — used by PlanConfirmationModal overlay ─────────────────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
 }
 
+/* ── fadeInUp — used by ThinkingIndicator ────────────────────────────────── */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1713,4 +1710,17 @@ input[type="range"]::-moz-range-thumb {
   100% {
     transform: translateX(100%);
   }
+}
+
+/* Agent prose — strip trailing margin on last paragraph/list */
+.agent-prose > div > p:last-child,
+.agent-prose > div > ul:last-child,
+.agent-prose > div > ol:last-child {
+  margin-bottom: 0;
+}
+
+/* Plan card slide-up animation */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

@@ -18,29 +18,36 @@ export class ListFilesTool extends BaseTool {
     },
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const path = (args.path as string) || '/workspace'
+    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+      const rawPath = (args.path as string) || '/workspace'
 
-    try {
-      const taskId = (args as any).__taskId || 'initial'
-      const files = await workspaceManager.listFiles(taskId)
+      try {
+        const taskId = (args as any).__taskId || 'initial'
+        const files = await workspaceManager.listFiles(taskId)
 
-      // Filter by path if specified
-      let filtered = files
-      if (path && path !== '/workspace') {
-        const normalizedPath = path.replace(/^\/workspace\/?/, '').replace(/^\.\//, '')
-        filtered = files.filter(f => f.path.startsWith(normalizedPath))
+        // Normalize the requested path: strip /workspace/ prefix since workspace_list
+        // returns paths relative to task-{id}/ (e.g. "src/app.ts", not "/workspace/src/app.ts")
+        const normalizedFilter = rawPath
+          .replace(/^\/workspace\/?/, '')
+          .replace(/^\.\//, '')
+          .replace(/^\//, '')
+
+        // Filter by subdirectory if a sub-path was requested
+        let filtered = files
+        if (normalizedFilter) {
+          const prefix = normalizedFilter.endsWith('/') ? normalizedFilter : normalizedFilter + '/'
+          filtered = files.filter(f => f.path === normalizedFilter || f.path.startsWith(prefix))
+        }
+
+        if (filtered.length === 0) {
+          return toolSuccess('No files found.')
+        }
+
+        // Show full relative paths so the agent knows where to read/write
+        const output = filtered.map(f => f.path).join('\n')
+        return toolSuccess(output)
+      } catch (error) {
+        return toolFailure(`Failed to list files: ${error}`)
       }
-
-      // Format output
-      const output = filtered.map(f => {
-        const indent = f.path.includes('/') ? '  '.repeat(f.path.split('/').length - 1) : ''
-        return `${indent}${f.filename}`
-      }).join('\n')
-
-      return toolSuccess(output || 'No files found.')
-    } catch (error) {
-      return toolFailure(`Failed to list files: ${error}`)
     }
-  }
 }

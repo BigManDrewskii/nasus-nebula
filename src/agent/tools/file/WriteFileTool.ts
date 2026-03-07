@@ -20,20 +20,27 @@ export class WriteFileTool extends BaseTool {
     required: ['path', 'content'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const path = args.path as string
-    const content = args.content as string
+    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+      const rawPath = args.path as string
+      const content = args.content as string
 
-    if (!path || content === undefined) {
-      return toolFailure('path and content are required')
-    }
+      if (!rawPath || content === undefined) {
+        return toolFailure('path and content are required')
+      }
 
-    try {
-      const taskId = (args as any).__taskId || 'initial'
-      await workspaceManager.writeFile(taskId, path, content)
-      return toolSuccess(`File written: ${path}`)
-    } catch (error) {
-      return toolFailure(`Failed to write file: ${error}`)
+      // Normalize path: strip /workspace/ prefix (Rust already scopes to task-{id}/)
+      // so /workspace/foo.html → foo.html, not task-{id}/workspace/foo.html
+      const path = rawPath
+        .replace(/^\/workspace\/?/, '')
+        .replace(/^\.\//, '')
+        .replace(/^\//, '')
+
+      try {
+        const taskId = (args as any).__taskId || 'initial'
+        await workspaceManager.writeFile(taskId, path, content)
+        return toolSuccess(`File written: ${path}`)
+      } catch (error) {
+        return toolFailure(`Failed to write file: ${error}`)
+      }
     }
-  }
 }

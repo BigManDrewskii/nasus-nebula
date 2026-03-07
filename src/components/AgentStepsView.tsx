@@ -51,19 +51,19 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
     return batched
   }, [rows])
 
-  // Derive count once — used in header label and badge
+  // Derive count once
   const toolPairCount = useMemo(() => rows.filter(r => r.kind === 'tool_pair').length, [rows])
 
   // Find the most recently active / pending action for the live header label
-  const liveLabel = useMemo(() => {
+  const liveAction = useMemo(() => {
     for (let i = rows.length - 1; i >= 0; i--) {
       const r = rows[i]
       if (r.kind === 'tool_pair') {
-        const { label } = formatActionLabel(r.call.tool, r.call.input)
-        return label
+        const { label, sublabel } = formatActionLabel(r.call.tool, r.call.input)
+        return { label, sublabel }
       }
     }
-    return 'Working…'
+    return { label: 'Working…', sublabel: null }
   }, [rows])
 
   const hasOnlyMemoryOps = useMemo(() => rows.every(r =>
@@ -76,7 +76,7 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
   if (!steps || steps.length === 0) return null
 
   return (
-    <div style={{ marginBottom: 6 }}>
+    <div style={{ marginBottom: 4 }}>
       {/* Section header — collapsible */}
       <button
         onClick={() => setCollapsed(o => !o)}
@@ -84,66 +84,65 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
           width: '100%',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '5px 8px 5px 6px',
-          borderRadius: 7,
+          gap: 7,
+          padding: '4px 6px 4px 4px',
+          borderRadius: 6,
           background: 'transparent',
-          border: '1px solid transparent',
+          border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
           transition: 'background 0.1s',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
       >
-        {/* Live status indicator */}
-        <span style={{ flexShrink: 0, width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {isStreaming && !hasOnlyMemoryOps ? (
-            <SpinnerDot />
-          ) : (
-            <Pxi name="check-circle" size={13} style={{ color: '#34d399' }} />
-          )}
+        {/* Status indicator */}
+        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {isStreaming && !hasOnlyMemoryOps
+            ? <SpinnerDot />
+            : <Pxi name="check-circle" size={12} style={{ color: '#34d399' }} />
+          }
         </span>
 
-          {/* Current action label */}
-          {isStreaming ? (
-            <span style={{
-              flex: 1,
-              fontSize: 11.5,
-              fontWeight: 500,
-              color: 'var(--tx-secondary)',
-              lineHeight: 1.4,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {liveLabel}
-            </span>
-          ) : (
-            <span style={{
-              flex: 1,
-              fontSize: 11.5,
-              fontWeight: 500,
-              color: 'var(--tx-tertiary)',
-              lineHeight: 1.4,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}>
-              {toolPairCount} action{toolPairCount !== 1 ? 's' : ''} completed
-            </span>
-          )}
+        {/* Label */}
+        <span style={{
+          flex: 1,
+          fontSize: 11,
+          fontWeight: 500,
+          color: isStreaming ? 'var(--tx-secondary)' : 'var(--tx-tertiary)',
+          lineHeight: 1.4,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {isStreaming
+            ? liveAction.label
+            : `${toolPairCount} action${toolPairCount !== 1 ? 's' : ''}`
+          }
+        </span>
 
-        {/* Step count badge */}
-        {toolPairCount > 0 && (
+        {/* Sublabel — shown only while streaming */}
+        {isStreaming && liveAction.sublabel && (
+          <span style={{
+            fontSize: 9.5,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--tx-muted)',
+            maxWidth: 140,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}>
+            {liveAction.sublabel}
+          </span>
+        )}
+
+        {/* Count badge — shown when not streaming */}
+        {!isStreaming && toolPairCount > 0 && (
           <span style={{
             fontSize: 9,
             fontFamily: 'var(--font-mono)',
-            color: 'var(--tx-tertiary)',
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            padding: '1px 6px',
-            borderRadius: 4,
+            color: 'var(--tx-muted)',
             flexShrink: 0,
           }}>
             {toolPairCount}
@@ -152,16 +151,16 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
 
         <Pxi
           name={collapsed ? 'chevron-down' : 'chevron-up'}
-          size={11}
-          style={{ color: 'var(--tx-muted)', flexShrink: 0 }}
+          size={9}
+          style={{ color: 'var(--tx-ghost)', flexShrink: 0 }}
         />
       </button>
 
       {/* Step rows — hidden when collapsed */}
       {!collapsed && (
-        <>
-          <div style={{ marginLeft: 24, height: 1, background: 'rgba(255,255,255,0.04)', margin: '2px 0 4px 24px' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 24, paddingTop: 0 }}>
+        <div style={{ marginTop: 3, paddingLeft: 22 }}>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginBottom: 3 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {/* Memory operations summary row */}
             {memoryRows.length > 0 && (
               <div>
@@ -172,23 +171,18 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
-                    padding: '3px 6px',
+                    padding: '2px 4px',
                     background: 'transparent',
                     border: 'none',
                     cursor: 'pointer',
                     textAlign: 'left',
                   }}
                 >
-                  <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>📋</span>
-                  <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontStyle: 'italic', flex: 1 }}>
-                    {memoryRows.length} memory operation{memoryRows.length !== 1 ? 's' : ''}{' '}
+                  <span style={{ fontSize: 9.5, color: 'var(--tx-muted)', fontStyle: 'italic', flex: 1 }}>
+                    {memoryRows.length} memory op{memoryRows.length !== 1 ? 's' : ''}{' '}
                     ({[...new Set(memoryRows.map(r => String(r.call.input.path ?? '').split('/').pop()))].join(', ')})
                   </span>
-                  <Pxi
-                    name={memoryExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={9}
-                    style={{ color: 'var(--tx-muted)', flexShrink: 0 }}
-                  />
+                  <Pxi name={memoryExpanded ? 'chevron-up' : 'chevron-down'} size={8} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
                 </button>
                 {memoryExpanded && (
                   <div style={{ paddingLeft: 4 }}>
@@ -201,7 +195,7 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
               <ProcessedRowComponent key={i} row={row} />
             ))}
           </div>
-        </>
+        </div>
       )}
     </div>
   )

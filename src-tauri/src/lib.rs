@@ -144,19 +144,54 @@ pub enum AgentEvent {
 
 /// Validates that a path doesn't escape the base directory (prevents path traversal attacks).
 /// Returns Ok(()) if the path is safe, Err with message if traversal is detected.
+///
+/// Uses a two-step approach:
+/// 1. Lexically reject any path component that is ".." (catches the common case without I/O)
+/// 2. Canonicalize only the *base* directory (which must already exist) and verify that the
+///    joined path, once its lexical components are resolved, stays within the base.
+///
+/// We intentionally do NOT call canonicalize() on the full target path because the file
+/// may not exist yet (e.g. on the first write_file call), which would cause canonicalize()
+/// to return an error and silently block every new-file creation.
 fn validate_path_no_traversal(base: &Path, path: &Path) -> Result<(), String> {
-    // Canonicalize both paths to resolve any ".." or "." components
+    use std::path::Component;
+
+    // Step 1: Reject any ".." component in the relative path
+    for component in path.components() {
+        if matches!(component, Component::ParentDir) {
+            return Err("Path traversal detected: '..' is not allowed".to_string());
+        }
+    }
+
+    // Step 2: Canonicalize the base (it must exist) and lexically verify the join
+    // Create the base directory if it doesn't exist yet so canonicalize can succeed
+    let _ = std::fs::create_dir_all(base);
     let base_canonical = base
         .canonicalize()
         .map_err(|e| format!("Invalid base path: {}", e))?;
 
-    let full_path = base.join(path);
-    let full_canonical = full_path
-        .canonicalize()
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    // Build the joined path by appending each non-special component
+    let mut resolved = base_canonical.clone();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => resolved.push(part),
+            Component::CurDir => {}  // "." — skip
+            Component::RootDir => {
+                // Absolute path supplied — treat it as relative to base
+                // (strip the leading / and continue)
+            }
+            Component::Prefix(_) => {
+                // Windows drive prefix — skip
+            }
+            Component::ParentDir => {
+                // Already caught above, but be defensive
+                return Err("Path traversal detected: '..' is not allowed".to_string());
+            }
+        }
+    }
 
-    // Ensure the full path starts with the base path (no escape)
-    if !full_canonical.starts_with(&base_canonical) {
+    // Final check: the resolved path must still start with the canonical base
+    if !resolved.starts_with(&base_canonical) {
         return Err("Path traversal detected: access denied".to_string());
     }
 

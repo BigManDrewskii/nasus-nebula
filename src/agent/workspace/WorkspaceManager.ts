@@ -316,7 +316,7 @@ export class WorkspaceManager {
    * All Rust commands (workspace_read, workspace_write, docker_create_container, etc.)
    * append task-{id} themselves — so this must return just the base path.
    */
-  public async getWorkspacePath(taskId: string): Promise<string> {
+  public async getWorkspacePath(_taskId: string): Promise<string> {
     if (!this.initialized) await this.init()
 
     const base = this.basePath?.trim() || '/tmp/nasus-workspace'

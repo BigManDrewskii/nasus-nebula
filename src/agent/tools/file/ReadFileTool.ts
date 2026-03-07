@@ -20,19 +20,25 @@ export class ReadFileTool extends BaseTool {
     required: ['path'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const path = args.path as string
+    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+      const rawPath = args.path as string
 
-    if (!path) {
-      return toolFailure('path is required')
-    }
+      if (!rawPath) {
+        return toolFailure('path is required')
+      }
 
-    try {
-      const taskId = (args as any).__taskId || 'initial'
-      const content = await workspaceManager.readFileParsed(taskId, path)
-      return toolSuccess(content)
-    } catch (error) {
-      return toolFailure(`Failed to read file: ${error}`)
+      // Normalize path: strip /workspace/ prefix (Rust scopes to task-{id}/ already)
+      const path = rawPath
+        .replace(/^\/workspace\/?/, '')
+        .replace(/^\.\//, '')
+        .replace(/^\//, '')
+
+      try {
+        const taskId = (args as any).__taskId || 'initial'
+        const content = await workspaceManager.readFileParsed(taskId, path)
+        return toolSuccess(content)
+      } catch (error) {
+        return toolFailure(`Failed to read file: ${error}`)
+      }
     }
-  }
 }

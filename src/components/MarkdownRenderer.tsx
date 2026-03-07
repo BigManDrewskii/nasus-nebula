@@ -162,21 +162,21 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
     // ── Headings ──────────────────────────────────────────────────────────────
     h1({ children }) {
       return (
-        <h1 style={{ fontSize: 16, fontWeight: 600, color: '#ffffff', marginTop: 20, marginBottom: 6, lineHeight: 1.35 }}>
+        <h1 style={{ fontSize: 15, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 22, marginBottom: 6, lineHeight: 1.3, letterSpacing: '-0.01em' }}>
           {children}
         </h1>
       )
     },
     h2({ children }) {
       return (
-        <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 16, marginBottom: 4, lineHeight: 1.35 }}>
+        <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 18, marginBottom: 4, lineHeight: 1.35, letterSpacing: '-0.005em' }}>
           {children}
         </h2>
       )
     },
     h3({ children }) {
       return (
-        <h3 style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx-primary)', marginTop: 12, marginBottom: 4, lineHeight: 1.35 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-secondary)', marginTop: 14, marginBottom: 3, lineHeight: 1.4 }}>
           {children}
         </h3>
       )
@@ -185,7 +185,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
     // ── Paragraphs ────────────────────────────────────────────────────────────
     p({ children }) {
       return (
-        <p style={{ fontSize: 13, lineHeight: 1.8, color: 'var(--tx-secondary)', margin: '0 0 8px 0' }}>
+        <p style={{ fontSize: 13, lineHeight: 1.75, color: 'var(--tx-primary)', margin: '0 0 10px 0', letterSpacing: '-0.005em' }}>
           {children}
         </p>
       )
@@ -194,14 +194,14 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
     // ── Lists ─────────────────────────────────────────────────────────────────
     ul({ children }) {
       return (
-        <ul style={{ margin: '10px 0', listStyle: 'none', padding: 0 }}>
+        <ul style={{ margin: '8px 0', listStyle: 'none', padding: 0 }}>
           {children}
         </ul>
       )
     },
     ol({ children }) {
       return (
-        <ol style={{ margin: '10px 0', listStyle: 'none', padding: 0, counterReset: 'md-list' }}>
+        <ol style={{ margin: '8px 0', listStyle: 'none', padding: 0, counterReset: 'md-list' }}>
           {children}
         </ol>
       )
@@ -216,21 +216,24 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             alignItems: 'baseline',
             gap: 8,
             fontSize: 13,
-            lineHeight: 1.75,
-            color: 'var(--tx-secondary)',
+            lineHeight: 1.7,
+            color: 'var(--tx-primary)',
+            marginBottom: 3,
+            letterSpacing: '-0.005em',
           }}
         >
           {isOrdered
             ? (
               <span
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   fontFamily: 'var(--font-mono)',
-                  color: 'var(--tx-tertiary)',
+                  color: 'var(--tx-muted)',
                   flexShrink: 0,
                   minWidth: 16,
                   textAlign: 'right',
                   fontVariantNumeric: 'tabular-nums',
+                  marginTop: '0.15em',
                 }}
               >
                 {(props as { index: number }).index + 1}.
@@ -239,11 +242,11 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             : (
               <span
                 style={{
-                  marginTop: '0.5em',
-                  width: 4,
-                  height: 4,
+                  marginTop: '0.55em',
+                  width: 3,
+                  height: 3,
                   borderRadius: '50%',
-                  background: 'var(--amber)',
+                  background: 'rgba(234,179,8,0.7)',
                   flexShrink: 0,
                 }}
               />

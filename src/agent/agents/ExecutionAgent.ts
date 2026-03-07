@@ -52,39 +52,56 @@ const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
 
 /**
  * Error tracker for 3-strike escalation pattern.
+ *
+ * Strikes are tracked by TOOL NAME (not by error message signature) so that
+ * repeated failures of the same tool — even with different errors — accumulate
+ * toward the 3-strike cap. After 3 strikes the tool is BLOCKED: subsequent
+ * calls are short-circuited before reaching the registry.
  */
 class ErrorTracker {
-  private strikes: Map<string, { count: number; attempts: string[] }> = new Map()
+  // Per-tool total failure count (key = tool name)
   private toolTotals: Map<string, number> = new Map()
-  private static TOOL_GLOBAL_CAP: Record<string, number> = { bash: 4 }
+  // Per-tool collected error messages
+  private toolErrors: Map<string, string[]> = new Map()
+  // Tools that have been blocked after hitting the cap
+  private blocked: Set<string> = new Set()
+
+  private static readonly STRIKE_CAP = 3
+  // Some tools get a higher cap (e.g. bash can legitimately fail a few times)
+  private static TOOL_CAP: Record<string, number> = { bash: 4, bash_execute: 5 }
 
   record(tool: string, summary: string): number {
     const total = (this.toolTotals.get(tool) ?? 0) + 1
     this.toolTotals.set(tool, total)
-    const cap = ErrorTracker.TOOL_GLOBAL_CAP[tool]
-    if (cap !== undefined && total >= cap) return 3
 
-    const sig = `${tool}::${summary.slice(0, 60)}`
-    const entry = this.strikes.get(sig) ?? { count: 0, attempts: [] }
-    entry.count++
-    entry.attempts.push(summary)
-    this.strikes.set(sig, entry)
-    return entry.count
+    const errs = this.toolErrors.get(tool) ?? []
+    errs.push(summary.slice(0, 300))
+    this.toolErrors.set(tool, errs)
+
+    const cap = ErrorTracker.TOOL_CAP[tool] ?? ErrorTracker.STRIKE_CAP
+    if (total >= cap) {
+      this.blocked.add(tool)
+      return cap // always return cap so callers treat it as ≥3
+    }
+    return total
   }
 
-  reset(tool: string) {
-    for (const key of this.strikes.keys()) {
-      if (key.startsWith(`${tool}::`)) this.strikes.delete(key)
-    }
-    this.toolTotals.delete(tool)
+  isBlocked(tool: string): boolean {
+    return this.blocked.has(tool)
+  }
+
+  getStrikes(tool: string): number {
+    return this.toolTotals.get(tool) ?? 0
   }
 
   attempts(tool: string): string[] {
-    const all: string[] = []
-    for (const [key, val] of this.strikes.entries()) {
-      if (key.startsWith(`${tool}::`)) all.push(...val.attempts)
-    }
-    return all
+    return this.toolErrors.get(tool) ?? []
+  }
+
+  reset(tool: string) {
+    this.toolTotals.delete(tool)
+    this.toolErrors.delete(tool)
+    this.blocked.delete(tool)
   }
 }
 
@@ -683,24 +700,55 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolCall(taskId, messageId, fnName, args, callId)
 
-      const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
-      const availableTools = getToolDefinitions(env).map(t => t.function.name)
+       const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+       const availableTools = getToolDefinitions(env).map(t => t.function.name)
 
-      if (!availableTools.includes(fnName)) {
-        const output = `Tool "${fnName}" is not available in the current environment. ${
-          env === 'browser-only'
-            ? 'You are in browser-only mode without shell access. Use write_file/edit_file for file operations, python_execute for WASM computation, and http_fetch for networking.'
-            : 'Check tool availability.'
-        }`
-        this.emitToolResult(taskId, messageId, callId, output, true)
-        messages.push({
-          role: 'tool',
-          content: `Error: ${output}`,
-          tool_call_id: callId,
-          tool_name: fnName,
-        })
-        continue
-      }
+       if (!availableTools.includes(fnName)) {
+         const output = `Tool "${fnName}" is not available in the current environment. ${
+           env === 'browser-only'
+             ? 'You are in browser-only mode without shell access. Use write_file/edit_file for file operations, python_execute for WASM computation, and http_fetch for networking.'
+             : 'Check tool availability.'
+         }`
+         this.emitToolResult(taskId, messageId, callId, output, true)
+         messages.push({
+           role: 'tool',
+           content: `Error: ${output}`,
+           tool_call_id: callId,
+           tool_name: fnName,
+         })
+         continue
+       }
+
+       // ── Hard block: tool exceeded strike cap — short-circuit without calling it ──
+       if (this.errorTracker.isBlocked(fnName)) {
+         const prevErrors = this.errorTracker.attempts(fnName)
+         const blockMsg =
+           `[BLOCKED] "${fnName}" has been disabled after ${this.errorTracker.getStrikes(fnName)} consecutive failures.\n` +
+           `Previous errors: ${prevErrors.slice(-3).join(' | ')}\n\n` +
+           `You MUST use a different approach:\n` +
+           (fnName === 'patch_file'
+             ? `- Use edit_file with line numbers instead (read the file first with read_file to get line numbers)\n- Or use write_file to rewrite the file completely`
+             : `- Use a different tool to accomplish the same goal\n- If this step is non-critical, skip it`) +
+           `\n\nDo NOT call ${fnName} again.`
+         this.emitToolResult(taskId, messageId, callId, blockMsg, true)
+         messages.push({
+           role: 'tool',
+           content: `Error: ${blockMsg}`,
+           tool_call_id: callId,
+           tool_name: fnName,
+         })
+         // Also inject a system-level notice so the model can't miss it
+         this.pushOrReplaceSystemMessage(
+           messages,
+           `[TOOL BLOCKED: ${fnName}]`,
+           `[TOOL BLOCKED: ${fnName}] This tool has been permanently disabled for this task after repeated failures. ` +
+           (fnName === 'patch_file'
+             ? `Use edit_file (line-number based) or write_file instead.`
+             : `Use a different approach.`) +
+           ` Do NOT attempt to call ${fnName} again.`,
+         )
+         continue
+       }
 
       // Research checkpoint
       if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file') {
@@ -738,18 +786,25 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolResult(taskId, messageId, callId, output, isError)
 
-      // Error tracking — 3-strike escalation
-      if (isError) {
-        const strikes = this.errorTracker.record(fnName, output)
-        if (strikes >= 3) {
-          const attempts = this.errorTracker.attempts(fnName)
-          this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
-          messages.push({
-            role: 'system',
-            content: `[3-Strike Escalation] Tool "${fnName}" has failed 3 times with these errors:\n${attempts.map((a, i) => `${i + 1}. ${a.slice(0, 200)}`).join('\n')}\n\nDo NOT retry the same approach. Either:\n1. Try a completely different tool/approach\n2. If this subtask is non-critical, skip it and continue\n3. If critical, report the blocker to the user`,
-          })
-        }
-      }
+       // Error tracking — 3-strike escalation
+       if (isError) {
+         const strikes = this.errorTracker.record(fnName, output)
+         if (strikes >= 3) {
+           const attempts = this.errorTracker.attempts(fnName)
+           this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
+           const altHint = fnName === 'patch_file'
+             ? `Use edit_file with line numbers (read the file first with read_file, then edit_file with {start_line, end_line, new_content}). Or use write_file to rewrite the entire file.`
+             : `Try a completely different tool or approach to achieve the same goal.`
+           this.pushOrReplaceSystemMessage(
+             messages,
+             `[TOOL BLOCKED: ${fnName}]`,
+             `[TOOL BLOCKED: ${fnName}] This tool has failed ${strikes} times and is now DISABLED.\n` +
+             `Errors:\n${attempts.slice(-3).map((a, i) => `${i + 1}. ${a.slice(0, 250)}`).join('\n')}\n\n` +
+             `${altHint}\n\n` +
+             `Do NOT call ${fnName} again. If this step is non-critical, skip it and continue with the next step.`,
+           )
+         }
+       }
 
       // Add tool result to history
       messages.push({
@@ -827,6 +882,20 @@ export class ExecutionAgent extends BaseAgent {
           }
         }
         out.push(m)
+      }
+      // Rule 3: trailing assistant+tool_calls with no following results must be removed
+      while (out.length > 0) {
+        const last = out[out.length - 1]
+        if (last.role === 'assistant' && last.tool_calls && last.tool_calls.length > 0) {
+          const lastIds = new Set(last.tool_calls.map(tc => tc.id))
+          const hasResults = out.some(m => m.role === 'tool' && m.tool_call_id && lastIds.has(m.tool_call_id))
+          if (!hasResults) {
+            out.pop()
+            console.warn('[sanitizeMessages] Removed trailing assistant with unresolved tool_calls')
+            continue
+          }
+        }
+        break
       }
       return out
     }

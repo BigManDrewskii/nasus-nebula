@@ -19,13 +19,18 @@ export class UndoFileTool extends BaseTool {
     required: ['path'],
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const path = args.path as string
-    if (!path) return toolFailure('path is required')
+    async execute(args: Record<string, unknown>): Promise<ToolResult> {
+      const rawPath = args.path as string
+      if (!rawPath) return toolFailure('path is required')
 
-    try {
-      const taskId = (args as any).__taskId || 'initial'
-      const restoredContent = await workspaceManager.undoFile(taskId, path)
+      const path = rawPath
+        .replace(/^\/workspace\/?/, '')
+        .replace(/^\.\//, '')
+        .replace(/^\//, '')
+
+      try {
+        const taskId = (args as any).__taskId || 'initial'
+        const restoredContent = await workspaceManager.undoFile(taskId, path)
       
       if (restoredContent !== null) {
         return toolSuccess(`File ${path} restored to previous version.`)

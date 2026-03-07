@@ -1,5 +1,5 @@
 import { useState, memo, useMemo } from 'react'
-import type { Message, MessageAttachment, AttachmentCategory, OutputCardFile } from '../types'
+import type { Message, MessageAttachment, AttachmentCategory, OutputCardFile, AgentStep } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
@@ -64,24 +64,83 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Error banner ─────────────────────────────────────────────────────────────
 
+function getErrorMessage(error: string): { title: string; body: string; icon: string } {
+  const e = error.toLowerCase()
+
+  if (e.includes('401') || e.includes('authentication') || e.includes('api key') || e.includes('unauthorized')) {
+    return {
+      title: 'Authentication Failed',
+      body: 'Your API key is invalid or expired. Open Settings → Model tab and check your key.',
+      icon: 'key',
+    }
+  }
+  if (e.includes('429') || e.includes('rate limit') || e.includes('too many requests')) {
+    return {
+      title: 'Rate Limit Reached',
+      body: 'The AI provider is rate-limiting requests. Wait a moment and click "Try again", or switch to a different model in Settings.',
+      icon: 'clock',
+    }
+  }
+  if (e.includes('402') || e.includes('payment required') || e.includes('credits') || e.includes('quota')) {
+    return {
+      title: 'Insufficient Credits',
+      body: 'Your account is out of credits. Top up your balance or switch to a free model in Settings.',
+      icon: 'coin',
+    }
+  }
+  if (e.includes('404') || e.includes('model not found') || e.includes('unavailable') || e.includes('not found')) {
+    return {
+      title: 'Model Unavailable',
+      body: 'This model is temporarily unavailable or has been removed. Switch to a different model in Settings → Model tab.',
+      icon: 'exclamation-triangle',
+    }
+  }
+  if (e.includes('timeout') || e.includes('econnrefused') || e.includes('network') || e.includes('fetch failed')) {
+    return {
+      title: 'Connection Error',
+      body: 'Could not reach the AI provider. Check your internet connection and click "Try again".',
+      icon: 'exclamation-triangle',
+    }
+  }
+  if (
+    e.includes('tool') && (e.includes('tool_calls') || e.includes('must be a response')) ||
+    e.includes('ai_missing') ||
+    e.includes('messages with role') ||
+    e.includes('invalid prompt')
+  ) {
+    return {
+      title: 'Message History Error',
+      body: 'The conversation history became inconsistent (a known provider edge case). The sanitizer has been applied — click "Try again" to continue.',
+      icon: 'refresh',
+    }
+  }
+  if (e.includes('no output generated') || e.includes('ai_nooutput')) {
+    return {
+      title: 'Empty Response',
+      body: 'The model returned an empty response. This usually resolves on retry — it can happen under high server load or with certain rate-limit patterns.',
+      icon: 'exclamation-triangle',
+    }
+  }
+  if (e.includes('context length') || e.includes('maximum context') || e.includes('token limit')) {
+    return {
+      title: 'Context Too Long',
+      body: 'The conversation is too long for this model\'s context window. Start a new task or switch to a model with a larger context (e.g. Gemini 2.0 Flash).',
+      icon: 'exclamation-triangle',
+    }
+  }
+
+  // Fallback — show the raw error, truncated
+  const display = error.length > 280 ? error.slice(0, 280) + '…' : error
+  return {
+    title: 'Generation Error',
+    body: display,
+    icon: 'exclamation-triangle',
+  }
+}
+
 function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }) {
-  const isAuthError = error.includes('401') || error.includes('Authentication') || error.includes('API key')
-  const isRateLimit = error.includes('429') || error.includes('Rate limit') || error.includes('Too many requests')
-  const isQuotaError = error.includes('402') || error.includes('Payment Required') || error.includes('credits')
-  const isModelUnavailable = error.includes('404') || error.includes('not found') || error.includes('unavailable')
-  const isStreamError = error.includes('No output generated') || (error.includes('tool') && error.includes('must')) || error.includes('AI_Missing') || error.includes('Messages with role')
-
-  const errorTitle = isAuthError ? 'Authentication Failed'
-    : isRateLimit ? 'Rate Limit Reached'
-    : isQuotaError ? 'Insufficient Credits'
-    : isModelUnavailable ? 'Model Unavailable'
-    : 'Generation Error'
-
-  const icon = isAuthError ? 'key' : isRateLimit ? 'clock' : isQuotaError ? 'coin' : 'exclamation-triangle'
-
-  const displayError = isStreamError
-    ? 'The AI provider returned an error. Click "Try again" to retry — this usually resolves on the next attempt.'
-    : error
+  const { title, body, icon } = getErrorMessage(error)
+  const isQuotaError = error.toLowerCase().includes('402') || error.toLowerCase().includes('credits')
 
   return (
     <div
@@ -111,7 +170,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
           letterSpacing: '0.08em',
           fontFamily: 'var(--font-display)',
         }}>
-          {errorTitle}
+          {title}
         </span>
       </div>
 
@@ -124,7 +183,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
           margin: 0,
           marginBottom: onRetry ? 10 : 0,
         }}>
-          {displayError}
+          {body}
         </p>
 
         {onRetry && (
@@ -245,35 +304,18 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
 function NasusAvatar({ isStreaming: _isStreaming }: { isStreaming?: boolean }) {
   return (
     <div style={{
-      width: 28,
-      height: 28,
-      borderRadius: 8,
+      width: 26,
+      height: 26,
+      borderRadius: 7,
       flexShrink: 0,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       background: '#111',
-      border: '1px solid rgba(234,179,8,0.2)',
+      border: '1px solid rgba(234,179,8,0.18)',
     }}>
-      <NasusLogo size={15} fill="var(--amber)" />
+      <NasusLogo size={13} fill="var(--amber)" />
     </div>
-  )
-}
-
-// ─── Streaming status dot ─────────────────────────────────────────────────────
-
-function StreamingDot() {
-  return (
-    <span
-      style={{
-        width: 5, height: 5,
-        borderRadius: '50%',
-        background: '#4ade80',
-        display: 'inline-block',
-        flexShrink: 0,
-        animation: 'statusPulse 1.6s ease-in-out infinite',
-      }}
-    />
   )
 }
 
@@ -423,7 +465,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   }, [message.steps])
 
     if (isWaiting) {
-      const lastToolStep = message.steps?.findLast(s => s.kind === 'tool_call')
+        const lastToolStep = message.steps?.findLast((s: AgentStep) => s.kind === 'tool_call')
       return <ThinkingIndicator
         visible={true}
         activeModel={message.modelId ? {
@@ -441,27 +483,27 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
     return !lastIsPendingTool
   })()
 
-  return (
-    <div
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Avatar */}
-      <div style={{ marginTop: 1, flexShrink: 0 }}>
-        <NasusAvatar isStreaming={isStreaming} />
-      </div>
+    return (
+      <div
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {/* Avatar */}
+        <div style={{ marginTop: 2, flexShrink: 0 }}>
+          <NasusAvatar isStreaming={isStreaming} />
+        </div>
 
-      {/* Content column */}
-      <div style={{ flex: 1, minWidth: 0, paddingTop: 0 }}>
-        {/* Model badge row */}
-        {(hasContent || hasSteps) && message.modelName && (
-          <ModelBadge
-            modelName={message.modelName}
-            provider={message.provider}
-            isStreaming={isStreaming}
-          />
-        )}
+        {/* Content column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Model badge row */}
+          {(hasContent || hasSteps) && message.modelName && (
+            <ModelBadge
+              modelName={message.modelName}
+              provider={message.provider}
+              isStreaming={isStreaming}
+            />
+          )}
 
         {/* Steps (tool calls) */}
         {hasSteps && <AgentStepsView steps={message.steps!} isStreaming={isStreaming} />}
@@ -473,31 +515,40 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
           </div>
         )}
 
-        {/* Final text response */}
-        {hasContent && (
-          <div style={hasSteps ? {
-            marginTop: 16,
-            paddingTop: 16,
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-          } : {}}>
-            <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--tx-secondary)' }}>
-              {renderedContent}
-            </div>
+          {/* Final text response */}
+          {hasContent && (
+            <div style={hasSteps ? {
+              marginTop: 14,
+              paddingTop: 14,
+              borderTop: '1px solid rgba(255,255,255,0.05)',
+            } : { marginTop: 2 }}>
+              <div style={{
+                fontSize: 13,
+                lineHeight: 1.75,
+                color: 'var(--tx-primary)',
+                letterSpacing: '-0.005em',
+                maxWidth: 680,
+              }}
+              className="agent-prose"
+              >
+                {renderedContent}
+              </div>
               {isStreaming && (
                 <span
                   style={{
                     display: 'inline-block',
-                    width: 2, height: 15,
+                    width: 2, height: 13,
                     borderRadius: 1,
                     marginLeft: 2,
                     verticalAlign: 'text-bottom',
                     background: 'var(--amber)',
+                    opacity: 0.8,
                     animation: 'cursorBlink 1s steps(2) infinite',
                   }}
                 />
               )}
-          </div>
-        )}
+            </div>
+          )}
 
         {hasError && (
           <ErrorBanner error={message.error!} onRetry={onRetry} />
