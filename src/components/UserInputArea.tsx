@@ -151,8 +151,8 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
     return '0 2px 8px rgba(0,0,0,0.2)'
   })()
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    return (
+      <div className="uia-root">
       <div
         style={{
           borderRadius: 14,
@@ -183,22 +183,8 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
 
       {/* Queued message banner */}
       {isWorking && queuedMsg && (
-        <div style={{ padding: '8px 14px 0' }}>
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            fontSize: 11,
-            color: 'var(--amber)',
-            background: 'rgba(234,179,8,0.06)',
-            border: '1px solid rgba(234,179,8,0.14)',
-            borderRadius: 6,
-            padding: '3px 8px',
-            maxWidth: '100%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
+        <div className="uia-queued-wrap">
+          <span className="uia-queued-banner">
             <Pxi name="clock" size={10} />
             Queued: {queuedMsg.length > 60 ? queuedMsg.slice(0, 60) + '…' : queuedMsg}
           </span>
@@ -217,7 +203,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       )}
 
       {/* Textarea */}
-      <div style={{ padding: '12px 14px 0' }}>
+      <div className="uia-textarea-wrap">
         <textarea
           ref={textareaRef}
           onChange={handleInput}
@@ -250,15 +236,9 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       </div>
 
       {/* Toolbar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '6px 10px 10px',
-        gap: 4,
-      }}>
+      <div className="uia-toolbar">
         {/* Left: model selector + utility buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
+        <div className="uia-toolbar-left">
           <ModelSelectorTrigger />
 
           {onAddFiles && (
@@ -288,7 +268,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         </div>
 
         {/* Right: send / stop */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <div className="uia-toolbar-right">
           {isWorking && onStop ? (
             <button
               onClick={onStop}
@@ -365,19 +345,11 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
       </div>
     </div>
 
-    {/* Keyboard hints — below the box, fade in on focus */}
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: 12,
-      paddingTop: 5,
-      paddingRight: 4,
-      height: 16,
-      opacity: isFocused && !isWorking ? 0.55 : 0,
-      transition: 'opacity 0.2s ease',
-      pointerEvents: 'none',
-    }}>
+      {/* Keyboard hints */}
+      <div
+        className="uia-kbd-hints"
+        style={{ opacity: isFocused && !isWorking ? 0.55 : 0 }}
+      >
       <KbdHint shortcut="↵" label="send" />
       <KbdHint shortcut="⇧↵" label="newline" />
     </div>
@@ -442,20 +414,9 @@ function ToolbarButton({
 // ── Keyboard hint chip ─────────────────────────────────────────────────────────
 function KbdHint({ shortcut, label }: { shortcut: string; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--tx-ghost)' }}>
-      <kbd style={{
-        fontFamily: 'var(--font-mono)',
-        padding: '1px 4px',
-        borderRadius: 4,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
-        fontSize: 9.5,
-        lineHeight: 1.4,
-        color: 'var(--tx-muted)',
-      }}>
-        {shortcut}
-      </kbd>
-      <span style={{ color: 'var(--tx-muted)' }}>{label}</span>
+    <span className="uia-kbd-hint">
+      <kbd className="uia-kbd">{shortcut}</kbd>
+      <span className="uia-kbd-label">{label}</span>
     </span>
   )
 }

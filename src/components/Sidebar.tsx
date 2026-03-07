@@ -29,7 +29,6 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
   }
 
   for (const task of tasks.filter((t) => !t.pinned)) {
-    // createdAt is a Date at runtime but may be a string after zustand rehydration from JSON
     const d = new Date(task.createdAt)
     const day = new Date(d.getFullYear(), d.getMonth(), d.getDate())
     if      (day >= today)     groups['Today'].push(task)
@@ -90,27 +89,15 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
     filter(pinnedTasks).length === 0
 
     return (
-      <aside
-        className="sidebar"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          width: '100%',
-          background: '#090909',
-          borderRight: '1px solid rgba(255,255,255,0.05)',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
-      >
+      <aside className="sidebar sb-root">
         {/* ── Expanded full sidebar ── */}
         <SidebarBrand />
 
-        <div style={{ padding: '0 var(--space-2-5) var(--space-2)' }}>
+        <div className="sb-new-task-wrap">
           <NewTaskButton onClick={onNewTask} />
         </div>
 
-        <div style={{ padding: '0 var(--space-2-5) var(--space-2-5)' }}>
+        <div className="sb-search-wrap">
           <SearchBar
             open={searchOpen}
             value={search}
@@ -121,17 +108,9 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
           />
         </div>
 
-        <div style={{ height: 1, background: 'var(--sidebar-border)', margin: '0 var(--space-2-5) var(--space-1)' }} />
+        <div className="sb-divider" />
 
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            paddingBottom: 'var(--space-2)',
-            scrollbarWidth: 'thin',
-          }}
-        >
+        <div className="sb-task-list">
           {tasks.length === 0 ? (
             <SidebarEmptyState
               icon="sparkles"
@@ -140,7 +119,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               action={{ label: 'New task', onClick: onNewTask }}
             />
           ) : (
-            <div style={{ padding: 'var(--space-1) var(--space-2-5) 0' }}>
+            <div className="sb-task-list-inner">
                 {pinnedTasks.length > 0 && (
                   <SidebarSection
                     label="Pinned"
@@ -185,18 +164,9 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               })}
 
               {noResults && (
-                <p
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--tx-tertiary)',
-                    textAlign: 'center',
-                    marginTop: 28,
-                    lineHeight: 1.5,
-                    padding: '0 12px',
-                  }}
-                >
+                <p className="sb-no-results">
                   No tasks match<br />
-                  <span style={{ color: 'var(--tx-secondary)' }}>"{search}"</span>
+                  <span className="sb-no-results-term">"{search}"</span>
                 </p>
               )}
             </div>
@@ -210,50 +180,16 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 
 // ── Brand ─────────────────────────────────────────────────────────────────────
 
-// Traffic lights (Close/Minimise/Maximise) on macOS sit at x:16 y:16.
-// When running inside Tauri with titleBarStyle:Overlay we need ~76px left padding
-// to clear them.
 function SidebarBrand() {
   return (
-    <div
-      data-tauri-drag-region
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-2-5)',
-        padding: 'var(--space-2-5) var(--space-3-5) var(--space-2-5)',
-        userSelect: 'none',
-        background: 'linear-gradient(to bottom, rgba(255,255,255,0.03) 0%, transparent 100%)',
-      }}
-    >
-        <div style={{ position: 'relative', flexShrink: 0, lineHeight: 0 }}>
-          <div
-            style={{
-              position: 'absolute',
-              inset: -6,
-              borderRadius: 10,
-              background: 'radial-gradient(ellipse at 40% 50%, oklch(64% 0.214 40.1 / 0.3) 0%, transparent 70%)',
-              pointerEvents: 'none',
-            }}
-          />
+    <div data-tauri-drag-region className="sb-brand">
+        <div className="sb-brand-logo-wrap">
+          <div className="sb-brand-glow" />
           <NasusLogo size={22} fill="var(--amber)" />
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-1-5)', flex: 1 }}>
-          <span
-            className="font-display"
-            style={{
-              fontSize: 12.5,
-              fontWeight: 800,
-              letterSpacing: '0.12em',
-              color: 'var(--amber-light)',
-              lineHeight: 1,
-              textShadow: '0 0 12px oklch(64% 0.214 40.1 / 0.3)',
-            }}
-          >
-            NASUS
-          </span>
+        <div className="sb-brand-text-wrap">
+          <span className="font-display sb-brand-name">NASUS</span>
         </div>
-
     </div>
   )
 }
@@ -267,39 +203,21 @@ function NewTaskButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
+      className="sb-new-task-btn"
       style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-1-5)',
-        padding: 'var(--space-1-5) var(--space-2-5)',
-        borderRadius: 8,
-        fontSize: 12,
-        fontWeight: 500,
-        fontFamily: 'inherit',
-        cursor: 'pointer',
-        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         color: hov ? 'var(--amber-light)' : 'var(--tx-tertiary)',
         background: hov ? 'oklch(64% 0.214 40.1 / 0.09)' : 'rgba(255,255,255,0.02)',
         border: `1px solid ${hov ? 'oklch(64% 0.214 40.1 / 0.35)' : 'rgba(255,255,255,0.06)'}`,
         boxShadow: hov ? '0 0 16px oklch(64% 0.214 40.1 / 0.12)' : 'none',
       }}
     >
-        <Pxi name="plus" size={12} style={{ flexShrink: 0, transform: hov ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />
-        <span style={{ flex: 1, textAlign: 'left', letterSpacing: '0.01em' }}>New task</span>
-        <kbd
-          style={{
-            fontSize: 9,
-            color: 'inherit',
-            opacity: 0.55,
-            fontFamily: 'var(--font-mono)',
-            background: 'none',
-            border: 'none',
-            padding: 0,
-          }}
-        >
-          ⌘N
-        </kbd>
+        <Pxi
+          name="plus"
+          size={12}
+          style={{ flexShrink: 0, transform: hov ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}
+        />
+        <span className="sb-new-task-label">New task</span>
+        <kbd className="sb-new-task-kbd">⌘N</kbd>
     </button>
   )
 }
@@ -320,42 +238,18 @@ function SearchBar({
 
   if (open) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-1-5)',
-          padding: 'var(--space-1) var(--space-2-5)',
-          borderRadius: 7,
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.11)',
-        }}
-      >
+      <div className="sb-search-open">
         <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
         <input
           ref={inputRef}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Search tasks…"
-          style={{
-            flex: 1,
-            background: 'transparent',
-            border: 'none',
-            fontSize: 11.5,
-            color: 'var(--tx-primary)',
-            fontFamily: 'inherit',
-          }}
+          className="sb-search-input"
           onBlur={() => { if (!value) onClose() }}
         />
         {value && (
-          <button
-            onClick={onClose}
-            aria-label="Clear search"
-            style={{
-              display: 'flex', background: 'none', border: 'none',
-              padding: 0, cursor: 'pointer', color: 'var(--tx-tertiary)',
-            }}
-          >
+          <button onClick={onClose} aria-label="Clear search" className="sb-search-clear">
             <Pxi name="times" size={12} />
           </button>
         )}
@@ -368,27 +262,15 @@ function SearchBar({
       onClick={onOpen}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
+      className="sb-search-btn"
       style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-1-5)',
-        padding: 'var(--space-1) var(--space-2-5)',
-        borderRadius: 7,
         background: hov ? 'var(--sidebar-hover-bg)' : 'rgba(255,255,255,0.02)',
         border: `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)'}`,
-        cursor: 'text',
-        transition: 'background 0.1s, border-color 0.1s',
-        fontFamily: 'inherit',
       }}
     >
       <Pxi name="search" size={12} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
-      <span style={{ fontSize: 11.5, color: 'var(--tx-muted)', flex: 1, textAlign: 'left' }}>
-        Search
-      </span>
-      <kbd style={{ fontSize: 9, color: 'var(--tx-muted)', fontFamily: 'inherit', background: 'none', border: 'none', padding: 0 }}>
-        ⌘K
-      </kbd>
+      <span className="sb-search-placeholder">Search</span>
+      <kbd className="sb-search-kbd">⌘K</kbd>
     </button>
   )
 }
@@ -435,8 +317,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
   }, [collapsed])
 
   return (
-    <div style={{ marginBottom: 'var(--space-2-5)' }}>
-
+    <div className="sb-section">
       {/* Header */}
       <button
         onClick={onToggle}
@@ -444,50 +325,18 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
         onMouseLeave={() => setHov(false)}
         aria-expanded={!collapsed}
         aria-controls={`section-${label.toLowerCase().replace(/\s+/g, '-')}`}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '4px 4px 4px 10px',
-          borderRadius: 5,
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          marginBottom: 2,
-          transition: 'background 0.1s',
-        }}
+        className="sb-section-header"
       >
         {/* Pinned accent pip */}
-        {isAmber && (
-          <span
-            style={{
-              width: 2,
-              height: 10,
-              borderRadius: 1,
-              background: 'var(--amber)',
-              flexShrink: 0,
-              marginRight: 6,
-              opacity: 0.75,
-            }}
-          />
-        )}
+        {isAmber && <span className="sb-section-pip" />}
 
           {/* Label */}
           <span
+            className="sb-section-label"
             style={{
-              flex: 1,
-              textAlign: 'left',
-              fontSize: 9.5,
-              fontWeight: 700,
-              fontFamily: 'var(--font-display)',
-              letterSpacing: '0.1em',
-              textTransform: 'uppercase',
               color: isAmber
                 ? 'var(--amber)'
                 : hov ? 'var(--tx-muted)' : 'var(--tx-ghost)',
-              lineHeight: 1,
-              userSelect: 'none',
-              transition: 'color 0.1s',
             }}
           >
             {label}
@@ -496,15 +345,8 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
         {/* Date — Today only */}
         {date && (
           <span
-            style={{
-              fontSize: 9.5,
-              fontFamily: 'var(--font-mono)',
-              color: hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
-              flexShrink: 0,
-              marginRight: 5,
-              fontVariantNumeric: 'tabular-nums',
-              transition: 'color 0.1s',
-            }}
+            className="sb-section-date"
+            style={{ color: hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)' }}
           >
             {date}
           </span>
@@ -512,17 +354,10 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
         {/* Count */}
         <span
+          className="sb-section-count"
           style={{
-            fontSize: 8.5,
-            fontFamily: 'var(--font-mono)',
-            lineHeight: '13px',
-            padding: '0 3.5px',
-            borderRadius: 3,
-            flexShrink: 0,
-            marginRight: 4,
             color: isAmber ? 'var(--amber)' : 'var(--tx-muted)',
             background: isAmber ? 'oklch(64% 0.214 40.1 / 0.12)' : 'rgba(255,255,255,0.05)',
-            transition: 'color 0.1s',
           }}
         >
           {badge}
@@ -530,11 +365,9 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 
         {/* Chevron */}
         <span
+          className="sb-section-chevron"
           style={{
-            display: 'flex',
-            flexShrink: 0,
             color: hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
-            transition: 'transform 0.2s cubic-bezier(0.4,0,0.2,1), color 0.1s',
             transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
           }}
         >
@@ -554,14 +387,7 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
         }}
         aria-hidden={collapsed}
       >
-        <div
-          ref={bodyRef}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1,
-          }}
-        >
+        <div ref={bodyRef} className="sb-section-body">
           {children}
         </div>
       </div>
@@ -575,43 +401,22 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
 function SidebarFooter({ onSettings }: { onSettings: () => void }) {
   const [hov, setHov] = useState(false)
   return (
-    <div
-      style={{
-        borderTop: '1px solid var(--sidebar-border)',
-        padding: '6px 8px 8px',
-      }}
-    >
-      {/* Unified single-row footer: health dot · provider · model name · ⌘, · gear */}
+    <div className="sb-footer">
       <button
         onClick={onSettings}
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         title="Settings (⌘,)"
+        className="sb-footer-btn"
         style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '6px 8px',
-          borderRadius: 6,
           background: hov ? 'rgba(255,255,255,0.04)' : 'transparent',
           border: `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
-          cursor: 'pointer',
-          transition: 'background 0.12s, border-color 0.12s',
-          textAlign: 'left',
         }}
       >
         <FooterModelInfo />
         <span
-          style={{
-            marginLeft: 'auto',
-            fontSize: 9,
-            color: hov ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
-            fontFamily: 'var(--font-mono)',
-            letterSpacing: '0.02em',
-            flexShrink: 0,
-            transition: 'color 0.12s',
-          }}
+          className="sb-footer-shortcut"
+          style={{ color: hov ? 'var(--tx-muted)' : 'var(--tx-tertiary)' }}
         >
           ⌘,
         </span>
@@ -630,7 +435,7 @@ function SidebarFooter({ onSettings }: { onSettings: () => void }) {
   )
 }
 
-// ── FooterModelInfo — inline health dot + provider + model ────────────────────
+// ── FooterModelInfo ────────────────────────────────────────────────────────────
 
 function FooterModelInfo() {
   const { provider, model, gatewayHealth } = useAppStore(
@@ -660,23 +465,15 @@ function FooterModelInfo() {
   return (
     <>
       <span
+        className="sb-health-dot"
         style={{
-          width: 5, height: 5,
-          borderRadius: '50%',
-          flexShrink: 0,
           backgroundColor: healthColor,
           boxShadow: healthStatus === 'healthy' ? `0 0 5px ${healthColor}90` : undefined,
         }}
       />
-      <span style={{ fontSize: 10.5, fontWeight: 500, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-        {providerLabel}
-      </span>
-      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.12)', flexShrink: 0 }}>·</span>
-      <span style={{ flex: 1, fontSize: 10.5, fontWeight: 500, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {displayModel}
-      </span>
+      <span className="sb-footer-provider">{providerLabel}</span>
+      <span className="sb-footer-sep">·</span>
+      <span className="sb-footer-model">{displayModel}</span>
     </>
   )
 }
-
-

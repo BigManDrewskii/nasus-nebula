@@ -622,23 +622,22 @@ interface ChatViewProps {
   const showEmptyState = isFirstMessage && !isActive
 
   // ── No task selected ──────────────────────────────────────────────────────
-  if (!task) {
-    return (
-      <div className="flex flex-col h-full items-center justify-center" style={{ background: '#0d0d0d' }}>
-        <div className="flex flex-col items-center gap-3 text-center px-8 max-w-xs">
-          <NasusLogo size={32} fill="rgba(255,255,255,0.1)" />
-          <p style={{ fontSize: 13, color: 'var(--tx-secondary)' }}>
-            Select a task or create a new one
-          </p>
+    if (!task) {
+      return (
+        <div className="flex flex-col h-full items-center justify-center cv-bg">
+          <div className="flex flex-col items-center gap-3 text-center px-8 max-w-xs">
+            <NasusLogo size={32} fill="rgba(255,255,255,0.1)" />
+            <p className="cv-no-task-text">
+              Select a task or create a new one
+            </p>
+          </div>
         </div>
-      </div>
-    )
-  }
+      )
+    }
 
     return (
       <div
-        className="flex flex-col h-full"
-        style={{ background: '#0d0d0d', position: 'relative' }}
+        className="flex flex-col h-full cv-bg cv-relative"
         {...dragHandlers}
       >
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
@@ -682,23 +681,11 @@ interface ChatViewProps {
 
           {/* Sandbox error banner */}
           {sandboxStatus === 'error' && isActive && (
-            <div style={{
-              margin: '0 20px 8px',
-              padding: '10px 16px',
-              borderRadius: 10,
-              background: 'rgba(239,68,68,0.06)',
-              border: '1px solid rgba(239,68,68,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              flexShrink: 0,
-            }}>
+            <div className="cv-sandbox-error">
               <Pxi name="exclamation-triangle" size={16} style={{ color: '#f87171', flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#f87171', display: 'block' }}>
-                  Sandbox execution failed
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--tx-secondary)', display: 'block', marginTop: 2, lineHeight: 1.5 }}>
+              <div className="cv-sandbox-error-body">
+                <span className="cv-sandbox-error-title">Sandbox execution failed</span>
+                <span className="cv-sandbox-error-msg">
                   The cloud sandbox couldn't execute the command. The agent will continue using local file operations.
                 </span>
               </div>
@@ -742,35 +729,22 @@ interface ChatViewProps {
 
                     {/* Planning View — approval only, disappears once approved */}
                     {pendingPlan && (
-                      <div style={{ marginTop: 8 }} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                      <div className="cv-plan-wrap animate-in fade-in slide-in-from-bottom-4 duration-500">
                         {/* Amber separator */}
-                        <div style={{
-                          height: 1,
-                          background: 'linear-gradient(to right, rgba(234,179,8,0.15), rgba(255,255,255,0.04), transparent)',
-                          margin: '0 0 16px 39px',
-                        }} />
+                        <div className="cv-plan-separator" />
 
                         {/* Plan intro */}
-                        <div style={{
-                          display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 12,
-                        }}>
-                          <div style={{
-                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: '#111', border: '1px solid rgba(234,179,8,0.2)',
-                          }}>
+                        <div className="cv-plan-intro">
+                          <div className="cv-plan-avatar">
                             <NasusLogo size={15} fill="var(--amber)" />
                           </div>
-                          <p style={{
-                            fontSize: 13, color: 'var(--tx-secondary)', lineHeight: 1.6,
-                            paddingTop: 4, margin: 0,
-                          }}>
+                          <p className="cv-plan-intro-text">
                             I've analyzed your request and created an execution plan. Review the phases below and approve to begin.
                           </p>
                         </div>
 
                         {/* Plan card */}
-                        <div style={{ paddingLeft: 39 }}>
+                        <div className="cv-plan-card">
                           <PlanView
                             plan={pendingPlan}
                             onApprove={approvePlan}
@@ -789,14 +763,9 @@ interface ChatViewProps {
           {/* New messages pill — shown when scrolled up during active run */}
           {showNewMsgPill && (
             <div
+              className="cv-pill-wrap"
               style={{
-                position: 'absolute',
-                bottom: 90,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 10,
                 opacity: pillVisible ? 1 : 0,
-                transition: 'opacity 0.2s ease',
                 pointerEvents: pillVisible ? 'auto' : 'none',
               }}
             >
@@ -812,22 +781,7 @@ interface ChatViewProps {
                     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
                   }
                 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 14px',
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  background: 'rgba(234,179,8,0.12)',
-                  border: '1px solid rgba(234,179,8,0.3)',
-                  color: 'var(--amber)',
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(8px)',
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-                  transition: 'background 0.12s',
-                }}
+                className="cv-new-msg-btn"
                 onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.2)' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.12)' }}
               >
@@ -842,40 +796,15 @@ interface ChatViewProps {
                 <div className="max-w-[780px] mx-auto">
               {/* Meta strip — routing preview + cost, consolidated */}
               {(activeModelBadge || routingPreview || taskCostBadge) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
+                <div className="cv-meta-strip">
                   {activeModelBadge && (
-                    <span
-                      title={activeModelBadge.reason}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
-                        background: 'rgba(234,179,8,0.07)',
-                        border: '1px solid rgba(234,179,8,0.16)',
-                        color: 'var(--amber)',
-                        fontFamily: 'var(--font-mono)',
-                        cursor: 'default',
-                        letterSpacing: '-0.01em',
-                      }}
-                    >
+                    <span title={activeModelBadge.reason} className="cv-meta-badge cv-meta-badge--active">
                       <Pxi name="sparkles" size={8} />
                       {activeModelBadge.displayName}
                     </span>
                   )}
                   {!isActive && routingPreview && (
-                    <span
-                      title={routingPreview.reason}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.07)',
-                        color: 'var(--tx-muted)',
-                        fontFamily: 'var(--font-mono)',
-                        cursor: 'default',
-                        animation: 'fadeIn 0.2s ease',
-                        letterSpacing: '-0.01em',
-                      }}
-                    >
+                    <span title={routingPreview.reason} className="cv-meta-badge cv-meta-badge--preview">
                       <Pxi name="route" size={8} />
                       {routingPreview.displayName}
                     </span>
@@ -883,16 +812,7 @@ interface ChatViewProps {
                   {taskCostBadge && taskCostBadge.callCount > 0 && (
                     <span
                       title={`${taskCostBadge.callCount} LLM call${taskCostBadge.callCount !== 1 ? 's' : ''}`}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        fontSize: 9.5, padding: '2px 7px', borderRadius: 5,
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.07)',
-                        color: 'var(--tx-muted)',
-                        fontFamily: 'var(--font-mono)',
-                        cursor: 'default',
-                        letterSpacing: '-0.01em',
-                      }}
+                      className="cv-meta-badge cv-meta-badge--cost"
                     >
                       <Pxi name="coin" size={8} />
                       {taskCostBadge.isFree

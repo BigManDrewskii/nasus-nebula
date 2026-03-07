@@ -28,21 +28,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={handleCopy}
       title={copied ? 'Copied!' : 'Copy message'}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '3px 8px',
-        borderRadius: 6,
-        fontSize: 10,
-        border: '1px solid rgba(255,255,255,0.07)',
-        background: copied ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.04)',
-        color: copied ? '#34d399' : 'var(--tx-tertiary)',
-        cursor: 'pointer',
-        transition: 'background 0.12s, color 0.12s',
-        whiteSpace: 'nowrap',
-        fontFamily: 'inherit',
-      }}
+      className={`cm-copy-btn${copied ? ' cm-copy-btn--copied' : ''}`}
       onMouseEnter={(e) => {
         if (!copied) {
           e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
@@ -143,68 +129,27 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
   const isQuotaError = error.toLowerCase().includes('402') || error.toLowerCase().includes('credits')
 
   return (
-    <div
-      className="slide-down"
-      style={{
-        borderRadius: 12,
-        border: '1px solid rgba(212,80,64,0.2)',
-        background: 'rgba(212,80,64,0.06)',
-        overflow: 'hidden',
-        marginTop: 8,
-      }}
-    >
+    <div className="cm-error-banner slide-down">
       {/* Header row */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 7,
-        padding: '10px 14px 8px',
-        borderBottom: '1px solid rgba(212,80,64,0.1)',
-      }}>
-        <Pxi name={icon} size={13} style={{ color: '#f87171', flexShrink: 0 }} />
-        <span style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: '#f87171',
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          fontFamily: 'var(--font-display)',
-        }}>
-          {title}
-        </span>
+      <div className="cm-error-header">
+        <Pxi name={icon} size={13} className="cm-error-icon" />
+        <span className="cm-error-title">{title}</span>
       </div>
 
       {/* Body */}
-      <div style={{ padding: '10px 14px 12px' }}>
-        <p style={{
-          fontSize: 12,
-          lineHeight: 1.6,
-          color: 'var(--tx-secondary)',
-          margin: 0,
-          marginBottom: onRetry ? 10 : 0,
-        }}>
+      <div className="cm-error-body">
+        <p
+          className="cm-error-text"
+          style={{ marginBottom: onRetry ? 10 : 0 }}
+        >
           {body}
         </p>
 
         {onRetry && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="cm-error-actions">
             <button
               onClick={onRetry}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 12px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 500,
-                background: 'rgba(234,179,8,0.12)',
-                border: '1px solid rgba(234,179,8,0.25)',
-                color: 'var(--amber)',
-                cursor: 'pointer',
-                transition: 'background 0.12s',
-                fontFamily: 'inherit',
-              }}
+              className="cm-retry-btn"
               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.2)' }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.12)' }}
             >
@@ -213,7 +158,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
             </button>
 
             {isQuotaError && (
-              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontStyle: 'italic' }}>
+              <span className="cm-quota-hint">
                 Switching to a free model might help.
               </span>
             )}
@@ -242,24 +187,15 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
   const files  = attachments.filter((a) => a.category !== 'image')
 
   return (
-    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className="cm-attachment-grid">
       {images.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div className="cm-attachment-images">
           {images.map((att) => (
-            <div
-              key={att.id}
-              style={{
-                width: 80, height: 80,
-                borderRadius: 8, overflow: 'hidden',
-                border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.04)',
-                flexShrink: 0,
-              }}
-            >
+            <div key={att.id} className="cm-attachment-thumb">
               {att.previewUrl ? (
-                <img src={att.previewUrl} alt={att.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={att.previewUrl} alt={att.name} className="cm-attachment-img" />
               ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className="cm-attachment-placeholder">
                   <Pxi name="image" size={24} style={{ color: '#60a5fa', opacity: 0.5 }} />
                 </div>
               )}
@@ -270,27 +206,11 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
       {files.map((att) => {
         const { icon, color } = attachmentIcon(att.category)
         return (
-          <div
-            key={att.id}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '5px 10px',
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              maxWidth: 260,
-            }}
-          >
+          <div key={att.id} className="cm-attachment-file">
             <Pxi name={icon} size={14} style={{ color, flexShrink: 0 }} />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {att.name}
-              </p>
-              <p style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
-                {formatBytes(att.size)}
-              </p>
+            <div className="cm-attachment-file-info">
+              <p className="cm-attachment-name">{att.name}</p>
+              <p className="cm-attachment-size">{formatBytes(att.size)}</p>
             </div>
           </div>
         )
@@ -303,17 +223,7 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
 
 function NasusAvatar({ isStreaming: _isStreaming }: { isStreaming?: boolean }) {
   return (
-    <div style={{
-      width: 28,
-      height: 28,
-      borderRadius: 8,
-      flexShrink: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: '#111',
-      border: '1px solid rgba(255,255,255,0.08)',
-    }}>
+    <div className="cm-avatar">
       <NasusLogo size={13} fill="var(--amber)" />
     </div>
   )
@@ -323,26 +233,9 @@ function NasusAvatar({ isStreaming: _isStreaming }: { isStreaming?: boolean }) {
 
 function TypingDots() {
   return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: 4,
-      padding: '5px 10px',
-      borderRadius: 10,
-      background: 'rgba(255,255,255,0.03)',
-      border: '1px solid rgba(255,255,255,0.06)',
-    }}>
+    <div className="cm-typing-dots">
       {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="typing-dot"
-          style={{
-            width: 4, height: 4,
-            borderRadius: '50%',
-            background: 'var(--amber)',
-            display: 'block',
-          }}
-        />
+        <span key={i} className="typing-dot cm-typing-dot" />
       ))}
     </div>
   )
@@ -352,36 +245,16 @@ function TypingDots() {
 
 function ModelBadge({ modelName, provider, isStreaming }: { modelName: string; provider?: string; isStreaming?: boolean }) {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 6,
-      marginBottom: 6,
-      height: 18,
-    }}>
-      <span style={{
-        fontSize: 10,
-        fontWeight: 600,
-        color: 'var(--tx-muted)',
-        letterSpacing: '0.02em',
-      }}>
-        {modelName}
-      </span>
+    <div className="cm-model-badge">
+      <span className="cm-model-name">{modelName}</span>
       {provider && (
         <>
-          <span style={{ width: 2, height: 2, borderRadius: '50%', background: 'var(--tx-ghost)' }} />
-          <span style={{ fontSize: 9, color: 'var(--tx-ghost)', fontFamily: 'var(--font-mono)' }}>
-            {provider}
-          </span>
+          <span className="cm-model-dot" />
+          <span className="cm-model-provider">{provider}</span>
         </>
       )}
       {isStreaming && (
-        <span style={{
-          width: 5, height: 5, borderRadius: '50%',
-          background: '#4ade80',
-          animation: 'statusPulse 1.6s ease-in-out infinite',
-          flexShrink: 0,
-        }} />
+        <span className="cm-streaming-dot" />
       )}
     </div>
   )
@@ -395,26 +268,15 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
 
   return (
     <div
-      style={{ display: 'flex', justifyContent: 'flex-end' }}
+      className="cm-user-row"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ maxWidth: '72%', minWidth: 0 }}>
-        <div
-          style={{
-            color: 'var(--tx-primary)',
-            fontSize: 13.5,
-            lineHeight: 1.65,
-            padding: '9px 14px',
-            borderRadius: 12,
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.09)',
-            maxWidth: '100%',
-          }}
-        >
+      <div className="cm-user-col">
+        <div className="cm-user-bubble">
           {isSimple
-            ? <span style={{ whiteSpace: 'pre-wrap' }}>{content}</span>
-            : <div style={{ whiteSpace: 'pre-wrap' }}><MarkdownRenderer content={content} /></div>
+            ? <span className="cm-user-text">{content}</span>
+            : <div className="cm-user-text"><MarkdownRenderer content={content} /></div>
           }
           {attachments && attachments.length > 0 && (
             <AttachmentGrid attachments={attachments} />
@@ -422,16 +284,11 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
         </div>
 
         {/* Label on hover */}
-        <div style={{
-          textAlign: 'right',
-          marginTop: 3,
-          opacity: hovered ? 1 : 0,
-          transition: 'opacity 0.15s',
-          pointerEvents: 'none',
-        }}>
-          <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)' }}>
-            you
-          </span>
+        <div
+          className="cm-user-label"
+          style={{ opacity: hovered ? 1 : 0 }}
+        >
+          <span className="cm-user-label-text">you</span>
         </div>
       </div>
     </div>
@@ -485,17 +342,17 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
     return (
       <div
-        style={{ display: 'flex', alignItems: 'flex-start', gap: 11 }}
+        className="cm-agent-row"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         {/* Avatar */}
-        <div style={{ flexShrink: 0, paddingTop: 1 }}>
+        <div className="cm-agent-avatar-col">
           <NasusAvatar isStreaming={isStreaming} />
         </div>
 
         {/* Content column */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="cm-agent-content">
           {/* Model badge row */}
           {(hasContent || hasSteps) && message.modelName && (
             <ModelBadge
@@ -517,35 +374,12 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
           {/* Final text response */}
           {hasContent && (
-            <div style={hasSteps ? {
-              marginTop: 14,
-              paddingTop: 14,
-              borderTop: '1px solid rgba(255,255,255,0.05)',
-            } : { marginTop: 2 }}>
-              <div style={{
-                fontSize: 13,
-                lineHeight: 1.75,
-                color: 'var(--tx-primary)',
-                letterSpacing: '-0.005em',
-                maxWidth: 680,
-              }}
-              className="agent-prose"
-              >
+            <div className={hasSteps ? 'cm-response-divider' : 'cm-response-start'}>
+              <div className="cm-prose agent-prose">
                 {renderedContent}
               </div>
               {isStreaming && (
-                <span
-                  style={{
-                    display: 'inline-block',
-                    width: 2, height: 13,
-                    borderRadius: 1,
-                    marginLeft: 2,
-                    verticalAlign: 'text-bottom',
-                    background: 'var(--amber)',
-                    opacity: 0.8,
-                    animation: 'cursorBlink 1s steps(2) infinite',
-                  }}
-                />
+                <span className="cm-cursor" />
               )}
             </div>
           )}
@@ -560,15 +394,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
         {/* Hover action bar */}
         {hasContent && !isStreaming && !hasError && hovered && (
-          <div
-            className="slide-down"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              marginTop: 8,
-            }}
-          >
+          <div className="cm-action-bar slide-down">
             <CopyButton text={message.content} />
           </div>
         )}

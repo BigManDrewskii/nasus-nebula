@@ -70,48 +70,29 @@ interface ToastOverlayProps {
 }
 
 export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropConfirm }: ToastOverlayProps) {
-  const baseStyle: React.CSSProperties = {
-    position: 'absolute',
-    top: 16,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    zIndex: 60,
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '8px 14px',
-    borderRadius: 12,
-    background: 'rgba(13,13,13,0.95)',
-    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-    backdropFilter: 'blur(8px)',
-    animation: 'fadeIn 0.18s ease',
-    pointerEvents: 'none',
-    maxWidth: 'calc(100% - 48px)',
-  }
-
   if (workspaceWarning) {
     return (
-      <div style={{ ...baseStyle, border: '1px solid rgba(234,179,8,0.35)' }}>
+      <div className="ch-toast ch-toast--amber">
         <Pxi name="exclamation-triangle" size={14} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>{workspaceWarning}</span>
+        <span className="ch-toast-text">{workspaceWarning}</span>
       </div>
     )
   }
 
   if (rateLimitWarning) {
     return (
-      <div style={{ ...baseStyle, border: '1px solid rgba(239,68,68,0.35)' }}>
+      <div className="ch-toast ch-toast--red">
         <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171', flexShrink: 0 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-primary)' }}>{rateLimitWarning}</span>
+        <span className="ch-toast-text">{rateLimitWarning}</span>
       </div>
     )
   }
 
   if (folderDropConfirm) {
     return (
-      <div style={{ ...baseStyle, border: '1px solid rgba(52,211,153,0.35)' }}>
+      <div className="ch-toast ch-toast--green">
         <Pxi name="check-circle" size={14} style={{ color: '#34d399', flexShrink: 0 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-primary)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className="ch-toast-text ch-toast-text--mono">
           Workspace set to {folderDropConfirm}
         </span>
       </div>
@@ -171,47 +152,32 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
      onToggleRight,
        onToggleSidebar: _onToggleSidebar,
    }: ChatHeaderProps) {
-     // Model badge priority:
-     // 1. During an active run in auto mode → use activeModelBadge (live, from current routing call)
-     // 2. During an active run in manual mode → use manualModel (the user's chosen model)
-     // 3. Idle → always show manualModel (never show stale taskRouterState from a past run)
      const liveRouterEntry = isActive && routingMode === 'auto' ? activeModelBadge ?? taskRouterState : null
      const activeModelId = liveRouterEntry?.modelId || manualModel
      const activeModelName = liveRouterEntry?.displayName || (manualModel.split('/').pop() || manualModel)
      const isAutoFree = routingMode === 'auto-free' || (isActive && (liveRouterEntry?.isFree ?? false))
 
-      // Provider info
       const isVercel = activeModelId.includes('vercel') || manualProvider === 'vercel'
       const providerLabel = isVercel ? 'Vercel AI' : manualProvider === 'ollama' ? 'Local' : 'OpenRouter'
 
-      // Health status for the primary provider
       const health = gatewayHealth.find(h => h.status !== 'unknown' && h.status !== 'healthy') || gatewayHealth[0]
       const healthStatus = health?.status || 'healthy'
       const healthColors: Record<string, string> = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }
       const healthColor = healthColors[healthStatus]
 
     return (
-      <header
-        className="flex-shrink-0 flex items-center justify-between"
-        style={{
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: '#0d0d0d',
-          minHeight: 44,
-          padding: '0 12px',
-        }}
-      >
+      <header className="flex-shrink-0 flex items-center justify-between ch-header">
         {/* Left cluster — task title */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
-            className="font-display font-medium truncate"
-            style={{ fontSize: 11, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
+            className="font-display font-medium truncate ch-title"
           >
             {task?.title || 'New Chat'}
           </h2>
         </div>
 
         {/* Center — compact model + cost pill */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className="ch-center">
           <div
             title={[
               `${providerLabel} · ${activeModelName}`,
@@ -220,30 +186,20 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
               taskRouterState?.tokenUsage ? `Context: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%` : null,
               iteration > 0 ? `Iteration: ${iteration}` : null,
             ].filter(Boolean).join('\n')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '2px 8px', borderRadius: 6,
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              cursor: 'help',
-            }}
+            className="ch-model-pill"
           >
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}`, flexShrink: 0 }} />
-            <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--tx-secondary)', fontFamily: 'var(--font-mono)' }}>
-              {activeModelName}
-            </span>
-            {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700 }}>FREE</span>}
+            <span className="ch-health-dot" style={{ background: healthColor, boxShadow: `0 0 4px ${healthColor}` }} />
+            <span className="ch-model-name">{activeModelName}</span>
+            {isAutoFree && <span className="ch-free-badge">FREE</span>}
             {tokenCount > 0 && (
               <>
-                <span style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
-                <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)' }}>
-                  {estimateCost(activeModelId, tokenCount)}
-                </span>
+                <span className="ch-pill-divider" />
+                <span className="ch-cost-label">{estimateCost(activeModelId, tokenCount)}</span>
               </>
             )}
             {isActive && iteration > 0 && (
               <>
-                <span style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+                <span className="ch-pill-divider" />
                 <Pxi name="refresh" size={9} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
               </>
             )}
@@ -254,14 +210,9 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
         <div className="flex items-center gap-2 flex-shrink-0 flex-1 justify-end">
           {/* Sandbox pill — only when relevant */}
           {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && sandboxStatus === 'starting' && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '3px 8px', borderRadius: 20,
-              background: 'rgba(122,174,90,0.1)',
-              border: '1px solid rgba(122,174,90,0.2)',
-            }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', animation: 'statusPulse 1.6s ease-in-out infinite', display: 'inline-block' }} />
-              <span style={{ fontSize: 10, fontWeight: 500, color: '#4ade80', letterSpacing: '0.02em' }}>Starting</span>
+            <div className="ch-sandbox-starting">
+              <span className="ch-sandbox-dot" />
+              <span className="ch-sandbox-label">Starting</span>
             </div>
           )}
           {sandboxStatus === 'ready' && <SandboxPill status={sandboxStatus} />}
@@ -275,24 +226,19 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
               className="header-action-btn"
             >
               <Pxi name="folder" size={12} />
-              <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
+              <span className="ch-files-count">{workspaceFileCount}</span>
             </button>
           )}
 
-          {/* Workspace panel toggle — only when there are files or panel is open */}
+          {/* Workspace panel toggle */}
           {onToggleRight && (workspaceFileCount > 0 || !rightCollapsed) && (
             <button
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
               aria-label="Open settings"
+              className="ch-panel-toggle"
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 28, height: 28, borderRadius: 6,
                 background: rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                color: 'var(--tx-tertiary)',
-                cursor: 'pointer',
-                transition: 'background 0.12s',
               }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
               onMouseLeave={(e) => { e.currentTarget.style.background = rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)' }}
