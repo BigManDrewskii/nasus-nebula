@@ -1020,7 +1020,7 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
 
       // Post-compression: remove any orphaned tool results so the history
       // is always valid before the next LLM call (rule: tool must follow tool_calls).
-      const cleanedKept = this.sanitizeMessages(kept)
+      const cleanedKept = sanitizeMessages(kept)
 
       messages.length = 0
       messages.push(...cleanedKept)
