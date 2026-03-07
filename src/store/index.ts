@@ -18,6 +18,7 @@ import { createUISlice, type UISlice } from './uiSlice'
 import { createAgentSlice, type AgentSlice } from './agentSlice'
 import { createSettingsSlice, type SettingsSlice } from './settingsSlice'
 import { createGatewaySlice, type GatewaySlice } from '../agent/gateway'
+import { createToastSlice, type ToastSlice } from './toastSlice'
 import { updateGlobalRateLimiterConfig } from '../agent/gateway/rateLimiter'
 import { getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
@@ -35,7 +36,7 @@ export type {
   TaskTokenUsage,
 } from './settingsSlice'
 
-type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice
+type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice & ToastSlice
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -44,10 +45,11 @@ export const useAppStore = create<AppState>()(
       const [set, get, api] = a as [any, any, any]
       return {
         ...createTaskSlice(set, get, api),
-        ...createUISlice(set, get, api),
-        ...createAgentSlice(set, get, api),
-        ...createSettingsSlice(set, get, api),
-        ...createGatewaySlice(set, get, api),
+          ...createUISlice(set, get, api),
+          ...createAgentSlice(set, get, api),
+          ...createSettingsSlice(set, get, api),
+          ...createGatewaySlice(set, get, api),
+          ...createToastSlice(set, get, api),
       }
     }),
     {

@@ -33,38 +33,39 @@ interface ChatViewProps {
   
   export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
   const {
-    messages: allMessages,
-    getMessages,
-    getRawHistory,
-    addMessage,
-    setStreaming,
-    setError,
-    appendRawHistory,
-    updateTaskTitle,
-    updateTaskStatus,
-    apiKey,
-    model,
-    workspacePath,
-    apiBase,
-    provider,
-    exaKey,
-    maxIterations,
-    setWorkspacePath,
-    addRecentWorkspacePath,
-    enableVerification,
-    routerConfig,
-    routingMode,
-      pendingPlan,
-      approvePlan,
-      rejectPlan,
-      setSandboxStatus,
-    sandboxStatus: globalSandboxStatus,
-    extensionConnected,
-    extensionVersion,
-    gatewayHealth,
-    lastGatewayEvent,
-      addStep: _addStep,
-  } = useAppStore(
+      messages: allMessages,
+      getMessages,
+      getRawHistory,
+      addMessage,
+      setStreaming,
+      setError,
+      appendRawHistory,
+      updateTaskTitle,
+      updateTaskStatus,
+      apiKey,
+      model,
+      workspacePath,
+      apiBase,
+      provider,
+      exaKey,
+      maxIterations,
+      setWorkspacePath,
+      addRecentWorkspacePath,
+      enableVerification,
+      routerConfig,
+      routingMode,
+        pendingPlan,
+        approvePlan,
+        rejectPlan,
+        setSandboxStatus,
+      sandboxStatus: globalSandboxStatus,
+      extensionConnected,
+      extensionVersion,
+      gatewayHealth,
+      lastGatewayEvent,
+        addStep: _addStep,
+      addToast,
+    } = useAppStore(
     useShallow((s) => ({
       messages: s.messages,
       getMessages: s.getMessages,
@@ -94,10 +95,11 @@ interface ChatViewProps {
       sandboxStatus: s.sandboxStatus,
       extensionConnected: s.extensionConnected,
       extensionVersion: s.extensionVersion,
-      gatewayHealth: s.gatewayHealth,
-      lastGatewayEvent: s.lastGatewayEvent,
-      addStep: s.addStep,
-    })),
+        gatewayHealth: s.gatewayHealth,
+        lastGatewayEvent: s.lastGatewayEvent,
+        addStep: s.addStep,
+        addToast: s.addToast,
+      })),
   )
 
     // Monitor gateway failovers and show notifications
@@ -121,14 +123,15 @@ interface ChatViewProps {
     // Use the agent status hook to track agent state
     const { status: agentStatus, iteration } = useAgentStatus(task?.id)
 
-  const runningRef = useRef(false)
-  const queuedMsgRef = useRef<string | null>(null)
-  const handleSendRef = useRef<((content: string) => void) | null>(null)
-  const handleStopRef = useRef<(() => void) | null>(null)
-  const sendTimestamps = useRef<number[]>([])
-    const inputRef = useRef<UserInputAreaHandle>(null)
-    const messageListRef = useRef<HTMLDivElement>(null)
-    const bottomRef = useRef<HTMLDivElement>(null)
+    const runningRef = useRef(false)
+    const queuedMsgRef = useRef<string | null>(null)
+    const handleSendRef = useRef<((content: string) => void) | null>(null)
+    const handleStopRef = useRef<(() => void) | null>(null)
+    const sendTimestamps = useRef<number[]>([])
+      const inputRef = useRef<UserInputAreaHandle>(null)
+      const messageListRef = useRef<HTMLDivElement>(null)
+      const bottomRef = useRef<HTMLDivElement>(null)
+      const pillHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const [tokenCount, setTokenCount] = useState(0)
     const [showMemory, setShowMemory] = useState(false)
@@ -147,13 +150,10 @@ interface ChatViewProps {
     const taskCostBadge = taskRouterEntry && taskRouterEntry.callCount > 0
       ? { costUsd: taskRouterEntry.totalCostUsd, isFree: taskRouterEntry.isFree, callCount: taskRouterEntry.callCount }
       : null
-    const [showNewMsgPill, setShowNewMsgPill] = useState(false)
-    const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
-    const [rateLimitWarning, setRateLimitWarning] = useState<string | null>(null)
-      const [_showWorkspacePicker, _setShowWorkspacePicker] = useState(false)
-      const [_localWorkspace, setLocalWorkspace] = useState(workspacePath)
-    const [workspaceWarning, setWorkspaceWarning] = useState<string | null>(null)
-    const [folderDropConfirm, setFolderDropConfirm] = useState<string | null>(null)
+      const [showNewMsgPill, setShowNewMsgPill] = useState(false)
+      const [pillVisible, setPillVisible] = useState(false) // drives opacity transition
+        const [_showWorkspacePicker, _setShowWorkspacePicker] = useState(false)
+        const [_localWorkspace, setLocalWorkspace] = useState(workspacePath)
 
     // Derived state from agentStatus hook
     const agentRunning = agentStatus === 'processing' || agentStatus === 'streaming'
@@ -238,13 +238,16 @@ interface ChatViewProps {
   }, [routerConfig, model, setRoutingPreview])
 
   // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (routingTimeoutRef.current) {
-        clearTimeout(routingTimeoutRef.current)
+    useEffect(() => {
+      return () => {
+        if (routingTimeoutRef.current) {
+          clearTimeout(routingTimeoutRef.current)
+        }
+        if (pillHideTimerRef.current) {
+          clearTimeout(pillHideTimerRef.current)
+        }
       }
-    }
-  }, [])
+    }, [])
 
   // Listen for token usage events to update the live token counter
   useEffect(() => {
@@ -265,20 +268,20 @@ interface ChatViewProps {
   const { attachments, totalSize, isOverLimit, addFiles, removeAttachment, clearAttachments } = useAttachments()
 
   // When a folder is dropped, set it as the workspace path
-  const handleFolderDropped = useCallback((path: string) => {
-    setWorkspacePath(path)
-    addRecentWorkspacePath(path)
-    setLocalWorkspace(path)
-    setFolderDropConfirm(path)
-    setTimeout(() => setFolderDropConfirm(null), 3000)
-  }, [setWorkspacePath, addRecentWorkspacePath, setLocalWorkspace])
+    const handleFolderDropped = useCallback((path: string) => {
+      setWorkspacePath(path)
+      addRecentWorkspacePath(path)
+      setLocalWorkspace(path)
+      addToast(`Workspace set to ${path}`, 'green')
+    }, [setWorkspacePath, addRecentWorkspacePath, setLocalWorkspace, addToast])
 
   const { isDragOver, dragMode, handlers: dragHandlers } = useDragDrop(addFiles, handleFolderDropped)
 
   function hidePill() {
-    setPillVisible(false)
-    setTimeout(() => setShowNewMsgPill(false), 200)
-  }
+      setPillVisible(false)
+      if (pillHideTimerRef.current) clearTimeout(pillHideTimerRef.current)
+      pillHideTimerRef.current = setTimeout(() => setShowNewMsgPill(false), 200)
+    }
 
   const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig })
   useEffect(() => {
@@ -438,12 +441,11 @@ interface ChatViewProps {
           const effectiveKey = conn0.apiKey || cfg0.apiKey || ''
           const effectiveProvider = conn0.provider || cfg0.provider || 'openrouter'
           const needsKey = effectiveProvider !== 'ollama' && !effectiveKey.trim()
-          if (needsKey) {
-            setRateLimitWarning('Add your API key in Settings before sending.')
-            setTimeout(() => setRateLimitWarning(null), 5000)
-            onOpenSettings()
-            return
-          }
+            if (needsKey) {
+              addToast('Add your API key in Settings before sending.', 'red')
+              onOpenSettings()
+              return
+            }
 
         // Rate limit: max 10 new agent runs per 60 seconds
       const now = Date.now()
@@ -451,9 +453,8 @@ interface ChatViewProps {
       if (sendTimestamps.current.length >= 10) {
         const oldest = sendTimestamps.current[0]
         const waitSecs = Math.ceil((oldest + 60_000 - now) / 1000)
-        setRateLimitWarning(`Too many requests. Please wait ${waitSecs}s before sending again.`)
-        setTimeout(() => setRateLimitWarning(null), 4000)
-        return
+          addToast(`Too many requests. Please wait ${waitSecs}s before sending again.`, 'red')
+          return
       }
         sendTimestamps.current.push(now)
         try { sessionStorage.setItem('nasus-send-ts', JSON.stringify(sendTimestamps.current)) } catch { /* ignore */ }
@@ -542,13 +543,12 @@ interface ChatViewProps {
 
       // Validate workspace path before running
       if (workspacePath) {
-        try {
-          const ok = await tauriInvoke<boolean>('validate_path', { path: workspacePath })
-          if (!ok) {
-            setWorkspaceWarning(`Workspace path "${workspacePath}" is not accessible or not writable. Please update it in settings.`)
-            setTimeout(() => setWorkspaceWarning(null), 6000)
-          }
-        } catch { /* non-blocking — proceed anyway */ }
+          try {
+            const ok = await tauriInvoke<boolean>('validate_path', { path: workspacePath })
+            if (!ok) {
+              addToast(`Workspace path "${workspacePath}" is not accessible or not writable. Please update it in settings.`, 'amber')
+            }
+          } catch { /* non-blocking — proceed anyway */ }
       }
 
       // Always use runWebAgent for now, as the Rust backend is a placeholder.
@@ -642,11 +642,7 @@ interface ChatViewProps {
       >
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
 
-        <ToastOverlay
-          workspaceWarning={workspaceWarning}
-          rateLimitWarning={rateLimitWarning}
-          folderDropConfirm={folderDropConfirm}
-        />
+          <ToastOverlay />
       {showMemory && taskWorkspacePath && (
         <MemoryViewer
           taskId={task.id}

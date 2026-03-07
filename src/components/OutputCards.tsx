@@ -1,4 +1,4 @@
-import { useState, useMemo, memo } from 'react'
+import { useState, useMemo, memo, useRef, useEffect } from 'react'
 import type { OutputCardFile } from '../types'
 import { Pxi } from './Pxi'
 
@@ -98,9 +98,20 @@ async function downloadZip(files: OutputCardFile[]) {
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current) }
+  }, [])
+
   return (
     <button
-      onClick={() => { navigator.clipboard.writeText(text).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+      onClick={() => {
+        navigator.clipboard.writeText(text).catch(() => {})
+        setCopied(true)
+        if (timerRef.current) clearTimeout(timerRef.current)
+        timerRef.current = setTimeout(() => setCopied(false), 1500)
+      }}
       title={copied ? 'Copied!' : 'Copy'}
       className="oc-action-btn"
       style={{

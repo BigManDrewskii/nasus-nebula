@@ -194,10 +194,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   }
 
   const scrollableRef = useRef<HTMLDivElement>(null)
-  const [modelOpen, setModelOpen] = useState(false)
-  const [modelSearch, setModelSearch] = useState('')
-  const modelRef = useRef<HTMLDivElement>(null)
-  const modelSearchRef = useRef<HTMLInputElement>(null)
+    const [modelOpen, setModelOpen] = useState(false)
+    const [modelSearch, setModelSearch] = useState('')
+    const modelRef = useRef<HTMLDivElement>(null)
+    const modelSearchRef = useRef<HTMLInputElement>(null)
+    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+    useEffect(() => {
+      return () => {
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current)
+      }
+    }, [])
 
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null)
@@ -494,9 +503,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         return
       }
 
-      setSaving(false)
-      setSaved(true)
-      setTimeout(() => { setSaved(false); onClose() }, 900)
+        setSaving(false)
+        setSaved(true)
+        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        savedTimerRef.current = setTimeout(() => { setSaved(false); onClose() }, 900)
     }
 
 
@@ -1347,11 +1357,13 @@ function ModelRouterSection({
       // state touch so ModelRouterSection re-renders with the new registry.
       const state = useAppStore.getState()
       state.setRouterConfig({ ...state.routerConfig })
-      setRefreshMessage(`Updated: ${models?.length ?? 0} models from OpenRouter`)
-      setTimeout(() => setRefreshMessage(''), 3000)
-    } catch (e) {
-      setRefreshMessage(`Failed: ${e instanceof Error ? e.message : String(e)}`)
-      setTimeout(() => setRefreshMessage(''), 5000)
+        setRefreshMessage(`Updated: ${models?.length ?? 0} models from OpenRouter`)
+        if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current)
+        refreshMsgTimerRef.current = setTimeout(() => setRefreshMessage(''), 3000)
+      } catch (e) {
+        setRefreshMessage(`Failed: ${e instanceof Error ? e.message : String(e)}`)
+        if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current)
+        refreshMsgTimerRef.current = setTimeout(() => setRefreshMessage(''), 5000)
     } finally {
       setRefreshing(false)
     }

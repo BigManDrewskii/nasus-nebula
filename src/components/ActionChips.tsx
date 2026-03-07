@@ -47,34 +47,25 @@ interface ActionChipsProps {
 export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%' }}>
-      {chips.map((chip) => (
-        <button
-          key={chip.label}
-          onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-            padding: '9px 12px',
-            borderRadius: 10,
-            border: '1px solid rgba(255,255,255,0.07)',
-            background: 'rgba(255,255,255,0.025)',
-            cursor: 'pointer',
-            color: 'var(--tx-secondary)',
-            textAlign: 'left',
-            transition: 'background 0.12s, border-color 0.12s, color 0.12s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
-            e.currentTarget.style.color = 'var(--tx-primary)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.025)'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
-            e.currentTarget.style.color = 'var(--tx-secondary)'
-          }}
-        >
+        {chips.map((chip) => (
+          <button
+            key={chip.label}
+            onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
+            className="chip-interactive"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '9px 12px',
+              borderRadius: 10,
+              border: '1px solid rgba(255,255,255,0.07)',
+              background: 'rgba(255,255,255,0.025)',
+              cursor: 'pointer',
+              color: 'var(--tx-secondary)',
+              textAlign: 'left',
+              transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+            }}
+          >
           {/* Icon */}
           <div style={{
             width: 24,

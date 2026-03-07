@@ -165,62 +165,44 @@ export function SidecarPrompt({ onInstallComplete, onSkip }: Props) {
         {/* Buttons */}
         <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
           <button
-            onClick={handleInstall}
-            disabled={installing}
-            style={{
-              flex: 1,
-              padding: 'var(--space-2-5) var(--space-4)',
-              borderRadius: 8,
-              border: 'none',
-              background: installing ? 'rgba(234, 179, 8, 0.3)' : 'var(--amber)',
-              color: '#000',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 500,
-              cursor: installing ? 'wait' : 'pointer',
-              transition: 'all 0.12s ease',
-              opacity: installing ? 0.7 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!installing) e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.9)'
-            }}
-            onMouseLeave={(e) => {
-              if (!installing) e.currentTarget.style.background = 'var(--amber)'
-            }}
-          >
-            {installing ? 'Installing...' : 'Download Chromium'}
-          </button>
-          <button
-            onClick={handleSkip}
-            disabled={installing}
-            style={{
-              padding: 'var(--space-2-5) var(--space-4)',
-              borderRadius: 8,
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              background: 'transparent',
-              color: 'var(--tx-secondary)',
-              fontSize: 'var(--text-sm)',
-              fontWeight: 500,
-              cursor: installing ? 'not-allowed' : 'pointer',
-              transition: 'all 0.12s ease',
-              opacity: installing ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (!installing) {
-                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
-                e.currentTarget.style.color = 'var(--tx-primary)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!installing) {
-                e.currentTarget.style.background = 'transparent'
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'
-                e.currentTarget.style.color = 'var(--tx-secondary)'
-              }
-            }}
-          >
-            Skip
-          </button>
+              onClick={handleInstall}
+              disabled={installing}
+              className="btn-primary"
+              style={{
+                flex: 1,
+                padding: 'var(--space-2-5) var(--space-4)',
+                borderRadius: 8,
+                border: 'none',
+                background: installing ? 'rgba(234, 179, 8, 0.3)' : 'var(--amber)',
+                color: '#000',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 500,
+                cursor: installing ? 'wait' : 'pointer',
+                transition: 'all 0.12s ease',
+                opacity: installing ? 0.7 : 1,
+              }}
+            >
+              {installing ? 'Installing...' : 'Download Chromium'}
+            </button>
+            <button
+              onClick={handleSkip}
+              disabled={installing}
+              className="btn-secondary"
+              style={{
+                padding: 'var(--space-2-5) var(--space-4)',
+                borderRadius: 8,
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                background: 'transparent',
+                color: 'var(--tx-secondary)',
+                fontSize: 'var(--text-sm)',
+                fontWeight: 500,
+                cursor: installing ? 'not-allowed' : 'pointer',
+                transition: 'all 0.12s ease',
+                opacity: installing ? 0.5 : 1,
+              }}
+            >
+              Skip
+            </button>
         </div>
 
         {/* Don't show again checkbox */}

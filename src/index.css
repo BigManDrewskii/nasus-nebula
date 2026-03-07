@@ -5344,3 +5344,20 @@ input[type="range"]::-moz-range-thumb {
 .vr-issues-list { gap: 6px; }
 .vr-no-issues { font-size: 12px; text-align: center; padding: 8px; }
 .vr-body { gap: 10px; }
+
+/* ─── Conditional Hover Utilities ─── */
+.btn-primary:not(:disabled):hover {
+  background-color: oklch(64% 0.214 40.1 / 0.9);
+}
+
+.btn-secondary:not(:disabled):hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--tx-primary);
+}
+
+.chip-interactive:not(.chip-selected):hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--tx-primary);
+}

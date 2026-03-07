@@ -8,6 +8,8 @@
 import type { Task } from '../types'
 import type { TaskRouterState } from '../store'
 import type { GatewayHealth } from '../agent/gateway/gatewayTypes'
+import { useAppStore } from '../store'
+import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { estimateCost } from '../lib/costEstimate'
 
@@ -63,43 +65,45 @@ export function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' 
 
 // ─── Toast overlay ─────────────────────────────────────────────────────────────
 
-interface ToastOverlayProps {
-  workspaceWarning: string | null
-  rateLimitWarning: string | null
-  folderDropConfirm: string | null
-}
+const toastIcons = {
+  amber: { icon: 'exclamation-triangle', color: 'var(--amber)' },
+  red:   { icon: 'exclamation-triangle', color: '#f87171' },
+  green: { icon: 'check-circle',         color: '#34d399' },
+} as const
 
-export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropConfirm }: ToastOverlayProps) {
-  if (workspaceWarning) {
-    return (
-      <div className="ch-toast ch-toast--amber">
-        <Pxi name="exclamation-triangle" size={14} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-        <span className="ch-toast-text">{workspaceWarning}</span>
-      </div>
-    )
-  }
+const toastClasses = {
+  amber: 'ch-toast ch-toast--amber',
+  red:   'ch-toast ch-toast--red',
+  green: 'ch-toast ch-toast--green',
+} as const
 
-  if (rateLimitWarning) {
-    return (
-      <div className="ch-toast ch-toast--red">
-        <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171', flexShrink: 0 }} />
-        <span className="ch-toast-text">{rateLimitWarning}</span>
-      </div>
-    )
-  }
+export function ToastOverlay() {
+  const { toasts, removeToast } = useAppStore(
+    useShallow((s) => ({ toasts: s.toasts, removeToast: s.removeToast }))
+  )
 
-  if (folderDropConfirm) {
-    return (
-      <div className="ch-toast ch-toast--green">
-        <Pxi name="check-circle" size={14} style={{ color: '#34d399', flexShrink: 0 }} />
-        <span className="ch-toast-text ch-toast-text--mono">
-          Workspace set to {folderDropConfirm}
-        </span>
-      </div>
-    )
-  }
+  if (toasts.length === 0) return null
 
-  return null
+  return (
+    <>
+      {toasts.map((toast) => {
+        const { icon, color } = toastIcons[toast.type]
+        return (
+          <div
+            key={toast.id}
+            className={toastClasses[toast.type]}
+            onClick={() => removeToast(toast.id)}
+            style={{ cursor: 'pointer' }}
+          >
+            <Pxi name={icon} size={14} style={{ color, flexShrink: 0 }} />
+            <span className={toast.type === 'green' ? 'ch-toast-text ch-toast-text--mono' : 'ch-toast-text'}>
+              {toast.message}
+            </span>
+          </div>
+        )
+      })}
+    </>
+  )
 }
 
 // ─── Header bar ────────────────────────────────────────────────────────────────
