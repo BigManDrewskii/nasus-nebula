@@ -498,22 +498,21 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const label = getRouteLabel(activeProvider, { mode: localRouterMode, budget: localRouterBudget }, localModel)
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
       <div
-        style={{ width: '100%', maxWidth: 448, borderRadius: 20, boxShadow: '0 32px 80px rgba(0,0,0,0.6)', background: '#111', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', maxHeight: 'calc(100vh - 80px)' }}
-        className="fade-in"
+        className="fixed inset-0 z-50 flex-center settings-backdrop"
+        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px 16px', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Pxi name="cog" size={14} style={{ color: 'var(--amber)' }} />
+        <div
+          className="fade-in flex-col settings-card"
+        >
+          {/* Header */}
+          <div className="flex-v-center justify-between shrink-0 settings-header">
+            <div className="flex-v-center gap-2">
+              <Pxi name="cog" size={14} className="text-amber" />
               <h2 style={{ fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
             </div>
             {/* OpenRouter badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="flex-v-center gap-2">
                 <span style={{
                   fontSize: 10, padding: '2px 8px', borderRadius: 6,
                   background: isPaid ? 'rgba(234,179,8,0.12)' : 'rgba(34,197,94,0.12)',
@@ -527,7 +526,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <button
               onClick={onClose}
               aria-label="Close settings"
-              style={{ padding: 6, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', transition: 'color 0.12s' }}
+              className="text-tertiary settings-close-btn"
               onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
               onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
             >
@@ -536,8 +535,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
         </div>
 
-        {/* Tab Bar */}
-        <div style={{ display: 'flex', gap: 4, paddingLeft: 24, paddingRight: 24, paddingTop: 12, paddingBottom: 8, flexShrink: 0 }}>
+          {/* Tab Bar */}
+          <div className="flex-v-center gap-1 shrink-0 settings-tabs">
           {(['general', 'model', 'execution', 'search', 'about'] as const).map((tab) => {
             const isActive = settingsTab === tab
             return (
@@ -575,9 +574,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           })}
         </div>
 
-        {/* Scrollable content */}
-        <div ref={scrollableRef} style={{ overflowY: 'auto', flex: 1, padding: '0 24px', minHeight: 0 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20, paddingBottom: 4 }}>
+          {/* Scrollable content */}
+          <div ref={scrollableRef} className="flex-col settings-scroll">
+          <div className="flex-col gap-5 pb-1">
             {settingsTab === 'general' && (
             <>
             {/* ── Workspace Path ── */}
@@ -594,39 +593,23 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               />
             </Field>
 
-            {/* ── Verification Toggle ── */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-              border: '1px solid rgba(255,255,255,0.06)',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
-                  Enable verification
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
-                  Automatically verify execution results and self-correct if needed
-                </span>
-              </div>
+              {/* ── Verification Toggle ── */}
+              <div className="flex-v-center justify-between settings-banner">
+                <div className="flex-col gap-0.5">
+                  <span className="text-[12px] font-medium text-[var(--tx-primary)]">
+                    Enable verification
+                  </span>
+                  <span className="text-tertiary text-[10px]">
+                    Automatically verify execution results and self-correct if needed
+                  </span>
+                </div>
               <button
                 type="button"
                 onClick={() => setLocalEnableVerification(!localEnableVerification)}
-                style={{
-                  width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-                  border: 'none', cursor: 'pointer', position: 'relative',
-                  background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
-                  transition: 'background 0.15s',
-                  padding: 0,
-                }}
+                className="settings-toggle"
+                style={{ background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
               >
-                <span style={{
-                  position: 'absolute', top: 2, borderRadius: '50%',
-                  width: 18, height: 18,
-                  background: '#fff',
-                  left: localEnableVerification ? 'calc(100% - 20px)' : 2,
-                  transition: 'left 0.15s',
-                  display: 'block',
-                }} />
+                <span className="settings-toggle-knob" style={{ left: localEnableVerification ? 'calc(100% - 20px)' : 2 }} />
               </button>
             </div>
 
@@ -638,84 +621,57 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   max={200}
                   value={localMaxIterations}
                   onChange={(e) => setLocalMaxIterations(e.target.value)}
-                  style={{
-                    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                    color: 'var(--tx-primary)', background: '#0d0d0d',
-                    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-                  }}
-                  className="placeholder-[var(--tx-muted)]"
+                  className="settings-input placeholder-[var(--tx-muted)]"
                   onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
                   onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
                 />
               </Field>
 
               {/* ── Rate Limiting ── */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <label style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
-                  textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
-                }}>
-                  <Pxi name="gauge" size={12} style={{ color: 'var(--tx-tertiary)' }} />
+              <div className="flex-col settings-rate-section">
+                <label className="flex-v-center settings-label">
+                  <Pxi name="gauge" size={12} className="text-tertiary" />
                   Rate Limiting
                 </label>
 
-                {/* Enable toggle row */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 12px', borderRadius: 10, background: '#0d0d0d',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-primary)' }}>
-                      Enable rate limiting
-                    </span>
-                    <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
-                      Throttle outbound API requests to avoid provider rate-limit errors
-                    </span>
-                  </div>
+                  {/* Enable toggle row */}
+                  <div className="flex-v-center justify-between settings-banner">
+                    <div className="flex-col gap-0.5">
+                      <span className="text-[12px] font-medium text-[var(--tx-primary)]">
+                        Enable rate limiting
+                      </span>
+                      <span className="text-tertiary text-[10px]">
+                        Throttle outbound API requests to avoid provider rate-limit errors
+                      </span>
+                    </div>
                   <button
                     type="button"
                     onClick={() => setLocalRateLimitEnabled(!localRateLimitEnabled)}
-                    style={{
-                      width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-                      border: 'none', cursor: 'pointer', position: 'relative',
-                      background: localRateLimitEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
-                      transition: 'background 0.15s', padding: 0,
-                    }}
+                    className="settings-toggle"
+                    style={{ background: localRateLimitEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
                   >
-                    <span style={{
-                      position: 'absolute', top: 2, borderRadius: '50%',
-                      width: 18, height: 18, background: '#fff',
-                      left: localRateLimitEnabled ? 'calc(100% - 20px)' : 2,
-                      transition: 'left 0.15s', display: 'block',
-                    }} />
+                    <span className="settings-toggle-knob" style={{ left: localRateLimitEnabled ? 'calc(100% - 20px)' : 2 }} />
                   </button>
                 </div>
 
                 {/* RPM input — only shown when enabled */}
-                {localRateLimitEnabled && (
-                  <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <input
-                        type="number"
-                        min={1}
-                        max={600}
-                        value={localMaxRPM}
-                        onChange={(e) => setLocalMaxRPM(e.target.value)}
-                        style={{
-                          flex: 1, padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                          color: 'var(--tx-primary)', background: '#0d0d0d',
-                          border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-                        }}
-                        className="placeholder-[var(--tx-muted)]"
-                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-                      />
-                      <span style={{ fontSize: 11, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>req / min</span>
-                    </div>
-                  </Field>
-                )}
+                  {localRateLimitEnabled && (
+                    <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
+                      <div className="flex-v-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={600}
+                          value={localMaxRPM}
+                          onChange={(e) => setLocalMaxRPM(e.target.value)}
+                          className="settings-input placeholder-[var(--tx-muted)] flex-1"
+                          onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
+                          onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                        />
+                          <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
+                      </div>
+                    </Field>
+                  )}
               </div>
             </>
             )}
@@ -723,21 +679,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             {settingsTab === 'model' && (
             <>
               {/* ── Provider Selection (Radio Group) ── */}
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 4,
-              }}>
-                <label style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
-                  textTransform: 'uppercase', letterSpacing: '0.1em',
-                  color: 'var(--tx-secondary)',
-                }}>
-                  <Pxi name="cloud" size={12} style={{ color: 'var(--tx-tertiary)' }} />
+              <div className="flex-col settings-provider-section">
+                <label className="flex-v-center settings-label">
+                  <Pxi name="cloud" size={12} className="text-tertiary" />
                   AI Provider
                 </label>
 
-                  {/* Radio options */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* Radio options */}
+                    <div className="flex-col gap-1.5">
                     {[
                       {
                         id: 'openrouter',
@@ -804,18 +753,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                                 .catch(() => {})
                             }
                           }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: 10,
-                          border: `1px solid ${isSelected ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
-                          background: isSelected ? 'oklch(64% 0.214 40.1 / 0.08)' : 'transparent',
-                          cursor: 'pointer',
-                          transition: 'all 0.12s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                        }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            border: `1px solid ${isSelected ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                            background: isSelected ? 'oklch(64% 0.214 40.1 / 0.08)' : 'transparent',
+                            cursor: 'pointer',
+                            transition: 'all 0.12s',
+                            gap: 10,
+                          }}
+                          className="flex-v-center"
                         onMouseEnter={(e) => {
                           if (!isSelected) {
                             e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
@@ -830,11 +778,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         }}
                       >
                         {/* Radio indicator */}
-                        <div style={{
+                        <div className="flex-center shrink-0" style={{
                           width: 18, height: 18, borderRadius: '50%',
                           border: `2px solid ${isSelected ? 'var(--amber)' : 'rgba(255,255,255,0.2)'}`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0,
                         }}>
                           {isSelected && (
                             <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--amber)' }} />
@@ -842,34 +788,30 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         </div>
 
                         {/* Health dot */}
-                        <div style={{
+                        <div className="shrink-0" style={{
                           width: 6, height: 6, borderRadius: '50%',
                           background: statusColor,
                           boxShadow: health?.status === 'healthy' ? `0 0 6px ${statusColor}60` : 'none',
-                          flexShrink: 0,
                         }} />
 
-                        {/* Provider info */}
-                        <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{
-                              fontSize: 13, fontWeight: 500,
-                              color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                            }}>
-                              {opt.label}
+                          {/* Provider info */}
+                          <div className="flex-1 text-left min-w-0">
+                            <div className="flex-v-center gap-1.5">
+                              <span style={{
+                                fontSize: 13, fontWeight: 500,
+                                color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                              }}>
+                                {opt.label}
+                              </span>
+                              {hasKey ? (
+                                <Pxi name="check-circle" size={12} style={{ color: '#22c55e' }} />
+                              ) : (
+                                <span className="text-muted text-[9px]">Key required</span>
+                              )}
+                            </div>
+                            <span className="text-tertiary text-[11px] overflow-hidden text-ellipsis whitespace-nowrap">
+                              {opt.description}
                             </span>
-                            {hasKey ? (
-                              <Pxi name="check-circle" size={12} style={{ color: '#22c55e' }} />
-                            ) : (
-                              <span style={{ fontSize: 9, color: 'var(--tx-muted)' }}>Key required</span>
-                            )}
-                          </div>
-                          <span style={{
-                            fontSize: 11, color: 'var(--tx-tertiary)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {opt.description}
-                          </span>
                         </div>
                       </button>
                     )
@@ -881,7 +823,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <Field
                     label="OpenRouter API Key"
                     icon="key"
-                    hint={<>Your OpenRouter key. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>openrouter.ai/keys</a></>}
+                    hint={<>Your OpenRouter key. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="settings-link">openrouter.ai/keys</a></>}
                     error={errors.apiKey}
                   >
                     <input
@@ -892,13 +834,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         setErrors((p) => ({ ...p, apiKey: undefined }))
                       }}
                       placeholder="sk-or-v1-..."
-                      style={{
-                        width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                        color: 'var(--tx-primary)', background: '#0d0d0d',
-                        border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                        transition: 'border-color 0.12s',
-                      }}
-                      className="placeholder-[var(--tx-muted)]"
+                      className="settings-input placeholder-[var(--tx-muted)]"
+                      style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
                       onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
                       onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
                     />
@@ -909,7 +846,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <Field
                       label="Requesty API Key"
                       icon="key"
-                      hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>app.requesty.ai</a></>}
+                      hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" className="settings-link">app.requesty.ai</a></>}
                       error={errors.apiKey}
                     >
                       <input
@@ -920,13 +857,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           setErrors((p) => ({ ...p, apiKey: undefined }))
                         }}
                         placeholder="req_..."
-                        style={{
-                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                          color: 'var(--tx-primary)', background: '#0d0d0d',
-                          border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                          transition: 'border-color 0.12s',
-                        }}
-                        className="placeholder-[var(--tx-muted)]"
+                        className="settings-input placeholder-[var(--tx-muted)]"
+                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
                         onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
                         onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
                       />
@@ -937,7 +869,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <Field
                       label="DeepSeek API Key"
                       icon="key"
-                      hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>platform.deepseek.com/api-keys</a></>}
+                      hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" className="settings-link">platform.deepseek.com/api-keys</a></>}
                       error={errors.apiKey}
                     >
                       <input
@@ -948,13 +880,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           setErrors((p) => ({ ...p, apiKey: undefined }))
                         }}
                         placeholder="sk-..."
-                        style={{
-                          width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-                          color: 'var(--tx-primary)', background: '#0d0d0d',
-                          border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                          transition: 'border-color 0.12s',
-                        }}
-                        className="placeholder-[var(--tx-muted)]"
+                        className="settings-input placeholder-[var(--tx-muted)]"
+                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
                         onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
                         onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
                       />
@@ -966,23 +893,24 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   )}
               </div>
 
-                {/* ── Model ── */}
-              <Field label="Override Model" icon="sparkles" hint="Manually select a model. Only used when Model Router is in 'Manual' mode.">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* ── Model ── */}
+                <Field label="Override Model" icon="sparkles" hint="Manually select a model. Only used when Model Router is in 'Manual' mode.">
+                  <div className="flex-col gap-2">
                   {/* Fetch row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="flex-v-center gap-2">
                       <button
                         type="button"
-                        onClick={handleFetchModels}
-                        disabled={fetchingModels}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 6,
-                          padding: '4px 10px', borderRadius: 8, fontSize: 11,
-                          background: 'rgba(255,255,255,0.07)', border: 'none',
-                          cursor: fetchingModels ? 'default' : 'pointer',
-                          color: 'var(--tx-secondary)', transition: 'color 0.12s',
-                          opacity: fetchingModels ? 0.45 : 1,
-                        }}
+                          onClick={handleFetchModels}
+                          disabled={fetchingModels}
+                          className="flex-v-center"
+                          style={{
+                            gap: 6,
+                            padding: '4px 10px', borderRadius: 8, fontSize: 11,
+                            background: 'rgba(255,255,255,0.07)', border: 'none',
+                            cursor: fetchingModels ? 'default' : 'pointer',
+                            color: 'var(--tx-secondary)', transition: 'color 0.12s',
+                            opacity: fetchingModels ? 0.45 : 1,
+                          }}
                         onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
                         onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
                         title={activeProvider === 'ollama' ? 'Refresh models from local Ollama' : 'Fetch all available models from OpenRouter'}
@@ -990,120 +918,109 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
                         {fetchingModels ? 'Fetching…' : activeProvider === 'ollama' ? 'Refresh Ollama models' : 'Fetch all models'}
                       </button>
-                    {fetchModelsError && (
-                      <span style={{ fontSize: 11, color: '#f87171', flex: 1 }}>{fetchModelsError}</span>
-                    )}
-                    {fetchedCount !== null && !fetchModelsError && (
-                      <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>{fetchedCount} models</span>
-                    )}
+                      {fetchModelsError && (
+                        <span className="fetch-error">{fetchModelsError}</span>
+                      )}
+                      {fetchedCount !== null && !fetchModelsError && (
+                        <span className="text-tertiary fetch-count">{fetchedCount} models</span>
+                      )}
                   </div>
 
                   {/* Model dropdown */}
-                  <div style={{ position: 'relative' }} ref={modelRef}>
-                    <button
-                      type="button"
-                      onClick={() => setModelOpen((o) => !o)}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
-                        background: '#0d0d0d',
-                        border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
-                        color: 'var(--tx-primary)', transition: 'border-color 0.12s',
-                        gap: 8,
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-                        {selectedModelObj?.name ?? localModel}
-                      </span>
-                      {selectedModelObj && (
-                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                          {fmtCtx(selectedModelObj.context_length)} · {formatTokenPrice(selectedModelObj.pricing?.completion)}/tok out
-                        </span>
-                      )}
-                      <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                    </button>
+                    <div className="relative" ref={modelRef}>
+                      <button
+                        type="button"
+                        onClick={() => setModelOpen((o) => !o)}
+                        className="flex-v-center justify-between w-full"
+                        style={{
+                          padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
+                          background: '#0d0d0d',
+                          border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
+                          color: 'var(--tx-primary)', transition: 'border-color 0.12s',
+                          gap: 8,
+                        }}
+                      >
+                          <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left">
+                            {selectedModelObj?.name ?? localModel}
+                          </span>
+                          {selectedModelObj && (
+                            <span className="text-tertiary shrink-0 text-[10px] whitespace-nowrap">
+                              {fmtCtx(selectedModelObj.context_length)} · {formatTokenPrice(selectedModelObj.pricing?.completion)}/tok out
+                            </span>
+                          )}
+                          <Pxi name={modelOpen ? 'chevron-up' : 'chevron-down'} size={12} className="text-tertiary shrink-0" />
+                        </button>
 
-                    {modelOpen && (
-                      <div style={{
-                        position: 'absolute', zIndex: 20, width: '100%', marginTop: 4, borderRadius: 12,
-                        boxShadow: '0 16px 40px rgba(0,0,0,0.5)', background: '#161616',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        display: 'flex', flexDirection: 'column',
-                        maxHeight: 320,
-                      }}>
-                        {/* Search */}
-                        <div style={{ padding: '8px 8px 4px', flexShrink: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-                            <input
-                              ref={modelSearchRef}
-                              type="text"
-                              value={modelSearch}
-                              onChange={(e) => setModelSearch(e.target.value)}
-                              placeholder="Search models…"
-                              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 12, color: 'var(--tx-primary)' }}
-                              className="placeholder-[var(--tx-muted)]"
-                            />
-                            {modelSearch && (
-                              <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--tx-tertiary)', padding: 0, lineHeight: 1 }}>
-                                <Pxi name="times" size={12} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Grouped list */}
-                        <div style={{ overflowY: 'auto', flex: 1 }}>
-                          {groupedModels.size === 0 ? (
-                            <div style={{ padding: '12px', fontSize: 12, color: 'var(--tx-tertiary)', textAlign: 'center' }}>
-                              No models match "{modelSearch}"
+                      {modelOpen && (
+                        <div className="flex-col settings-dropdown">
+                            {/* Search */}
+                            <div className="model-search-row">
+                              <div className="flex-v-center model-search-inner">
+                                <Pxi name="search" size={12} className="text-tertiary shrink-0" />
+                              <input
+                                ref={modelSearchRef}
+                                type="text"
+                                value={modelSearch}
+                                onChange={(e) => setModelSearch(e.target.value)}
+                                placeholder="Search models…"
+                                className="model-search-input placeholder-[var(--tx-muted)]"
+                              />
+                              {modelSearch && (
+                                <button type="button" onClick={() => setModelSearch('')} aria-label="Clear model search" className="text-tertiary model-search-clear">
+                                  <Pxi name="times" size={12} />
+                                </button>
+                              )}
                             </div>
+                          </div>
+
+                            {/* Grouped list */}
+                            <div className="model-list-scroll">
+                              {groupedModels.size === 0 ? (
+                                <div className="text-tertiary text-[12px] text-center p-3">
+                                  No models match "{modelSearch}"
+                                </div>
                           ) : [...groupedModels.entries()].map(([family, models]) => (
                             <div key={family}>
                               {/* Group header */}
-                              <div style={{
-                                padding: '6px 12px 3px',
-                                fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase',
-                                color: 'var(--tx-tertiary)',
-                                borderTop: '1px solid rgba(255,255,255,0.04)',
-                              }}>
+                              <div className="model-group-header">
                                 {family}
                               </div>
-                              {models.map((m) => {
-                                const isSelected = m.id === localModel
-                                return (
-                                  <button
-                                    key={m.id}
-                                    type="button"
-                                    onClick={() => { setLocalModel(m.id); setModelOpen(false); setModelSearch('') }}
-                                    style={{
-                                      width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                                      padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
-                                      color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                                      background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                                      transition: 'background 0.1s',
-                                    }}
-                                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-                                  >
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 8 }}>
-                                      <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{m.name}</span>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
-                                          {fmtCtx(m.context_length)}
-                                        </span>
-                                        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', whiteSpace: 'nowrap' }}>
-                                          {formatTokenPrice(m.pricing?.completion)}/tok
-                                        </span>
-                                        {isSelected && <Pxi name="check" size={12} style={{ color: 'var(--amber)' }} />}
-                                      </div>
-                                    </div>
-                                    {m.description && (
-                                      <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', lineHeight: 1.4 }}>{m.description}</span>
-                                    )}
-                                  </button>
-                                )
-                              })}
+                                {models.map((m) => {
+                                  const isSelected = m.id === localModel
+                                  return (
+                                    <button
+                                      key={m.id}
+                                        type="button"
+                                        onClick={() => { setLocalModel(m.id); setModelOpen(false); setModelSearch('') }}
+                                        className="flex-col w-full"
+                                        style={{
+                                          alignItems: 'flex-start',
+                                          padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
+                                          color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                                          background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                                          transition: 'background 0.1s',
+                                        }}
+                                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+                                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                                    >
+                                          <div className="flex-v-center justify-between w-full gap-2">
+                                            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">{m.name}</span>
+                                            <div className="flex-v-center shrink-0 gap-1.5">
+                                            <span className="text-tertiary text-[10px] whitespace-nowrap">
+                                              {fmtCtx(m.context_length)}
+                                            </span>
+                                            <span className="text-tertiary text-[10px] whitespace-nowrap">
+                                              {formatTokenPrice(m.pricing?.completion)}/tok
+                                            </span>
+                                            {isSelected && <Pxi name="check" size={12} className="text-amber" />}
+                                          </div>
+                                        </div>
+                                        {m.description && (
+                                          <span className="text-tertiary router-model-desc">{m.description}</span>
+                                        )}
+                                    </button>
+                                  )
+                                })}
                             </div>
                           ))}
                         </div>
@@ -1126,27 +1043,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             )}
 
             {/* ── Execution Tab ── */}
-            {settingsTab === 'execution' && (
-            <>
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 12,
-                padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Pxi name="terminal" size={20} style={{ color: 'var(--amber)' }} />
-                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx-primary)' }}>
-                    Code Execution Mode
-                  </span>
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--tx-tertiary)', lineHeight: 1.5 }}>
-                  Nasus runs code in isolated Docker containers for security. Ensure Docker is running before executing tasks.
-                </div>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '10px 12px', borderRadius: 8, background: '#0d0d0d',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                }}>
+              {settingsTab === 'execution' && (
+              <>
+                <div className="flex-col settings-section">
+                  <div className="flex-v-center gap-2">
+                    <Pxi name="terminal" size={20} className="text-amber" />
+                    <span className="settings-section-title">
+                      Code Execution Mode
+                    </span>
+                  </div>
+                  <div className="text-tertiary settings-exec-desc">
+                    Nasus runs code in isolated Docker containers for security. Ensure Docker is running before executing tasks.
+                  </div>
+                  <div className="flex-v-center gap-2 docker-status-row">
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%',
                     background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)40',
@@ -1170,79 +1079,65 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             )}
 
             {/* ── About Tab ── */}
-            {settingsTab === 'about' && (
-            <>
-              <div style={{
-                display: 'flex', flexDirection: 'column', gap: 16,
-                padding: '16px', borderRadius: 12, background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}>
-                <div style={{ textAlign: 'center', paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-                    <Pxi name="cpu" size={24} style={{ color: 'var(--amber)' }} />
-                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--tx-primary)' }}>Nasus</span>
-                  </div>
-                  <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Autonomous AI Agent · Desktop Application</span>
-                </div>
-
-                <div style={{ fontSize: 11, color: 'var(--tx-secondary)', lineHeight: 1.6 }}>
-                  Nasus is a multi-agent system that plans, executes, and verifies complex tasks using tool-based execution.
-                </div>
-
-                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--tx-primary)', marginTop: 4 }}>
-                  Keyboard Shortcuts
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 11 }}>
-                  {[
-                    { key: '⌘ + ,', desc: 'Open Settings' },
-                    { key: '⌘ + Enter', desc: 'Submit task' },
-                    { key: '⌘ + K', desc: 'New conversation' },
-                    { key: 'Escape', desc: 'Close modal' },
-                  ].map(s => (
-                    <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--tx-secondary)' }}>
-                      <span style={{ fontFamily: 'var(--font-mono)', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: 4 }}>{s.key}</span>
-                      <span>{s.desc}</span>
+              {settingsTab === 'about' && (
+              <>
+                <div className="flex-col settings-section gap-4">
+                  <div className="about-header">
+                    <div className="flex-center gap-2 mb-2">
+                      <Pxi name="cpu" size={24} className="text-amber" />
+                      <span className="about-title">Nasus</span>
                     </div>
-                  ))}
-                </div>
+                    <span className="text-tertiary text-[11px]">Autonomous AI Agent · Desktop Application</span>
+                  </div>
+
+                  <div className="about-desc">
+                    Nasus is a multi-agent system that plans, executes, and verifies complex tasks using tool-based execution.
+                  </div>
+
+                  <div className="about-heading">
+                    Keyboard Shortcuts
+                  </div>
+                  <div className="flex-col gap-1.5 text-[11px]">
+                    {[
+                      { key: '⌘ + ,', desc: 'Open Settings' },
+                      { key: '⌘ + Enter', desc: 'Submit task' },
+                      { key: '⌘ + K', desc: 'New conversation' },
+                      { key: 'Escape', desc: 'Close modal' },
+                    ].map(s => (
+                      <div key={s.key} className="flex-v-center justify-between about-shortcut-row">
+                        <span className="kbd-shortcut">{s.key}</span>
+                        <span>{s.desc}</span>
+                      </div>
+                    ))}
+                  </div>
               </div>
             </>
             )}
           </div>
         </div>{/* end scrollable */}
 
-        {/* Actions */}
-        <div style={{ padding: '12px 24px 20px', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button
-            onClick={handleReset}
-            style={{
-              padding: '8px 14px', fontSize: 11, borderRadius: 8, background: 'transparent',
-              border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
-              color: 'var(--tx-tertiary)', transition: 'color 0.12s, border-color 0.12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = 'rgba(248,113,113,0.3)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
-            title="Reset all settings to defaults"
-          >
+          {/* Actions */}
+          <div className="flex-v-center justify-between shrink-0 settings-footer">
+            <button
+              onClick={handleReset}
+              className="settings-reset-btn"
+              title="Reset all settings to defaults"
+            >
             Reset
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flex-v-center gap-2">
             <button
-              onClick={onClose}
-              style={{
-                padding: '8px 16px', fontSize: 12, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer',
-                color: 'var(--tx-secondary)', transition: 'color 0.12s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-            >
+                onClick={onClose}
+                className="settings-cancel-btn"
+              >
               Cancel
             </button>
             <button
               onClick={checkAndSave}
               disabled={busy}
+              className="flex-v-center"
               style={{
-                display: 'flex', alignItems: 'center', gap: 8,
+                gap: 8,
                 padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
                 background: saveError ? 'rgba(239,68,68,0.8)' : 'var(--amber)', color: '#000',
                 opacity: busy ? 0.45 : 1, transition: 'background 0.12s',
@@ -1269,68 +1164,40 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </div>
         </div>
 
-        {/* Paid mode confirmation dialog */}
-        {pendingPaidMode && (
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.8)',
-          }}>
-            <div style={{
-              width: '100%', maxWidth: 360,
-              borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
-              background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)',
-              padding: 24, display: 'flex', flexDirection: 'column', gap: 16,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{
-                  width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                  background: 'rgba(234,179,8,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Pxi name="triangle-exclamation" size={20} style={{ color: 'var(--amber)' }} />
-                </div>
-                <h3 style={{
-                  fontSize: 14, fontWeight: 600, margin: 0, color: 'var(--tx-primary)',
-                }}>
-                  Confirm Paid Mode
-                </h3>
-              </div>
+          {/* Paid mode confirmation dialog */}
+            {pendingPaidMode && (
+              <div className="fixed inset-0 z-[60] flex-center settings-backdrop">
+                <div className="flex-col settings-confirm-card">
+                  <div className="flex-v-center gap-2">
+                    <div className="flex-center shrink-0 w-8 h-8 rounded-lg bg-[rgba(234,179,8,0.15)]">
+                      <Pxi name="triangle-exclamation" size={20} className="text-amber" />
+                    </div>
+                    <h3 className="confirm-title m-0">
+                      Confirm Paid Mode
+                    </h3>
+                  </div>
 
-              <p style={{
-                fontSize: 13, lineHeight: 1.5, margin: 0, color: 'var(--tx-secondary)',
-              }}>
-                Paid mode will use your OpenRouter API credits for each request. Make sure you have credits available at <a href="https://openrouter.ai/credits" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)' }}>openrouter.ai/credits</a>.
-              </p>
+                  <p className="confirm-body m-0">
+                    Paid mode will use your OpenRouter API credits for each request. Make sure you have credits available at <a href="https://openrouter.ai/credits" target="_blank" rel="noreferrer" className="settings-link">openrouter.ai/credits</a>.
+                  </p>
 
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                <button
-                  onClick={cancelPaidMode}
-                  style={{
-                    padding: '8px 16px', fontSize: 12, borderRadius: 8,
-                    background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
-                    cursor: 'pointer', color: 'var(--tx-secondary)', transition: 'all 0.12s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmPaidMode}
-                  style={{
-                    padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8,
-                    background: 'var(--amber)', border: 'none', cursor: 'pointer',
-                    color: '#000', transition: 'background 0.12s',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--amber-soft)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--amber)' }}
-                >
-                  Continue to Paid
-                </button>
+                  <div className="flex-v-center justify-end gap-2.5">
+                    <button
+                      onClick={cancelPaidMode}
+                      className="confirm-cancel-btn"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmPaidMode}
+                      className="settings-save-btn"
+                    >
+                      Continue to Paid
+                    </button>
+                  </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     </div>
   )
@@ -1357,28 +1224,28 @@ function OllamaStatusBanner() {
 
   if (status === 'checking') {
     return (
-      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Pxi name="spinner-third" size={14} style={{ color: 'var(--tx-tertiary)' }} />
-        <span style={{ fontSize: 11, color: 'var(--tx-tertiary)' }}>Checking Ollama status…</span>
+      <div className="flex-v-center gap-2 ollama-banner ollama-banner--checking">
+        <Pxi name="spinner-third" size={14} className="text-tertiary" />
+        <span className="text-tertiary text-[11px]">Checking Ollama status…</span>
       </div>
     )
   }
 
   if (status === 'running') {
     return (
-      <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e60', flexShrink: 0 }} />
-        <span style={{ fontSize: 11, color: 'var(--tx-secondary)' }}>Ollama is running on localhost:11434. No API key needed.</span>
-      </div>
+      <div className="flex-v-center gap-2 ollama-banner ollama-banner--running">
+          <div className="ollama-dot" />
+          <span className="about-desc leading-none">Ollama is running on localhost:11434. No API key needed.</span>
+        </div>
     )
   }
 
   return (
-    <div style={{ padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-      <Pxi name="exclamation-triangle" size={14} style={{ color: '#f87171' }} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 11, color: '#f87171', fontWeight: 500 }}>Ollama is not running</span>
-        <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>Start Ollama with <code style={{ fontFamily: 'var(--font-mono)' }}>ollama serve</code> and pull a model with <code style={{ fontFamily: 'var(--font-mono)' }}>ollama pull llama3.2</code></span>
+    <div className="flex-v-center gap-2 ollama-banner ollama-banner--stopped">
+      <Pxi name="exclamation-triangle" size={14} className="text-error" />
+      <div className="flex-col gap-0.5">
+        <span className="text-error text-[11px] font-medium">Ollama is not running</span>
+        <span className="text-tertiary text-[10px]">Start Ollama with <code className="inline-code">ollama serve</code> and pull a model with <code className="inline-code">ollama pull llama3.2</code></span>
       </div>
     </div>
   )
@@ -1390,19 +1257,13 @@ function SearchSection({
   exaKey: string
   onExaKeyChange: (v: string) => void
 }) {
-  const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none',
-    color: 'var(--tx-primary)', background: '#0d0d0d',
-    border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div className="flex-col gap-3">
       <Field label="Exa API Key" icon="key"
-        hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" style={{ color: 'var(--amber)', textDecoration: 'underline', textUnderlineOffset: 2 }}>dashboard.exa.ai</a></>}
+        hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
       >
         <input type="password" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
-          placeholder="exa_…" style={inputStyle} className="placeholder-[var(--tx-muted)]"
+          placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
           onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
           onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
         />
@@ -1509,15 +1370,11 @@ function ModelRouterSection({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div className="flex-col settings-router-section">
       {/* Header row with refresh button */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2,
-          fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
-          textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
-        }}>
-          <Pxi name="route" size={10} style={{ color: 'var(--tx-tertiary)' }} />
+      <div className="flex-v-center justify-between">
+        <label className="flex-v-center settings-label" style={{ marginBottom: 2 }}>
+          <Pxi name="route" size={10} className="text-tertiary" />
           Model Router
         </label>
         <button
@@ -1525,13 +1382,14 @@ function ModelRouterSection({
           onClick={handleRefreshModels}
           disabled={refreshing}
           title="Fetch latest models from OpenRouter"
+          className="flex-v-center"
           style={{
             padding: '4px 8px', borderRadius: 6, fontSize: 10,
             background: refreshing ? 'rgba(255,255,255,0.05)' : 'transparent',
             border: '1px solid rgba(255,255,255,0.1)',
             color: refreshing ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
             cursor: refreshing ? 'wait' : 'pointer',
-            display: 'flex', alignItems: 'center', gap: 4,
+            gap: 4,
             transition: 'all 0.12s',
           }}
           onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
@@ -1552,8 +1410,8 @@ function ModelRouterSection({
         </div>
       )}
 
-      {/* Mode: Auto vs Manual */}
-      <div style={{ display: 'flex', gap: 6 }}>
+        {/* Mode: Auto vs Manual */}
+        <div className="flex-v-center gap-1.5">
         {[
           { id: 'auto', label: 'Auto', desc: 'Nasus picks the best model per task' },
           { id: 'manual', label: 'Manual', desc: 'Always use the model selected above' },
@@ -1584,14 +1442,14 @@ function ModelRouterSection({
       {/* Budget: Free vs Paid (only in Auto mode) */}
       {isAutoMode && (
         <div>
-          <div style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginBottom: 6, letterSpacing: '0.04em' }}>
+          <div className="text-tertiary" style={{ fontSize: 10, marginBottom: 6, letterSpacing: '0.04em' }}>
             Budget
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[
-              { id: 'paid', label: 'Paid', desc: 'Best models — requires credits on OpenRouter' },
-              { id: 'free', label: 'Free only', desc: 'Only models with $0 cost — no credits needed' },
-            ].map((opt) => {
+            <div className="flex-v-center gap-1.5">
+              {[
+                { id: 'paid', label: 'Paid', desc: 'Best models — requires credits on OpenRouter' },
+                { id: 'free', label: 'Free only', desc: 'Only models with $0 cost — no credits needed' },
+              ].map((opt) => {
               const isSel = budget === opt.id
               return (
                 <button
@@ -1634,10 +1492,11 @@ function ModelRouterSection({
           <button
             type="button"
             onClick={() => setExpanded((o) => !o)}
+            className="flex-v-center text-tertiary"
             style={{
-              display: 'flex', alignItems: 'center', gap: 5,
+              gap: 5,
               background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 11, color: 'var(--tx-tertiary)', padding: '2px 0',
+              fontSize: 11, padding: '2px 0',
               transition: 'color 0.12s',
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
@@ -1659,38 +1518,27 @@ function ModelRouterSection({
                 return (
                   <div
                     key={m.id}
+                    className="flex-v-center"
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
+                      gap: 10,
                       padding: '8px 12px',
                       background: enabled ? 'transparent' : 'rgba(0,0,0,0.2)',
                       borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
                       transition: 'background 0.1s',
                     }}
                   >
-                    {/* Toggle */}
-                    <button
-                      type="button"
-                      onClick={() => toggleModel(m.id)}
-                      style={{
-                        width: 28, height: 16, borderRadius: 8, flexShrink: 0,
-                        border: 'none', cursor: 'pointer', position: 'relative',
-                        background: enabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)',
-                        transition: 'background 0.15s',
-                        padding: 0,
-                      }}
-                    >
-                      <span style={{
-                        position: 'absolute', top: 2, borderRadius: '50%',
-                        width: 12, height: 12,
-                        background: '#fff',
-                        left: enabled ? 'calc(100% - 14px)' : 2,
-                        transition: 'left 0.15s',
-                        display: 'block',
-                      }} />
+                      {/* Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => toggleModel(m.id)}
+                        className="settings-toggle-sm"
+                        style={{ background: enabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
+                      >
+                        <span className="settings-toggle-sm-knob" style={{ left: enabled ? 'calc(100% - 14px)' : 2 }} />
                     </button>
 
-                    {/* Model info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Model info */}
+                      <div className="flex-1 min-w-0">
                       <div style={{
                         fontSize: 12, color: enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1698,7 +1546,7 @@ function ModelRouterSection({
                       }}>
                         {m.name}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginTop: 1 }}>
+                      <div className="text-tertiary" style={{ fontSize: 10, marginTop: 1 }}>
                         {m.provider}
                       </div>
                     </div>
@@ -1735,25 +1583,19 @@ function Field({
   return (
     <div>
         <label
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6,
-            fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.1em',
-            /* Label: secondary #ababab ≈ 7.9:1 */
-            color: 'var(--tx-secondary)',
-          }}
+          className="flex-v-center settings-label"
         >
-        <Pxi name={icon} size={12} style={{ color: 'var(--tx-tertiary)' }} />
+        <Pxi name={icon} size={12} className="text-tertiary" />
         {label}
       </label>
       {children}
       {error ? (
-        <p style={{ marginTop: 4, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, lineHeight: 1.5, color: '#f87171' }}>
+        <p className="flex-v-center settings-error">
           <Pxi name="exclamation-triangle" size={12} />
           {error}
         </p>
       ) : hint ? (
-        /* Hint: tertiary #757575 ≈ 4.6:1 — clearly legible supplemental text */
-        <p style={{ marginTop: 4, fontSize: 11, lineHeight: 1.55, color: 'var(--tx-tertiary)' }}>{hint}</p>
+        <p className="text-tertiary settings-hint">{hint}</p>
       ) : null}
     </div>
   )

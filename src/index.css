@@ -1796,3 +1796,1148 @@ input[type="range"]::-moz-range-thumb {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Custom Utility Classes for Inline Style Migration */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-v-center {
+  display: flex;
+  align-items: center;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.text-tertiary {
+  color: var(--tx-tertiary);
+}
+
+.text-muted {
+  color: var(--tx-muted);
+}
+
+.text-amber {
+  color: var(--amber);
+}
+
+.text-success {
+  color: var(--success);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+/* ── Settings panel classes ──────────────────────────────────────────────── */
+
+/* Reusable uppercase field label (e.g. "API Key", "Model") */
+.settings-label {
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--tx-secondary);
+}
+
+/* Standard dark text input */
+.settings-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  color: var(--tx-primary);
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 0.12s;
+}
+.settings-input:focus {
+  border-color: oklch(64% 0.214 40.1 / 0.5);
+}
+
+/* A banner/notification row (status messages, toggles, etc.) */
+.settings-banner {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* The scrollable settings content area */
+.settings-scroll {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 24px;
+  min-height: 0;
+}
+
+/* The settings modal backdrop */
+.settings-backdrop {
+  background: rgba(0,0,0,0.8);
+}
+
+/* The settings modal card */
+.settings-card {
+  width: 100%;
+  max-width: 448px;
+  border-radius: 20px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.6);
+  background: #111;
+  border: 1px solid rgba(255,255,255,0.08);
+  max-height: calc(100vh - 80px);
+}
+
+/* Settings header padding */
+.settings-header {
+  padding: 20px 24px 16px;
+}
+
+/* Settings tab bar */
+.settings-tabs {
+  padding: 12px 24px 8px;
+}
+
+/* Settings footer / action bar */
+.settings-footer {
+  padding: 12px 24px 20px;
+  gap: 8px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Inline section card (execution, about, etc.) */
+.settings-section {
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Toggle button (on/off switch) */
+.settings-toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  flex-shrink: 0;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  transition: left 0.15s;
+  display: block;
+}
+
+/* Mini toggle (used in model list) */
+.settings-toggle-sm {
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s;
+  padding: 0;
+}
+
+.settings-toggle-sm-knob {
+  position: absolute;
+  top: 2px;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  transition: left 0.15s;
+  display: block;
+}
+
+/* Amber link inside hint text */
+.settings-link {
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Field hint / error text */
+.settings-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* Field error text */
+.settings-error {
+  margin-top: 4px;
+  font-size: 11px;
+  gap: 4px;
+  line-height: 1.5;
+  color: #f87171;
+}
+
+/* Model dropdown container */
+.settings-dropdown {
+  position: absolute;
+  z-index: 20;
+  width: 100%;
+  margin-top: 4px;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+  background: #161616;
+  border: 1px solid rgba(255,255,255,0.08);
+  max-height: 320px;
+}
+
+/* Keyboard shortcut pill */
+.kbd-shortcut {
+  font-family: var(--font-mono);
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Confirmation dialog card */
+.settings-confirm-card {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+  background: #1a1a1a;
+  border: 1px solid rgba(255,255,255,0.08);
+  padding: 24px;
+  gap: 16px;
+}
+
+/* Ollama status banners */
+.ollama-banner {
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.ollama-banner--checking {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.ollama-banner--running {
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.15);
+}
+.ollama-banner--stopped {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+}
+
+/* Model list group header */
+.model-group-header {
+  padding: 6px 12px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tx-tertiary);
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Search row inside model dropdown */
+.model-search-row {
+  padding: 8px 8px 4px;
+  flex-shrink: 0;
+}
+
+.model-search-inner {
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Model search input */
+.model-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--tx-primary);
+}
+
+/* Clear search button */
+.model-search-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Rate label section container */
+.settings-rate-section {
+  gap: 10px;
+}
+
+/* Provider section container */
+.settings-provider-section {
+  gap: 4px;
+}
+
+/* Router section container */
+.settings-router-section {
+  gap: 10px;
+}
+
+/* Docker status row */
+.docker-status-row {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Settings close button */
+.settings-close-btn {
+  padding: 6px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+/* Footer reset button */
+.settings-reset-btn {
+  padding: 8px 14px;
+  font-size: 11px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  color: var(--tx-tertiary);
+  transition: color 0.12s, border-color 0.12s;
+}
+.settings-reset-btn:hover {
+  color: #f87171;
+  border-color: rgba(248,113,113,0.3);
+}
+
+/* Footer cancel button */
+.settings-cancel-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--tx-secondary);
+  transition: color 0.12s;
+}
+.settings-cancel-btn:hover {
+  color: var(--tx-primary);
+}
+
+/* About section description text */
+.about-desc {
+  font-size: 11px;
+  color: var(--tx-secondary);
+  line-height: 1.6;
+}
+
+/* About section heading text */
+.about-heading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tx-primary);
+  margin-top: 4px;
+}
+
+/* About hero title */
+.about-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--tx-primary);
+}
+
+/* About section header block */
+.about-header {
+  text-align: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+/* About shortcuts list row */
+.about-shortcut-row {
+  color: var(--tx-secondary);
+}
+
+/* Confirmation dialog icon wrapper */
+.confirm-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+  flex-shrink: 0;
+}
+
+/* Confirmation dialog title */
+.confirm-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tx-primary);
+}
+
+/* Confirmation dialog body */
+.confirm-body {
+  font-size: 12px;
+  color: var(--tx-secondary);
+  line-height: 1.5;
+}
+
+/* Confirmation cancel button */
+.confirm-cancel-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  color: var(--tx-secondary);
+  transition: color 0.12s;
+}
+.confirm-cancel-btn:hover {
+  color: var(--tx-primary);
+}
+
+/* Confirmation danger button */
+.confirm-danger-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: #ef4444;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  transition: background 0.12s;
+}
+.confirm-danger-btn:hover {
+  background: #dc2626;
+}
+
+/* Model list scroll container */
+.model-list-scroll {
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Ollama dot indicator */
+.ollama-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e60;
+  flex-shrink: 0;
+}
+
+/* Inline code snippet */
+.inline-code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--tx-secondary);
+}
+
+/* Error text color */
+.text-error {
+  color: #f87171;
+}
+
+/* Model trigger button */
+.model-trigger-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  background: #0d0d0d;
+  transition: border-color 0.12s;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Section title row in providers */
+.settings-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tx-primary);
+}
+
+/* Execution section description */
+.settings-exec-desc {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Router model row */
+.router-model-row {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+/* Router model name */
+.router-model-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tx-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Router model description */
+.router-model-desc {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* fetch count badge */
+.fetch-count {
+  font-size: 11px;
+}
+
+/* fetch error text */
+.fetch-error {
+  font-size: 11px;
+  color: #f87171;
+  flex: 1;
+}
+
+/* Save / confirm amber button */
+.settings-save-btn {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--amber);
+  border: none;
+  cursor: pointer;
+  color: #000;
+  transition: background 0.12s;
+}
+.settings-save-btn:hover {
+  background: var(--amber-soft);
+}
+
+/* ── AgentStepsView ───────────────────────────────────────────────────────── */
+
+/* Outer wrapper */
+.steps-wrapper {
+  margin-bottom: 4px;
+}
+
+/* Section header / collapse button */
+.steps-header-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px 4px 4px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.steps-header-btn:hover {
+  background: rgba(255,255,255,0.025);
+}
+
+/* Status indicator wrapper (14×14 centered) */
+.status-dot {
+  flex-shrink: 0;
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Main label in the header */
+.steps-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sublabel (mono path) in header while streaming */
+.steps-sublabel {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--tx-muted);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Count badge in header when not streaming */
+.steps-count {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--tx-muted);
+  flex-shrink: 0;
+}
+
+/* Step list container */
+.steps-list {
+  margin-top: 3px;
+  padding-left: 22px;
+}
+
+/* Hairline separator */
+.steps-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.04);
+  margin-bottom: 3px;
+}
+
+/* Row list (flex-col gap-1) */
+.steps-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* Memory ops toggle button */
+.steps-memory-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* Memory ops label */
+.steps-memory-label {
+  font-size: 9.5px;
+  color: var(--tx-muted);
+  font-style: italic;
+  flex: 1;
+}
+
+/* Memory ops indent */
+.steps-memory-indent {
+  padding-left: 4px;
+}
+
+/* Context compressed divider */
+.steps-compressed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+/* Compressed line rule */
+.steps-rule {
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.05);
+}
+
+/* Compressed label */
+.steps-compressed-label {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--tx-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ToolPair / ToolGroup row button */
+.tool-row-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.tool-row-btn:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Tool icon wrapper */
+.tool-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
+/* Tool group row button (slightly larger padding) */
+.tool-group-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 6px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.tool-group-btn:hover {
+  background: rgba(255,255,255,0.025);
+}
+
+/* Main label in a tool row */
+.tool-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--tx-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Sublabel inside tool row (mono path) */
+.tool-sublabel {
+  margin-left: 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--tx-ghost);
+  font-weight: 400;
+}
+
+/* Error row card */
+.tool-error-card {
+  margin: 6px 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-left: 3px solid #f87171;
+}
+
+/* Error row header */
+.tool-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* Error label */
+.tool-error-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #f87171;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  flex: 1;
+}
+
+/* Error sublabel (mono) */
+.tool-error-sublabel {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: rgba(248,113,113,0.5);
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* Error toggle button */
+.tool-error-toggle {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: rgba(248,113,113,0.6);
+  padding: 2px;
+}
+
+/* Error pre */
+.tool-error-pre {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+/* Tool group expanded badge */
+.tool-group-badge {
+  font-size: 9px;
+  color: var(--tx-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+/* Tool group file list item */
+.tool-group-file {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--tx-muted);
+  line-height: 1.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tool group "more" label */
+.tool-group-more {
+  font-size: 10px;
+  color: var(--tx-muted);
+  font-style: italic;
+}
+
+/* Tool group file list container */
+.tool-group-files {
+  padding-left: 22px;
+  padding-bottom: 3px;
+}
+
+/* Tool group expanded inner */
+.tool-group-expanded {
+  background: rgba(0,0,0,0.08);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-top: none;
+  border-radius: 0 0 7px 7px;
+  padding: 4px 0;
+}
+
+/* File path bar */
+.filepath-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+/* File path text */
+.filepath-text {
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--tx-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* File path lang badge */
+.filepath-lang {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--tx-tertiary);
+  background: rgba(255,255,255,0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* Section label row (Input / Output) */
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+/* Section label text */
+.section-label-text {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+}
+
+/* Generic detail input/output pad */
+.detail-pad {
+  padding: 8px 12px;
+}
+
+/* FallbackRow */
+.fallback-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(234,179,8,0.04);
+  border: 1px solid rgba(234,179,8,0.12);
+}
+
+/* FallbackRow label */
+.fallback-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--amber);
+  flex: 1;
+}
+
+/* FallbackRow reason */
+.fallback-reason {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: rgba(234,179,8,0.6);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Spinner dot */
+.spinner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: block;
+  border: 1.5px solid rgba(251,191,36,0.2);
+  border-top-color: var(--amber);
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+/* Search status row */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+
+/* Search row label */
+.search-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--tx-secondary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Meta pill (query/provider/duration) */
+.meta-pill {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--tx-muted);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.meta-pill-query {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-pill-success {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: #34d399;
+  background: rgba(52,211,153,0.07);
+  border: 1px solid rgba(52,211,153,0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.meta-pills {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* Browser action row */
+.browser-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.015);
+}
+
+/* Browser label */
+.browser-label {
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Browser subtitle */
+.browser-subtitle {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--tx-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Strike row */
+.strike-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: rgba(239,68,68,0.04);
+  border: 1px solid rgba(239,68,68,0.12);
+}
+
+/* Strike title */
+.strike-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #f87171;
+  margin: 0;
+}
+
+/* Strike inline code */
+.strike-code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(239,68,68,0.12);
+}
+
+/* Strike attempt */
+.strike-attempt {
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.5;
+  color: rgba(248,113,113,0.5);
+}
+
+/* Verification row */
+.verify-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+}
+
+/* Verification label */
+.verify-label {
+  font-size: 12px;
+  font-weight: 500;
+  flex: 1;
+}
+
+/* Verification error detail */
+.verify-error {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: rgba(248,113,113,0.7);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Thinking row button */
+.thinking-btn {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+}
+.thinking-btn:hover {
+  background: rgba(255,255,255,0.02);
+}
+
+/* Thinking accent bar */
+.thinking-accent {
+  width: 2px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 14px;
+  background: oklch(64% 0.214 40.1 / 0.3);
+  margin-top: 2px;
+}
+
+/* Thinking content */
+.thinking-content {
+  font-size: 11.5px;
+  font-style: italic;
+  line-height: 1.6;
+  flex: 1;
+  min-width: 0;
+  color: var(--tx-tertiary);
+}
+
+/* Show more/less toggle */
+.thinking-toggle {
+  margin-left: 6px;
+  opacity: 0.45;
+  font-size: 9.5px;
+}
+
+/* DiffBlock container */
+.diff-block {
+  margin: 7px 12px;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.07);
+  font-size: 11px;
+}

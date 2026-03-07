@@ -34,7 +34,7 @@ export const RATES_PER_MILLION: Record<string, number> = {
 export function estimateCost(modelId: string, tokens: number): string {
   const rate = RATES_PER_MILLION[modelId] ?? 5
   const cost = (tokens / 1_000_000) * rate
-  if (cost < 0.001) return '<$0.001'
+  if (cost < 0.0001) return '<$0.001'
   if (cost < 0.01) return `$${cost.toFixed(4)}`
   return `$${cost.toFixed(3)}`
 }
