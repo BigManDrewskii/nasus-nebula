@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use tauri::{AppHandle, State, Manager};
+use tauri::{AppHandle, Emitter, State, Manager};
 use tokio::sync::Mutex;
 use rusqlite::{params, Connection};
 use once_cell::sync::Lazy;
@@ -58,7 +59,10 @@ pub struct AppState {
     pub router_config: Mutex<RouterConfig>,
     pub search_config: Mutex<SearchConfig>,
     pub search_service: Arc<SearchService>,
-    pub active_tasks: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
+    /// Set of task IDs currently running (used for stop coordination).
+    /// The actual cancellation is performed by TypeScript via AbortController —
+    /// the Rust side emits a "nasus:stop-task" event and TypeScript handles it.
+    pub active_tasks: Mutex<HashSet<String>>,
     pub sidecar: sidecar::SharedSidecarState,
     pub gateway_state: gateway::GatewayState,
     /// Shared SQLite connection — avoids opening a new file handle on every command.
@@ -73,8 +77,12 @@ fn open_db(app_data_dir: &Path) -> Result<Connection, String> {
         let _ = std::fs::create_dir_all(p);
     }
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
-    // Enable WAL for better concurrent read performance
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+    // Enable WAL for better concurrent read performance, set busy timeout to
+    // prevent immediate SQLITE_BUSY errors under write contention, and increase
+    // the page cache to reduce disk I/O during trace-heavy executions.
+    conn.execute_batch(
+      "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-65536;"
+    )
         .map_err(|e| e.to_string())?;
     // Ensure all tables exist
     ensure_extended_schema(&conn)?;
@@ -578,6 +586,7 @@ async fn write_file(_taskId: String, path: String, content: String, workspacePat
     let full_path = Path::new(&workspacePath).join(clean_path);
 
     // Ensure the resolved path is still within workspace
+    let _ = std::fs::create_dir_all(Path::new(&workspacePath));
     let workspace = Path::new(&workspacePath).canonicalize().map_err(|e| e.to_string())?;
     if let Ok(resolved) = full_path.canonicalize() {
         if !resolved.starts_with(&workspace) {
@@ -614,27 +623,21 @@ async fn run_agent(
     _taskTitle: String,
     _searchConfig: serde_json::Value,
 ) -> Result<(), String> {
-    // Rust backend tracks active tasks so it can clean up resources (like Docker containers)
-    // if the app crashes or if the task is aborted from the backend.
-    // The actual agent logic now runs in the TypeScript Orchestrator.
-    let handle = tokio::spawn(async move {
-        // Placeholder for future backend-side state tracking or cleanup logic
-        // For now, we just keep the task "active" in the state
-    });
-    
+    // The actual agent runs entirely in TypeScript via the Orchestrator.
+    // This command just registers the task as active so stop_agent can signal it.
     let mut active_tasks = state.active_tasks.lock().await;
-    active_tasks.insert(taskId, handle);
-    
+    active_tasks.insert(taskId);
     Ok(())
 }
 
 #[allow(non_snake_case)]
 #[tauri::command]
-async fn stop_agent(state: State<'_, AppState>, taskId: String) -> Result<(), String> {
+async fn stop_agent(app: AppHandle, state: State<'_, AppState>, taskId: String) -> Result<(), String> {
     let mut active_tasks = state.active_tasks.lock().await;
-    if let Some(handle) = active_tasks.remove(&taskId) {
-        handle.abort();
-    }
+    active_tasks.remove(&taskId);
+    // Emit a Tauri event so the TypeScript side can abort its AbortController.
+    // The frontend listens for "nasus:stop-task" and calls stopWebAgent(taskId).
+    let _ = app.emit("nasus:stop-task", serde_json::json!({ "taskId": taskId }));
     Ok(())
 }
 
@@ -673,7 +676,23 @@ async fn http_fetch(
 
     let response = request.send().await.map_err(|e| e.to_string())?;
     let status = response.status().as_u16();
-    let text = response.text().await.map_err(|e| e.to_string())?;
+
+    // Cap response size at 10MB to prevent OOM on large binary/HTML responses.
+    // The ExecutionAgent truncates tool output to 15KB anyway, so reading more is wasteful.
+    const MAX_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
+    let content_length = response.content_length().unwrap_or(0);
+    if content_length > MAX_RESPONSE_BYTES {
+        return Ok(format!("{}\n[Response truncated: content-length {} exceeds 10MB limit]", status, content_length));
+    }
+
+    // Stream bytes up to the limit so we don't allocate the full body for large responses
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let truncated = if bytes.len() as u64 > MAX_RESPONSE_BYTES {
+        &bytes[..MAX_RESPONSE_BYTES as usize]
+    } else {
+        &bytes[..]
+    };
+    let text = String::from_utf8_lossy(truncated).into_owned();
 
     // Include status code in response for frontend handling
     Ok(format!("{}\n{}", status, text))
@@ -842,15 +861,19 @@ pub struct DbTraceStep {
 #[allow(non_snake_case)]
 #[tauri::command]
 async fn db_append_trace(state: State<'_, AppState>, step: DbTraceStep) -> Result<(), String> {
-    let conn = state.db.lock().await;
-    conn.execute(
-        "INSERT OR IGNORE INTO trace_steps
-         (id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![step.id, step.task_id, step.message_id, step.step_kind,
-                step.tool_name, step.input_json, step.output_text,
-                step.is_error as i32, step.duration_ms, step.timestamp],
-    ).map_err(|e| e.to_string())?;
+    // Trace writes are best-effort observability — use try_lock to avoid blocking
+    // the agent loop when the DB is busy with a history save or memory write.
+    // Drops the trace step silently if the lock is contended.
+    if let Ok(conn) = state.db.try_lock() {
+        let _ = conn.execute(
+            "INSERT OR IGNORE INTO trace_steps
+             (id, task_id, message_id, step_kind, tool_name, input_json, output_text, is_error, duration_ms, timestamp)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![step.id, step.task_id, step.message_id, step.step_kind,
+                    step.tool_name, step.input_json, step.output_text,
+                    step.is_error as i32, step.duration_ms, step.timestamp],
+        );
+    }
     Ok(())
 }
 
@@ -1001,7 +1024,7 @@ pub fn run() {
                 router_config: Mutex::new(RouterConfig::default()),
                 search_config: Mutex::new(SearchConfig::default()),
                 search_service: Arc::new(SearchService::new(Some(cache_path))),
-                active_tasks: Mutex::new(HashMap::new()),
+                active_tasks: Mutex::new(HashSet::new()),
                 sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
                     sidecar::SidecarState::new(sidecar_path)
                 ))),

@@ -13,7 +13,7 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
 import { chatOnceViaGateway } from '../llm'
-import { getWorkspace } from '../tools'
+import { workspaceManager } from '../workspace/WorkspaceManager'
 import { useAppStore } from '../../store'
 
 /**
@@ -306,13 +306,15 @@ export class VerificationAgent extends BaseAgent {
   private checkPlanCompliance(context: VerificationContext): boolean {
     const { plan, taskId } = context
 
-    // Use the real taskId to look up the workspace — never a placeholder
-    const workspace = taskId ? getWorkspace(taskId) : null
+      // Use the real taskId to look up the workspace — never a placeholder
+      const workspace = taskId ? workspaceManager.getWorkspaceSync(taskId) : null
     const planContent = workspace?.get('task_plan.md') ?? null
 
     if (!planContent) {
-      // No plan file: can only check phases exist; be optimistic unless plan had phases
-      return plan.phases.length === 0
+      // No plan file written yet — be optimistic rather than triggering a
+      // wasted LLM correction call. An absent plan file is not a failure;
+      // the agent may not have needed one, or it hasn't been written yet.
+      return true
     }
 
     // Check if all phases in plan are marked complete

@@ -34,8 +34,8 @@ interface DockerExecResultRaw {
   exit_code: number
 }
 
-// Active container state
-let activeContainerId: string | null = null
+// Per-task container registry — each taskId gets its own isolated container
+const taskContainers: Map<string, string> = new Map()
 
 /** Image to use for Docker sandbox */
 const SANDBOX_IMAGE = 'nasus-sandbox:latest'
@@ -48,7 +48,8 @@ const CONTAINER_CONFIG = {
 }
 
 /**
- * Get or create a container for the current session.
+ * Get or create a container for the given task.
+ * Each taskId maps to its own isolated container.
  * Calls onStatus('starting') before creation, onStatus('ready') after.
  */
 async function getContainer(
@@ -56,8 +57,9 @@ async function getContainer(
   workspacePath: string,
   onStatus?: DockerStatusCallback,
 ): Promise<string> {
-  if (activeContainerId) {
-    return activeContainerId
+  const existing = taskContainers.get(taskId)
+  if (existing) {
+    return existing
   }
 
   onStatus?.('starting', 'Starting Docker container…')
@@ -75,9 +77,9 @@ async function getContainer(
         throw new Error('Failed to create container: no container ID returned')
       }
 
-      activeContainerId = result.container_id
+      taskContainers.set(taskId, result.container_id)
     onStatus?.('ready', 'Container ready')
-    return activeContainerId
+    return result.container_id
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     onStatus?.('error', `Container start failed: ${msg}`)
@@ -161,19 +163,33 @@ export async function dockerRunBash(
   }
 }
 
-/** Kill and remove the active container (call on task stop / switch). */
-export async function disposeDockerSandbox(): Promise<void> {
-  if (activeContainerId) {
-    try {
-      await tauriInvoke('docker_dispose_container', { containerId: activeContainerId })
-    } catch {
-      // Best-effort cleanup
+/** Kill and remove the container for a specific task (call on task stop / switch). */
+export async function disposeDockerSandbox(taskId?: string): Promise<void> {
+  if (taskId) {
+    const containerId = taskContainers.get(taskId)
+    if (containerId) {
+      try {
+        await tauriInvoke('docker_dispose_container', { containerId })
+      } catch {
+        // Best-effort cleanup
+      }
+      taskContainers.delete(taskId)
     }
-    activeContainerId = null
+  } else {
+    // Dispose all containers (e.g. on app shutdown)
+    for (const [id, containerId] of taskContainers.entries()) {
+      try {
+        await tauriInvoke('docker_dispose_container', { containerId })
+      } catch {
+        // Best-effort cleanup
+      }
+      taskContainers.delete(id)
+    }
   }
 }
 
-/** Returns true if an active container exists. */
-export function hasActiveDockerContainer(): boolean {
-  return activeContainerId !== null
+/** Returns true if an active container exists for the given task (or any task if no taskId). */
+export function hasActiveDockerContainer(taskId?: string): boolean {
+  if (taskId) return taskContainers.has(taskId)
+  return taskContainers.size > 0
 }

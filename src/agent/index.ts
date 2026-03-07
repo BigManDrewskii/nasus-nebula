@@ -16,6 +16,19 @@ import { workspaceManager } from './workspace/WorkspaceManager'
 // AbortControllers keyed by taskId
 const controllers: Map<string, AbortController> = new Map()
 
+// Wire Tauri's stop_agent event → stopWebAgent so the Rust backend can
+// cancel a running task (e.g. from a native menu action or crash recovery).
+// Only registers if running inside Tauri (window.__TAURI__ is defined).
+if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+  import('@tauri-apps/api/event').then(({ listen }) => {
+    listen<{ taskId: string }>('nasus:stop-task', (event) => {
+      stopWebAgent(event.payload.taskId)
+    }).catch(() => {
+      // Non-fatal — stop_agent from Rust is best-effort
+    })
+  }).catch(() => {})
+}
+
 export interface RunWebAgentParams {
   taskId: string
   taskTitle?: string
@@ -111,8 +124,8 @@ export function stopWebAgent(taskId: string) {
     ctrl.abort()
     controllers.delete(taskId)
   }
-  // Best-effort sandbox cleanup on stop
-  disposeSandbox().catch(err => {
+  // Best-effort sandbox cleanup on stop — only dispose this task's container
+  disposeSandbox(taskId).catch(err => {
     console.warn('[agent] Failed to dispose sandbox on stop:', err)
   })
 }

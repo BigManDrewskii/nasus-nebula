@@ -11,7 +11,9 @@ import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
 import { streamCompletion, cheapestModel, powerfulModel, chatOnceViaGateway, type LlmResponse } from '../llm'
-import { startTurnTracking, flushTurnFiles, getWorkspace, type SearchStatusCallback } from '../tools'
+import { startTurnTracking, flushTurnFiles, type SearchStatusCallback } from '../tools'
+import { workspaceManager } from '../workspace/WorkspaceManager'
+import { sanitizeMessages } from '../messageUtils'
 import { executeTool as executeRegistryTool } from '../tools/index'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
@@ -371,7 +373,7 @@ export class ExecutionAgent extends BaseAgent {
         // Check if task_plan.md still has unchecked items — if so the agent
         // stopped mid-task (likely by narrating instead of calling a tool).
         // Inject a nudge and continue the loop instead of exiting.
-        const ws = getWorkspace(taskId)
+        const ws = workspaceManager.getWorkspaceSync(taskId)
         const planContent = ws?.get('task_plan.md') ?? ''
         const hasUncheckedItems = planContent.includes('[ ]') || planContent.includes('[?]') || planContent.includes('☐')
 
@@ -514,8 +516,8 @@ export class ExecutionAgent extends BaseAgent {
     const apiBase = params.apiBase || resolvedConnection.apiBase || store.apiBase
     const provider = params.provider || resolvedConnection.provider || store.provider
 
-    // Get workspace to collect created files
-    const workspace = getWorkspace(taskId)
+      // Get workspace to collect created files
+      const workspace = workspaceManager.getWorkspaceSync(taskId)
     const createdFiles: Array<{ path: string; content: string }> = []
 
     if (workspace) {
@@ -845,10 +847,10 @@ export class ExecutionAgent extends BaseAgent {
       if (fnName === 'complete') return 'complete'
     }
 
-    // Continuation nudge
-    if (iteration > 0 && iteration < warnIter - 1) {
-      const ws = getWorkspace(taskId)
-      if (ws) {
+      // Continuation nudge
+      if (iteration > 0 && iteration < warnIter - 1) {
+        const ws = workspaceManager.getWorkspaceSync(taskId)
+        if (ws) {
         const plan = ws.get('task_plan.md') || ''
         if (plan.includes('[ ]') || plan.includes('[?]') || plan.includes('☐')) {
           this.pushOrReplaceSystemMessage(messages, '[Continue]', `[Continue] task_plan.md has unchecked phases. Do NOT output a summary yet — immediately call the next tool to continue execution.`)
@@ -861,67 +863,6 @@ export class ExecutionAgent extends BaseAgent {
 
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
-
-    /**
-     * Sanitize a message array to ensure it conforms to the OpenAI message format:
-     * 1. Every assistant message with tool_calls must have all corresponding tool results.
-     * 2. Every tool result must reference a tool_call_id declared by an assistant message.
-     * Orphaned messages on either side are silently dropped.
-     */
-    private sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
-      // Pass 1: collect all declared tool_call IDs
-      const declaredIds = new Set<string>()
-      for (const m of messages) {
-        if (m.role === 'assistant' && m.tool_calls?.length) {
-          for (const tc of m.tool_calls) declaredIds.add(tc.id)
-        }
-      }
-
-      const out: LlmMessage[] = []
-      for (let i = 0; i < messages.length; i++) {
-        const m = messages[i]
-        // Rule 1: assistant+tool_calls → all results must follow immediately
-        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
-          const expected = new Set(m.tool_calls.map(tc => tc.id))
-          let j = i + 1
-          const found = new Set<string>()
-          while (j < messages.length && messages[j].role === 'tool') {
-            const tid = messages[j].tool_call_id
-            if (tid) found.add(tid)
-            j++
-          }
-          if ([...expected].some(id => !found.has(id))) {
-            console.warn('[sanitizeMessages] Dropping incomplete assistant+tool_calls block')
-            i = j - 1
-            continue
-          }
-        }
-        // Rule 2: tool result must reference a declared call
-        if (m.role === 'tool') {
-          const tid = m.tool_call_id
-          if (!tid || !declaredIds.has(tid)) {
-            console.warn('[sanitizeMessages] Dropping orphaned tool result, id:', tid)
-            continue
-          }
-        }
-        out.push(m)
-      }
-      // Rule 3: trailing assistant+tool_calls with no following results must be removed
-      while (out.length > 0) {
-        const last = out[out.length - 1]
-        if (last.role === 'assistant' && last.tool_calls && last.tool_calls.length > 0) {
-          const lastIds = new Set(last.tool_calls.map(tc => tc.id))
-          const hasResults = out.some(m => m.role === 'tool' && m.tool_call_id && lastIds.has(m.tool_call_id))
-          if (!hasResults) {
-            out.pop()
-            console.warn('[sanitizeMessages] Removed trailing assistant with unresolved tool_calls')
-            continue
-          }
-        }
-        break
-      }
-      return out
-    }
 
     private buildEnvSummary(executionConfig?: ExecutionConfig): string {
     const hasSandbox = executionConfig?.executionMode === 'docker'
@@ -983,30 +924,39 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
 
     if (toolResultIndices.length <= 8) return 0
 
-    // Identify messages to compress (keep first 3 and last 5)
-    const keepFirst = 3
-    const keepLast = 5
-    const middleIndices = toolResultIndices.slice(keepFirst, toolResultIndices.length - keepLast)
-    const toRemove = new Set<number>()
+      // Identify messages to compress (keep first 3 and last 5)
+      const keepFirst = 3
+      const keepLast = 5
+      const middleIndices = toolResultIndices.slice(keepFirst, toolResultIndices.length - keepLast)
+      const toRemove = new Set<number>()
 
-    // Also mark the assistant messages that go with removed tool results
-    for (const idx of middleIndices) {
-      toRemove.add(idx)
-    }
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i]
-      if (m.role === 'assistant' && m.tool_calls?.length) {
-        let j = i + 1
-        const resultIndices: number[] = []
-        while (j < messages.length && messages[j].role === 'tool') {
-          resultIndices.push(j)
-          j++
-        }
-        if (resultIndices.length > 0 && resultIndices.every((idx) => toRemove.has(idx))) {
-          toRemove.add(i)
+      // Add middle tool results to the removal set
+      for (const idx of middleIndices) {
+        toRemove.add(idx)
+      }
+
+      // Mark assistant messages whose tool results are ALL in toRemove (full block removal only).
+      // For assistant messages where only SOME results would be removed, also add the remaining
+      // result indices so we never produce a partial tool_call block.
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i]
+        if (m.role === 'assistant' && m.tool_calls?.length) {
+          let j = i + 1
+          const resultIndices: number[] = []
+          while (j < messages.length && messages[j].role === 'tool') {
+            resultIndices.push(j)
+            j++
+          }
+          if (resultIndices.length === 0) continue
+
+          const removedCount = resultIndices.filter(idx => toRemove.has(idx)).length
+          if (removedCount > 0) {
+            // Partial or full removal: always remove the entire block atomically
+            toRemove.add(i)
+            for (const idx of resultIndices) toRemove.add(idx)
+          }
         }
       }
-    }
 
     // Build a text summary of the removed messages for the LLM to summarize
     const removedContent: string[] = []
@@ -1093,8 +1043,8 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
    * Marks the next unchecked item as complete after successful tool execution.
    */
   private updateTaskPlanProgress(taskId: string): void {
-    try {
-      const ws = getWorkspace(taskId)
+      try {
+        const ws = workspaceManager.getWorkspaceSync(taskId)
       if (!ws) return
 
       const planContent = ws.get('task_plan.md')

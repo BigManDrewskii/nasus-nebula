@@ -61,43 +61,54 @@ export function OutputPanel({
   // Registered once at mount — no dependency on files.length to avoid accumulating listeners
   useEffect(() => {
     const handleToolComplete = (e: Event) => {
-      const detail = (e as CustomEvent<{
-        taskId: string
-        tool: string
-        input: Record<string, unknown>
-        output: string
-      }>).detail
+        const detail = (e as CustomEvent<{
+          taskId: string
+          tool: string
+          input: Record<string, unknown>
+          output: string
+        }>).detail
 
-      if (!detail) return
+        if (!detail) return
 
-      const { tool, input } = detail
-      const path = String(input.path ?? '')
+        const { tool, input } = detail
+        const path = String(input.path ?? '')
 
-      // Auto-switch based on file type created
-      if (tool === 'write_file' || tool === 'patch_file') {
-        if (path.endsWith('.html')) {
-          setNewContent(prev => ({ ...prev, preview: true }))
-          // Auto-switch to preview for HTML files
-          setTab('preview')
-        } else if (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js')) {
-          setNewContent(prev => ({ ...prev, code: true }))
-          // Auto-switch to code for source files
-          setTab('code')
-        } else {
-          setNewContent(prev => ({ ...prev, files: true }))
-          setTab('files')
+        // Auto-switch based on file type created
+        if (tool === 'write_file' || tool === 'patch_file') {
+          if (path.endsWith('.html')) {
+            setNewContent(prev => ({ ...prev, preview: true }))
+            // Auto-switch to preview for HTML files
+            setTab('preview')
+          } else if (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js')) {
+            setNewContent(prev => ({ ...prev, code: true }))
+            // Auto-switch to code for source files — only if not already on preview
+            setLocalTab(prev => {
+              if (prev === 'preview') return prev
+              onTabChange?.('code')
+              return 'code'
+            })
+            setNewContent(prev => ({ ...prev, code: true }))
+          } else {
+            // CSS, md, etc. — mark files tab as having new content but don't
+            // switch away from preview/code if already there
+            setNewContent(prev => ({ ...prev, files: true }))
+            setLocalTab(prev => {
+              if (prev === 'preview' || prev === 'code') return prev
+              onTabChange?.('files')
+              return 'files'
+            })
+          }
+        }
+
+        // Handle file reads — only update indicator, never force a tab switch
+        if (tool === 'read_file') {
+          if (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js')) {
+            setNewContent(prev => ({ ...prev, code: true }))
+          } else {
+            setNewContent(prev => ({ ...prev, files: true }))
+          }
         }
       }
-
-      // Handle file reads
-      if (tool === 'read_file') {
-        if (path.endsWith('.tsx') || path.endsWith('.ts') || path.endsWith('.jsx') || path.endsWith('.js')) {
-          setNewContent(prev => ({ ...prev, code: true }))
-        } else {
-          setNewContent(prev => ({ ...prev, files: true }))
-        }
-      }
-    }
 
     window.addEventListener('nasus:tool-complete', handleToolComplete)
     return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
@@ -130,7 +141,7 @@ export function OutputPanel({
   // ── Render always — use visibility to avoid unmounting BrowserPreview etc on collapse ──
   return (
     <div className="output-panel" style={collapsed ? { display: 'none' } : undefined}>
-      <div className="output-panel-tabs" role="tablist" aria-label="Output tabs">
+      <div className="output-panel-tabs" role="tablist" aria-label="Output tabs" data-tauri-drag-region="false">
         {tabs.map((t) => (
           <button
             key={t.id}

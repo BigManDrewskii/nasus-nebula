@@ -57,13 +57,14 @@ export function getEmbeddingStatus(): { status: EmbeddingStatus; error: string |
 /**
  * Lazily initialise the feature-extraction pipeline.
  * Safe to call multiple times — returns the cached promise.
+ * Times out after 15 seconds to prevent blocking the agent loop on first launch.
  */
 async function getPipeline(): Promise<Pipeline> {
   if (_pipeline) return _pipeline
   if (_initPromise) return _initPromise
 
   _status = 'loading'
-  _initPromise = (async () => {
+  const loadPromise = (async () => {
     try {
       const pipe = await pipeline('feature-extraction', MODEL_ID, {
         dtype: 'q8',
@@ -79,6 +80,19 @@ async function getPipeline(): Promise<Pipeline> {
       throw err
     }
   })()
+
+  // Race against a 15-second timeout to avoid hanging the main thread indefinitely
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Embedding model load timed out after 15s')), 15_000)
+  )
+
+  _initPromise = Promise.race([loadPromise, timeoutPromise]).catch(err => {
+    // Reset so next call can retry
+    _initPromise = null
+    _status = 'error'
+    _error = err instanceof Error ? err.message : String(err)
+    throw err
+  }) as Promise<Pipeline>
 
   return _initPromise
 }

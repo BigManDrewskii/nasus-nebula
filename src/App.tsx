@@ -316,10 +316,19 @@ function App() {
 
           {settingsOpen && <SettingsPanel onClose={closeSettings} />}
 
-            {/* Floating re-open tab — shown when output panel is visible but collapsed to 0px */}
-              {outputVisible && rightCollapsed && (
+          {/* Floating re-open tab — shown when panel is collapsed OR hidden but files exist */}
+              {(!outputVisible ? workspaceFiles.length > 0 : rightCollapsed) && (
                 <button
-                  onClick={toggleRight}
+                  onClick={() => {
+                    // Always make the panel fully visible
+                    setOutputVisible(true)
+                    setRightCollapsed(false)
+                    // Smart tab: if files exist pick the best tab, else keep current
+                    if (workspaceFiles.length > 0) {
+                      const hasHtml = workspaceFiles.some(f => f.ext === 'html')
+                      setRightActiveTab(hasHtml ? 'preview' : 'files')
+                    }
+                  }}
                   title="Open workspace panel (⌘⇧\\)"
                   className="workspace-reopen-tab"
                 >

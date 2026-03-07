@@ -122,7 +122,7 @@ export async function executeBash(
   }
 }
 
-/** Kill any active Docker containers. Call on task stop/switch. */
-export async function disposeSandbox(): Promise<void> {
-  await disposeDockerSandbox()
+/** Kill the Docker container for a specific task (or all containers if no taskId). */
+export async function disposeSandbox(taskId?: string): Promise<void> {
+  await disposeDockerSandbox(taskId)
 }
