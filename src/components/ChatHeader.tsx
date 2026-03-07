@@ -272,14 +272,24 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
             </button>
           )}
 
-          {/* Workspace panel toggle */}
-          {onToggleRight && (
+          {/* Workspace panel toggle — only when there are files or panel is open */}
+          {onToggleRight && (workspaceFileCount > 0 || !rightCollapsed) && (
             <button
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
-              className="header-sidebar-toggle"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28, borderRadius: 6,
+                background: rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                color: 'var(--tx-tertiary)',
+                cursor: 'pointer',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)' }}
             >
-              <Pxi name={rightCollapsed ? 'columns' : 'angle-right'} size={14} />
+              <Pxi name="columns" size={12} />
             </button>
           )}
 

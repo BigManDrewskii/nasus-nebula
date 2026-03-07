@@ -54,11 +54,6 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
   // Derive count once — used in header label and badge
   const toolPairCount = useMemo(() => rows.filter(r => r.kind === 'tool_pair').length, [rows])
 
-  // Count completed tool pairs (have a result)
-  const completedCount = useMemo(() => rows.filter(r =>
-    r.kind === 'tool_pair' && r.result !== null
-  ).length, [rows])
-
   // Find the most recently active / pending action for the live header label
   const liveLabel = useMemo(() => {
     for (let i = rows.length - 1; i >= 0; i--) {
@@ -116,16 +111,13 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
               flex: 1,
               fontSize: 11.5,
               fontWeight: 500,
-              color: 'var(--tx-primary)',
+              color: 'var(--tx-secondary)',
               lineHeight: 1.4,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
             }}>
               {liveLabel}
-              <span style={{ color: 'var(--tx-muted)', fontWeight: 400, marginLeft: 6, fontSize: 10 }}>
-                · {completedCount} of ~{toolPairCount} steps
-              </span>
             </span>
           ) : (
             <span style={{
@@ -433,71 +425,73 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
     )
   }
 
-  return (
-    <div style={{ borderRadius: 7, overflow: 'hidden' }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          width: '100%',
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '5px 8px 5px 6px',
-          borderRadius: open ? '7px 7px 0 0' : 7,
-          border: `1px solid ${open ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
-          borderBottom: open ? '1px solid rgba(255,255,255,0.04)' : '1px solid transparent',
-          background: open ? 'rgba(255,255,255,0.025)' : 'transparent',
-          cursor: 'pointer',
-          transition: 'background 0.1s',
-        }}
-        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
-        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
-      >
-        {/* Status dot */}
-        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {isPending ? (
-            <SpinnerDot />
-          ) : (
-            <Pxi name="check-circle" size={12} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.2)' : '#34d399' }} />
-          )}
-        </span>
+    // Determine if this tool's output is worth expanding
+    const isExpandable = isError || open || call.tool === 'bash_execute' || call.tool === 'python_execute' || call.tool === 'bash'
 
-        {/* Tool icon */}
-        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', opacity: isMemoryFile ? 0.35 : 1 }}>
-          <Pxi name={icon} size={13} style={{ color: iconColor }} />
-        </span>
+    return (
+      <div style={{ borderRadius: 6, overflow: 'hidden' }}>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            width: '100%',
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '3px 6px 3px 4px',
+            borderRadius: open ? '6px 6px 0 0' : 6,
+            border: `1px solid ${open ? 'rgba(255,255,255,0.07)' : 'transparent'}`,
+            borderBottom: open ? '1px solid rgba(255,255,255,0.04)' : '1px solid transparent',
+            background: open ? 'rgba(255,255,255,0.02)' : 'transparent',
+            cursor: 'pointer',
+            transition: 'background 0.1s',
+          }}
+          onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+          onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
+        >
+          {/* Status dot */}
+          <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {isPending ? (
+              <SpinnerDot />
+            ) : (
+              <Pxi name="check-circle" size={11} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.2)' : '#34d399' }} />
+            )}
+          </span>
 
-        {/* Label stack */}
-        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {/* Tool icon */}
+          <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', opacity: isMemoryFile ? 0.25 : 0.7 }}>
+            <Pxi name={icon} size={12} style={{ color: iconColor }} />
+          </span>
+
+          {/* Inline label + sublabel */}
           <span style={{
-            fontSize: 12,
+            flex: 1, minWidth: 0,
+            fontSize: 11.5,
             fontWeight: isMemoryFile ? 400 : 500,
-            color: isMemoryFile ? 'rgba(255,255,255,0.22)' : 'var(--tx-secondary)',
+            color: isMemoryFile ? 'rgba(255,255,255,0.22)' : isError ? '#f87171' : 'var(--tx-tertiary)',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             lineHeight: 1.4,
           }}>
             {label}
+            {sublabel && !isMemoryFile && (
+              <span style={{
+                marginLeft: 6,
+                fontSize: 10,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--tx-ghost)',
+                fontWeight: 400,
+              }}>
+                {sublabel}
+              </span>
+            )}
           </span>
-          {sublabel && (
-            <span style={{
-              fontSize: 10,
-              fontFamily: 'var(--font-mono)',
-              color: isMemoryFile ? 'rgba(255,255,255,0.1)' : 'var(--tx-muted)',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              lineHeight: 1.3,
-            }}>
-              {sublabel}
-            </span>
-          )}
-        </span>
 
-        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-muted)', flexShrink: 0, opacity: 0.5 }} />
-      </button>
+          {isExpandable && (
+            <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={9} style={{ color: 'var(--tx-ghost)', flexShrink: 0 }} />
+          )}
+        </button>
 
       {open && (
         <div className="slide-down">

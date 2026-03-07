@@ -476,9 +476,9 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
         {/* Final text response */}
         {hasContent && (
           <div style={hasSteps ? {
-            marginTop: 14,
-            paddingTop: 14,
-            borderTop: '1px solid rgba(255,255,255,0.05)',
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: '1px solid rgba(255,255,255,0.06)',
           } : {}}>
             <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--tx-secondary)' }}>
               {renderedContent}

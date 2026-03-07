@@ -151,24 +151,24 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
     return '0 2px 12px rgba(0,0,0,0.25)'
   })()
 
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        border: `1px solid ${borderColor}`,
-        background: inputState === 'processing' ? '#0f0f0f' : '#141414',
-        transition: 'border-color 0.18s, box-shadow 0.18s',
-        boxShadow,
-        ...(inputState === 'awaiting_input' ? {
-          borderLeft: '3px solid var(--amber)',
-          animation: 'inputPulse 2s ease-in-out infinite',
-        } : {}),
-        ...(inputState === 'streaming' && !isFocused ? {
-          animation: 'inputBreathing 3s ease-in-out infinite',
-        } : {}),
-      }}
-      className={`user-input-area state-${inputState}`}
-    >
+    return (
+      <div
+        style={{
+          borderRadius: 12,
+          border: `1px solid ${borderColor}`,
+          background: inputState === 'processing' ? '#0f0f0f' : '#161616',
+          transition: 'border-color 0.18s, box-shadow 0.18s',
+          boxShadow,
+          ...(inputState === 'awaiting_input' ? {
+            borderLeft: '3px solid var(--amber)',
+            animation: 'inputPulse 2s ease-in-out infinite',
+          } : {}),
+          ...(inputState === 'streaming' && !isFocused ? {
+            animation: 'inputBreathing 3s ease-in-out infinite',
+          } : {}),
+        }}
+        className={`user-input-area state-${inputState}`}
+      >
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -233,11 +233,11 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            fontSize: 13.5,
-            color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
-            fontStyle: inputState === 'processing' ? 'italic' : 'normal',
-            lineHeight: 1.6,
-            minHeight: 26,
+            fontSize: 14,
+              color: inputState === 'processing' ? 'var(--tx-tertiary)' : 'var(--tx-primary)',
+              fontStyle: inputState === 'processing' ? 'italic' : 'normal',
+              lineHeight: 1.6,
+              minHeight: 32,
             maxHeight: 144,
             fontFamily: 'inherit',
             cursor: isTextareaDisabled ? 'not-allowed' : 'text',

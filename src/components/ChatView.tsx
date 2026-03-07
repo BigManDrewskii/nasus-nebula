@@ -739,8 +739,15 @@ interface ChatViewProps {
 
                     {/* Planning View integrated inline */}
                     {(pendingPlan || currentPlan) && (
-                      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Plan intro line — only shown when awaiting approval */}
+                      <div style={{ marginTop: 8 }} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Amber separator — "agent is presenting something" */}
+                        <div style={{
+                          height: 1,
+                          background: 'linear-gradient(to right, rgba(234,179,8,0.15), rgba(255,255,255,0.04), transparent)',
+                          margin: '0 0 16px 39px',
+                        }} />
+
+                        {/* Plan intro — only shown when awaiting approval */}
                         {pendingPlan && (
                           <div style={{
                             display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 12,
@@ -760,7 +767,9 @@ interface ChatViewProps {
                             </p>
                           </div>
                         )}
-                        <div style={{ marginLeft: 39 }}>
+
+                        {/* Plan card — indented to align with agent content */}
+                        <div style={{ paddingLeft: 39 }}>
                           <PlanView
                             plan={pendingPlan || currentPlan!}
                             onApprove={pendingPlan ? approvePlan : undefined}

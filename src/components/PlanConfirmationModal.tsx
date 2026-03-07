@@ -84,26 +84,21 @@ const PlanStepItem = memo(({ step, stepNumber, isCurrent, isCompleted }: PlanSte
         </span>
 
         {step.tools && step.tools.length > 0 && !isCompleted && (
-          <div style={{ display: 'flex', gap: 3, marginTop: 5, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
             {step.tools.map((tool) => (
               <span
                 key={tool}
                 style={{
                   padding: '1px 5px',
-                  fontSize: 9,
+                  fontSize: 8,
                   fontFamily: 'var(--font-mono)',
                   fontWeight: 500,
-                  letterSpacing: '0.04em',
+                  letterSpacing: '0.05em',
                   textTransform: 'uppercase',
-                  borderRadius: 4,
-                  background: isCurrent
-                    ? 'rgba(234,179,8,0.08)'
-                    : 'rgba(255,255,255,0.04)',
-                  border: '1px solid',
-                  borderColor: isCurrent
-                    ? 'rgba(234,179,8,0.2)'
-                    : 'rgba(255,255,255,0.06)',
-                  color: isCurrent ? 'var(--amber)' : 'var(--tx-muted)',
+                  borderRadius: 3,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  color: 'var(--tx-ghost)',
                 }}
               >
                 {tool}
@@ -639,39 +634,14 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
                   </button>
               </div>
             ) : (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  background: 'rgba(74,222,128,0.08)',
-                  border: '1px solid rgba(74,222,128,0.18)',
-                }}
-              >
-                <span
-                  style={{
-                    width: 5, height: 5,
-                    borderRadius: '50%',
-                    background: '#4ade80',
-                    animation: 'statusPulse 1.6s ease-in-out infinite',
-                    display: 'inline-block',
-                  }}
-                />
-                <span
-                  className="font-display"
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 600,
-                    color: '#4ade80',
-                    letterSpacing: '0.1em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Running
-                </span>
-              </div>
+              <span style={{
+                fontSize: 9,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--tx-muted)',
+                letterSpacing: '0.02em',
+              }}>
+                Phase {(currentPhase ?? 0) + 1} of {plan.phases.length}
+              </span>
             )}
           </div>
         </>
