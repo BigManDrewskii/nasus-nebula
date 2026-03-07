@@ -96,7 +96,7 @@ export interface GatewaySlice {
 
 // ─── Slice Creator ──────────────────────────────────────────────────────────
 
-export const createGatewaySlice: StateCreator<GatewaySlice, [], [], GatewaySlice> = (set, get) => ({
+export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', never]], [], GatewaySlice> = (set, get) => ({
   // ── Initial State ─────────────────────────────────────────────────────────
   gateways: [...DEFAULT_GATEWAYS],
   routingMode: 'auto-paid',

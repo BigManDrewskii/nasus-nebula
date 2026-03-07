@@ -47,7 +47,7 @@ export interface TaskSlice {
   appendRawHistory: (taskId: string, msgs: LlmMessage[]) => void
 }
 
-export const createTaskSlice: StateCreator<TaskSlice, [], [], TaskSlice> = (set, get) => ({
+export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]], [], TaskSlice> = (set, get) => ({
   tasks: [INITIAL_TASK],
   activeTaskId: 'initial',
   messages: { initial: [WELCOME_MESSAGE] },
@@ -166,21 +166,15 @@ export const createTaskSlice: StateCreator<TaskSlice, [], [], TaskSlice> = (set,
       },
     })),
 
-  appendChunk: (taskId, messageId, delta) =>
-    set((state) => {
-      const msgs = state.messages[taskId]
-      if (!msgs) return {}
-      const idx = msgs.findIndex((m) => m.id === messageId)
-      if (idx === -1) return {}
-      const updated = [...msgs]
-      updated[idx] = { ...updated[idx], content: updated[idx].content + delta }
-      return {
-        messages: {
-          ...state.messages,
-          [taskId]: updated,
-        },
-      }
-    }),
+    appendChunk: (taskId, messageId, delta) =>
+      set((state) => {
+        const msgs = state.messages[taskId]
+        if (!msgs) return
+        const msg = msgs.find((m) => m.id === messageId)
+        if (msg) {
+          msg.content += delta
+        }
+      }),
 
   setStreaming: (taskId, messageId, streaming) =>
     set((state) => ({

@@ -11,6 +11,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { immer } from 'zustand/middleware/immer'
 
 import { createTaskSlice, type TaskSlice, partializeTaskSlice } from './taskSlice'
 import { createUISlice, type UISlice } from './uiSlice'
@@ -38,13 +39,13 @@ type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice
 
 export const useAppStore = create<AppState>()(
   persist(
-    (...a) => ({
+    immer((...a) => ({
       ...createTaskSlice(...a),
       ...createUISlice(...a),
       ...createAgentSlice(...a),
       ...createSettingsSlice(...a),
       ...createGatewaySlice(...a),
-    }),
+    })),
     {
       name: 'nasus-store-v2',
       partialize: (state): Partial<AppState> => ({

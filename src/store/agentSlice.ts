@@ -25,7 +25,7 @@ export interface AgentSlice {
   rejectTool: (taskId: string, tool: string) => void
 }
 
-export const createAgentSlice: StateCreator<AgentSlice, [], [], AgentSlice> = (set, get) => ({
+export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never]], [], AgentSlice> = (set, get) => ({
   pendingPlan: null,
   planApprovalStatus: null,
   currentPlan: null,

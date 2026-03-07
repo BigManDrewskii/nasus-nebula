@@ -12,7 +12,7 @@ export interface UISlice {
   setSettingsTab: (tab: 'general' | 'model' | 'execution' | 'search' | 'about') => void
 }
 
-export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
+export const createUISlice: StateCreator<UISlice, [['zustand/immer', never]], [], UISlice> = (set) => ({
   configSections: { model: false, parameters: false, systemPrompt: false, stats: false },
   settingsOpen: false,
   settingsTab: 'general',

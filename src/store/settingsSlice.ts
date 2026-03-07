@@ -153,7 +153,7 @@ const DEFAULT_ROUTER_STATE: Omit<TaskRouterState, 'tokenUsage'> = {
   isFree: false,
 }
 
-export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSlice> = (set, get) => ({
+export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer', never]], [], SettingsSlice> = (set, get) => ({
   apiKey: '',
   model: 'anthropic/claude-sonnet-4-20250514',
   workspacePath: '',

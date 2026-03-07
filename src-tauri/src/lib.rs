@@ -13,6 +13,12 @@ pub mod search;
 pub mod docker;
 pub mod sidecar;
 pub mod gateway;
+mod error;
+pub use error::NasusError;
+
+/// Convenience alias — use this as the return type for Tauri commands
+/// instead of `Result<T, String>` to get structured, serializable errors.
+pub type NasusResult<T> = Result<T, NasusError>;
 
 use crate::models::classifier::{classify_task};
 use crate::models::router::{BudgetMode, ModelSelectionMode, RouterConfig, RoutingDecision};
@@ -284,8 +290,8 @@ async fn save_config(
 }
 
 #[tauri::command]
-async fn validate_path(path: String) -> Result<bool, String> {
-    let p = Path::new(&path);
+async fn validate_path(path: String) -> NasusResult<bool> {
+    let p = std::path::Path::new(&path);
     Ok(p.exists() && p.is_dir())
 }
 
