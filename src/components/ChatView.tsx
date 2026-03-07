@@ -367,14 +367,16 @@ interface ChatViewProps {
                   enableVerification: cfg.enableVerification ?? true,
                 },
               })
-          } catch (err) {
+            } catch (err) {
+      // AI_NoOutputGeneratedError is only a true abort when the user actually stopped
+      // the agent. When it occurs due to upstream stream errors (e.g. AI_MissingToolResultsError),
+      // it should surface as a real error so the user sees "Try again".
       const isAbort = err instanceof Error && (
         err.name === 'AbortError' ||
         err.message.includes('AbortError') ||
         err.message.includes('Aborted') ||
         err.message.includes('aborted') ||
-        err.message.includes('operation was aborted') ||
-        err.message.includes('No output generated')
+        err.message.includes('operation was aborted')
       )
       if (!isAbort) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -671,8 +673,33 @@ interface ChatViewProps {
                 messageCount={messageCount}
                 userTurns={userTurns}
                 rightCollapsed={_rightCollapsed}
-                onToggleRight={_onToggleRight}
-              />
+              onToggleRight={_onToggleRight}
+            />
+
+          {/* Sandbox error banner */}
+          {sandboxStatus === 'error' && isActive && (
+            <div style={{
+              margin: '0 20px 8px',
+              padding: '10px 16px',
+              borderRadius: 10,
+              background: 'rgba(239,68,68,0.06)',
+              border: '1px solid rgba(239,68,68,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexShrink: 0,
+            }}>
+              <Pxi name="exclamation-triangle" size={16} style={{ color: '#f87171', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#f87171', display: 'block' }}>
+                  Sandbox execution failed
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--tx-secondary)', display: 'block', marginTop: 2, lineHeight: 1.5 }}>
+                  The cloud sandbox couldn't execute the command. The agent will continue using local file operations.
+                </span>
+              </div>
+            </div>
+          )}
 
 
 

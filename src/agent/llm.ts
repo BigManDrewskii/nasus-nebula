@@ -125,7 +125,61 @@ export async function streamCompletion(
       return c.map(p => (p.type === 'text' ? (p.text ?? '') : '')).join('').trim()
     }
 
-    const coreMessages: any[] = messages.map(m => {
+      // ── Sanitize message history ─────────────────────────────────────────────
+      // Enforces the OpenAI message ordering invariants:
+      //   1. Every assistant message with tool_calls must be followed by the
+      //      corresponding tool result messages (AI_MissingToolResultsError).
+      //   2. Every tool result (role:'tool') must be preceded by an assistant
+      //      message that declared its tool_call_id (provider 400 error).
+      // Both can happen after context compression or mid-stream failures.
+      const sanitizedMessages = (() => {
+        // Pass 1 — build the set of declared tool_call IDs from assistant messages
+        const declaredToolCallIds = new Set<string>()
+        for (const m of messages) {
+          if (m.role === 'assistant' && m.tool_calls?.length) {
+            for (const tc of m.tool_calls) {
+              declaredToolCallIds.add(tc.id)
+            }
+          }
+        }
+
+        const out: LlmMessage[] = []
+        for (let i = 0; i < messages.length; i++) {
+          const m = messages[i]
+
+          // Rule 1: assistant message with tool_calls must have all results following it
+          if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+            const expectedIds = new Set(m.tool_calls.map(tc => tc.id))
+            let j = i + 1
+            const foundIds = new Set<string>()
+            while (j < messages.length && messages[j].role === 'tool') {
+              const tid = messages[j].tool_call_id
+              if (tid) foundIds.add(tid)
+              j++
+            }
+            const hasMissing = [...expectedIds].some(id => !foundIds.has(id))
+            if (hasMissing) {
+              console.warn('[sanitizeMessages] Dropping assistant+tool_calls with missing results, ids:', [...expectedIds].filter(id => !foundIds.has(id)))
+              i = j - 1 // skip this assistant message and any partial tool results
+              continue
+            }
+          }
+
+          // Rule 2: tool result must reference a declared tool_call_id
+          if (m.role === 'tool') {
+            const tid = m.tool_call_id
+            if (!tid || !declaredToolCallIds.has(tid)) {
+              console.warn('[sanitizeMessages] Dropping orphaned tool result, tool_call_id:', tid)
+              continue
+            }
+          }
+
+          out.push(m)
+        }
+        return out
+      })()
+
+    const coreMessages: any[] = sanitizedMessages.map(m => {
       // ── tool ──────────────────────────────────────────────────────────────
       if (m.role === 'tool') {
         if (!toolsEnabled) {
@@ -270,22 +324,27 @@ export async function streamCompletion(
         } : null,
         reasoningContent: fullReasoning || null,
       };
-  } catch (err) {
-    // Suppress abort errors — they are expected on user-initiated stop, not real errors.
-    const isAbort =
-      err instanceof Error && (
-        err.name === 'AbortError' ||
-        err.message.includes('aborted') ||
-        err.message.includes('Aborted') ||
-        err.message.includes('AbortError') ||
-        // AI SDK wraps abort in AI_NoOutputGeneratedError
-        err.message.includes('No output generated')
-      )
+    } catch (err) {
+      // Suppress abort errors — they are expected on user-initiated stop, not real errors.
+      // AI_NoOutputGeneratedError is only treated as an abort when the signal is actually
+      // aborted — otherwise it's a real error (e.g. caused by AI_MissingToolResultsError)
+      // that must be surfaced to the user.
+      const signalAborted = cb.signal?.aborted ?? false
+      const isAbort =
+        err instanceof Error && (
+          err.name === 'AbortError' ||
+          err.message.includes('aborted') ||
+          err.message.includes('Aborted') ||
+          err.message.includes('AbortError') ||
+          // AI SDK wraps abort in AI_NoOutputGeneratedError — only treat as abort
+          // when the signal is genuinely aborted, not on unrelated stream failures
+          (err.message.includes('No output generated') && signalAborted)
+        )
 
-    if (isAbort) {
-      // Don't surface abort as an error — just re-throw so callers can check signal.aborted
-      throw err
-    }
+      if (isAbort) {
+        // Don't surface abort as an error — just re-throw so callers can check signal.aborted
+        throw err
+      }
 
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;

@@ -150,61 +150,47 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
           />
         </div>
       ) : (
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={onClick}
-          onDoubleClick={(e) => startEdit(e)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              onClick()
-            }
-          }}
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '5px 8px 6px 8px',
-            borderRadius: 7,
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-            textAlign: 'left',
-            position: 'relative',
-            overflow: 'hidden',
-            transition: 'all 0.12s cubic-bezier(0.4, 0, 0.2, 1)',
-            background: isActive
-              ? 'rgba(255,255,255,0.08)'
-              : hovered
-                ? 'rgba(255,255,255,0.04)'
-                : 'transparent',
-            border: isActive
-              ? '1px solid rgba(255,255,255,0.12)'
-              : '1px solid transparent',
-            color: isActive || hovered ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-            boxShadow: isActive ? '0 4px 12px rgba(0,0,0,0.2)' : 'none',
-          }}
-        >
-          {isActive && (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={onClick}
+            onDoubleClick={(e) => startEdit(e)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick()
+              }
+            }}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 8px 6px 10px',
+              borderRadius: 7,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.12s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: isActive
+                ? 'rgba(234,179,8,0.06)'
+                : hovered
+                  ? 'rgba(255,255,255,0.04)'
+                  : 'transparent',
+              border: isActive
+                ? '1px solid rgba(234,179,8,0.15)'
+                : '1px solid transparent',
+              borderLeft: isActive ? '2px solid rgba(234,179,8,0.6)' : '2px solid transparent',
+              color: isActive || hovered ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+              boxShadow: isActive ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+            }}
+          >
             <span
               style={{
-                position: 'absolute',
-                left: -1,
-                top: '25%',
-                height: '50%',
-                width: 3,
-                borderRadius: '0 4px 4px 0',
-                background: 'var(--amber)',
-                boxShadow: '0 0 10px oklch(64% 0.214 40.1 / 0.7)',
-              }}
-            />
-          )}
-
-          <span
-            style={{
-              display: 'flex',
-              flexShrink: 0,
+                display: 'flex',
+                flexShrink: 0,
               color: isActive
                 ? 'var(--amber)'
                 : hovered

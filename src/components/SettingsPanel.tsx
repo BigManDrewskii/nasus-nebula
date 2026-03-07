@@ -7,8 +7,6 @@ import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
 
-import { GatewaySettings } from './GatewaySettings'
-
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
 
 const FALLBACK_MODELS: OpenRouterModel[] = [
@@ -953,9 +951,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   )}
               </div>
 
-              <GatewaySettings />
-
-              {/* ── Model ── */}
+                {/* ── Model ── */}
               <Field label="Override Model" icon="sparkles" hint="Manually select a model. Only used when Model Router is in 'Manual' mode.">
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {/* Fetch row */}

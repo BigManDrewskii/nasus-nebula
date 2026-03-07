@@ -477,14 +477,14 @@ function SidebarSection({ label, date, badge, collapsed, onToggle, accent, child
             style={{
               flex: 1,
               textAlign: 'left',
-              fontSize: 10,
-              fontWeight: 600,
+              fontSize: 9.5,
+              fontWeight: 700,
               fontFamily: 'var(--font-display)',
-              letterSpacing: '0.07em',
+              letterSpacing: '0.1em',
               textTransform: 'uppercase',
               color: isAmber
                 ? 'var(--amber)'
-                : hov ? 'var(--tx-tertiary)' : 'var(--tx-muted)',
+                : hov ? 'var(--tx-muted)' : 'var(--tx-ghost)',
               lineHeight: 1,
               userSelect: 'none',
               transition: 'color 0.1s',

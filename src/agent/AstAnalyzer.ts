@@ -11,7 +11,7 @@
  * The core runtime (web-tree-sitter.wasm) is also loaded lazily.
  */
 
-import Parser from 'web-tree-sitter'
+import type Parser from 'web-tree-sitter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -68,9 +68,11 @@ const languageCache = new Map<string, Parser.Language>()
 
 async function getParser(): Promise<typeof Parser> {
   if (ParserClass) return ParserClass
-  const mod = await import('web-tree-sitter')
+  // web-tree-sitter is a CJS module; Vite exposes it as the module object itself.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod = await import('web-tree-sitter') as any
   const Cls = (mod.default ?? mod) as typeof Parser
-  await Cls.init({ locateFile: () => '/tree-sitter/web-tree-sitter.wasm' })
+  await Cls.init({ locateFile: (_: string) => '/tree-sitter/web-tree-sitter.wasm' })
   ParserClass = Cls
   parserInitialized = true
   return Cls

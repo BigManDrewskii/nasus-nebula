@@ -203,110 +203,141 @@ Requests: ${health.requestCount || 0}
       >
         {/* Left cluster */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
-            <h2
-              className="font-display font-medium truncate"
-              style={{ fontSize: 10.5, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
-            >
-              {task?.title || 'New Chat'}
-            </h2>
+          <h2
+            className="font-display font-medium truncate"
+            style={{ fontSize: 11, color: 'var(--tx-secondary)', letterSpacing: '-0.01em' }}
+          >
+            {task?.title || 'New Chat'}
+          </h2>
 
-            {/* Provider + Model Badge */}
-            <div
-              title={healthTooltip}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6,
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                color: 'var(--tx-secondary)',
-                flexShrink: 0,
-                cursor: 'help',
-              }}
-            >
-              {/* Health dot */}
-              <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}` }} />
-              <Pxi name={providerIcon} size={10} style={{ opacity: 0.6 }} />
-              <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.02em' }}>{providerLabel}</span>
-              <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.1)' }} />
-              <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-tertiary)' }}>{activeModelName}</span>
-              {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 600, marginLeft: 2 }}>free</span>}
-            </div>
+          {/* Provider + Model pill */}
+          <div
+            title={healthTooltip}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '2px 7px', borderRadius: 6,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              color: 'var(--tx-secondary)',
+              flexShrink: 0,
+              cursor: 'help',
+            }}
+          >
+            {/* Health dot */}
+            <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 5px ${healthColor}` }} />
+            <Pxi name={providerIcon} size={10} style={{ opacity: 0.55 }} />
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em', fontFamily: 'var(--font-mono)' }}>{providerLabel}</span>
+            <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)' }} />
+            <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)' }}>{activeModelName}</span>
+            {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700, marginLeft: 1 }}>FREE</span>}
+          </div>
 
-            {/* Route Badge — hidden, info already in provider badge */}
-
+          {/* Iteration counter pill */}
           {isActive && iteration > 0 && (
             <span
               className="flex items-center gap-1 flex-shrink-0"
               title={`Iteration ${iteration}${messageCount > 0 ? `\nMessages: ${messageCount}` : ''}${userTurns > 0 ? `\nUser turns: ${userTurns}` : ''}`}
-              style={{ cursor: 'help' }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '2px 6px', borderRadius: 5,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                cursor: 'help',
+              }}
             >
-              <Pxi name="refresh" size={10} style={{ color: 'var(--tx-muted)', animation: 'spin 1s linear infinite' }} />
-              <span className="font-mono" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>{iteration}</span>
+              <Pxi name="refresh" size={9} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
+              <span className="font-mono" style={{ fontSize: 9, color: 'var(--tx-muted)' }}>{iteration}</span>
             </span>
           )}
 
-        {tokenCount > 0 && (
-          <span className="font-mono flex-shrink-0" style={{ fontSize: 9.5, color: 'var(--tx-muted)' }}>
-            {(tokenCount / 1000).toFixed(1)}k · {estimateCost(activeModelId, tokenCount)}
-            {taskRouterState?.tokenUsage && (
-              <span 
-                style={{ 
-                  marginLeft: 6,
-                  color: taskRouterState.tokenUsage.contextUtilization > 0.85 ? '#f87171' : 
-                         taskRouterState.tokenUsage.contextUtilization > 0.7 ? 'var(--amber)' : 
-                         'var(--tx-muted)'
-                }}
-                title={`Context utilization: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%`}
-              >
-                ctx: {Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%
-              </span>
-            )}
-          </span>
-        )}
-      </div>
+          {/* Token / cost pill */}
+          {tokenCount > 0 && (
+            <span
+              className="font-mono flex-shrink-0"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: 9, color: 'var(--tx-muted)',
+                padding: '2px 6px', borderRadius: 5,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}
+            >
+              {(tokenCount / 1000).toFixed(1)}k · {estimateCost(activeModelId, tokenCount)}
+              {taskRouterState?.tokenUsage && (
+                <span
+                  style={{
+                    marginLeft: 4,
+                    color: taskRouterState.tokenUsage.contextUtilization > 0.85 ? '#f87171' :
+                           taskRouterState.tokenUsage.contextUtilization > 0.7 ? 'var(--amber)' :
+                           'var(--tx-muted)',
+                  }}
+                  title={`Context: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%`}
+                >
+                  ctx:{Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%
+                </span>
+              )}
+            </span>
+          )}
+        </div>
 
-      {/* Right cluster */}
-      <div className="flex items-center gap-1.5 flex-shrink-0">
-        {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && (
-          <SandboxPill status={sandboxStatus} />
-        )}
+        {/* Right cluster */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Sandbox starting pill */}
+          {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && sandboxStatus === 'starting' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '3px 8px', borderRadius: 20,
+              background: 'rgba(122,174,90,0.1)',
+              border: '1px solid rgba(122,174,90,0.2)',
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', animation: 'statusPulse 1.6s ease-in-out infinite', display: 'inline-block' }} />
+              <span style={{ fontSize: 10, fontWeight: 500, color: '#4ade80', letterSpacing: '0.02em' }}>Starting</span>
+            </div>
+          )}
+          {sandboxStatus === 'ready' && (
+            <SandboxPill status={sandboxStatus} />
+          )}
+          {sandboxStatus === 'error' && (
+            <SandboxPill status={sandboxStatus} />
+          )}
 
-        {/* Files pill — shown when output panel is hidden but files exist */}
-        {!outputVisible && workspaceFileCount > 0 && onShowOutput && (
-          <button
-            onClick={onShowOutput}
-            title="Show output panel"
-            className="header-action-btn"
-          >
-            <Pxi name="folder" size={12} />
-            <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
-          </button>
-        )}
+          {/* Files pill */}
+          {!outputVisible && workspaceFileCount > 0 && onShowOutput && (
+            <button
+              onClick={onShowOutput}
+              title="Show output panel"
+              className="header-action-btn"
+            >
+              <Pxi name="folder" size={12} />
+              <span style={{ fontSize: 10.5, fontWeight: 500 }}>{workspaceFileCount}</span>
+            </button>
+          )}
 
-        {/* Workspace panel toggle [◧] */}
-        {onToggleRight && (
-          <button
-            onClick={onToggleRight}
-            title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
-            className="header-sidebar-toggle"
-          >
-            <Pxi name={rightCollapsed ? 'columns' : 'angle-right'} size={14} />
-          </button>
-        )}
+          {/* Workspace panel toggle */}
+          {onToggleRight && (
+            <button
+              onClick={onToggleRight}
+              title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
+              className="header-sidebar-toggle"
+            >
+              <Pxi name={rightCollapsed ? 'columns' : 'angle-right'} size={14} />
+            </button>
+          )}
 
-        {/* Stop / status */}
-        {isActive ? (
-          <button
-            onClick={onStop}
-            className="header-stop-btn"
-            title="Stop agent (Esc)"
-          >
-            <Pxi name="times-circle" size={14} />
-            <span>Stop</span>
-          </button>
+          {/* Stop / status */}
+          {isActive ? (
+            <button
+              onClick={onStop}
+              className="header-stop-btn"
+              title="Stop agent (Esc)"
+            >
+              <Pxi name="times-circle" size={13} />
+              <span>Stop</span>
+            </button>
           ) : (
             <StatusDot status={task?.status || 'idle'} />
           )}
-      </div>
-    </header>
-  )
+        </div>
+      </header>
+    )
 }

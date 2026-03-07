@@ -60,5 +60,6 @@ declare module 'web-tree-sitter' {
     parse(input: string): Parser.Tree
   }
 
-  export = Parser
+    export = Parser
+    export default Parser
 }

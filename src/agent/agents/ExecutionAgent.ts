@@ -586,36 +586,48 @@ export class ExecutionAgent extends BaseAgent {
     }
 
     try {
-      this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
+        this.emitModelSelected(taskId, messageId, model, model.split('/').pop() || model, provider)
 
-      const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
+        const env = executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
 
-      const result = await streamCompletion(
-          apiBase,
-          apiKey,
-          provider,
-          model,
-          messages,
-          getToolDefinitions(env),
-          {
-            onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
-            onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
-            onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
-            onError: (err) => this.emitError(taskId, messageId, err),
-            onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
-            signal,
-            extraHeaders: resolved.extraHeaders,
-          },
-        )
+        const result = await streamCompletion(
+            apiBase,
+            apiKey,
+            provider,
+            model,
+            messages,
+            getToolDefinitions(env),
+            {
+              onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
+              onToolCalls: () => {}, // Handled by streamCompletion's onFinish or return
+              onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
+              onError: (err) => this.emitError(taskId, messageId, err),
+              onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
+              signal,
+              extraHeaders: resolved.extraHeaders,
+            },
+          )
 
-      return result
-    } catch (err) {
-      if (!signal.aborted) {
-        this.emitError(taskId, messageId, err instanceof Error ? err.message : String(err))
+        return result
+      } catch (err) {
+        // Clean up a partial assistant+tool_calls message if the stream failed before
+        // tool execution could complete. Without this, the next iteration would start
+        // with a dangling assistant message that has no tool results — triggering the
+        // "Messages with role 'tool' must follow tool_calls" provider error.
+        if (messages.length > 0) {
+          const last = messages[messages.length - 1]
+          if (last.role === 'assistant' && last.tool_calls && last.tool_calls.length > 0) {
+            messages.pop()
+            console.warn('[callLLM] Removed partial assistant+tool_calls message after stream error')
+          }
+        }
+
+        if (!signal.aborted) {
+          this.emitError(taskId, messageId, err instanceof Error ? err.message : String(err))
+        }
+        return null
       }
-      return null
     }
-  }
 
   /**
    * Process tool calls from the assistant.
@@ -772,7 +784,54 @@ export class ExecutionAgent extends BaseAgent {
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
 
-  private buildEnvSummary(executionConfig?: ExecutionConfig): string {
+    /**
+     * Sanitize a message array to ensure it conforms to the OpenAI message format:
+     * 1. Every assistant message with tool_calls must have all corresponding tool results.
+     * 2. Every tool result must reference a tool_call_id declared by an assistant message.
+     * Orphaned messages on either side are silently dropped.
+     */
+    private sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
+      // Pass 1: collect all declared tool_call IDs
+      const declaredIds = new Set<string>()
+      for (const m of messages) {
+        if (m.role === 'assistant' && m.tool_calls?.length) {
+          for (const tc of m.tool_calls) declaredIds.add(tc.id)
+        }
+      }
+
+      const out: LlmMessage[] = []
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i]
+        // Rule 1: assistant+tool_calls → all results must follow immediately
+        if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+          const expected = new Set(m.tool_calls.map(tc => tc.id))
+          let j = i + 1
+          const found = new Set<string>()
+          while (j < messages.length && messages[j].role === 'tool') {
+            const tid = messages[j].tool_call_id
+            if (tid) found.add(tid)
+            j++
+          }
+          if ([...expected].some(id => !found.has(id))) {
+            console.warn('[sanitizeMessages] Dropping incomplete assistant+tool_calls block')
+            i = j - 1
+            continue
+          }
+        }
+        // Rule 2: tool result must reference a declared call
+        if (m.role === 'tool') {
+          const tid = m.tool_call_id
+          if (!tid || !declaredIds.has(tid)) {
+            console.warn('[sanitizeMessages] Dropping orphaned tool result, id:', tid)
+            continue
+          }
+        }
+        out.push(m)
+      }
+      return out
+    }
+
+    private buildEnvSummary(executionConfig?: ExecutionConfig): string {
     const hasSandbox = executionConfig?.executionMode === 'docker'
     
     // Core tools that are ALWAYS available
@@ -917,10 +976,14 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
         })
       }
 
-    messages.length = 0
-    messages.push(...kept)
+      // Post-compression: remove any orphaned tool results so the history
+      // is always valid before the next LLM call (rule: tool must follow tool_calls).
+      const cleanedKept = this.sanitizeMessages(kept)
 
-    const step: AgentStep = { kind: 'context_compressed', removedCount }
+      messages.length = 0
+      messages.push(...cleanedKept)
+
+      const step: AgentStep = { kind: 'context_compressed', removedCount }
     useAppStore.getState().addStep(taskId, messageId, step)
 
     return removedCount

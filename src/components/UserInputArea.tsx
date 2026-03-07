@@ -140,21 +140,21 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
   const borderColor = (() => {
     if (inputState === 'awaiting_input') return 'var(--amber)'
     if (isFocused)                       return 'rgba(234,179,8,0.35)'
-    if (inputState === 'streaming')      return 'rgba(255,255,255,0.1)'
+    if (inputState === 'streaming')      return 'rgba(234,179,8,0.12)'
     if (inputState === 'processing')     return 'rgba(255,255,255,0.04)'
     return 'rgba(255,255,255,0.08)'
   })()
 
   const boxShadow = (() => {
-    if (inputState === 'awaiting_input') return '0 0 0 2px rgba(234,179,8,0.1), 0 8px 32px rgba(0,0,0,0.4)'
-    if (isFocused)                       return '0 0 0 1.5px rgba(234,179,8,0.12), 0 6px 24px rgba(0,0,0,0.35)'
+    if (inputState === 'awaiting_input') return '0 0 0 3px rgba(234,179,8,0.1), 0 8px 32px rgba(0,0,0,0.4)'
+    if (isFocused)                       return '0 0 0 3px rgba(234,179,8,0.08), 0 6px 24px rgba(0,0,0,0.35)'
     return '0 2px 12px rgba(0,0,0,0.25)'
   })()
 
   return (
     <div
       style={{
-        borderRadius: 10,
+        borderRadius: 14,
         border: `1px solid ${borderColor}`,
         background: inputState === 'processing' ? '#0f0f0f' : '#141414',
         transition: 'border-color 0.18s, box-shadow 0.18s',
@@ -162,6 +162,9 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         ...(inputState === 'awaiting_input' ? {
           borderLeft: '3px solid var(--amber)',
           animation: 'inputPulse 2s ease-in-out infinite',
+        } : {}),
+        ...(inputState === 'streaming' && !isFocused ? {
+          animation: 'inputPulse 3s ease-in-out infinite',
         } : {}),
       }}
       className={`user-input-area state-${inputState}`}
@@ -370,42 +373,62 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
               Stop
             </button>
           ) : (
-            <button
-              onClick={handleSend}
-              disabled={!canSend}
-              title="Send (Enter) · Shift+Enter for newline"
-              aria-label="Send message"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 30,
-                height: 30,
-                borderRadius: 6,
-                border: 'none',
-                cursor: !canSend ? 'not-allowed' : 'pointer',
-                background: !canSend ? 'rgba(255,255,255,0.06)' : 'var(--amber)',
-                opacity: !canSend ? 0.35 : 1,
-                transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
-                animation: 'buttonAppear 0.15s ease',
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                if (canSend) {
-                  e.currentTarget.style.background = 'var(--amber-soft)'
-                  e.currentTarget.style.transform = 'scale(1.06)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (canSend) {
-                  e.currentTarget.style.background = 'var(--amber)'
-                  e.currentTarget.style.transform = 'scale(1)'
-                }
-              }}
-            >
-              <Pxi name="arrow-up" size={13} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
-            </button>
+              <button
+                onClick={handleSend}
+                disabled={!canSend}
+                title="Send (Enter) · Shift+Enter for newline"
+                aria-label="Send message"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: 9,
+                  border: 'none',
+                  cursor: !canSend ? 'not-allowed' : 'pointer',
+                  background: !canSend ? 'rgba(255,255,255,0.06)' : 'var(--amber)',
+                  opacity: !canSend ? 0.35 : 1,
+                  transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
+                  animation: 'buttonAppear 0.15s ease',
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  if (canSend) {
+                    e.currentTarget.style.background = 'var(--amber-soft)'
+                    e.currentTarget.style.transform = 'scale(1.06)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (canSend) {
+                    e.currentTarget.style.background = 'var(--amber)'
+                    e.currentTarget.style.transform = 'scale(1)'
+                  }
+                }}
+              >
+                <Pxi name="arrow-up" size={13} style={{ color: !canSend ? 'var(--tx-muted)' : '#000' }} />
+              </button>
           )}
+        </div>
+
+        {/* Keyboard hints — fade in on focus */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: 10,
+          padding: '0 10px 6px',
+          opacity: isFocused && !isWorking ? 0.7 : 0,
+          transition: 'opacity 0.2s ease',
+          pointerEvents: 'none',
+        }}>
+          <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)' }}>
+            ↵ send
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--tx-ghost)', fontFamily: 'var(--font-mono)' }}>·</span>
+          <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)' }}>
+            ⇧↵ newline
+          </span>
         </div>
       </div>
     </div>

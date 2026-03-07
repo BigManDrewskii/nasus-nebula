@@ -16,8 +16,48 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
 
   const rows = useMemo(() => buildRows(steps || []), [steps])
 
+  // Separate memory rows from visible rows
+  const memoryRows = useMemo(() => rows.filter(r =>
+    r.kind === 'tool_pair' && isMemoryPath(String(r.call.input.path ?? ''))
+  ) as ToolPair[], [rows])
+
+  const visibleRows = useMemo(() => {
+    const nonMemory = rows.filter(r =>
+      !(r.kind === 'tool_pair' && isMemoryPath(String(r.call.input.path ?? '')))
+    )
+    // Batch consecutive same-type tool_pair operations (3+)
+    const batched: ProcessedRow[] = []
+    let i = 0
+    while (i < nonMemory.length) {
+      const row = nonMemory[i]
+      if (row.kind !== 'tool_pair') {
+        batched.push(row)
+        i++
+        continue
+      }
+      const tool = row.call.tool
+      let j = i + 1
+      while (j < nonMemory.length && nonMemory[j].kind === 'tool_pair' && (nonMemory[j] as ToolPair).call.tool === tool) {
+        j++
+      }
+      const runLen = j - i
+      if (runLen >= 3) {
+        batched.push({ kind: 'tool_group', tool, pairs: nonMemory.slice(i, j) as ToolPair[] })
+      } else {
+        for (let k = i; k < j; k++) batched.push(nonMemory[k])
+      }
+      i = j
+    }
+    return batched
+  }, [rows])
+
   // Derive count once — used in header label and badge
   const toolPairCount = useMemo(() => rows.filter(r => r.kind === 'tool_pair').length, [rows])
+
+  // Count completed tool pairs (have a result)
+  const completedCount = useMemo(() => rows.filter(r =>
+    r.kind === 'tool_pair' && r.result !== null
+  ).length, [rows])
 
   // Find the most recently active / pending action for the live header label
   const liveLabel = useMemo(() => {
@@ -35,12 +75,14 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
     r.kind === 'tool_pair' && isMemoryPath(String(r.call.input.path ?? ''))
   ), [rows])
 
+  const [memoryExpanded, setMemoryExpanded] = useState(false)
+
   // Early return after all hooks are called
   if (!steps || steps.length === 0) return null
 
   return (
     <div style={{ marginBottom: 6 }}>
-      {/* Section header — collapsible, shows live action label */}
+      {/* Section header — collapsible */}
       <button
         onClick={() => setCollapsed(o => !o)}
         style={{
@@ -48,65 +90,110 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '6px 0 8px 0',
+          padding: '5px 8px 5px 6px',
+          borderRadius: 7,
           background: 'transparent',
-          border: 'none',
+          border: '1px solid transparent',
           cursor: 'pointer',
           textAlign: 'left',
+          transition: 'background 0.1s',
         }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
       >
         {/* Live status indicator */}
-        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ flexShrink: 0, width: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isStreaming && !hasOnlyMemoryOps ? (
             <SpinnerDot />
           ) : (
-            <Pxi name="check-circle" size={14} style={{ color: '#34d399' }} />
+            <Pxi name="check-circle" size={13} style={{ color: '#34d399' }} />
           )}
         </span>
 
-          {/* Current action label */}
-          <span style={{
-            flex: 1,
-            fontSize: 13,
-            fontWeight: 500,
-            color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-            lineHeight: 1.4,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {isStreaming ? liveLabel : `${toolPairCount} action${toolPairCount !== 1 ? 's' : ''} completed`}
-          </span>
+        {/* Current action label */}
+        <span style={{
+          flex: 1,
+          fontSize: 12,
+          fontWeight: 500,
+          color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          lineHeight: 1.4,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {isStreaming
+            ? <>{liveLabel}<span style={{ margin: '0 5px', opacity: 0.35 }}>·</span><span style={{ fontWeight: 400, color: 'var(--tx-tertiary)', fontSize: 11 }}>{completedCount} of ~{toolPairCount}</span></>
+            : `${toolPairCount} action${toolPairCount !== 1 ? 's' : ''} completed`}
+        </span>
 
-          {/* Step count badge */}
-          {toolPairCount > 0 && (
-            <span style={{
-              fontSize: 10,
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--tx-tertiary)',
-              background: 'rgba(255,255,255,0.06)',
-              padding: '1px 6px',
-              borderRadius: 4,
-              flexShrink: 0,
-            }}>
-              {toolPairCount}
-            </span>
-          )}
+        {/* Step count badge */}
+        {toolPairCount > 0 && (
+          <span style={{
+            fontSize: 9,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--tx-tertiary)',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            padding: '1px 6px',
+            borderRadius: 4,
+            flexShrink: 0,
+          }}>
+            {toolPairCount}
+          </span>
+        )}
 
         <Pxi
           name={collapsed ? 'chevron-down' : 'chevron-up'}
-          size={12}
-          style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.5 }}
+          size={11}
+          style={{ color: 'var(--tx-muted)', flexShrink: 0 }}
         />
       </button>
 
       {/* Step rows — hidden when collapsed */}
       {!collapsed && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 22 }}>
-          {rows.map((row, i) => (
-            <Row key={i} row={row} />
-          ))}
-        </div>
+        <>
+          <div style={{ marginLeft: 24, height: 1, background: 'rgba(255,255,255,0.04)', margin: '2px 0 4px 24px' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 24, paddingTop: 0 }}>
+            {/* Memory operations summary row */}
+            {memoryRows.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setMemoryExpanded(o => !o)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '3px 6px',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>📋</span>
+                  <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontStyle: 'italic', flex: 1 }}>
+                    {memoryRows.length} memory operation{memoryRows.length !== 1 ? 's' : ''}{' '}
+                    ({[...new Set(memoryRows.map(r => String(r.call.input.path ?? '').split('/').pop()))].join(', ')})
+                  </span>
+                  <Pxi
+                    name={memoryExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={9}
+                    style={{ color: 'var(--tx-muted)', flexShrink: 0 }}
+                  />
+                </button>
+                {memoryExpanded && (
+                  <div style={{ paddingLeft: 4 }}>
+                    {memoryRows.map((r, i) => <Row key={`mem-${i}`} row={r} />)}
+                  </div>
+                )}
+              </div>
+            )}
+            {visibleRows.map((row, i) => (
+              <ProcessedRowComponent key={i} row={row} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
@@ -129,6 +216,14 @@ type AnyRow =
     | { kind: 'browser_action'; step: Extract<AgentStep, { kind: 'browser_action' }> }
     | { kind: 'verification'; step: Extract<AgentStep, { kind: 'verification' }> }
     | { kind: 'gateway_fallback'; step: Extract<AgentStep, { kind: 'gateway_fallback' }> }
+
+type ToolGroup = {
+  kind: 'tool_group'
+  tool: string
+  pairs: ToolPair[]
+}
+
+type ProcessedRow = AnyRow | ToolGroup
 
 function buildRows(steps: AgentStep[]): AnyRow[] {
   const rows: AnyRow[] = []
@@ -205,6 +300,13 @@ function Row({ row }: { row: AnyRow }) {
   return null
 }
 
+// ─── Processed row dispatcher (handles ToolGroup) ─────────────────────────────
+
+function ProcessedRowComponent({ row }: { row: ProcessedRow }) {
+  if (row.kind === 'tool_group') return <ToolGroupRow group={row} />
+  return <Row row={row} />
+}
+
 // ─── Thinking row ─────────────────────────────────────────────────────────────
 
 const ThinkingRow = memo(function ThinkingRow({ content }: { content: string }) {
@@ -268,11 +370,55 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
   const iconColor = isError
     ? '#f87171'
     : isMemoryFile
-    ? 'rgba(255,255,255,0.18)'
+    ? 'rgba(255,255,255,0.15)'
     : toolIconColor(call.tool)
 
+  // Error rows render as a prominent inline card
+  if (isError) {
+    return (
+      <div style={{
+        margin: '6px 0',
+        padding: '10px 14px',
+        borderRadius: 10,
+        background: 'rgba(239,68,68,0.06)',
+        border: '1px solid rgba(239,68,68,0.2)',
+        borderLeft: '3px solid #f87171',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <Pxi name="times-circle" size={14} style={{ color: '#f87171' }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: '#f87171', textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>
+            {label} failed
+          </span>
+          <button
+            onClick={() => setOpen(o => !o)}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(248,113,113,0.6)', padding: 2 }}
+          >
+            <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} />
+          </button>
+        </div>
+        {sublabel && (
+          <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'rgba(248,113,113,0.5)', display: 'block', marginBottom: 6 }}>
+            {sublabel}
+          </span>
+        )}
+        <pre style={{
+          fontSize: 11, fontFamily: 'var(--font-mono)', color: '#fca5a5',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          margin: 0, maxHeight: 120, overflowY: 'auto',
+        }}>
+          {result?.output || 'Unknown error'}
+        </pre>
+        {open && (
+          <div className="slide-down" style={{ marginTop: 8 }}>
+            <ExpandedDetail call={call} result={result} isError={isError} isWriteFile={isWriteFile} isReadFile={isReadFile} isPatchFile={isPatchFile} />
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div style={{ borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ borderRadius: 7, overflow: 'hidden' }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
@@ -282,30 +428,28 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           alignItems: 'center',
           gap: 8,
           padding: '5px 8px 5px 6px',
-          borderRadius: open ? '8px 8px 0 0' : 8,
-          border: open ? '1px solid rgba(255,255,255,0.07)' : '1px solid transparent',
+          borderRadius: open ? '7px 7px 0 0' : 7,
+          border: `1px solid ${open ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
           borderBottom: open ? '1px solid rgba(255,255,255,0.04)' : '1px solid transparent',
-          background: open ? 'rgba(255,255,255,0.03)' : 'transparent',
+          background: open ? 'rgba(255,255,255,0.025)' : 'transparent',
           cursor: 'pointer',
           transition: 'background 0.1s',
         }}
-        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
         onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
       >
         {/* Status dot */}
         <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isPending ? (
             <SpinnerDot />
-          ) : isError ? (
-            <Pxi name="times-circle" size={12} style={{ color: '#f87171' }} />
           ) : (
-            <Pxi name="check-circle" size={12} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.25)' : '#34d399' }} />
+            <Pxi name="check-circle" size={12} style={{ color: isMemoryFile ? 'rgba(52,211,153,0.2)' : '#34d399' }} />
           )}
         </span>
 
         {/* Tool icon */}
-        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
-          <Pxi name={icon} size={14} style={{ color: iconColor }} />
+        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center', opacity: isMemoryFile ? 0.35 : 1 }}>
+          <Pxi name={icon} size={13} style={{ color: iconColor }} />
         </span>
 
         {/* Label stack */}
@@ -313,7 +457,7 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           <span style={{
             fontSize: 12,
             fontWeight: isMemoryFile ? 400 : 500,
-            color: isMemoryFile ? 'rgba(255,255,255,0.28)' : isError ? '#f87171' : 'var(--tx-secondary)',
+            color: isMemoryFile ? 'rgba(255,255,255,0.22)' : 'var(--tx-secondary)',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -325,7 +469,7 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
             <span style={{
               fontSize: 10,
               fontFamily: 'var(--font-mono)',
-              color: isMemoryFile ? 'rgba(255,255,255,0.14)' : 'var(--tx-tertiary)',
+              color: isMemoryFile ? 'rgba(255,255,255,0.1)' : 'var(--tx-muted)',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -336,15 +480,109 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
           )}
         </span>
 
-        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-tertiary)', flexShrink: 0, opacity: 0.4 }} />
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-muted)', flexShrink: 0, opacity: 0.5 }} />
       </button>
 
       {open && (
-        <ExpandedDetail call={call} result={result} isError={isError} isWriteFile={isWriteFile} isReadFile={isReadFile} isPatchFile={isPatchFile} />
+        <div className="slide-down">
+          <ExpandedDetail call={call} result={result} isError={isError} isWriteFile={isWriteFile} isReadFile={isReadFile} isPatchFile={isPatchFile} />
+        </div>
       )}
     </div>
   )
 })
+
+// ─── Tool group row (3+ consecutive same-type operations) ─────────────────────
+
+function ToolGroupRow({ group }: { group: ToolGroup }) {
+  const [open, setOpen] = useState(false)
+  const { tool, pairs } = group
+  const icon = toolIcon(tool)
+  const iconColor = toolIconColor(tool)
+  const allDone = pairs.every(p => p.result !== null)
+  const hasError = pairs.some(p => p.result?.isError)
+
+  const actionVerb = tool === 'write_file' ? 'Writing'
+    : tool === 'read_file' ? 'Reading'
+    : tool === 'patch_file' ? 'Editing'
+    : tool === 'bash' || tool === 'bash_execute' ? 'Running'
+    : tool === 'list_files' ? 'Listing'
+    : tool === 'mkdir' ? 'Creating'
+    : 'Processing'
+
+  return (
+    <div style={{ borderRadius: 7, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%',
+          textAlign: 'left',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '5px 8px 5px 6px',
+          borderRadius: open ? '7px 7px 0 0' : 7,
+          border: `1px solid ${open ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
+          background: open ? 'rgba(255,255,255,0.025)' : 'transparent',
+          cursor: 'pointer',
+          transition: 'background 0.1s',
+        }}
+        onMouseEnter={(e) => { if (!open) e.currentTarget.style.background = 'rgba(255,255,255,0.025)' }}
+        onMouseLeave={(e) => { if (!open) e.currentTarget.style.background = 'transparent' }}
+      >
+        <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {!allDone ? (
+            <SpinnerDot />
+          ) : hasError ? (
+            <Pxi name="times-circle" size={12} style={{ color: '#f87171' }} />
+          ) : (
+            <Pxi name="check-circle" size={12} style={{ color: '#34d399' }} />
+          )}
+        </span>
+        <span style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+          <Pxi name={icon} size={13} style={{ color: iconColor }} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500, color: 'var(--tx-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {actionVerb} {pairs.length} files
+        </span>
+        {open && (
+          <span style={{ fontSize: 9, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0, marginRight: 4 }}>
+            expanded
+          </span>
+        )}
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={10} style={{ color: 'var(--tx-muted)', flexShrink: 0, opacity: 0.5 }} />
+      </button>
+      {!open && (
+        <div style={{ paddingLeft: 22, paddingBottom: 3 }}>
+          {pairs.slice(0, 3).map((p, i) => {
+            const subpath = String(p.call.input.path ?? p.call.input.command ?? '').split('/').pop() ?? ''
+            return (
+              <div key={i} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)', lineHeight: 1.7, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {subpath || String(p.call.input.path ?? '').slice(0, 50)}
+              </div>
+            )
+          })}
+          {pairs.length > 3 && (
+            <div style={{ fontSize: 10, color: 'var(--tx-muted)', fontStyle: 'italic' }}>
+              +{pairs.length - 3} more
+            </div>
+          )}
+        </div>
+      )}
+      {open && (
+        <div className="slide-down" style={{
+          background: 'rgba(0,0,0,0.08)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderTop: 'none',
+          borderRadius: '0 0 7px 7px',
+          padding: '4px 0',
+        }}>
+          {pairs.map((p, i) => <ToolPairRow key={i} pair={p} />)}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ─── Expanded detail ──────────────────────────────────────────────────────────
 
@@ -633,11 +871,11 @@ function SearchStatusRow({ step }: { step: Extract<AgentStep, { kind: 'search_st
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 8,
+      gap: 7,
       padding: '5px 8px',
-      borderRadius: 8,
-      background: 'rgba(255,255,255,0.015)',
-      border: `1px solid ${isFailed ? 'rgba(239,68,68,0.12)' : isDone ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.06)'}`,
+      borderRadius: 7,
+      background: isDone ? 'rgba(52,211,153,0.03)' : isFailed ? 'rgba(239,68,68,0.03)' : 'rgba(255,255,255,0.015)',
+      border: `1px solid ${isFailed ? 'rgba(239,68,68,0.1)' : isDone ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.055)'}`,
     }}>
       <span style={{ flexShrink: 0, width: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {isLive ? (
@@ -647,32 +885,51 @@ function SearchStatusRow({ step }: { step: Extract<AgentStep, { kind: 'search_st
         )}
       </span>
 
-      <Pxi name="search" size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
+      <Pxi name="search" size={11} style={{ color: 'var(--tx-muted)', flexShrink: 0 }} />
 
       <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--tx-secondary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {message}
       </span>
 
-      {query && (
-        <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          &ldquo;{query}&rdquo;
-        </span>
-      )}
-      {provider && provider !== 'none' && (
-        <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', background: 'rgba(255,255,255,0.06)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
-          {provider}
-        </span>
-      )}
-      {isDone && resultCount != null && (
-        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: '#34d399', flexShrink: 0 }}>
-          {resultCount}
-        </span>
-      )}
-      {isDone && durationMs != null && (
-        <span style={{ fontSize: 9.5, fontFamily: 'var(--font-mono)', color: 'var(--tx-tertiary)', flexShrink: 0 }}>
-          {durationMs}ms
-        </span>
-      )}
+      {/* Metadata pills */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+        {query && (
+          <span style={{
+            fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+            padding: '1px 5px', borderRadius: 4, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            &ldquo;{query}&rdquo;
+          </span>
+        )}
+        {provider && provider !== 'none' && (
+          <span style={{
+            fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+            padding: '1px 5px', borderRadius: 4,
+          }}>
+            {provider}
+          </span>
+        )}
+        {isDone && resultCount != null && (
+          <span style={{
+            fontSize: 9, fontFamily: 'var(--font-mono)', color: '#34d399',
+            background: 'rgba(52,211,153,0.07)', border: '1px solid rgba(52,211,153,0.15)',
+            padding: '1px 5px', borderRadius: 4,
+          }}>
+            {resultCount} results
+          </span>
+        )}
+        {isDone && durationMs != null && (
+          <span style={{
+            fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+            padding: '1px 5px', borderRadius: 4,
+          }}>
+            {durationMs}ms
+          </span>
+        )}
+      </div>
     </div>
   )
 }

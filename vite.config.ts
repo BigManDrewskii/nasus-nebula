@@ -34,7 +34,7 @@ export default defineConfig({
     // imports that will be resolved at runtime via dynamic import().
     // Exclude onnxruntime-web — vite-plugin-wasm must handle its .wasm files
     // directly; pre-bundling inlines WASM as base64 which breaks the plugin.
-    exclude: ['@e2b/code-interpreter', 'e2b', 'onnxruntime-web', '@huggingface/transformers'],
+      exclude: ['@e2b/code-interpreter', 'e2b', 'onnxruntime-web', '@huggingface/transformers', 'web-tree-sitter'],
   },
   clearScreen: false,
   server: {

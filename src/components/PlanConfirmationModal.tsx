@@ -1,6 +1,6 @@
 /**
  * PlanView — Displays the execution plan for user approval or during execution.
- * Integrated directly into the chat for a better UX.
+ * Elevated design: richer status badges, amber glow on CTA, phase left-border active state.
  */
 
 import { memo, useState } from 'react'
@@ -16,7 +16,7 @@ interface PlanViewProps {
   isReadOnly?: boolean
 }
 
-// ── Plan Step Item ────────────────────────────────────────────────────────────────
+// ── Plan Step Item ────────────────────────────────────────────────────────────
 
 interface PlanStepItemProps {
   step: PlanStep
@@ -32,32 +32,35 @@ const PlanStepItem = memo(({ step, stepNumber, isCurrent, isCompleted }: PlanSte
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
-        padding: '6px 8px',
+        padding: '6px 10px 6px 8px',
         borderRadius: 6,
-        background: isCurrent ? 'rgba(255,255,255,0.03)' : 'transparent',
-        border: isCurrent ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
-        transition: 'background 0.12s, border-color 0.12s',
+        background: isCurrent ? 'rgba(234,179,8,0.04)' : 'transparent',
+        borderLeft: isCurrent ? '2px solid rgba(234,179,8,0.5)' : '2px solid transparent',
+        transition: 'background 0.15s, border-color 0.15s',
+        marginLeft: -2,
       }}
     >
+      {/* Step number badge */}
       <span
         className="font-numeric"
         style={{
           flexShrink: 0,
-          width: 20,
-          height: 20,
+          width: 18,
+          height: 18,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: 10,
+          fontSize: 9,
           fontWeight: 600,
           borderRadius: 4,
+          marginTop: 1,
           background: isCompleted
-            ? 'rgba(234,179,8,0.15)'
+            ? 'rgba(52,211,153,0.15)'
             : isCurrent
             ? 'rgba(234,179,8,0.9)'
             : 'rgba(255,255,255,0.04)',
-          color: isCompleted || isCurrent ? '#000' : 'var(--tx-muted)',
-          transition: 'background 0.12s',
+          color: isCompleted ? '#34d399' : isCurrent ? '#000' : 'var(--tx-muted)',
+          transition: 'background 0.15s',
         }}
       >
         {isCompleted ? <Pxi name="check" size={8} /> : stepNumber}
@@ -74,27 +77,32 @@ const PlanStepItem = memo(({ step, stepNumber, isCurrent, isCompleted }: PlanSte
               ? 'var(--tx-primary)'
               : 'var(--tx-secondary)',
             textDecoration: isCompleted ? 'line-through' : 'none',
+            lineHeight: 1.45,
           }}
         >
           {step.description}
         </span>
 
         {step.tools && step.tools.length > 0 && !isCompleted && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 3, marginTop: 5, flexWrap: 'wrap' }}>
             {step.tools.map((tool) => (
               <span
                 key={tool}
-                className="font-numeric"
                 style={{
-                  padding: '2px 5px',
+                  padding: '1px 5px',
                   fontSize: 9,
+                  fontFamily: 'var(--font-mono)',
                   fontWeight: 500,
-                  letterSpacing: '0.05em',
+                  letterSpacing: '0.04em',
                   textTransform: 'uppercase',
                   borderRadius: 4,
                   background: isCurrent
-                    ? 'rgba(234,179,8,0.1)'
+                    ? 'rgba(234,179,8,0.08)'
                     : 'rgba(255,255,255,0.04)',
+                  border: '1px solid',
+                  borderColor: isCurrent
+                    ? 'rgba(234,179,8,0.2)'
+                    : 'rgba(255,255,255,0.06)',
                   color: isCurrent ? 'var(--amber)' : 'var(--tx-muted)',
                 }}
               >
@@ -108,7 +116,7 @@ const PlanStepItem = memo(({ step, stepNumber, isCurrent, isCompleted }: PlanSte
   )
 })
 
-// ── Plan Phase Item ───────────────────────────────────────────────────────────────
+// ── Plan Phase Item ───────────────────────────────────────────────────────────
 
 interface PlanPhaseItemProps {
   phase: PlanPhase
@@ -119,25 +127,51 @@ interface PlanPhaseItemProps {
 }
 
 const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, currentStep }: PlanPhaseItemProps) => {
+  // Completed phases collapse to a single compact line
+  if (isCompleted) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 14px',
+        opacity: 0.4,
+        borderRadius: 9,
+        border: '1px solid rgba(255,255,255,0.03)',
+      }}>
+        <Pxi name="check" size={11} style={{ color: '#4ade80', flexShrink: 0 }} />
+        <span style={{ fontSize: 11, color: 'var(--tx-tertiary)', textDecoration: 'line-through', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {phase.title}
+        </span>
+        <span style={{ fontSize: 9, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
+          {phase.steps.length} steps
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div
       style={{
-        borderRadius: 8,
+        borderRadius: 9,
         border: '1px solid',
-        borderColor: isCurrent ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)',
-        background: isCurrent ? 'rgba(255,255,255,0.02)' : 'transparent',
-        transition: 'opacity 0.2s ease',
-        opacity: isCompleted ? 0.4 : 1,
+        borderColor: isCurrent ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.06)',
+        background: isCurrent ? 'rgba(234,179,8,0.03)' : 'transparent',
+        borderLeft: isCurrent ? '2px solid rgba(234,179,8,0.45)' : undefined,
+        transition: 'border-color 0.2s',
+        overflow: 'hidden',
       }}
     >
+      {/* Phase header */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          padding: '12px 14px',
+          padding: '11px 14px',
         }}
       >
+        {/* Phase number badge */}
         <div
           className="font-numeric"
           style={{
@@ -147,15 +181,15 @@ const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, curren
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderRadius: 5,
+            borderRadius: 6,
             fontSize: 11,
             fontWeight: 600,
             background: isCompleted
-              ? 'rgba(234,179,8,0.12)'
+              ? 'rgba(52,211,153,0.1)'
               : isCurrent
               ? 'rgba(234,179,8,0.9)'
               : 'rgba(255,255,255,0.04)',
-            color: isCompleted ? 'rgba(234,179,8,0.8)' : isCurrent ? '#000' : 'var(--tx-muted)',
+            color: isCompleted ? '#4ade80' : isCurrent ? '#000' : 'var(--tx-muted)',
           }}
         >
           {isCompleted ? <Pxi name="check" size={11} /> : phaseNumber}
@@ -165,11 +199,12 @@ const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, curren
           <h4
             className="font-display"
             style={{
-              fontSize: 12,
+              fontSize: 11,
               fontWeight: 600,
-              letterSpacing: '0.05em',
+              letterSpacing: '0.06em',
               textTransform: 'uppercase',
-              color: isCurrent ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
+              color: isCurrent ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+              margin: 0,
             }}
           >
             {phase.title}
@@ -183,6 +218,7 @@ const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, curren
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
+                margin: '2px 0 0',
               }}
             >
               {phase.description}
@@ -190,35 +226,38 @@ const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, curren
           )}
         </div>
 
-        <div
+        {/* Step count badge */}
+        <span
           className="font-numeric"
           style={{
             fontSize: 9,
             fontWeight: 500,
-            letterSpacing: '0.1em',
+            letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            padding: '3px 7px',
+            padding: '2px 6px',
             borderRadius: 4,
             background: isCurrent
               ? 'rgba(234,179,8,0.1)'
               : 'rgba(255,255,255,0.03)',
             color: isCurrent ? 'var(--amber)' : 'var(--tx-muted)',
+            flexShrink: 0,
           }}
         >
           {phase.steps.length}
-        </div>
+        </span>
       </div>
 
+      {/* Expanded steps for current phase */}
       {isCurrent && (
-        <div style={{ padding: '0 10px 12px' }}>
+        <div style={{ padding: '0 12px 12px' }}>
           <div
             style={{
               height: 1,
-              background: 'rgba(255,255,255,0.06)',
+              background: 'rgba(234,179,8,0.1)',
               margin: '0 0 10px',
             }}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, paddingLeft: 2 }}>
             {phase.steps.map((step, idx) => (
               <PlanStepItem
                 key={step.id}
@@ -235,14 +274,70 @@ const PlanPhaseItem = memo(({ phase, phaseNumber, isCurrent, isCompleted, curren
   )
 })
 
-// ── Main Plan View Component ───────────────────────────────────────────────────────
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+function StatusBadge({ isApprovalMode, isCollapsed }: { isApprovalMode: boolean; isCollapsed: boolean }) {
+  if (isApprovalMode) {
+    return (
+      <span
+        className="font-numeric"
+        style={{
+          fontSize: 9,
+          fontWeight: 600,
+          padding: '2px 7px',
+          borderRadius: 5,
+          background: 'rgba(234,179,8,0.12)',
+          border: '1px solid rgba(234,179,8,0.25)',
+          color: 'var(--amber)',
+          letterSpacing: '0.06em',
+          textTransform: 'uppercase',
+        }}
+      >
+        PENDING APPROVAL
+      </span>
+    )
+  }
+
+  if (!isCollapsed) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span
+          style={{
+            width: 5, height: 5,
+            borderRadius: '50%',
+            background: '#4ade80',
+            animation: 'statusPulse 1.6s ease-in-out infinite',
+            display: 'inline-block',
+            flexShrink: 0,
+          }}
+        />
+        <span
+          className="font-numeric"
+          style={{
+            fontSize: 9,
+            fontWeight: 600,
+            color: '#4ade80',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          ACTIVE
+        </span>
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ── Main Plan View ────────────────────────────────────────────────────────────
 
 export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, currentStep, isReadOnly }: PlanViewProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const isApprovalMode = !!onApprove && !!onReject && !isReadOnly
   const totalSteps = plan.phases.reduce((sum, p) => sum + p.steps.length, 0)
   const progressPercent = currentPhase !== undefined
-    ? Math.round(((currentPhase + (currentStep !== undefined ? currentStep / plan.phases[currentPhase].steps.length : 0)) / plan.phases.length) * 100)
+    ? Math.round(((currentPhase + (currentStep !== undefined ? currentStep / Math.max(1, plan.phases[currentPhase]?.steps.length ?? 1) : 0)) / plan.phases.length) * 100)
     : 0
 
   return (
@@ -251,102 +346,64 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
       style={{
         width: '100%',
         overflow: 'hidden',
-        borderRadius: 12,
+        borderRadius: 14,
         border: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(13,13,13,0.95)',
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        background: 'rgba(11,11,11,0.97)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)',
       }}
     >
-      {/* Header */}
+      {/* Card header */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 16,
+          gap: 12,
           padding: '14px 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: isCollapsed ? 'none' : '1px solid rgba(255,255,255,0.06)',
           cursor: 'pointer',
           position: 'relative',
+          userSelect: 'none',
         }}
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
+        {/* Left: icon + title + status badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-          <Pxi
-            name={isApprovalMode ? 'shield-check' : 'cpu'}
-            size={16}
-            style={{ color: isApprovalMode ? 'var(--amber)' : 'var(--tx-tertiary)', flexShrink: 0 }}
-          />
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 7, background: isApprovalMode ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isApprovalMode ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.07)'}` }}>
+            <Pxi
+              name={isApprovalMode ? 'shield-check' : 'cpu'}
+              size={14}
+              style={{ color: isApprovalMode ? 'var(--amber)' : 'var(--tx-secondary)' }}
+            />
+          </div>
 
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <h2
                 className="font-display"
                 style={{
-                  fontSize: 12,
-                  fontWeight: 600,
+                  fontSize: 11,
+                  fontWeight: 700,
                   color: 'var(--tx-primary)',
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
+                  margin: 0,
                 }}
               >
                 {isApprovalMode ? 'Execution Plan' : 'In Progress'}
               </h2>
-
-              {isApprovalMode && (
-                <span
-                  className="font-numeric"
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 500,
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    background: 'rgba(234,179,8,0.12)',
-                    color: 'var(--amber)',
-                    letterSpacing: '0.05em',
-                  }}
-                >
-                  PENDING
-                </span>
-              )}
-
-              {!isApprovalMode && !isCollapsed && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <div
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: '50%',
-                      background: 'var(--amber)',
-                    }}
-                  />
-                  <span
-                    className="font-numeric"
-                    style={{
-                      fontSize: 9,
-                      fontWeight: 500,
-                      color: 'var(--amber)',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Active
-                  </span>
-                </div>
-              )}
+              <StatusBadge isApprovalMode={isApprovalMode} isCollapsed={isCollapsed} />
             </div>
             <p
               className="font-numeric"
               style={{
                 fontSize: 11,
                 color: 'var(--tx-tertiary)',
-                fontWeight: 400,
-                letterSpacing: '0.05em',
-                marginTop: 1,
+                marginTop: 2,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
+                margin: '2px 0 0',
               }}
             >
               {plan.title}
@@ -354,14 +411,15 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Right: phase count + chevron */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           {!isCollapsed && (
-            <div style={{ textAlign: 'right' }} className="hide-below-sm">
+            <div style={{ textAlign: 'right' }}>
               <div
                 className="font-numeric"
                 style={{
-                  fontSize: 18,
-                  fontWeight: 600,
+                  fontSize: 22,
+                  fontWeight: 700,
                   lineHeight: 1,
                   color: isApprovalMode ? 'var(--amber)' : 'var(--tx-primary)',
                 }}
@@ -371,7 +429,7 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
               <div
                 style={{
                   fontSize: 8,
-                  fontWeight: 500,
+                  fontWeight: 600,
                   color: 'var(--tx-muted)',
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
@@ -385,30 +443,28 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
 
           <div
             style={{
-              padding: 6,
-              borderRadius: 4,
-              background: isCollapsed ? 'rgba(255,255,255,0.04)' : 'transparent',
-              transition: 'background 0.12s',
+              width: 24, height: 24,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 5,
+              background: 'rgba(255,255,255,0.04)',
             }}
           >
             <Pxi
               name={isCollapsed ? 'chevron-down' : 'chevron-up'}
-              size={12}
+              size={11}
               style={{ color: 'var(--tx-tertiary)' }}
             />
           </div>
         </div>
 
-        {/* Progress bar (execution mode only) */}
+        {/* Progress bar (execution mode) */}
         {!isApprovalMode && (
           <div
             style={{
               position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
+              bottom: 0, left: 0, right: 0,
               height: 1,
-              background: 'rgba(234,179,8,0.15)',
+              background: 'rgba(234,179,8,0.12)',
               overflow: 'hidden',
             }}
           >
@@ -416,7 +472,7 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
               style={{
                 height: '100%',
                 background: 'var(--amber)',
-                transition: 'width 0.6s ease-out',
+                transition: 'width 0.7s ease-out',
                 width: `${progressPercent}%`,
               }}
             />
@@ -424,19 +480,22 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
         )}
       </div>
 
+      {/* Card body */}
       {!isCollapsed && (
         <>
+          {/* Plan description */}
           {isApprovalMode && plan.description && (
-            <div style={{ padding: '0 16px', paddingTop: 14 }}>
+            <div style={{ padding: '12px 16px 0' }}>
               <p
                 style={{
                   fontSize: 12,
                   color: 'var(--tx-secondary)',
-                  lineHeight: 1.5,
-                  padding: '12px 14px',
-                  borderRadius: 6,
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.06)',
+                  lineHeight: 1.55,
+                  padding: '11px 13px',
+                  borderRadius: 8,
+                  background: 'rgba(255,255,255,0.025)',
+                  border: '1px solid rgba(255,255,255,0.05)',
+                  margin: 0,
                 }}
               >
                 {plan.description}
@@ -444,15 +503,16 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
             </div>
           )}
 
+          {/* Phases list */}
           <div
             className="custom-scrollbar"
             style={{
-              maxHeight: 400,
+              maxHeight: 420,
               overflowY: 'auto',
               padding: '14px 16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: 12,
+              gap: 8,
             }}
           >
             {plan.phases.map((phase, idx) => (
@@ -467,43 +527,36 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
             ))}
           </div>
 
-          {/* Footer / Actions */}
+          {/* Footer */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: 16,
-              padding: '14px 16px',
+              gap: 12,
+              padding: '12px 16px',
               borderTop: '1px solid rgba(255,255,255,0.06)',
-              background: 'rgba(0,0,0,0.2)',
+              background: 'rgba(0,0,0,0.15)',
               flexWrap: 'wrap',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Pxi name="zap" size={11} style={{ color: 'var(--amber)' }} />
+            {/* Step / time meta */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Pxi name="zap" size={10} style={{ color: 'var(--amber)' }} />
                 <span
                   className="font-numeric"
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: 'var(--tx-primary)',
-                  }}
+                  style={{ fontSize: 10, fontWeight: 500, color: 'var(--tx-secondary)' }}
                 >
                   {totalSteps} steps
                 </span>
               </div>
               {plan.estimatedSteps > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Pxi name="timer" size={11} style={{ color: 'var(--amber)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Pxi name="timer" size={10} style={{ color: 'var(--amber)' }} />
                   <span
                     className="font-numeric"
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: 'var(--amber)',
-                    }}
+                    style={{ fontSize: 10, fontWeight: 500, color: 'var(--amber)' }}
                   >
                     ~{plan.estimatedSteps}s
                   </span>
@@ -511,33 +564,33 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
               )}
             </div>
 
+            {/* Action buttons */}
             {isApprovalMode ? (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={onReject}
                   className="font-display"
                   style={{
-                    padding: '8px 14px',
-                    fontSize: 11,
-                    fontWeight: 500,
-                    letterSpacing: '0.05em',
+                    padding: '7px 14px',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
                     textTransform: 'uppercase',
-                    borderRadius: 6,
+                    borderRadius: 7,
                     border: '1px solid rgba(255,255,255,0.1)',
                     background: 'transparent',
                     color: 'var(--tx-secondary)',
                     cursor: 'pointer',
-                    transition: 'background 0.12s, color 0.12s, border-color 0.12s',
+                    transition: 'background 0.12s, color 0.12s',
+                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
                     e.currentTarget.style.color = 'var(--tx-primary)'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'transparent'
                     e.currentTarget.style.color = 'var(--tx-secondary)'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
                   }}
                 >
                   Reject
@@ -545,33 +598,36 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
 
                 <button
                   onClick={onApprove}
-                  className="font-display"
+                  className="font-display glow-amber"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 6,
-                    padding: '8px 16px',
-                    fontSize: 11,
-                    fontWeight: 500,
-                    letterSpacing: '0.05em',
+                    padding: '7px 18px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: '0.06em',
                     textTransform: 'uppercase',
-                    borderRadius: 6,
+                    borderRadius: 7,
                     border: 'none',
                     background: 'var(--amber)',
                     color: '#000',
                     cursor: 'pointer',
-                    transition: 'background 0.12s',
+                    transition: 'background 0.12s, transform 0.1s',
+                    fontFamily: 'inherit',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(234,179,8,0.85)'
+                    e.currentTarget.style.background = 'var(--amber-soft)'
+                    e.currentTarget.style.transform = 'scale(1.02)'
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = 'var(--amber)'
+                    e.currentTarget.style.transform = 'scale(1)'
                   }}
                 >
-                  <Pxi name="play" size={10} />
-                  <span>Approve</span>
+                  <Pxi name="play" size={9} />
+                  Approve
                 </button>
               </div>
             ) : (
@@ -580,26 +636,27 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  padding: '6px 10px',
+                  padding: '5px 10px',
                   borderRadius: 6,
-                  background: 'rgba(234,179,8,0.1)',
-                  border: '1px solid rgba(234,179,8,0.2)',
+                  background: 'rgba(74,222,128,0.08)',
+                  border: '1px solid rgba(74,222,128,0.18)',
                 }}
               >
-                <div
+                <span
                   style={{
-                    width: 5,
-                    height: 5,
+                    width: 5, height: 5,
                     borderRadius: '50%',
-                    background: 'var(--amber)',
+                    background: '#4ade80',
+                    animation: 'statusPulse 1.6s ease-in-out infinite',
+                    display: 'inline-block',
                   }}
                 />
                 <span
                   className="font-display"
                   style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: 'var(--amber)',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: '#4ade80',
                     letterSpacing: '0.1em',
                     textTransform: 'uppercase',
                   }}
@@ -615,7 +672,8 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
   )
 })
 
-// Legacy Export — deprecated but kept for compatibility
+// Legacy Exports
+
 export const PlanConfirmationModal = memo(({ plan, onApprove, onReject }: { plan: ExecutionPlan, onApprove: () => void, onReject: () => void }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-2xl animate-in fade-in duration-500">
