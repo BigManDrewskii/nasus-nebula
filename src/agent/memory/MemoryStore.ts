@@ -6,6 +6,10 @@
  * future tasks.
  */
 
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('MemoryStore')
+
 /**
  * Memory metadata.
  */
@@ -291,7 +295,7 @@ export async function createEmbedding(
     return data.data[0].embedding
   } catch (error) {
     // Fall back to simple embedding on error
-    console.warn('Embedding API failed, using simple embedding:', error)
+      log.warn('Embedding API failed, using simple embedding', error instanceof Error ? error : new Error(String(error)))
     return createSimpleEmbedding(text)
   }
 }

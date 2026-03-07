@@ -8,6 +8,10 @@
  * - Project structure preferences
  */
 
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('UserPreferences')
+
 const PREFERENCES_STORAGE_KEY = 'nasus-user-preferences'
 
 export interface UserPreferences {
@@ -24,7 +28,7 @@ export function loadUserPreferences(): UserPreferences {
       return JSON.parse(stored)
     }
   } catch (error) {
-    console.warn('Failed to load user preferences:', error)
+      log.warn('Failed to load user preferences', error instanceof Error ? error : new Error(String(error)))
   }
   return {}
 }
@@ -36,7 +40,7 @@ export function saveUserPreferences(prefs: UserPreferences): void {
   try {
     localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(prefs))
   } catch (error) {
-    console.warn('Failed to save user preferences:', error)
+      log.warn('Failed to save user preferences', error instanceof Error ? error : new Error(String(error)))
   }
 }
 

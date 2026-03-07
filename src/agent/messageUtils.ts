@@ -14,6 +14,9 @@
  */
 
 import type { LlmMessage, ToolCall } from './llm'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('MessageUtils')
 
 /**
  * Sanitize a message array so it conforms to the OpenAI message format.
@@ -38,8 +41,7 @@ export function sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
       }
       const hasMissing = [...expectedIds].some(id => !foundIds.has(id))
       if (hasMissing) {
-        console.warn('[sanitizeMessages] Dropping incomplete assistant+tool_calls block, missing ids:',
-          [...expectedIds].filter(id => !foundIds.has(id)))
+            log.warn('Dropping incomplete assistant+tool_calls block', undefined, { missingIds: [...expectedIds].filter(id => !foundIds.has(id)) })
         i = j - 1 // skip this assistant + any partial tool results after it
         continue
       }
@@ -58,7 +60,7 @@ export function sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
     if (m.role !== 'tool') return true
     const tid = m.tool_call_id
     if (!tid || !declaredIds.has(tid)) {
-      console.warn('[sanitizeMessages] Dropping orphaned tool result, id:', tid)
+        log.warn('Dropping orphaned tool result', { toolCallId: tid })
       return false
     }
     return true
@@ -72,7 +74,7 @@ export function sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
       const hasResults = pass2.some(m => m.role === 'tool' && m.tool_call_id && lastIds.has(m.tool_call_id))
       if (!hasResults) {
         pass2.pop()
-        console.warn('[sanitizeMessages] Removed trailing assistant with unresolved tool_calls')
+          log.warn('Removed trailing assistant with unresolved tool_calls')
         continue
       }
     }

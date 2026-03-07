@@ -19,6 +19,7 @@
 
 import type { StateCreator } from 'zustand'
 import { GatewayService } from './gatewayService'
+import { createLogger } from '../../lib/logger'
 import type {
   GatewayConfig,
   GatewayHealth,
@@ -27,6 +28,8 @@ import type {
 } from './gatewayTypes'
 import { DEFAULT_GATEWAYS } from './gatewayTypes'
 import { selectModel, translateModelId, findModelById } from './modelRegistry'
+
+const log = createLogger('Gateway')
 
 // ─── Slice Interface ────────────────────────────────────────────────────────
 
@@ -178,9 +181,9 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         })
       }
 
-      console.log('[gateway] Config saved', { routingMode, gatewayCount: gateways.length })
+        log.info('Config saved', { routingMode, gatewayCount: gateways.length })
     } catch (err) {
-      console.error('[gateway] Failed to save config:', err)
+      log.error('Failed to save config', err)
     }
   },
 
@@ -309,7 +312,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         } catch {
           // ignore
         }
-        console.error('[gateway] Failed to load config:', err)
+          log.error('Failed to load config', err)
         // Mark ready even on error so the UI doesn't stay stuck waiting
         set({ gatewayConfigReady: true })
       }
@@ -401,7 +404,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         if (isRouter && !modelId.includes('/')) {
           const fallback = selectModel('auto-paid', primary.type, undefined, get().openRouterModels)
           modelId = fallback?.modelId ?? fallbackModel
-          console.warn(`[gateway] manualModelId '${manualModelId}' is not valid for ${primary.type} — using auto-select: ${modelId}`)
+          log.warn(`manualModelId '${manualModelId}' is not valid for ${primary.type} — using auto-select: ${modelId}`)
         }
       } else {
       // Auto-select based on mode and gateway

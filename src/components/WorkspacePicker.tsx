@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { Pxi } from './Pxi'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('WorkspacePicker')
 
 interface WorkspacePickerProps {
   value: string
@@ -60,7 +63,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
         onChange(selected)
       }
     } catch (err) {
-      console.error('pick_folder error:', err)
+        log.error('pick_folder failed', err instanceof Error ? err : new Error(String(err)))
     } finally {
       setPicking(false)
     }

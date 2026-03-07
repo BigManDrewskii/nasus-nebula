@@ -427,6 +427,44 @@ pub mod commands {
             .await
             .map_err(|e| NasusError::Command(e))
     }
+
+    /// Stop and remove all nasus-sandbox-* containers.
+    /// Called on app exit (beforeunload) to avoid leaving orphan containers.
+    #[tauri::command]
+    pub async fn docker_dispose_all_containers() -> NasusResult<()> {
+        let docker = match bollard::Docker::connect_with_local_defaults() {
+            Ok(d) => d,
+            // Docker not available — nothing to clean up
+            Err(_) => return Ok(()),
+        };
+
+        // List all containers (including stopped ones) whose name starts with "nasus-sandbox-"
+        let mut filters = std::collections::HashMap::new();
+        filters.insert("name", vec!["nasus-sandbox-"]);
+        let options = bollard::container::ListContainersOptions {
+            all: true,
+            filters,
+            ..Default::default()
+        };
+
+        let containers = match docker.list_containers(Some(options)).await {
+            Ok(c) => c,
+            Err(_) => return Ok(()),
+        };
+
+        for container in containers {
+            let id = match container.id.as_deref() {
+                Some(id) if !id.is_empty() => id.to_string(),
+                _ => continue,
+            };
+            let _ = docker
+                .stop_container(&id, Some(bollard::container::StopContainerOptions { t: 2 }))
+                .await;
+            let _ = docker.remove_container(&id, None).await;
+        }
+
+        Ok(())
+    }
 }
 
 /// Parse memory limit string (e.g., "512m") to bytes

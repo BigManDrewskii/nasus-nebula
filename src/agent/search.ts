@@ -12,6 +12,9 @@
 
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('Search')
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -87,7 +90,7 @@ async function duckduckgoSearch(query: string, numResults = 5): Promise<SearchRe
     }
     return results
   } catch (e) {
-    console.warn('DuckDuckGo fallback failed:', e)
+      log.warn('DuckDuckGo fallback failed', e instanceof Error ? e : new Error(String(e)))
     return []
   }
 }
@@ -113,7 +116,7 @@ export async function searchRaw(
       })
       if (results && results.length > 0) return results
     } catch (e) {
-      console.warn('Exa search failed, trying fallback:', e)
+        log.warn('Exa search failed, trying fallback', e instanceof Error ? e : new Error(String(e)))
     }
   }
   

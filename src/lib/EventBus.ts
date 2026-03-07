@@ -2,6 +2,10 @@
  * Type-safe event bus for agent communication
  */
 
+import { createLogger } from './logger'
+
+const log = createLogger('EventBus')
+
 type EventHandler<T = unknown> = (data: T) => void;
 
 interface EventBusEvents {
@@ -49,7 +53,7 @@ class EventBus {
         try {
           handler(data);
         } catch (error) {
-          console.error(`Error in event handler for "${event}":`, error);
+            log.error(`Error in event handler for "${event}"`, error);
         }
       });
     }

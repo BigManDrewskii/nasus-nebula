@@ -9,12 +9,15 @@ import {
   LocalVectorStore,
 } from './MemoryStore'
 import { createSemanticEmbedding } from './transformersEmbedding'
+import { createLogger } from '../../lib/logger'
 import type {
   MemoryStore,
   MemoryItem,
   MemoryResult,
   MemoryMetadata,
 } from './MemoryStore'
+
+const log = createLogger('LocalMemoryStore')
 
 export type { MemoryItem, MemoryResult, MemoryMetadata } from './MemoryStore'
 
@@ -88,7 +91,7 @@ export class LocalMemoryStore implements MemoryStore {
         }
       }
     } catch (error) {
-      console.warn('Failed to load memories from storage:', error)
+        log.warn('Failed to load memories from storage', error instanceof Error ? error : new Error(String(error)))
     }
 
     this.initialized = true
@@ -117,10 +120,7 @@ export class LocalMemoryStore implements MemoryStore {
     try {
       embedding = await createSemanticEmbedding(content)
     } catch (embErr) {
-      console.warn(
-        '[MemoryStore] Semantic embedding failed — falling back to keyword embedding.',
-        embErr instanceof Error ? embErr.message : String(embErr),
-      )
+      log.warn('Semantic embedding failed — falling back to keyword embedding', embErr instanceof Error ? embErr : new Error(String(embErr)))
       embedding = keywordEmbedding(content)
     }
 
@@ -255,7 +255,7 @@ export class LocalMemoryStore implements MemoryStore {
       const serialized = JSON.stringify(memories)
 
       if (serialized.length > MAX_STORAGE_SIZE) {
-        console.warn('Memory store exceeds storage limit, truncating old memories')
+          log.warn('Memory store exceeds storage limit, truncating old memories')
         // Keep only the most recent memories
         const sorted = memories.sort((a, b) => b.metadata.timestamp - a.metadata.timestamp)
         const truncated = sorted.slice(0, Math.floor(MAX_MEMORIES * 0.8))
@@ -275,7 +275,7 @@ export class LocalMemoryStore implements MemoryStore {
         localStorage.setItem(STORAGE_KEY, serialized)
       }
     } catch (error) {
-      console.warn('Failed to persist memories:', error)
+        log.warn('Failed to persist memories', error instanceof Error ? error : new Error(String(error)))
     }
   }
 

@@ -1,6 +1,9 @@
 import type { StateCreator } from 'zustand'
 import { updateGlobalRateLimiterConfig } from '../agent/gateway/rateLimiter'
 import { DEFAULT_MAX_ITERATIONS } from '../lib/constants'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('Settings')
 
 // ── Router config types ────────────────────────────────────────────────────
 
@@ -331,7 +334,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
         }
       }
     } catch (err) {
-      console.error(`[Nasus] Failed to fetch models for ${provider}:`, err)
+        log.error(`Failed to fetch models for ${provider}`, err)
     }
   },
 

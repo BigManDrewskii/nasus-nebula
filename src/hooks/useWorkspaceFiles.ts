@@ -1,4 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('WorkspaceFiles')
 
 export interface WorkspaceFile {
   name: string
@@ -45,7 +48,7 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
         const manager = await getManager()
 
         if (!manager) {
-          console.warn('[useWorkspaceFiles] WorkspaceManager not found in module')
+            log.warn('WorkspaceManager not found in module')
           return
         }
 
@@ -62,7 +65,7 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
                 ext: f.path.includes('.') ? f.path.split('.').pop()!.toLowerCase() : '',
               }
             } catch (err) {
-              console.warn(`[useWorkspaceFiles] Failed to read file ${f.path}:`, err)
+                log.warn(`Failed to read file ${f.path}`, err)
               throw err
             }
           })
@@ -76,7 +79,7 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
 
         setFiles(mapped)
       } catch (err) {
-        console.error('[useWorkspaceFiles] Failed to update workspace files:', err)
+          log.error('Failed to update workspace files', err)
       }
     }
 

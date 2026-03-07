@@ -5,6 +5,10 @@
  * This module fetches and parses that data for runtime model discovery.
  */
 
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('VercelModelRegistry')
+
 /**
  * A model available on Vercel AI Gateway.
  */
@@ -44,7 +48,7 @@ export async function fetchVercelModels(): Promise<VercelModel[]> {
 
     // Vercel returns { data: VercelModel[], object: 'list' }
     if (!json?.data || !Array.isArray(json.data)) {
-      console.warn('[Vercel Models] Unexpected response format:', json)
+        log.warn('Unexpected response format', undefined, { json })
       return []
     }
 

@@ -1,5 +1,8 @@
 import { tauriInvoke, workspaceReadBinary } from '../../tauri'
 import { parseFileBuffer, isSupportedBinaryFormat } from '../FileParser'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('WorkspaceManager')
 
 /**
  * Workspace Manager — filesystem-based persistence for task workspaces.
@@ -123,7 +126,7 @@ export class WorkspaceManager {
           this.basePath = config.workspace_path
         }
       } catch (e) {
-        console.warn('Could not get workspace path from backend:', e)
+          log.warn('Could not get workspace path from backend', e instanceof Error ? e : new Error(String(e)))
       }
     }
 

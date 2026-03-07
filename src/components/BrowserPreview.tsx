@@ -10,6 +10,9 @@ import { Pxi } from './Pxi'
 import { SidecarPrompt } from './SidecarPrompt'
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('BrowserPreview')
 
 interface BrowserPreviewProps {
   className?: string
@@ -79,7 +82,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
     wsRef.current = ws
 
     ws.onopen = () => {
-      console.log('[BrowserPreview] WebSocket connected')
+        log.info('WebSocket connected')
 
       // Request screenshots every 500ms for smooth preview
       screenshotIntervalRef.current = window.setInterval(() => {
@@ -94,17 +97,17 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         const message = JSON.parse(event.data)
         handleWebSocketMessage(message)
       } catch (err) {
-        console.error('[BrowserPreview] Failed to parse WebSocket message:', err)
+          log.error('Failed to parse WebSocket message', err)
       }
     }
 
     ws.onerror = () => {
-      console.error('[BrowserPreview] WebSocket error')
+      log.error('WebSocket error')
       setError('WebSocket connection error')
     }
 
     ws.onclose = () => {
-      console.log('[BrowserPreview] WebSocket disconnected')
+      log.info('WebSocket disconnected')
       if (screenshotIntervalRef.current) {
         clearInterval(screenshotIntervalRef.current)
         screenshotIntervalRef.current = null
@@ -182,11 +185,11 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const handleWebSocketMessage = useCallback((message: any) => {
     switch (message.type) {
       case 'connected':
-        console.log('[BrowserPreview] Sidecar connected:', message.sessionId)
+          log.info('Sidecar connected', { sessionId: message.sessionId })
         break
 
       case 'session_ready':
-        console.log('[BrowserPreview] Session ready:', message.sessionId)
+          log.info('Session ready', { sessionId: message.sessionId })
         setIsLoading(false)
         break
 
@@ -238,7 +241,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         break
 
       default:
-        console.log('[BrowserPreview] Unhandled message type:', message.type)
+          log.debug('Unhandled message type', { type: message.type })
     }
   }, [])
 

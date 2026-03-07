@@ -1189,6 +1189,7 @@ pub fn run() {
         docker::commands::docker_execute_bash,
         docker::commands::docker_dispose_container,
         docker::commands::docker_check_status,
+        docker::commands::docker_dispose_all_containers,
         sidecar::browser_start_sidecar,
         sidecar::browser_stop_sidecar,
         sidecar::browser_is_sidecar_running,

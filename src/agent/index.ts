@@ -8,10 +8,13 @@
 import type { LlmMessage } from '../types'
 import { runExecutionAgent } from './agents/ExecutionAgent'
 import type { SearchConfig } from './tools'
+import { createLogger } from '../lib/logger'
 import type { ExecutionConfig } from './sandboxRuntime'
 import { disposeSandbox } from './sandboxRuntime'
 import { processTaskWithOrchestrator, type OrchestratorConfig } from './Orchestrator'
 import { workspaceManager } from './workspace/WorkspaceManager'
+
+const log = createLogger('Agent')
 
 // AbortControllers keyed by taskId
 const controllers: Map<string, AbortController> = new Map()
@@ -126,7 +129,7 @@ export function stopWebAgent(taskId: string) {
   }
   // Best-effort sandbox cleanup on stop — only dispose this task's container
   disposeSandbox(taskId).catch(err => {
-    console.warn('[agent] Failed to dispose sandbox on stop:', err)
+      log.warn('Failed to dispose sandbox on stop', err)
   })
 }
 

@@ -11,6 +11,9 @@
 import { useState, useEffect, memo } from 'react'
 import { memoryStore, type MemoryResult, type MemoryMetadata } from '../agent/memory/LocalMemoryStore'
 import { Pxi } from './Pxi'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('MemoryBrowser')
 
 // ── Memory Card ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +148,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       setMemories(results)
       setFilteredMemories(results)
     } catch (error) {
-      console.error('Failed to load memories:', error)
+        log.error('Failed to load memories', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -159,7 +162,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       const results = await memoryStore.search(searchQuery, 10)
       setFilteredMemories(results)
     } catch (error) {
-      console.error('Search failed:', error)
+        log.error('Memory search failed', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -168,7 +171,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       await memoryStore.delete(id)
       await loadMemories()
     } catch (error) {
-      console.error('Failed to delete memory:', error)
+      log.error('Failed to delete memory', error instanceof Error ? error : new Error(String(error)))
     }
   }
 

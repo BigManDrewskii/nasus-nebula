@@ -17,6 +17,9 @@
 
 import { pipeline, env } from '@huggingface/transformers'
 import { createSimpleEmbedding } from './MemoryStore'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('TransformersEmbedding')
 
 // ─── Configure ORT WASM paths BEFORE any pipeline call ───────────────────────
 // Prevents Transformers.js from loading worker scripts from cdn.jsdelivr.net,
@@ -109,7 +112,7 @@ export async function createSemanticEmbedding(text: string): Promise<number[]> {
     const output = await pipe(text, { pooling: 'mean', normalize: true })
     return Array.from(output[0].data as Float32Array)
   } catch (err) {
-    console.warn('[embedding] Transformers.js failed, using simple fallback:', err)
+      log.warn('Transformers.js failed, using simple fallback', err instanceof Error ? err : new Error(String(err)))
     return createSimpleEmbedding(text)
   }
 }

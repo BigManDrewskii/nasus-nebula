@@ -18,6 +18,9 @@ export default defineConfig({
     exclude: ['onnxruntime-web', '@huggingface/transformers', 'web-tree-sitter'],
   },
   clearScreen: false,
+  build: {
+    sourcemap: 'hidden',
+  },
   server: {
     port: 5173,
     strictPort: true,

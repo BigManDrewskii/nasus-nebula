@@ -9,6 +9,9 @@ import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
 import { findModelById } from './gateway/modelRegistry';
 import { sanitizeMessages } from './messageUtils';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('LLM');
 
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | string
@@ -301,7 +304,7 @@ export async function streamCompletion(
     const errorStack = err instanceof Error ? err.stack : undefined;
     // Surface Zod cause for AI_InvalidPromptError to identify the exact bad message
       const cause = (err as any)?.cause
-      console.error('[streamCompletion] Error:', {
+      log.error('streamCompletion error', err instanceof Error ? err : new Error(String(err)), {
         message: errorMsg,
         stack: errorStack,
         provider,
@@ -312,7 +315,7 @@ export async function streamCompletion(
       })
       // For schema validation errors, log the exact messages that failed so we can debug
       if (errorMsg.includes('ModelMessage') || errorMsg.includes('Invalid prompt')) {
-        console.error('[streamCompletion] Failing messages:', JSON.stringify(coreMessages, null, 2))
+        log.error('streamCompletion failing messages', undefined, { messages: JSON.stringify(coreMessages, null, 2) })
       }
     cb.onError(errorMsg);
     throw err;
@@ -352,7 +355,7 @@ export async function chatOnce(
     const resp = await fetch(url, { method: 'POST', headers, body })
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '')
-      console.error('[LLM] chatOnce HTTP error:', resp.status, errText)
+        log.error('chatOnce HTTP error', undefined, { status: resp.status, body: errText })
       return ''
     }
 
@@ -360,7 +363,7 @@ export async function chatOnce(
     return (json?.choices?.[0]?.message?.content ?? '').trim()
   } catch (err) {
     const cause = (err as any)?.cause
-    console.error('[LLM] chatOnce failed:', err, cause ? `\nCause: ${cause?.message ?? cause}` : '')
+      log.error('chatOnce failed', err instanceof Error ? err : new Error(String(err)), cause ? { cause: cause?.message ?? String(cause) } : undefined)
     return ''
   }
 }
@@ -398,7 +401,7 @@ export async function chatJson<T>(
     const resp = await fetch(url, { method: 'POST', headers, body })
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '')
-      console.error('[LLM] chatJson HTTP error:', resp.status, errText)
+        log.error(`chatJson HTTP error ${resp.status}: ${errText}`)
       return null
     }
 
@@ -407,7 +410,7 @@ export async function chatJson<T>(
     const clean = text.replace(/```json\n?|```\n?/g, '').trim()
     return JSON.parse(clean) as T
   } catch (err) {
-    console.error('[LLM] chatJson failed:', err)
+      log.error('chatJson failed', err instanceof Error ? err : new Error(String(err)))
     return null
   }
 }

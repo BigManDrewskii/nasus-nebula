@@ -13,6 +13,9 @@ import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { useSidebarResponsive } from './hooks/useSidebarResponsive'
 import { PanelDivider } from './components/PanelDivider'
+import { createLogger } from './lib/logger'
+
+const log = createLogger('App')
 
 // Lazy-load panels not visible on initial render to reduce startup bundle parse time
 const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => ({ default: m.SettingsPanel })))
@@ -94,7 +97,7 @@ function App() {
         if (manager) {
           manager.init(workspacePath)
         }
-      }).catch(console.error)
+        }).catch(err => log.error('WorkspaceManager init failed', err))
     }
   }, [workspacePath])
 
@@ -102,12 +105,12 @@ function App() {
     useEffect(() => {
       const store = useAppStore.getState()
       store.initGatewayService()
-      store.loadGatewayConfig().catch(console.error)
+      store.loadGatewayConfig().catch(err => log.error('loadGatewayConfig failed', err))
 
       // Load Exa API key from OS keyring — never stored in localStorage
       invoke<string>('get_exa_key')
         .then((key) => { if (key) store.setExaKey(key) })
-        .catch(console.error)
+        .catch(err => log.error('get_exa_key failed', err))
 
     // Initialize config sections from saved layout (use the action, not direct mutation)
     if (savedLayout.configSections) {

@@ -15,6 +15,9 @@ import type {
 import { AgentState } from './AgentState'
 import { StateManager } from './AgentState'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('BaseAgent')
 
 /**
  * Abstract base class for all agents.
@@ -141,7 +144,7 @@ export abstract class BaseAgent implements Agent {
   protected emitThinking(content: string): void {
     // Default: no-op. Subclasses can override to emit to store/UI.
     if (this.config.verbose) {
-      console.log(`[${this.name}] ${content}`)
+      log.info(content)
     }
   }
 

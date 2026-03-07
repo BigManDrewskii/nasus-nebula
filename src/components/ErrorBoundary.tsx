@@ -1,5 +1,8 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
 import { NasusLogo } from './NasusLogo'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('ErrorBoundary')
 
 interface Props {
   children: ReactNode
@@ -18,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ error, errorInfo })
-    console.error('[Nasus] Uncaught render error:', error, errorInfo)
+    log.error('Uncaught render error', error, { componentStack: errorInfo.componentStack })
   }
 
   /** Try to delete the active task and reset the boundary without a full reload. */

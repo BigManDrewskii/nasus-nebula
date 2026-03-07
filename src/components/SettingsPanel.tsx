@@ -6,6 +6,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
 import { isPaidRoute, getRouteLabel } from '../lib/routing'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('SettingsPanel')
 
 // ─── Curated fallback models (shown before user fetches the full list) ─────────
 
@@ -394,7 +397,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           const updatedGateways = useAppStore.getState().gateways
           await tauriInvoke('save_gateways', { gateways: updatedGateways })
         } catch (e) {
-          console.warn('Failed to save gateways:', e)
+          log.warn('Failed to save gateways', e instanceof Error ? e : new Error(String(e)))
           // Non-fatal — save_config below still persists the active key
         }
 
@@ -428,7 +431,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         try {
           await tauriInvoke('set_exa_key', { key: trimmedExaKey })
         } catch (e) {
-          console.warn('Failed to save Exa key to keyring:', e)
+          log.warn('Failed to save Exa key to keyring', e instanceof Error ? e : new Error(String(e)))
           // Non-fatal, continue
         }
 
@@ -439,7 +442,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         try {
           await tauriInvoke('save_search_config', { searchConfig })
         } catch (e) {
-          console.warn('Failed to save search config:', e)
+          log.warn('Failed to save search config', e instanceof Error ? e : new Error(String(e)))
           // Non-fatal, continue
         }
 
@@ -465,7 +468,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           modelOverrides: localModelOverrides,
         })
       } catch (e) {
-        console.warn('Failed to save router settings:', e)
+        log.warn('Failed to save router settings', e instanceof Error ? e : new Error(String(e)))
         // Non-fatal, continue
       }
 

@@ -27,6 +27,9 @@ import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
 import { TraceLogger } from '../TraceLogger'
 import { buildContext } from '../context/ContextBuilder'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('ExecutionAgent')
 
 const MAX_CORRECTION_ATTEMPTS = 3
 
@@ -610,7 +613,7 @@ export class ExecutionAgent extends BaseAgent {
                            provider === 'openrouter' ? 'OpenRouter' :
                            provider === 'openai' ? 'OpenAI' : provider
       const errorMsg = `No API key configured for ${providerLabel}. Open Settings (⌘,) and enter your ${providerLabel} API key.`
-      console.error('[callLLM]', errorMsg)
+      log.error('callLLM failed', new Error(errorMsg))
       this.emitError(taskId, messageId, errorMsg)
       return null
     }
@@ -646,7 +649,7 @@ export class ExecutionAgent extends BaseAgent {
           const last = messages[messages.length - 1]
           if (last.role === 'assistant' && last.tool_calls && last.tool_calls.length > 0) {
             messages.pop()
-            console.warn('[callLLM] Removed partial assistant+tool_calls message after stream error')
+            log.warn('Removed partial assistant+tool_calls message after stream error')
           }
         }
 
@@ -981,7 +984,7 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
 
       summary = await chatOnceViaGateway(summaryPrompt, 500, cheapModel) || ''
     } catch (e) {
-      console.error('[Compression] Summary generation failed:', e)
+      log.error('Compression summary generation failed', e instanceof Error ? e : new Error(String(e)))
       // If summary generation fails, fall back to a basic list
       summary = removedContent.slice(0, 10).join('\n')
     }
@@ -1070,7 +1073,7 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
       }
     } catch (e) {
       // Silently fail - if we can't update the plan, execution continues
-      console.debug('Failed to update task_plan.md:', e)
+        log.debug('Failed to update task_plan.md', { error: String(e) })
     }
   }
 
@@ -1194,7 +1197,7 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     
     // Update project memory on task completion
     updateProjectMemory(taskId).catch(err => {
-      console.error('[Project Memory] Update failed:', err)
+        log.error('Project memory update failed', err instanceof Error ? err : new Error(String(err)))
     })
   }
 

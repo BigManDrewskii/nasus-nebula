@@ -6,6 +6,9 @@
 
 import type { ComponentType, SVGProps } from 'react'
 import { getIconComponent } from './iconRegistry'
+import { createLogger } from '../lib/logger'
+
+const log = createLogger('Pxi')
 
 interface PxiProps {
   name: string
@@ -45,9 +48,9 @@ export function Pxi({ name, size = 12, className = '', style, title }: PxiProps)
   const Icon = getIconComponent(name) as ComponentType<SVGProps<SVGSVGElement>> | null
 
   if (!Icon) {
-    if (import.meta.env.DEV) {
-      console.warn(`[Pxi] Unknown icon: "${name}"`)
-    }
+      if (import.meta.env.DEV) {
+        log.warn(`Unknown icon: "${name}"`)
+      }
     return <Placeholder size={size} className={className} style={style} label={`Missing icon: ${name}`} />
   }
 
