@@ -16,22 +16,18 @@ export function GatewaySettings() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <label style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-display)',
-          textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-secondary)',
-        }}>
-          <Pxi name="microchip" size={12} style={{ color: 'var(--tx-tertiary)' }} />
+    <div className="flex-col gw-root">
+      <div className="flex-v-center justify-between gw-header">
+        <label className="flex-v-center settings-label text-secondary">
+          <Pxi name="microchip" size={12} className="text-tertiary" />
           LLM Gateways
         </label>
-        <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>
+        <span className="text-muted gw-active-count">
           {gateways.filter(g => g.enabled).length} active
         </span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="flex-col gw-list">
         {gateways.sort((a, b) => a.priority - b.priority).map((gw) => (
           <GatewayItem
             key={gw.id}
@@ -63,19 +59,13 @@ export function GatewaySettings() {
           })
           setExpandedId(id)
         }}
-        style={{
-          marginTop: 4, padding: '8px', borderRadius: 8, fontSize: 11,
-          background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.1)',
-          color: 'var(--tx-secondary)', cursor: 'pointer', textAlign: 'center',
-          transition: 'all 0.12s'
-        }}
+        className="text-secondary gw-add-btn"
         onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)' }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
       >
         + Add Custom Gateway
       </button>
 
-      {/* ── Gateway Health Dashboard ── */}
       <GatewayHealthDashboard health={gatewayHealth} />
     </div>
   )
@@ -85,58 +75,55 @@ function GatewayHealthDashboard({ health }: { health: any[] }) {
   if (health.length === 0) return null
 
   return (
-    <div style={{
-      marginTop: 16, padding: '16px', borderRadius: 12,
-      background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.06)',
-      display: 'flex', flexDirection: 'column', gap: 14
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Pxi name="activity" size={12} style={{ color: 'var(--tx-tertiary)' }} />
-        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--tx-secondary)' }}>
-          Real-time Health
-        </span>
+    <div className="flex-col gw-health-dashboard">
+      <div className="flex-v-center gw-health-title-row">
+        <Pxi name="activity" size={12} className="text-tertiary" />
+        <span className="text-secondary gw-health-title">Real-time Health</span>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="flex-col gw-health-list">
         {health.map((h) => {
           const statusColors: Record<string, string> = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#94a3b8' }
           const color = statusColors[h.status] || '#94a3b8'
-          
+
           return (
-            <div key={h.gatewayId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, boxShadow: h.status === 'healthy' ? `0 0 6px ${color}40` : 'none' }} />
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-primary)' }}>{h.gatewayId}</span>
-                  <span style={{ fontSize: 10, color: color, textTransform: 'capitalize' }}>{h.status}</span>
+            <div key={h.gatewayId} className="flex-col gw-health-item">
+              <div className="flex-v-center justify-between">
+                <div className="flex-v-center gw-health-left">
+                  <div
+                    className="gw-health-dot"
+                    style={{ background: color, boxShadow: h.status === 'healthy' ? `0 0 6px ${color}40` : 'none' }}
+                  />
+                  <span className="gw-health-name">{h.gatewayId}</span>
+                  <span className="gw-health-status" style={{ color }}>{h.status}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                    <span style={{ fontSize: 9, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Latency</span>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{h.avgLatencyMs > 0 ? `${Math.round(h.avgLatencyMs)}ms` : '—'}</span>
+                <div className="flex gw-health-stats">
+                  <div className="flex-col items-end">
+                    <span className="text-muted gw-stat-label">Latency</span>
+                    <span className="text-secondary font-mono gw-stat-value">{h.avgLatencyMs > 0 ? `${Math.round(h.avgLatencyMs)}ms` : '—'}</span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                    <span style={{ fontSize: 9, color: 'var(--tx-muted)', textTransform: 'uppercase' }}>Success</span>
-                    <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{Math.round(h.successRate * 100)}%</span>
+                  <div className="flex-col items-end">
+                    <span className="text-muted gw-stat-label">Success</span>
+                    <span className="text-secondary font-mono gw-stat-value">{Math.round(h.successRate * 100)}%</span>
                   </div>
                 </div>
               </div>
-              
-              <div style={{ display: 'flex', gap: 12, paddingLeft: 14 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 9, color: 'var(--tx-tertiary)' }}>Requests:</span>
-                  <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{h.requestCount || 0}</span>
+
+              <div className="flex gw-health-meta">
+                <div className="flex-v-center gw-meta-item">
+                  <span className="text-tertiary gw-meta-label">Requests:</span>
+                  <span className="text-secondary font-mono gw-meta-value">{h.requestCount || 0}</span>
                 </div>
                 {h.lastChecked > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 9, color: 'var(--tx-tertiary)' }}>Last:</span>
-                    <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>{new Date(h.lastChecked).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  <div className="flex-v-center gw-meta-item">
+                    <span className="text-tertiary gw-meta-label">Last:</span>
+                    <span className="text-secondary font-mono gw-meta-value">{new Date(h.lastChecked).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                   </div>
                 )}
                 {h.status === 'down' && h.retryAfter && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ fontSize: 9, color: '#ef4444' }}>Retry in:</span>
-                    <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: '#ef4444' }}>{Math.ceil((h.retryAfter - Date.now()) / 1000)}s</span>
+                  <div className="flex-v-center gw-meta-item">
+                    <span className="gw-meta-label" style={{ color: '#ef4444' }}>Retry in:</span>
+                    <span className="font-mono gw-meta-value" style={{ color: '#ef4444' }}>{Math.ceil((h.retryAfter - Date.now()) / 1000)}s</span>
                   </div>
                 )}
               </div>
@@ -178,144 +165,138 @@ function GatewayItem({
 
   const getStatusColor = () => {
     if (!gateway.enabled) return 'var(--tx-muted)'
-    if (!health) return '#94a3b8' // gray
-    if (health.status === 'healthy') return '#22c55e' // green
-    if (health.status === 'degraded') return '#eab308' // amber
-    if (health.status === 'down') return '#ef4444' // red
+    if (!health) return '#94a3b8'
+    if (health.status === 'healthy') return '#22c55e'
+    if (health.status === 'degraded') return '#eab308'
+    if (health.status === 'down') return '#ef4444'
     return '#94a3b8'
   }
 
   return (
-    <div style={{
-      borderRadius: 12, background: isExpanded ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
-      border: `1px solid ${isExpanded ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
-      transition: 'all 0.12s', overflow: 'hidden'
-    }}>
+    <div
+      className="gw-item"
+      style={{
+        background: isExpanded ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${isExpanded ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
+      }}
+    >
       {/* Header */}
-      <div
-        onClick={onToggleExpand}
-        style={{
-          padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-        }}
-      >
-        <div style={{
-          width: 8, height: 8, borderRadius: '50%', background: getStatusColor(),
-          boxShadow: gateway.enabled && health?.status === 'healthy' ? '0 0 8px #22c55e40' : 'none',
-          flexShrink: 0
-        }} title={health?.status ?? 'Unknown'} />
+      <div onClick={onToggleExpand} className="flex-v-center gw-item-header">
+        <div
+          className="gw-status-dot"
+          style={{
+            background: getStatusColor(),
+            boxShadow: gateway.enabled && health?.status === 'healthy' ? '0 0 8px #22c55e40' : 'none',
+          }}
+          title={health?.status ?? 'Unknown'}
+        />
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: gateway.enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)' }}>
+        <div className="flex-1 flex-col gw-item-info">
+          <div className="flex-v-center gw-item-name-row">
+            <span
+              className="gw-item-name"
+              style={{ color: gateway.enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)' }}
+            >
               {gateway.label}
             </span>
-            <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'var(--tx-muted)', textTransform: 'uppercase' }}>
-              {gateway.type}
-            </span>
+            <span className="gw-item-type-badge">{gateway.type}</span>
           </div>
-          <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {gateway.apiBase}
-          </span>
+          <span className="text-tertiary gw-item-base truncate">{gateway.apiBase}</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex-v-center gw-item-controls">
           {health?.avgLatencyMs > 0 && (
-            <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>{Math.round(health.avgLatencyMs)}ms</span>
+            <span className="text-muted gw-latency">{Math.round(health.avgLatencyMs)}ms</span>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onUpdate({ enabled: !gateway.enabled }) }}
-            style={{
-              width: 32, height: 18, borderRadius: 9, border: 'none', cursor: 'pointer', position: 'relative',
-              background: gateway.enabled ? 'var(--amber)' : 'rgba(255,255,255,0.1)',
-              transition: 'background 0.15s', padding: 0
-            }}
+            className="gw-toggle"
+            style={{ background: gateway.enabled ? 'var(--amber)' : 'rgba(255,255,255,0.1)' }}
           >
-            <span style={{
-              position: 'absolute', top: 2, left: gateway.enabled ? 16 : 2,
-              width: 14, height: 14, borderRadius: '50%', background: '#fff',
-              transition: 'left 0.15s'
-            }} />
+            <span
+              className="gw-toggle-thumb"
+              style={{ left: gateway.enabled ? 16 : 2 }}
+            />
           </button>
-          <Pxi name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} style={{ color: 'var(--tx-tertiary)' }} />
+          <Pxi name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} className="text-tertiary" />
         </div>
       </div>
 
       {/* Expanded Details */}
       {isExpanded && (
-        <div style={{ padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: 12 }}>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <div style={{ flex: 2, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>Label</label>
+        <div className="flex-col gw-item-body">
+          <div className="flex gw-item-fields">
+            <div className="flex-col gw-field gw-field--flex2">
+              <label className="text-tertiary gw-field-label">Label</label>
               <input
                 type="text"
                 value={gateway.label}
                 onChange={(e) => onUpdate({ label: e.target.value })}
-                style={inputStyle}
+                className="gw-input"
               />
             </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>Priority</label>
+            <div className="flex-col gw-field gw-field--flex1">
+              <label className="text-tertiary gw-field-label">Priority</label>
               <input
                 type="number"
                 value={gateway.priority}
                 onChange={(e) => onUpdate({ priority: parseInt(e.target.value) || 0 })}
-                style={inputStyle}
+                className="gw-input"
               />
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>API Base URL</label>
+          <div className="flex-col gw-field">
+            <label className="text-tertiary gw-field-label">API Base URL</label>
             <input
               type="text"
               value={gateway.apiBase}
               onChange={(e) => onUpdate({ apiBase: e.target.value })}
               placeholder="https://..."
-              style={inputStyle}
+              className="gw-input"
             />
           </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <label style={{ fontSize: 10, color: 'var(--tx-tertiary)', marginLeft: 4 }}>API Key</label>
-              <input
-                type="password"
-                value={gateway.apiKey}
-                onChange={(e) => onUpdate({ apiKey: e.target.value })}
-                placeholder={
-                  gateway.type === 'ollama' ? 'Not required for local' :
-                  gateway.type === 'deepseek' ? 'sk-… (from platform.deepseek.com/api-keys)' :
-                  gateway.type === 'requesty' ? 'req_… (from app.requesty.ai)' :
-                  'sk-or-v1-…'
-                }
-                style={inputStyle}
-              />
-              {gateway.type === 'deepseek' && (
-                <span style={{ fontSize: 9, color: 'var(--tx-tertiary)', marginLeft: 4, lineHeight: 1.4 }}>
-                  Supported models: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>deepseek-chat</code> (V3), <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-secondary)' }}>deepseek-reasoner</code> (R1 / R1-0528)
-                </span>
-              )}
-            </div>
+          <div className="flex-col gw-field">
+            <label className="text-tertiary gw-field-label">API Key</label>
+            <input
+              type="password"
+              value={gateway.apiKey}
+              onChange={(e) => onUpdate({ apiKey: e.target.value })}
+              placeholder={
+                gateway.type === 'ollama'   ? 'Not required for local' :
+                gateway.type === 'deepseek' ? 'sk-… (from platform.deepseek.com/api-keys)' :
+                gateway.type === 'requesty' ? 'req_… (from app.requesty.ai)' :
+                'sk-or-v1-…'
+              }
+              className="gw-input"
+            />
+            {gateway.type === 'deepseek' && (
+              <span className="text-tertiary gw-deepseek-hint">
+                Supported models: <code className="font-mono text-secondary">deepseek-chat</code> (V3), <code className="font-mono text-secondary">deepseek-reasoner</code> (R1 / R1-0528)
+              </span>
+            )}
+          </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-            <div style={{ display: 'flex', gap: 8 }}>
+          <div className="flex-v-center justify-between gw-item-footer">
+            <div className="flex gw-test-row">
               <button
                 onClick={handleTest}
                 disabled={testing || !gateway.apiBase}
-                style={{
-                  padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)',
-                  color: 'var(--tx-secondary)', cursor: testing ? 'wait' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6
-                }}
+                className="flex-v-center text-secondary gw-test-btn"
               >
                 {testing ? <Pxi name="spinner-third" size={12} className="spin" /> : <Pxi name="vial" size={12} />}
                 {testing ? 'Testing...' : 'Test Connection'}
               </button>
 
               {testResult && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Pxi name={testResult.ok ? 'check-circle' : 'circle-xmark'} size={14} style={{ color: testResult.ok ? '#22c55e' : '#ef4444' }} />
-                  <span style={{ fontSize: 10, color: testResult.ok ? '#22c55e' : '#ef4444' }}>
+                <div className="flex-v-center gw-test-result">
+                  <Pxi
+                    name={testResult.ok ? 'check-circle' : 'circle-xmark'}
+                    size={14}
+                    style={{ color: testResult.ok ? '#22c55e' : '#ef4444' }}
+                  />
+                  <span className="gw-test-result-text" style={{ color: testResult.ok ? '#22c55e' : '#ef4444' }}>
                     {testResult.ok ? `${testResult.latencyMs}ms` : testResult.error}
                   </span>
                 </div>
@@ -324,10 +305,7 @@ function GatewayItem({
 
             <button
               onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${gateway.label}?`)) onRemove() }}
-              style={{
-                padding: '6px', borderRadius: 6, background: 'transparent', border: 'none',
-                cursor: 'pointer', color: 'rgba(239,68,68,0.6)'
-              }}
+              className="gw-remove-btn"
               onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(239,68,68,1)'}
               onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(239,68,68,0.6)'}
             >
@@ -338,10 +316,4 @@ function GatewayItem({
       )}
     </div>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '6px 10px', borderRadius: 6, fontSize: 12, outline: 'none',
-  color: 'var(--tx-primary)', background: 'rgba(0,0,0,0.3)',
-  border: '1px solid rgba(255,255,255,0.08)', transition: 'border-color 0.12s',
 }

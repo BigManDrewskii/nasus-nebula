@@ -66,9 +66,11 @@ export function Pxi({ name, size = 12, className = '', style, title }: PxiProps)
         flexShrink: 0,
         ...style,
       }}
-      title={title}
-      aria-hidden={!title}
-    >
+        title={title}
+        role={title ? 'img' : undefined}
+        aria-label={title}
+        aria-hidden={!title}
+      >
       <Icon
         width={size}
         height={size}

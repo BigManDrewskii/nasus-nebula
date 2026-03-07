@@ -222,6 +222,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
           {hovered && (
             <button
               onClick={openMenu}
+              aria-label="Open task actions"
               style={{
                 flexShrink: 0,
                 width: 24,

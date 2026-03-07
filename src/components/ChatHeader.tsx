@@ -284,6 +284,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
             <button
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
+              aria-label="Open settings"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 28, height: 28, borderRadius: 6,
@@ -300,13 +301,14 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
             </button>
           )}
 
-          {/* Stop / status */}
-          {isActive ? (
-            <button
-              onClick={onStop}
-              className="header-stop-btn"
-              title="Stop agent (Esc)"
-            >
+            {/* Stop / status */}
+            {isActive ? (
+              <button
+                onClick={onStop}
+                className="header-stop-btn"
+                title="Stop agent (Esc)"
+                aria-label="Stop generation"
+              >
               <Pxi name="times-circle" size={13} />
               <span>Stop</span>
             </button>
