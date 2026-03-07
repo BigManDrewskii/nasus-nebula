@@ -6,6 +6,18 @@
  */
 
 /**
+ * An error with a message intended to be shown directly to the user.
+ */
+export class UserFacingError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'UserFacingError'
+    // Maintain proper prototype chain in transpiled environments
+    Object.setPrototypeOf(this, UserFacingError.prototype)
+  }
+}
+
+/**
  * Error categories for structured handling
  */
 export type ErrorCategory =

@@ -17,6 +17,7 @@ import { PanelDivider } from './components/PanelDivider'
 // Lazy-load panels not visible on initial render to reduce startup bundle parse time
 const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => ({ default: m.SettingsPanel })))
 const OnboardingScreen = lazy(() => import('./components/OnboardingScreen').then(m => ({ default: m.OnboardingScreen })))
+const MemoryBrowser = lazy(() => import('./components/MemoryBrowser').then(m => ({ default: m.MemoryBrowser })))
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -69,6 +70,7 @@ function App() {
     )
 
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
+  const [memoryBrowserOpen, setMemoryBrowserOpen] = useState(false)
 
   // Layout state — loaded from localStorage BEFORE any effects that reference it
   const [savedLayout] = useState<LayoutState>(loadLayout)
@@ -217,6 +219,13 @@ function App() {
     return () => window.removeEventListener('nasus:preview-ready', onPreviewReady)
   }, [])
 
+  // Allow other components to open MemoryBrowser via a custom event
+  useEffect(() => {
+    const open = () => setMemoryBrowserOpen(true)
+    window.addEventListener('nasus:open-memory-browser', open)
+    return () => window.removeEventListener('nasus:open-memory-browser', open)
+  }, [])
+
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
   useEffect(() => {
     const goOffline = () => setIsOffline(true)
@@ -325,10 +334,16 @@ function App() {
         )}
 
           {settingsOpen && (
-            <Suspense fallback={null}>
-              <SettingsPanel onClose={closeSettings} />
-            </Suspense>
-          )}
+              <Suspense fallback={null}>
+                <SettingsPanel onClose={closeSettings} />
+              </Suspense>
+            )}
+
+            {memoryBrowserOpen && (
+              <Suspense fallback={null}>
+                <MemoryBrowser onClose={() => setMemoryBrowserOpen(false)} />
+              </Suspense>
+            )}
 
           {/* Floating re-open tab — shown when panel is collapsed OR hidden but files exist */}
               {(!outputVisible ? workspaceFiles.length > 0 : rightCollapsed) && (

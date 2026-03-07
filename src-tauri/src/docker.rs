@@ -98,7 +98,7 @@ pub async fn create_container(
         memory: Some(config.memory as i64),
         cpu_shares: Some(config.cpu_shares as i64),
         network_mode: Some("bridge".to_string()),
-        publish_all_ports: Some(true),
+        publish_all_ports: Some(false),
         security_opt: Some(vec!["no-new-privileges".to_string()]),
         cap_drop: Some(vec!["ALL".to_string()]),
         ..Default::default()
