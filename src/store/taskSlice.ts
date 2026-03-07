@@ -54,15 +54,7 @@ export const createTaskSlice: StateCreator<TaskSlice, [], [], TaskSlice> = (set,
   rawHistory: {},
 
   setActiveTaskId: (id) => {
-    // Also clear plan state from the previous task so the new task starts clean
-    set({
-      activeTaskId: id,
-      pendingPlan: null,
-      currentPlan: null,
-      planApprovalStatus: null,
-      currentPhase: 0,
-      currentStep: 0,
-    } as Parameters<typeof set>[0])
+    set({ activeTaskId: id })
     if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
       getPersistedTaskHistory(id).then(history => {
         if (history && history.length > 0) {

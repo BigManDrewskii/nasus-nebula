@@ -52,7 +52,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, setBrowserActivityActive } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, setBrowserActivityActive, resetPlanState } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
@@ -66,6 +66,7 @@ function App() {
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
         setBrowserActivityActive: s.setBrowserActivityActive,
+        resetPlanState: s.resetPlanState,
       })),
     )
 
@@ -247,8 +248,14 @@ function App() {
       budgetMode: routerConfig.budget === 'free' ? 'free' : 'paid',
     }
     addTask(task)
+    resetPlanState()
     setActiveTaskId(task.id)
-  }, [addTask, setActiveTaskId, routerConfig.budget])
+  }, [addTask, setActiveTaskId, resetPlanState, routerConfig.budget])
+
+  const handleSelectTask = useCallback((id: string) => {
+    resetPlanState()
+    setActiveTaskId(id)
+  }, [resetPlanState, setActiveTaskId])
 
     if (!onboardingComplete) {
       return (
@@ -276,7 +283,7 @@ function App() {
             <Sidebar
               tasks={tasks}
               activeTaskId={activeTaskId}
-              onSelectTask={setActiveTaskId}
+              onSelectTask={handleSelectTask}
               onNewTask={handleNewTask}
               onOpenSettings={() => openSettings()}
             />

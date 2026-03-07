@@ -18,6 +18,8 @@ export interface AgentSlice {
   approvePlan: () => void
   rejectPlan: () => void
 
+  resetPlanState: () => void
+
   setPendingToolApproval: (approval: { tool: string; args: Record<string, unknown>; reason?: string; taskId: string } | null) => void
   approveTool: (taskId: string, tool: string) => void
   rejectTool: (taskId: string, tool: string) => void
@@ -47,6 +49,16 @@ export const createAgentSlice: StateCreator<AgentSlice, [], [], AgentSlice> = (s
 
   rejectPlan: () => {
     set({ planApprovalStatus: 'rejected', pendingPlan: null })
+  },
+
+  resetPlanState: () => {
+    set({
+      pendingPlan: null,
+      planApprovalStatus: null,
+      currentPlan: null,
+      currentPhase: 0,
+      currentStep: 0,
+    })
   },
 
   setPendingToolApproval: (approval) => {
