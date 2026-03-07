@@ -47,9 +47,9 @@ export function useModelSync() {
         if (keyChanged || cacheStale || noCache) {
         lastFetchedKey.current = apiKey.trim()
 
-        fetchOpenRouterModels(apiKey.trim())
-          .then((models: unknown[]) => {
-            if (models.length > 0) setOpenRouterModels(models)
+          fetchOpenRouterModels(apiKey.trim())
+            .then((models) => {
+              if (models.length > 0) setOpenRouterModels(models)
           })
           .catch((err: unknown) => {
             log.warn('Failed to fetch OpenRouter models', err)

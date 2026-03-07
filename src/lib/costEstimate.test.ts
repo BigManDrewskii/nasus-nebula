@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estimateCost, RATES_PER_MILLION } from './costEstimate'
+import { estimateCost } from './costEstimate'
 
 describe('estimateCost', () => {
   it('should calculate cost for a known model', () => {

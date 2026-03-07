@@ -39,9 +39,6 @@ const HEALTH_WINDOW_SIZE = 20
 
 // ─── Retryable Error Detection ──────────────────────────────────────────────
 
-/** HTTP status codes that indicate a transient/retryable error */
-const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504, 529])
-
 /** HTTP status codes that indicate a permanent error (don't retry, don't failover) */
 const PERMANENT_ERROR_CODES = new Set([401, 403])
 

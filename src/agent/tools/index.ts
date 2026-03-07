@@ -5,6 +5,7 @@
  * Individual tools are organized by category.
  */
 
+import type { JSONSchema7 } from 'json-schema'
 import { ToolRegistry } from './core/ToolRegistry'
 import type { ExecutionConfig } from '../sandboxRuntime'
 
@@ -89,7 +90,7 @@ toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotToo
 /**
  * Get tool function definitions for OpenAI function calling.
  */
-export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
+export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: { name: string; description: string; parameters: JSONSchema7 } }> {
   const allTools = toolRegistry.getToolDefinitions()
 
   if (env === 'browser-only') {
@@ -99,10 +100,12 @@ export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'):
       'git',
       'serve_preview',
     ])
-    return allTools.filter(t => !excludeInBrowserMode.has(t.function.name))
+    return allTools
+      .filter(t => !excludeInBrowserMode.has(t.function.name))
+      .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
   }
 
-  return allTools
+  return allTools.map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
 }
 
 /**

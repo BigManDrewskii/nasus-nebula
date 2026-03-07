@@ -1,7 +1,7 @@
 // Orchids was here
 import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/api/process'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Task } from './types'
@@ -132,7 +132,7 @@ function App() {
     const doUpdateCheck = async () => {
       try {
         const update = await check()
-        if (update?.shouldUpdate) {
+          if (update) {
           await update.install()
           await relaunch()
         }

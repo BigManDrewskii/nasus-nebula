@@ -8,6 +8,7 @@ import { streamText, jsonSchema, type ModelMessage } from 'ai';
 import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
 import { findModelById } from './gateway/modelRegistry';
+import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { sanitizeMessages } from './messageUtils';
 import { createLogger } from '../lib/logger';
 
@@ -34,7 +35,7 @@ export interface ToolDefinition {
   function: {
     name: string
     description: string
-    parameters: Record<string, unknown>
+    parameters: JSONSchema7
   }
   inactive?: boolean
 }
@@ -135,7 +136,7 @@ export async function streamCompletion(
       // Enforces the OpenAI message ordering invariants (shared implementation in messageUtils.ts).
       const sanitizedMessages = sanitizeMessages(messages as LlmMessage[])
 
-      const coreMessages: ModelMessage[] = sanitizedMessages.map(m => {
+      const coreMessages = sanitizedMessages.map(m => {
       // ── tool ──────────────────────────────────────────────────────────────
       if (m.role === 'tool') {
         if (!toolsEnabled) {
@@ -198,11 +199,11 @@ export async function streamCompletion(
         }).filter(p => p.type !== 'text' || p.text)
         return { role: m.role, content: parts.length > 0 ? parts : '' }
       }
-        return {
-          role: m.role as 'user',
-          content: contentToString(m.content) || '',
-        }
-    });
+          return {
+            role: m.role as 'user',
+            content: contentToString(m.content) || '',
+          }
+      }) as ModelMessage[];
 
   // Convert ToolDefinition to AI SDK Tool
   const sdkTools: Record<string, { description: string; inputSchema: ReturnType<typeof jsonSchema> }> = {}

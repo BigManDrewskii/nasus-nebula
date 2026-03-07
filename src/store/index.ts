@@ -39,13 +39,17 @@ type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice
 
 export const useAppStore = create<AppState>()(
   persist(
-    immer((...a) => ({
-      ...createTaskSlice(...a),
-      ...createUISlice(...a),
-      ...createAgentSlice(...a),
-      ...createSettingsSlice(...a),
-      ...createGatewaySlice(...a),
-    })),
+    immer((...a) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const [set, get, api] = a as [any, any, any]
+      return {
+        ...createTaskSlice(set, get, api),
+        ...createUISlice(set, get, api),
+        ...createAgentSlice(set, get, api),
+        ...createSettingsSlice(set, get, api),
+        ...createGatewaySlice(set, get, api),
+      }
+    }),
     {
       name: 'nasus-store-v2',
       partialize: (state): Partial<AppState> => ({
