@@ -1,5 +1,7 @@
 // Orchids was here
 import { invoke } from '@tauri-apps/api/core'
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/api/process'
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Task } from './types'
@@ -124,6 +126,23 @@ function App() {
   useEffect(() => {
     checkSidecarInstalled()
   }, [checkSidecarInstalled])
+
+  // Check for updates on startup
+  useEffect(() => {
+    const doUpdateCheck = async () => {
+      try {
+        const update = await check()
+        if (update?.shouldUpdate) {
+          await update.install()
+          await relaunch()
+        }
+      } catch (error) {
+        console.error("Update check failed:", error)
+      }
+    }
+
+    doUpdateCheck()
+  }, [])
 
   // Listen for browser activity events and auto-open browser panel
   // Use refs for the setters so the handler is never stale without re-registering

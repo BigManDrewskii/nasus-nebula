@@ -28,8 +28,17 @@
       }
     ],
       "security": {
-        "csp": "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ipc: http: https:;"
+        "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' ipc: http: https:;"
       }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/BigManDrewskii/nasus/releases/latest/download/update.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwRDFGN0NFNDlFRkEzMjQKUldSWDVVeTgxV1R0VzZVSm1CVWp4Q05zUkFUV0I4TjZ4Z25qZ0JkY2daZzZzZ3JkZk5HUEpZSmEK"
+    }
   },
   "bundle": {
     "active": true,
