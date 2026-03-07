@@ -89,7 +89,7 @@ toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotToo
 /**
  * Get tool function definitions for OpenAI function calling.
  */
-export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: any }> {
+export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: { name: string; description: string; parameters: unknown } }> {
   const allTools = toolRegistry.getToolDefinitions()
 
   if (env === 'browser-only') {
@@ -114,13 +114,13 @@ export async function executeTool(
   context?: {
     taskId?: string
     executionConfig?: ExecutionConfig
-    onSearchStatus?: (evt: any) => void
+    onSearchStatus?: (evt: unknown) => void
   }
 ): Promise<{ output: string; isError: boolean }> {
   // Inject context into args for tools that need it
-  const augmentedArgs = { ...args }
+  const augmentedArgs: Record<string, unknown> = { ...args }
   if (context?.taskId) {
-    (augmentedArgs as any).__taskId = context.taskId
+    augmentedArgs.__taskId = context.taskId
   }
 
   // Configure tools before execution
@@ -128,12 +128,12 @@ export async function executeTool(
 
   // Set execution config on tools that need it (must be before execute)
   if (context?.executionConfig && tool && 'setExecutionConfig' in tool) {
-    (tool as any).setExecutionConfig(context.executionConfig)
+    (tool as { setExecutionConfig: (cfg: ExecutionConfig) => void }).setExecutionConfig(context.executionConfig)
   }
 
   // Set search config/status on tools that need it (e.g. SearchWebTool)
-  if (tool && 'withConfig' in tool && typeof (tool as any).withConfig === 'function') {
-    (tool as any).withConfig(undefined, context?.onSearchStatus)
+  if (tool && 'withConfig' in tool && typeof (tool as { withConfig?: unknown }).withConfig === 'function') {
+    (tool as { withConfig: (cfg: undefined, cb?: (evt: unknown) => void) => void }).withConfig(undefined, context?.onSearchStatus)
   }
 
   const result = await toolRegistry.execute(name, augmentedArgs)

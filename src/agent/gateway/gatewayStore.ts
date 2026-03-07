@@ -28,6 +28,7 @@ import type {
 } from './gatewayTypes'
 import { DEFAULT_GATEWAYS } from './gatewayTypes'
 import { selectModel, translateModelId, findModelById } from './modelRegistry'
+import type { OpenRouterModel } from '../llm'
 
 const log = createLogger('Gateway')
 
@@ -41,14 +42,14 @@ export interface GatewaySlice {
   gatewayHealth: GatewayHealth[]
   gatewayService: GatewayService | null
   lastGatewayEvent: GatewayEvent | null
-  openRouterModels: any[]
+  openRouterModels: OpenRouterModel[]
   modelsLastFetched: number
   /** True once loadGatewayConfig has finished its first run. */
   gatewayConfigReady: boolean
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
-  setOpenRouterModels: (models: any[]) => void
+  setOpenRouterModels: (models: OpenRouterModel[]) => void
 
   /** Initialize the gateway service (call once on app startup) */
   initGatewayService: () => void
@@ -208,13 +209,13 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
         let updatedGateways: GatewayConfig[]
 
-        if (savedGateways && savedGateways.length > 0 && savedGateways.some((g: any) => g.apiKey)) {
+          if (savedGateways && savedGateways.length > 0 && savedGateways.some(g => g.apiKey)) {
           // Use the full saved gateways (have real API keys) — this is the normal path
           // after the user has saved settings at least once with the new code.
           // Note: Rust serializes with camelCase, so apiKey/apiBase are correct but
           // gatewayType != type — we merge only the fields that exist on the JS type.
           updatedGateways = currentGateways.map(g => {
-            const saved = savedGateways.find((s: any) => s.id === g.id) as any
+            const saved = savedGateways.find(s => s.id === g.id)
             if (!saved) return g
             return {
               ...g,
@@ -347,20 +348,16 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
     // store.apiKey is populated by loadGatewayConfig (via setApiKey) and by
     // SettingsPanel.checkAndSave. It will be '' after a cold rehydration
     // (partialize strips it) but non-empty once loadGatewayConfig has run.
-    const legacyKey = (() => {
-      try {
-        return (get() as any).apiKey as string ?? ''
-      } catch { return '' }
-    })()
+    // get() is typed as GatewaySlice but at runtime the merged AppState includes
+    // legacy apiKey/provider/apiBase — we access them via a widened type.
+    type LegacyFields = { apiKey?: string; provider?: string; apiBase?: string }
+    const legacyState = get() as GatewaySlice & LegacyFields
+    const legacyKey = legacyState.apiKey ?? ''
 
     if (!primary) {
       // No enabled gateway — best-effort: use the legacy key with the persisted provider
-      const legacyProvider = (() => {
-        try { return (get() as any).provider as string ?? 'openrouter' } catch { return 'openrouter' }
-      })()
-      const legacyBase = (() => {
-        try { return (get() as any).apiBase as string ?? 'https://openrouter.ai/api/v1' } catch { return 'https://openrouter.ai/api/v1' }
-      })()
+      const legacyProvider = legacyState.provider ?? 'openrouter'
+      const legacyBase = legacyState.apiBase ?? 'https://openrouter.ai/api/v1'
       return {
         apiBase: legacyBase,
         apiKey: legacyKey,

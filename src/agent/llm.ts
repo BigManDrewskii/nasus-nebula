@@ -3,8 +3,8 @@
  * Handles streaming completions, retries, rich model fetching.
  */
 
-import { streamText, jsonSchema } from 'ai';
-import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
+import type { JSONSchema7 } from 'json-schema';
+import { streamText, jsonSchema, type ModelMessage } from 'ai';
 import { useAppStore } from '../store';
 import { getGlobalRateLimiter } from './gateway/rateLimiter';
 import { findModelById } from './gateway/modelRegistry';
@@ -19,6 +19,8 @@ export interface LlmMessage {
   tool_call_id?: string
   tool_name?: string
   tool_calls?: ToolCall[]
+  /** DeepSeek R1 reasoning content — non-standard extension field */
+  reasoning_content?: string
 }
 
 export interface ToolCall {
@@ -133,7 +135,7 @@ export async function streamCompletion(
       // Enforces the OpenAI message ordering invariants (shared implementation in messageUtils.ts).
       const sanitizedMessages = sanitizeMessages(messages as LlmMessage[])
 
-    const coreMessages: any[] = sanitizedMessages.map(m => {
+      const coreMessages: ModelMessage[] = sanitizedMessages.map(m => {
       // ── tool ──────────────────────────────────────────────────────────────
       if (m.role === 'tool') {
         if (!toolsEnabled) {
@@ -167,14 +169,14 @@ export async function streamCompletion(
         }
 
         if (m.tool_calls && m.tool_calls.length > 0) {
-          const parts: any[] = []
-          if (textContent) parts.push({ type: 'text', text: textContent })
-          for (const tc of m.tool_calls) {
-            let input: unknown = {}
-            try { input = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
-            parts.push({ type: 'tool-call', toolCallId: tc.id, toolName: tc.function.name, input })
-          }
-          return { role: 'assistant', content: parts }
+          const parts: Array<{ type: string; text?: string; toolCallId?: string; toolName?: string; input?: unknown }> = []
+            if (textContent) parts.push({ type: 'text', text: textContent })
+            for (const tc of m.tool_calls) {
+              let input: unknown = {}
+              try { input = JSON.parse(tc.function.arguments || '{}') } catch { /* keep {} */ }
+              parts.push({ type: 'tool-call', toolCallId: tc.id, toolName: tc.function.name, input })
+            }
+            return { role: 'assistant', content: parts }
         }
         return { role: 'assistant', content: textContent || '' }
       }
@@ -188,7 +190,7 @@ export async function streamCompletion(
       // ── user (and any unknown roles) ──────────────────────────────────────
       // Convert OpenAI image_url format → AI SDK image format
       if (Array.isArray(m.content) && m.content.length > 0) {
-        const parts: any[] = m.content.map(p => {
+          const parts: Array<{ type: string; image?: string; text?: string }> = m.content.map(p => {
           if (p.type === 'image_url' && p.image_url?.url) {
             return { type: 'image', image: p.image_url.url }
           }
@@ -196,20 +198,20 @@ export async function streamCompletion(
         }).filter(p => p.type !== 'text' || p.text)
         return { role: m.role, content: parts.length > 0 ? parts : '' }
       }
-      return {
-        role: m.role as any,
-        content: contentToString(m.content) || '',
-      }
+        return {
+          role: m.role as 'user',
+          content: contentToString(m.content) || '',
+        }
     });
 
   // Convert ToolDefinition to AI SDK Tool
-  const sdkTools: Record<string, any> = {}
+  const sdkTools: Record<string, { description: string; inputSchema: ReturnType<typeof jsonSchema> }> = {}
   // Strip tools for models that don't support function calling (e.g., DeepSeek R1 pre-0528)
   if (toolsEnabled) {
     tools.filter(t => !t.inactive).forEach(t => {
         sdkTools[t.function.name] = {
           description: t.function.description,
-          inputSchema: jsonSchema(t.function.parameters as any),
+            inputSchema: jsonSchema(t.function.parameters as JSONSchema7),
         };
       });
   }
@@ -221,7 +223,7 @@ export async function streamCompletion(
 
       const { fullStream, toolCalls, usage, finishReason } = await streamText({
         model: unifiedModel,
-        messages: coreMessages as any,
+          messages: coreMessages,
         tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
         onFinish: async (event) => {
         if (event.usage) {
@@ -231,7 +233,7 @@ export async function streamCompletion(
           cb.onUsage(input, output, total);
         }
         if (event.toolCalls && event.toolCalls.length > 0) {
-          cb.onToolCalls(event.toolCalls.map((tc: any) => ({
+          cb.onToolCalls(event.toolCalls.map((tc: { toolCallId: string; toolName: string; input?: unknown; args?: unknown }) => ({
             id: tc.toolCallId,
             type: 'function',
             function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
@@ -259,7 +261,7 @@ export async function streamCompletion(
         // Other chunk types (tool-call, tool-result, finish, error) are handled by onFinish/toolCalls
       }
 
-      const resolvedToolCalls = (await toolCalls).map((tc: any) => ({
+      const resolvedToolCalls = (await toolCalls).map((tc: { toolCallId: string; toolName: string; input?: unknown; args?: unknown }) => ({
         id: tc.toolCallId,
         type: 'function' as const,
         function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
@@ -303,7 +305,7 @@ export async function streamCompletion(
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : undefined;
     // Surface Zod cause for AI_InvalidPromptError to identify the exact bad message
-      const cause = (err as any)?.cause
+      const cause = (err instanceof Error ? err : null)?.cause as Record<string, unknown> | null | undefined
       log.error('streamCompletion error', err instanceof Error ? err : new Error(String(err)), {
         message: errorMsg,
         stack: errorStack,
@@ -311,7 +313,7 @@ export async function streamCompletion(
         apiBase,
         model,
         hasApiKey: Boolean(apiKey && apiKey.length > 0),
-        ...(cause ? { cause: cause?.message ?? String(cause), causeErrors: cause?.errors } : {}),
+        ...(cause ? { cause: (cause as { message?: string })?.message ?? String(cause), causeErrors: (cause as { errors?: unknown })?.errors } : {}),
       })
       // For schema validation errors, log the exact messages that failed so we can debug
       if (errorMsg.includes('ModelMessage') || errorMsg.includes('Invalid prompt')) {
@@ -362,8 +364,8 @@ export async function chatOnce(
     const json = await resp.json()
     return (json?.choices?.[0]?.message?.content ?? '').trim()
   } catch (err) {
-    const cause = (err as any)?.cause
-      log.error('chatOnce failed', err instanceof Error ? err : new Error(String(err)), cause ? { cause: cause?.message ?? String(cause) } : undefined)
+    const cause = (err instanceof Error ? err : null)?.cause as Record<string, unknown> | null | undefined
+      log.error('chatOnce failed', err instanceof Error ? err : new Error(String(err)), cause ? { cause: (cause as { message?: string })?.message ?? String(cause) } : undefined)
     return ''
   }
 }
@@ -475,12 +477,17 @@ export interface OpenRouterModel {
     internal_reasoning?: string // Added for 2026 models
     input_cache_read?: string   // Added for 2026 models
     input_cache_write?: string  // Added for 2026 models
+    /** Alternative key names used by some providers */
+    input?: string
+    output?: string
   }
   top_provider: {
     context_length: number | null
     is_moderated: boolean
   }
   supported_parameters?: string[] // "tools", "structured_outputs", "include_reasoning", "seed", etc.
+  /** Injected client-side: true when both prompt and completion are free */
+  is_free?: boolean
 }
 
 const OR_API_BASE = 'https://openrouter.ai/api/v1'
@@ -530,7 +537,7 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterM
   )
   // Inject an 'is_free' property into the models for easier filtering
   models.forEach(m => {
-    (m as any).is_free = parseFloat(m.pricing?.prompt ?? '1') === 0;
+    m.is_free = parseFloat(m.pricing?.prompt ?? '1') === 0;
   });
   models.sort((a, b) => {
     const fa = a.id.split('/')[0]

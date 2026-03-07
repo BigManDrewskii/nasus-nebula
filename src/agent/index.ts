@@ -22,7 +22,7 @@ const controllers: Map<string, AbortController> = new Map()
 // Wire Tauri's stop_agent event → stopWebAgent so the Rust backend can
 // cancel a running task (e.g. from a native menu action or crash recovery).
 // Only registers if running inside Tauri (window.__TAURI__ is defined).
-if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+if (typeof window !== 'undefined' && '__TAURI__' in window) {
   import('@tauri-apps/api/event').then(({ listen }) => {
     listen<{ taskId: string }>('nasus:stop-task', (event) => {
       stopWebAgent(event.payload.taskId)

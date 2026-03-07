@@ -38,7 +38,7 @@ export class PatchFileTool extends BaseTool {
         .replace(/^\//, '')
 
       try {
-        const taskId = (args as any).__taskId || 'initial'
+        const taskId = (args.__taskId as string | undefined) || 'initial'
         const rawContent = await workspaceManager.readFile(taskId, path)
 
       // ── Attempt 1: exact match ──────────────────────────────────────────────

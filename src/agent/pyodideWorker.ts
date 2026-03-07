@@ -12,7 +12,10 @@
 
 /// <reference lib="webworker" />
 
-declare const self: DedicatedWorkerGlobalScope
+declare const self: DedicatedWorkerGlobalScope & {
+  /** Injected by importScripts(PYODIDE_CDN) at runtime */
+  loadPyodide: (options: { indexURL: string; stdout: () => void; stderr: () => void }) => Promise<PyodideInterface>
+}
 
 // Pyodide loaded from CDN — avoids adding it to the npm bundle
 const PYODIDE_CDN = 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/pyodide.js'
@@ -30,10 +33,9 @@ async function loadPyodide(): Promise<PyodideInterface> {
   if (loading) return loading
 
   loading = (async () => {
-    // importScripts is synchronous but pyodide itself needs async init
+      // importScripts is synchronous but pyodide itself needs async init
       importScripts(PYODIDE_CDN)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const instance = await (self as any).loadPyodide({
+      const instance = await self.loadPyodide({
       indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.2/full/',
       stdout: () => {}, // we capture via io redirect below
       stderr: () => {},

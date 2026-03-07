@@ -69,8 +69,7 @@ const languageCache = new Map<string, Parser.Language>()
 async function getParser(): Promise<typeof Parser> {
   if (ParserClass) return ParserClass
   // web-tree-sitter is a CJS module; Vite exposes it as the module object itself.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = await import('web-tree-sitter') as any
+  const mod = await import('web-tree-sitter') as { default?: typeof Parser } & typeof Parser
   const Cls = (mod.default ?? mod) as typeof Parser
   await Cls.init({ locateFile: (_: string) => '/tree-sitter/web-tree-sitter.wasm' })
   ParserClass = Cls

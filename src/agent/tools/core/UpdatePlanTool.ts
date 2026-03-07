@@ -61,7 +61,7 @@ export class UpdatePlanTool extends BaseTool {
     }
 
     try {
-      const taskId = (args as any).__taskId || 'initial'
+      const taskId = (args.__taskId as string | undefined) || 'initial'
       
       // 1. Update task_plan.md in workspace
       const planMarkdown = this.convertToMarkdown(plan)

@@ -37,7 +37,7 @@ export class AnalyzeCodeTool extends BaseTool {
     }
 
     try {
-      const taskId = (args as any).__taskId || 'initial'
+      const taskId = (args.__taskId as string | undefined) || 'initial'
       const source = await workspaceManager.readFile(taskId, path)
       if (!source) return toolFailure(`File not found or empty: ${path}`)
 

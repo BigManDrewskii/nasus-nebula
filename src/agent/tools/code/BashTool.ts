@@ -26,7 +26,7 @@ export class BashTool extends BaseTool {
 
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const cmd = String(args.command ?? '')
-    const taskId = (args as any).__taskId || 'initial'
+    const taskId = (args.__taskId as string | undefined) || 'initial'
 
     // Base64 write pattern (used by some agents)
     const b64WriteMatch = cmd.match(/echo\s+'([A-Za-z0-9+/=\s]+)'\s*\|\s*base64\s+-d\s*>\s*(\S+)/)

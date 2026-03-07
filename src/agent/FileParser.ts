@@ -64,7 +64,7 @@ async function parsePdf(buffer: Uint8Array): Promise<ParsedFile> {
       const page = await pdf.getPage(p)
       const content = await page.getTextContent()
         const pageText = content.items
-            .filter((item): item is { str: string } & typeof item => 'str' in item && typeof (item as any).str === 'string')
+            .filter((item): item is { str: string } & typeof item => 'str' in item && typeof (item as Record<string, unknown>).str === 'string')
             .map(item => item.str)
           .join(' ')
       if (pageText.trim()) parts.push(`[Page ${p}]\n${pageText.trim()}`)

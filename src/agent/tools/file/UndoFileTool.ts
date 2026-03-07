@@ -29,7 +29,7 @@ export class UndoFileTool extends BaseTool {
         .replace(/^\//, '')
 
       try {
-        const taskId = (args as any).__taskId || 'initial'
+        const taskId = (args.__taskId as string | undefined) || 'initial'
         const restoredContent = await workspaceManager.undoFile(taskId, path)
       
       if (restoredContent !== null) {

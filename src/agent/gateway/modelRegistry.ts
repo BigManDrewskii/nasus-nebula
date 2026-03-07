@@ -11,6 +11,7 @@
  */
 
 import type { GatewayModel, GatewayType, RoutingMode } from './gatewayTypes'
+import type { OpenRouterModel } from '../llm'
 
 // ─── Registry ───────────────────────────────────────────────────────────────
 
@@ -263,14 +264,14 @@ export function selectModel(
   mode: RoutingMode,
   gatewayType: GatewayType,
   manualModelId?: string,
-  dynamicModels: any[] = [],
-): { modelId: string; model: any } | undefined {
+  dynamicModels: OpenRouterModel[] = [],
+): { modelId: string; model: GatewayModel } | undefined {
   if (mode === 'manual' && manualModelId) {
     const model = findModelById(manualModelId)
     if (model) return { modelId: manualModelId, model }
     // If not found in registry, check dynamic models
     const dynamic = dynamicModels.find(m => m.id === manualModelId)
-    if (dynamic) return { modelId: manualModelId, model: dynamic }
+    if (dynamic) return { modelId: manualModelId, model: dynamic as unknown as GatewayModel }
     // Pass through as-is (custom model)
     return undefined
   }
@@ -281,17 +282,17 @@ export function selectModel(
   )
   
     // Map dynamic models to match GatewayModel interface roughly
-    const mappedDynamic = dynamicModels
+    const mappedDynamic: GatewayModel[] = dynamicModels
       .filter(m => {
         // OpenRouter format check
-        if ((m as any).architecture?.output_modalities) {
-          return (m as any).architecture.output_modalities.includes('text')
+        if (m.architecture?.output_modalities) {
+          return m.architecture.output_modalities.includes('text')
         }
         return true // Fallback
       })
       .map(m => {
-        const inputPriceStr = (m as any).pricing?.prompt || (m as any).pricing?.input || '0'
-        const outputPriceStr = (m as any).pricing?.completion || (m as any).pricing?.output || '0'
+        const inputPriceStr = m.pricing?.prompt || m.pricing?.input || '0'
+        const outputPriceStr = m.pricing?.completion || m.pricing?.output || '0'
         const inputPrice = parseFloat(inputPriceStr)
         const outputPrice = parseFloat(outputPriceStr)
         
@@ -299,11 +300,11 @@ export function selectModel(
           canonicalName: m.name || m.id,
           ids: { [gatewayType]: m.id },
           freeOn: { [gatewayType]: inputPrice === 0 },
-          tier: (m as any).tier || 'general',
-          contextWindow: m.context_length || m.context_window || 128000,
+          tier: 'general' as const,
+          contextWindow: m.context_length || 128000,
           inputCostPer1M: inputPrice * 1_000_000,
           outputCostPer1M: outputPrice * 1_000_000,
-          supportsTools: (m as any).tags?.includes('tool-use') ?? true, // Default to true unless tags say otherwise
+          supportsTools: m.supported_parameters?.includes('tools') ?? true,
         }
       })
 
@@ -320,13 +321,13 @@ export function selectModel(
       return { modelId: pick.ids[gatewayType]!, model: pick }
     }
     // Prefer reasoning tier, then coding, then general, then fast
-    const tierOrder: any[] = ['reasoning', 'coding', 'general', 'fast']
+    const tierOrder: GatewayModel['tier'][] = ['reasoning', 'coding', 'general', 'fast']
     for (const tier of tierOrder) {
       const match = free.find((m) => m.tier === tier)
-      if (match) return { modelId: (match.ids as any)[gatewayType]!, model: match }
+      if (match) return { modelId: match.ids[gatewayType]!, model: match }
     }
     // Fallback: first free tool-capable model
-    return { modelId: (free[0].ids as any)[gatewayType]!, model: free[0] }
+    return { modelId: free[0].ids[gatewayType]!, model: free[0] }
   }
 
   if (mode === 'auto-paid') {
@@ -338,7 +339,7 @@ export function selectModel(
 
     if (paidReasoning.length > 0) {
       const pick = paidReasoning[0]
-      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
+      return { modelId: pick.ids[gatewayType]!, model: pick }
     }
 
     // Fall back to any reasoning model (including free ones as a last resort)
@@ -348,7 +349,7 @@ export function selectModel(
 
     if (anyReasoning.length > 0) {
       const pick = anyReasoning[0]
-      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
+      return { modelId: pick.ids[gatewayType]!, model: pick }
     }
 
     // No reasoning models — pick cheapest paid coding model
@@ -358,12 +359,12 @@ export function selectModel(
 
     if (coding.length > 0) {
       const pick = coding[0]
-      return { modelId: (pick.ids as any)[gatewayType]!, model: pick }
+      return { modelId: pick.ids[gatewayType]!, model: pick }
     }
 
     // Final fallback: cheapest available (may be free)
     const cheapest = [...available].sort((a, b) => a.inputCostPer1M - b.inputCostPer1M)
-    return { modelId: (cheapest[0].ids as any)[gatewayType]!, model: cheapest[0] }
+    return { modelId: cheapest[0].ids[gatewayType]!, model: cheapest[0] }
   }
 
   return undefined

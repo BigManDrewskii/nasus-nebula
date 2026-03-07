@@ -22,7 +22,7 @@ export class ListFilesTool extends BaseTool {
       const rawPath = (args.path as string) || '/workspace'
 
       try {
-        const taskId = (args as any).__taskId || 'initial'
+        const taskId = (args.__taskId as string | undefined) || 'initial'
         const files = await workspaceManager.listFiles(taskId)
 
         // Normalize the requested path: strip /workspace/ prefix since workspace_list

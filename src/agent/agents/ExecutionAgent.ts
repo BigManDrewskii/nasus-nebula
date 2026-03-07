@@ -696,9 +696,9 @@ export class ExecutionAgent extends BaseAgent {
           currentModel.includes('deepseek-r1') ||
           currentModel.includes('deepseek-reasoner') ||
           currentModel.includes('deepseek/deepseek-r1')
-        if (isReasoningModel) {
-          ;(assistantMsg as any).reasoning_content = reasoningContent
-        }
+          if (isReasoningModel) {
+            assistantMsg.reasoning_content = reasoningContent
+          }
       }
     messages.push(assistantMsg)
 

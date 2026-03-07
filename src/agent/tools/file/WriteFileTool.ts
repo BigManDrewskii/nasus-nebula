@@ -36,7 +36,7 @@ export class WriteFileTool extends BaseTool {
         .replace(/^\//, '')
 
       try {
-        const taskId = (args as any).__taskId || 'initial'
+        const taskId = (args.__taskId as string | undefined) || 'initial'
         await workspaceManager.writeFile(taskId, path, content)
         return toolSuccess(`File written: ${path}`)
       } catch (error) {

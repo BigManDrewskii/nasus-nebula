@@ -25,7 +25,7 @@ export class SearchFilesTool extends BaseTool {
     const subPath = args.path as string || ''
     const glob = args.glob as string
     
-    const taskId = (args as any).__taskId || 'initial'
+    const taskId = (args.__taskId as string | undefined) || 'initial'
 
     try {
       const files = await workspaceManager.listFiles(taskId)

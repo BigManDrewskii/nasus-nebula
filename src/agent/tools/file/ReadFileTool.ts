@@ -34,7 +34,7 @@ export class ReadFileTool extends BaseTool {
         .replace(/^\//, '')
 
       try {
-        const taskId = (args as any).__taskId || 'initial'
+        const taskId = (args.__taskId as string | undefined) || 'initial'
         const content = await workspaceManager.readFileParsed(taskId, path)
         return toolSuccess(content)
       } catch (error) {

@@ -34,7 +34,7 @@ export class EditFileTool extends BaseTool {
     async execute(args: Record<string, unknown>): Promise<ToolResult> {
       const rawPath = args.path as string
       const edits = args.edits as Array<{ startLine: number; endLine: number; newContent: string }>
-      const taskId = (args as any).__taskId || 'initial'
+      const taskId = (args.__taskId as string | undefined) || 'initial'
 
       if (!rawPath || !edits) {
         return toolFailure('path and edits are required')

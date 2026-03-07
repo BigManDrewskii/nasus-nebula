@@ -330,7 +330,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
           displayName: message.modelName || message.modelId,
           provider: message.provider || 'AI'
         } : null}
-        currentTool={lastToolStep?.kind === 'tool_call' ? (lastToolStep as any).tool : null}
+        currentTool={lastToolStep?.kind === 'tool_call' ? lastToolStep.tool : null}
       />
     }
 
