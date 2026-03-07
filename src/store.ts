@@ -901,7 +901,8 @@ export const useAppStore = create<AppState>()(
             apiBase: state.apiBase,
           provider: state.provider,
           activeTaskId: state.activeTaskId,
-              exaKey: state.exaKey,
+              // Do NOT persist the Exa API key to localStorage — load from OS keyring on startup.
+              exaKey: '',
                 maxIterations: state.maxIterations,
                 onboardingComplete: state.onboardingComplete,
                   enableVerification: state.enableVerification,

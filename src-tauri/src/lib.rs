@@ -407,6 +407,27 @@ async fn get_search_config(state: State<'_, AppState>) -> Result<SearchConfig, S
     Ok(config.clone())
 }
 
+/// Retrieve the Exa API key from the OS keyring.
+/// Returns an empty string if no key has been stored yet.
+#[tauri::command]
+async fn get_exa_key() -> Result<String, String> {
+    Ok(search::keys::get_api_key("exa").unwrap_or_default())
+}
+
+/// Persist the Exa API key to the OS keyring and update in-memory state.
+#[tauri::command]
+async fn set_exa_key(state: State<'_, AppState>, key: String) -> Result<(), String> {
+    if key.is_empty() {
+        // Attempt deletion; ignore "not found" errors
+        let _ = search::keys::delete_api_key("exa");
+    } else {
+        search::keys::set_api_key("exa", &key)?;
+    }
+    let mut config = state.search_config.lock().await;
+    config.exa_key = key;
+    Ok(())
+}
+
 // --- Workspace Commands ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -643,6 +664,70 @@ async fn stop_agent(app: AppHandle, state: State<'_, AppState>, taskId: String) 
 
 // --- HTTP Fetch Command (CORS bypass for Tauri) ---
 
+/// Validate a URL against SSRF risks.
+/// Rejects non-HTTP/HTTPS schemes, private/loopback/link-local IP ranges,
+/// and hostnames that resolve to those ranges.
+fn validate_url_for_fetch(url: &str) -> Result<(), String> {
+    use std::net::{IpAddr, ToSocketAddrs};
+
+    let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+
+    // Only allow http and https schemes
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => return Err(format!("Disallowed URL scheme: '{}'. Only http and https are permitted.", other)),
+    }
+
+    let host = parsed.host_str().ok_or_else(|| "URL has no host".to_string())?;
+
+    // Reject bare 'localhost' / '0.0.0.0' without DNS resolution
+    let lower = host.to_lowercase();
+    if lower == "localhost" || lower == "0.0.0.0" {
+        return Err(format!("Requests to '{}' are not permitted.", host));
+    }
+
+    // If the host is already an IP address, validate it directly
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return validate_ip(ip);
+    }
+
+    // Resolve hostname and validate all resulting IPs
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    let addrs = format!("{}:{}", host, port)
+        .to_socket_addrs()
+        .map_err(|e| format!("Failed to resolve hostname '{}': {}", host, e))?;
+
+    for addr in addrs {
+        validate_ip(addr.ip())?;
+    }
+
+    Ok(())
+}
+
+fn validate_ip(ip: std::net::IpAddr) -> Result<(), String> {
+    use std::net::IpAddr;
+
+    let blocked = match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()          // 127.0.0.0/8
+            || v4.is_private()        // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+            || v4.is_link_local()     // 169.254.0.0/16 (cloud metadata)
+            || v4.is_broadcast()
+            || v4.is_unspecified()    // 0.0.0.0
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()          // ::1
+            || v6.is_unspecified()    // ::
+        }
+    };
+
+    if blocked {
+        return Err(format!("Requests to private/internal IP address {} are not permitted.", ip));
+    }
+
+    Ok(())
+}
+
 /// HTTP fetch bypassing CORS - for agent use in Tauri mode
 #[allow(non_snake_case)]
 #[tauri::command]
@@ -654,6 +739,9 @@ async fn http_fetch(
 ) -> Result<String, String> {
     // Reuse the shared HTTP_CLIENT (connection pooling) instead of creating a new client per call
     let client = &*HTTP_CLIENT;
+
+    // Validate URL to prevent SSRF attacks (private IPs, non-HTTP schemes, etc.)
+    validate_url_for_fetch(&url)?;
 
     let mut request = client.request(
         method.as_deref().unwrap_or("GET").parse::<reqwest::Method>().map_err(|e| e.to_string())?,
@@ -1044,6 +1132,8 @@ pub fn run() {
         search,
         save_search_config,
         get_search_config,
+        get_exa_key,
+        set_exa_key,
         workspace_list,
           workspace_read,
           workspace_read_binary,

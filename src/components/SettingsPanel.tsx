@@ -421,18 +421,27 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       if (localWorkspace.trim()) addRecentWorkspacePath(localWorkspace.trim())
       setApiBase(finalApiBase)
       setProvider(finalProvider)
-      setExaKey(localExaKey.trim())
+        const trimmedExaKey = localExaKey.trim()
+        setExaKey(trimmedExaKey)
 
-      const searchConfig = {
-        exaKey: localExaKey.trim(),
-      }
+        // Persist Exa key to OS keyring (not localStorage)
+        try {
+          await tauriInvoke('set_exa_key', { key: trimmedExaKey })
+        } catch (e) {
+          console.warn('Failed to save Exa key to keyring:', e)
+          // Non-fatal, continue
+        }
 
-      try {
-        await tauriInvoke('save_search_config', { searchConfig })
-      } catch (e) {
-        console.warn('Failed to save search config:', e)
-        // Non-fatal, continue
-      }
+        const searchConfig = {
+          exaKey: trimmedExaKey,
+        }
+
+        try {
+          await tauriInvoke('save_search_config', { searchConfig })
+        } catch (e) {
+          console.warn('Failed to save search config:', e)
+          // Non-fatal, continue
+        }
 
         const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
         setMaxIterations(parsedIter)

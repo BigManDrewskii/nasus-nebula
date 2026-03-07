@@ -1,19 +1,22 @@
 // Orchids was here
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Task } from './types'
 import { useAppStore } from './store'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { OutputPanel, type Tab } from './components/OutputPanel'
-import { SettingsPanel } from './components/SettingsPanel'
-import { OnboardingScreen } from './components/OnboardingScreen'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { useSidebarResponsive } from './hooks/useSidebarResponsive'
 import { PanelDivider } from './components/PanelDivider'
+
+// Lazy-load panels not visible on initial render to reduce startup bundle parse time
+const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => ({ default: m.SettingsPanel })))
+const OnboardingScreen = lazy(() => import('./components/OnboardingScreen').then(m => ({ default: m.OnboardingScreen })))
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -97,6 +100,11 @@ function App() {
       const store = useAppStore.getState()
       store.initGatewayService()
       store.loadGatewayConfig().catch(console.error)
+
+      // Load Exa API key from OS keyring — never stored in localStorage
+      invoke<string>('get_exa_key')
+        .then((key) => { if (key) store.setExaKey(key) })
+        .catch(console.error)
 
     // Initialize config sections from saved layout (use the action, not direct mutation)
     if (savedLayout.configSections) {
@@ -233,13 +241,15 @@ function App() {
     setActiveTaskId(task.id)
   }, [addTask, setActiveTaskId, routerConfig.budget])
 
-  if (!onboardingComplete) {
-    return (
-      <ErrorBoundary>
-        <OnboardingScreen />
-      </ErrorBoundary>
-    )
-  }
+    if (!onboardingComplete) {
+      return (
+        <ErrorBoundary>
+          <Suspense fallback={<div className="app-loading" />}>
+            <OnboardingScreen />
+          </Suspense>
+        </ErrorBoundary>
+      )
+    }
 
     return (
       <ErrorBoundary>
@@ -314,7 +324,11 @@ function App() {
           </div>
         )}
 
-          {settingsOpen && <SettingsPanel onClose={closeSettings} />}
+          {settingsOpen && (
+            <Suspense fallback={null}>
+              <SettingsPanel onClose={closeSettings} />
+            </Suspense>
+          )}
 
           {/* Floating re-open tab — shown when panel is collapsed OR hidden but files exist */}
               {(!outputVisible ? workspaceFiles.length > 0 : rightCollapsed) && (
