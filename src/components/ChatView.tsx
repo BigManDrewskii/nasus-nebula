@@ -727,7 +727,7 @@ interface ChatViewProps {
               className="flex-1 overflow-y-auto custom-scrollbar"
               id="message-list"
             >
-              <div className="max-w-[780px] mx-auto px-5 py-8 flex flex-col gap-8">
+              <div className="max-w-[780px] mx-auto px-5 py-10 flex flex-col gap-6">
                     {visibleMessages.map((msg, i) => (
                       <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                         <ChatMessage
@@ -739,14 +739,36 @@ interface ChatViewProps {
 
                     {/* Planning View integrated inline */}
                     {(pendingPlan || currentPlan) && (
-                      <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
-                        <PlanView
-                          plan={pendingPlan || currentPlan!}
-                          onApprove={pendingPlan ? approvePlan : undefined}
-                          onReject={pendingPlan ? rejectPlan : undefined}
-                          currentPhase={currentPhase}
-                          currentStep={currentStep}
-                        />
+                      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Plan intro line — only shown when awaiting approval */}
+                        {pendingPlan && (
+                          <div style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 11, marginBottom: 12,
+                          }}>
+                            <div style={{
+                              width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: '#111', border: '1px solid rgba(234,179,8,0.2)',
+                            }}>
+                              <NasusLogo size={15} fill="var(--amber)" />
+                            </div>
+                            <p style={{
+                              fontSize: 13, color: 'var(--tx-secondary)', lineHeight: 1.6,
+                              paddingTop: 4, margin: 0,
+                            }}>
+                              I've analyzed your request and created an execution plan. Review the phases below and approve to begin.
+                            </p>
+                          </div>
+                        )}
+                        <div style={{ marginLeft: 39 }}>
+                          <PlanView
+                            plan={pendingPlan || currentPlan!}
+                            onApprove={pendingPlan ? approvePlan : undefined}
+                            onReject={pendingPlan ? rejectPlan : undefined}
+                            currentPhase={currentPhase}
+                            currentStep={currentStep}
+                          />
+                        </div>
                       </div>
                     )}
 

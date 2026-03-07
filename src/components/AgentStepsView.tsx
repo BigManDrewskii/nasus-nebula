@@ -110,21 +110,37 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
           )}
         </span>
 
-        {/* Current action label */}
-        <span style={{
-          flex: 1,
-          fontSize: 12,
-          fontWeight: 500,
-          color: isStreaming ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-          lineHeight: 1.4,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}>
-          {isStreaming
-            ? <>{liveLabel}<span style={{ margin: '0 5px', opacity: 0.35 }}>·</span><span style={{ fontWeight: 400, color: 'var(--tx-tertiary)', fontSize: 11 }}>{completedCount} of ~{toolPairCount}</span></>
-            : `${toolPairCount} action${toolPairCount !== 1 ? 's' : ''} completed`}
-        </span>
+          {/* Current action label */}
+          {isStreaming ? (
+            <span style={{
+              flex: 1,
+              fontSize: 11.5,
+              fontWeight: 500,
+              color: 'var(--tx-primary)',
+              lineHeight: 1.4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {liveLabel}
+              <span style={{ color: 'var(--tx-muted)', fontWeight: 400, marginLeft: 6, fontSize: 10 }}>
+                · {completedCount} of ~{toolPairCount} steps
+              </span>
+            </span>
+          ) : (
+            <span style={{
+              flex: 1,
+              fontSize: 11.5,
+              fontWeight: 500,
+              color: 'var(--tx-tertiary)',
+              lineHeight: 1.4,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
+              {toolPairCount} action{toolPairCount !== 1 ? 's' : ''} completed
+            </span>
+          )}
 
         {/* Step count badge */}
         {toolPairCount > 0 && (
@@ -153,7 +169,7 @@ export const AgentStepsView = memo(function AgentStepsView({ steps, isStreaming 
       {!collapsed && (
         <>
           <div style={{ marginLeft: 24, height: 1, background: 'rgba(255,255,255,0.04)', margin: '2px 0 4px 24px' }} />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 24, paddingTop: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingLeft: 24, paddingTop: 0 }}>
             {/* Memory operations summary row */}
             {memoryRows.length > 0 && (
               <div>

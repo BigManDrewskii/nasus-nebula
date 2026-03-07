@@ -69,17 +69,19 @@ pub async fn create_container(
     // Ensure the image is available
     ensure_image(&docker, &config.image).await?;
 
-    // workspace_path already includes the task-specific subdirectory (set by TypeScript)
-    // Ensure it's absolute — if not, make it absolute from the current dir
-    let workspace_full = {
-        let p = std::path::Path::new(workspace_path);
-        if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            std::env::current_dir()
-                .map_err(|e| format!("Cannot get cwd: {}", e))?
-                .join(p)
-        }
+    // workspace_path is the base directory (e.g. /tmp/nasus-workspace).
+    // Append task-{id} to match what all other Rust workspace commands do.
+    let task_dir = std::path::Path::new(workspace_path).join(format!("task-{}", task_id));
+
+    // Ensure the path is absolute — if workspace_path was empty or relative, fall back to $HOME
+    let workspace_full = if task_dir.is_absolute() {
+        task_dir
+    } else {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        std::path::PathBuf::from(home)
+            .join(".nasus")
+            .join("workspaces")
+            .join(format!("task-{}", task_id))
     };
 
     // Create workspace directory if it doesn't exist

@@ -164,7 +164,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
           animation: 'inputPulse 2s ease-in-out infinite',
         } : {}),
         ...(inputState === 'streaming' && !isFocused ? {
-          animation: 'inputPulse 3s ease-in-out infinite',
+          animation: 'inputBreathing 3s ease-in-out infinite',
         } : {}),
       }}
       className={`user-input-area state-${inputState}`}
@@ -411,25 +411,26 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
           )}
         </div>
 
-        {/* Keyboard hints — fade in on focus */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 10,
-          padding: '0 10px 6px',
-          opacity: isFocused && !isWorking ? 0.7 : 0,
-          transition: 'opacity 0.2s ease',
-          pointerEvents: 'none',
-        }}>
-          <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)' }}>
-            ↵ send
-          </span>
-          <span style={{ fontSize: 10, color: 'var(--tx-ghost)', fontFamily: 'var(--font-mono)' }}>·</span>
-          <span style={{ fontSize: 10, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)' }}>
-            ⇧↵ newline
-          </span>
-        </div>
+          {/* Keyboard hints — fade in on focus */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 10,
+            padding: '0 10px 6px',
+            opacity: isFocused && !isWorking ? 0.7 : 0,
+            transition: 'opacity 0.2s ease',
+            pointerEvents: 'none',
+          }}>
+            <span style={{ fontSize: 9.5, color: 'var(--tx-ghost)' }}>
+              <kbd style={{ fontFamily: 'var(--font-mono)', padding: '0 3px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>↵</kbd>
+              {' '}send
+            </span>
+            <span style={{ fontSize: 9.5, color: 'var(--tx-ghost)' }}>
+              <kbd style={{ fontFamily: 'var(--font-mono)', padding: '0 3px', borderRadius: 3, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>⇧↵</kbd>
+              {' '}newline
+            </span>
+          </div>
       </div>
     </div>
   )

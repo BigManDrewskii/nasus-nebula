@@ -242,22 +242,20 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
 
 // ─── Nasus avatar ─────────────────────────────────────────────────────────────
 
-function NasusAvatar({ isStreaming }: { isStreaming?: boolean }) {
+function NasusAvatar({ isStreaming: _isStreaming }: { isStreaming?: boolean }) {
   return (
-    <div style={{ position: 'relative', flexShrink: 0 }}>
-      <div
-        style={{
-          width: 26, height: 26,
-          borderRadius: 8,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#111',
-          border: `1px solid ${isStreaming ? 'rgba(234,179,8,0.35)' : 'rgba(234,179,8,0.2)'}`,
-          boxShadow: isStreaming ? '0 0 8px rgba(234,179,8,0.12)' : '0 2px 6px rgba(0,0,0,0.3)',
-          transition: 'border-color 0.3s, box-shadow 0.3s',
-        }}
-      >
-        <NasusLogo size={15} fill="var(--amber)" />
-      </div>
+    <div style={{
+      width: 28,
+      height: 28,
+      borderRadius: 8,
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#111',
+      border: '1px solid rgba(234,179,8,0.2)',
+    }}>
+      <NasusLogo size={15} fill="var(--amber)" />
     </div>
   )
 }
@@ -315,36 +313,33 @@ function ModelBadge({ modelName, provider, isStreaming }: { modelName: string; p
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 5,
-      marginBottom: 7,
+      gap: 6,
+      marginBottom: 6,
+      height: 18,
     }}>
-      {isStreaming && <StreamingDot />}
       <span style={{
-        fontSize: 9,
+        fontSize: 10,
         fontWeight: 600,
         color: 'var(--tx-muted)',
-        letterSpacing: '0.06em',
-        textTransform: 'uppercase',
-        fontFamily: 'var(--font-mono)',
-        padding: '1px 5px',
-        borderRadius: 4,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        letterSpacing: '0.02em',
       }}>
         {modelName}
       </span>
       {provider && (
         <>
-          <span style={{ width: 2, height: 2, borderRadius: '50%', background: 'var(--tx-ghost)', opacity: 0.5 }} />
-          <span style={{ fontSize: 9, color: 'var(--tx-muted)', letterSpacing: '0.03em', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ width: 2, height: 2, borderRadius: '50%', background: 'var(--tx-ghost)' }} />
+          <span style={{ fontSize: 9, color: 'var(--tx-ghost)', fontFamily: 'var(--font-mono)' }}>
             {provider}
           </span>
         </>
       )}
       {isStreaming && (
-        <span style={{ fontSize: 9, color: 'var(--tx-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.02em' }}>
-          · streaming…
-        </span>
+        <span style={{
+          width: 5, height: 5, borderRadius: '50%',
+          background: '#4ade80',
+          animation: 'statusPulse 1.6s ease-in-out infinite',
+          flexShrink: 0,
+        }} />
       )}
     </div>
   )
@@ -368,10 +363,11 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
             color: 'var(--tx-primary)',
             fontSize: 13.5,
             lineHeight: 1.65,
-            padding: '9px 14px',
-            borderRadius: '16px 16px 4px 16px',
-            background: 'rgba(255,255,255,0.055)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            padding: '10px 16px',
+            borderRadius: '18px 18px 4px 18px',
+            background: 'rgba(234,179,8,0.06)',
+            border: '1px solid rgba(234,179,8,0.12)',
+            maxWidth: '100%',
           }}
         >
           {isSimple
@@ -426,16 +422,18 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
     return []
   }, [message.steps])
 
-  if (isWaiting) {
-    return <ThinkingIndicator
-      visible={true}
-      activeModel={message.modelId ? {
-        id: message.modelId,
-        displayName: message.modelName || message.modelId,
-        provider: message.provider || 'AI'
-      } : null}
-    />
-  }
+    if (isWaiting) {
+      const lastToolStep = message.steps?.findLast(s => s.kind === 'tool_call')
+      return <ThinkingIndicator
+        visible={true}
+        activeModel={message.modelId ? {
+          id: message.modelId,
+          displayName: message.modelName || message.modelId,
+          provider: message.provider || 'AI'
+        } : null}
+        currentTool={lastToolStep?.kind === 'tool_call' ? (lastToolStep as any).tool : null}
+      />
+    }
 
   const showBetweenDots = hasSteps && !hasContent && isStreaming && !hasError && (() => {
     const lastStep = message.steps![message.steps!.length - 1]
@@ -485,20 +483,19 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
             <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--tx-secondary)' }}>
               {renderedContent}
             </div>
-            {isStreaming && (
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 2, height: 13,
-                  borderRadius: 1,
-                  marginLeft: 2,
-                  verticalAlign: 'text-bottom',
-                  background: 'var(--amber)',
-                  opacity: 0.8,
-                  animation: 'cursorPulse 1.2s ease-in-out infinite',
-                }}
-              />
-            )}
+              {isStreaming && (
+                <span
+                  style={{
+                    display: 'inline-block',
+                    width: 2, height: 15,
+                    borderRadius: 1,
+                    marginLeft: 2,
+                    verticalAlign: 'text-bottom',
+                    background: 'var(--amber)',
+                    animation: 'cursorBlink 1s steps(2) infinite',
+                  }}
+                />
+              )}
           </div>
         )}
 

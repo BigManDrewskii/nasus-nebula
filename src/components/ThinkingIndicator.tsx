@@ -10,10 +10,11 @@ interface ThinkingIndicatorProps {
     displayName: string
     provider: string
   } | null
+  /** Current tool being invoked — shows a contextual label when set */
+  currentTool?: string | null
 }
 
-export function ThinkingIndicator({ visible, activeModel }: ThinkingIndicatorProps) {
-  // Track how long we've been in the thinking state so we can upgrade the label
+export function ThinkingIndicator({ visible, activeModel, currentTool }: ThinkingIndicatorProps) {
   const [elapsed, setElapsed] = useState(0)
 
   useEffect(() => {
@@ -27,12 +28,28 @@ export function ThinkingIndicator({ visible, activeModel }: ThinkingIndicatorPro
   }, [visible])
 
   const label = useMemo(() => {
+    if (currentTool) {
+      const toolLabels: Record<string, string> = {
+        search_web: 'Searching the web…',
+        http_fetch: 'Fetching page…',
+        write_file: 'Writing file…',
+        read_file: 'Reading file…',
+        bash_execute: 'Running in sandbox…',
+        bash: 'Running command…',
+        python_execute: 'Running Python…',
+        browser_navigate: 'Navigating browser…',
+        browser_extract: 'Extracting content…',
+        patch_file: 'Editing file…',
+        list_files: 'Listing files…',
+      }
+      return toolLabels[currentTool] || `Using ${currentTool}…`
+    }
     if (elapsed > 12000) return 'Almost there…'
     if (elapsed > 8000) return 'Refining response…'
-    if (elapsed > 5000) return 'Analyzing patterns…'
+    if (elapsed > 5000) return 'Working on it…'
     if (elapsed > 3000) return 'Planning approach…'
     return 'Thinking…'
-  }, [elapsed])
+  }, [elapsed, currentTool])
 
   if (!visible) return null
 
@@ -44,7 +61,7 @@ export function ThinkingIndicator({ visible, activeModel }: ThinkingIndicatorPro
       aria-label={label}
       style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}
     >
-      {/* Avatar */}
+      {/* Avatar — stable, no animation */}
       <div
         style={{
           width: 28,
@@ -55,48 +72,46 @@ export function ThinkingIndicator({ visible, activeModel }: ThinkingIndicatorPro
           alignItems: 'center',
           justifyContent: 'center',
           background: '#111',
-          border: '1px solid oklch(64% 0.214 40.1 / 0.28)',
-          boxShadow: '0 2px 8px oklch(64% 0.214 40.1 / 0.12)',
+          border: '1px solid rgba(234,179,8,0.2)',
           marginTop: 2,
         }}
       >
-        <NasusLogo size={16} fill="var(--amber)" />
+        <NasusLogo size={15} fill="var(--amber)" />
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* Pill */}
-        <div className="thinking-pill" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', padding: '4px 10px', borderRadius: 12 }}>
+      <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          padding: '5px 12px',
+          borderRadius: 10,
+        }}>
           {/* Bouncing dots */}
-          <div className="thinking-dots" aria-hidden="true" style={{ display: 'flex', gap: 3 }}>
+          <div style={{ display: 'flex', gap: 3 }} aria-hidden="true">
             {[0, 0.16, 0.32].map((d) => (
-              <span key={d} className="thinking-dot" style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--amber)', animation: `thinking-bounce 1.4s ease-in-out ${d}s infinite` }} />
+              <span key={d} style={{
+                width: 4, height: 4, borderRadius: '50%',
+                background: 'var(--amber)',
+                display: 'inline-block',
+                animation: `thinkingBounce 1.4s ease-in-out ${d}s infinite`,
+              }} />
             ))}
           </div>
 
-          {/* Shimmer label */}
-          <span className="thinking-label" style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-secondary)', opacity: 0.8 }}>{label}</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx-secondary)' }}>
+            {label}
+          </span>
 
           {activeModel && (
             <>
-              <div style={{ width: 1, height: 10, background: 'rgba(255,255,255,0.1)' }} />
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontWeight: 600, letterSpacing: '0.02em' }}>
-                  {activeModel.displayName}
-                </span>
-                <span style={{ fontSize: 9, color: 'var(--tx-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {activeModel.provider}
-                </span>
-              </div>
+              <span style={{ width: 1, height: 10, background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)', fontWeight: 500 }}>
+                {activeModel.displayName}
+              </span>
             </>
-          )}
-        </div>
-
-        {/* Skeleton lines — appearing shortly after "Thinking" starts */}
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 500 }}>
-          <div className="skeleton-line" style={{ width: '85%', height: 10, borderRadius: 4, background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 2s infinite linear' }} />
-          <div className="skeleton-line" style={{ width: '60%', height: 10, borderRadius: 4, background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 2s infinite linear', animationDelay: '0.2s' }} />
-          {elapsed > 2000 && (
-            <div className="skeleton-line" style={{ width: '75%', height: 10, borderRadius: 4, background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 2s infinite linear', animationDelay: '0.4s' }} />
           )}
         </div>
       </div>

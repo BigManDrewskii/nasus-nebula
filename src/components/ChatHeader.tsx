@@ -173,23 +173,15 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
     const activeModelName = taskRouterState?.displayName || (manualModel.split('/').pop() || manualModel)
     const isAutoFree = routingMode === 'auto-free' || taskRouterState?.isFree
 
-    // Provider info
-    const isVercel = activeModelId.includes('vercel') || manualProvider === 'vercel'
-    const providerLabel = isVercel ? 'Vercel AI' : manualProvider === 'ollama' ? 'Local' : 'OpenRouter'
-    const providerIcon = manualProvider === 'ollama' ? 'server' : 'cloud'
+      // Provider info
+      const isVercel = activeModelId.includes('vercel') || manualProvider === 'vercel'
+      const providerLabel = isVercel ? 'Vercel AI' : manualProvider === 'ollama' ? 'Local' : 'OpenRouter'
 
-    // Health status for the primary provider
-    const health = gatewayHealth.find(h => h.status !== 'unknown' && h.status !== 'healthy') || gatewayHealth[0]
-    const healthStatus = health?.status || 'healthy'
-    const healthColors: Record<string, string> = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }
-    const healthColor = healthColors[healthStatus]
-
-    const healthTooltip = health ? `
-${health.gatewayId}: ${healthStatus.toUpperCase()}
-Success rate: ${Math.round((health.successRate || 0) * 100)}%
-Avg latency: ${(health.avgLatencyMs / 1000).toFixed(1)}s
-Requests: ${health.requestCount || 0}
-`.trim() : `Gateway health: ${healthStatus}`
+      // Health status for the primary provider
+      const health = gatewayHealth.find(h => h.status !== 'unknown' && h.status !== 'healthy') || gatewayHealth[0]
+      const healthStatus = health?.status || 'healthy'
+      const healthColors: Record<string, string> = { healthy: '#34d399', degraded: '#fbbf24', down: '#f87171', unknown: 'var(--tx-muted)' }
+      const healthColor = healthColors[healthStatus]
 
     return (
       <header
@@ -201,7 +193,7 @@ Requests: ${health.requestCount || 0}
           padding: '0 12px',
         }}
       >
-        {/* Left cluster */}
+        {/* Left cluster — task title */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
             className="font-display font-medium truncate"
@@ -209,80 +201,51 @@ Requests: ${health.requestCount || 0}
           >
             {task?.title || 'New Chat'}
           </h2>
+        </div>
 
-          {/* Provider + Model pill */}
+        {/* Center — compact model + cost pill */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <div
-            title={healthTooltip}
+            title={[
+              `${providerLabel} · ${activeModelName}`,
+              tokenCount > 0 ? `Tokens: ${(tokenCount / 1000).toFixed(1)}k` : null,
+              tokenCount > 0 ? `Cost: ${estimateCost(activeModelId, tokenCount)}` : null,
+              taskRouterState?.tokenUsage ? `Context: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%` : null,
+              iteration > 0 ? `Iteration: ${iteration}` : null,
+            ].filter(Boolean).join('\n')}
             style={{
               display: 'flex', alignItems: 'center', gap: 5,
-              padding: '2px 7px', borderRadius: 6,
+              padding: '2px 8px', borderRadius: 6,
               background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              color: 'var(--tx-secondary)',
-              flexShrink: 0,
+              border: '1px solid rgba(255,255,255,0.06)',
               cursor: 'help',
             }}
           >
-            {/* Health dot */}
-            <div style={{ width: 4, height: 4, borderRadius: '50%', background: healthColor, boxShadow: `0 0 5px ${healthColor}` }} />
-            <Pxi name={providerIcon} size={10} style={{ opacity: 0.55 }} />
-            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.03em', fontFamily: 'var(--font-mono)' }}>{providerLabel}</span>
-            <div style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)' }} />
-            <span style={{ fontSize: 9, fontWeight: 500, color: 'var(--tx-tertiary)', fontFamily: 'var(--font-mono)' }}>{activeModelName}</span>
-            {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700, marginLeft: 1 }}>FREE</span>}
-          </div>
-
-          {/* Iteration counter pill */}
-          {isActive && iteration > 0 && (
-            <span
-              className="flex items-center gap-1 flex-shrink-0"
-              title={`Iteration ${iteration}${messageCount > 0 ? `\nMessages: ${messageCount}` : ''}${userTurns > 0 ? `\nUser turns: ${userTurns}` : ''}`}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                padding: '2px 6px', borderRadius: 5,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                cursor: 'help',
-              }}
-            >
-              <Pxi name="refresh" size={9} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
-              <span className="font-mono" style={{ fontSize: 9, color: 'var(--tx-muted)' }}>{iteration}</span>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: healthColor, boxShadow: `0 0 4px ${healthColor}`, flexShrink: 0 }} />
+            <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--tx-secondary)', fontFamily: 'var(--font-mono)' }}>
+              {activeModelName}
             </span>
-          )}
-
-          {/* Token / cost pill */}
-          {tokenCount > 0 && (
-            <span
-              className="font-mono flex-shrink-0"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                fontSize: 9, color: 'var(--tx-muted)',
-                padding: '2px 6px', borderRadius: 5,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              {(tokenCount / 1000).toFixed(1)}k · {estimateCost(activeModelId, tokenCount)}
-              {taskRouterState?.tokenUsage && (
-                <span
-                  style={{
-                    marginLeft: 4,
-                    color: taskRouterState.tokenUsage.contextUtilization > 0.85 ? '#f87171' :
-                           taskRouterState.tokenUsage.contextUtilization > 0.7 ? 'var(--amber)' :
-                           'var(--tx-muted)',
-                  }}
-                  title={`Context: ${Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%`}
-                >
-                  ctx:{Math.round(taskRouterState.tokenUsage.contextUtilization * 100)}%
+            {isAutoFree && <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700 }}>FREE</span>}
+            {tokenCount > 0 && (
+              <>
+                <span style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+                <span style={{ fontSize: 9, fontFamily: 'var(--font-mono)', color: 'var(--tx-muted)' }}>
+                  {estimateCost(activeModelId, tokenCount)}
                 </span>
-              )}
-            </span>
-          )}
+              </>
+            )}
+            {isActive && iteration > 0 && (
+              <>
+                <span style={{ width: 1, height: 8, background: 'rgba(255,255,255,0.08)', flexShrink: 0 }} />
+                <Pxi name="refresh" size={9} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Right cluster */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Sandbox starting pill */}
+        {/* Right cluster — sandbox + stop */}
+        <div className="flex items-center gap-2 flex-shrink-0 flex-1 justify-end">
+          {/* Sandbox pill — only when relevant */}
           {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && sandboxStatus === 'starting' && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: 5,
@@ -294,12 +257,8 @@ Requests: ${health.requestCount || 0}
               <span style={{ fontSize: 10, fontWeight: 500, color: '#4ade80', letterSpacing: '0.02em' }}>Starting</span>
             </div>
           )}
-          {sandboxStatus === 'ready' && (
-            <SandboxPill status={sandboxStatus} />
-          )}
-          {sandboxStatus === 'error' && (
-            <SandboxPill status={sandboxStatus} />
-          )}
+          {sandboxStatus === 'ready' && <SandboxPill status={sandboxStatus} />}
+          {sandboxStatus === 'error' && <SandboxPill status={sandboxStatus} />}
 
           {/* Files pill */}
           {!outputVisible && workspaceFileCount > 0 && onShowOutput && (

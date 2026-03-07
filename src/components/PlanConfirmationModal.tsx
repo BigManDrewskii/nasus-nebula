@@ -340,18 +340,24 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
     ? Math.round(((currentPhase + (currentStep !== undefined ? currentStep / Math.max(1, plan.phases[currentPhase]?.steps.length ?? 1) : 0)) / plan.phases.length) * 100)
     : 0
 
-  return (
-    <div
-      className="fade-in"
-      style={{
-        width: '100%',
-        overflow: 'hidden',
-        borderRadius: 14,
-        border: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(11,11,11,0.97)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3)',
-      }}
-    >
+    return (
+      <div
+        className="fade-in"
+        style={{
+          width: '100%',
+          overflow: 'hidden',
+          borderRadius: 14,
+          ...(isApprovalMode ? {
+            border: '1px solid rgba(234,179,8,0.2)',
+            background: 'rgba(13,13,13,0.95)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(234,179,8,0.06)',
+          } : {
+            border: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(13,13,13,0.9)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+          }),
+        }}
+      >
       {/* Card header */}
       <div
         style={{
@@ -457,27 +463,28 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
           </div>
         </div>
 
-        {/* Progress bar (execution mode) */}
-        {!isApprovalMode && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 0, left: 0, right: 0,
-              height: 1,
-              background: 'rgba(234,179,8,0.12)',
-              overflow: 'hidden',
-            }}
-          >
+          {/* Progress bar (execution mode) */}
+          {!isApprovalMode && (
             <div
               style={{
-                height: '100%',
-                background: 'var(--amber)',
-                transition: 'width 0.7s ease-out',
-                width: `${progressPercent}%`,
+                position: 'absolute',
+                bottom: 0, left: 0, right: 0,
+                height: 2,
+                background: 'rgba(234,179,8,0.08)',
+                overflow: 'hidden',
               }}
-            />
-          </div>
-        )}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  background: 'var(--amber)',
+                  boxShadow: '0 0 8px rgba(234,179,8,0.4)',
+                  transition: 'width 0.7s ease-out',
+                  width: `${progressPercent}%`,
+                }}
+              />
+            </div>
+          )}
       </div>
 
       {/* Card body */}
@@ -596,39 +603,40 @@ export const PlanView = memo(({ plan, onApprove, onReject, currentPhase, current
                   Reject
                 </button>
 
-                <button
-                  onClick={onApprove}
-                  className="font-display glow-amber"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 6,
-                    padding: '7px 18px',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    letterSpacing: '0.06em',
-                    textTransform: 'uppercase',
-                    borderRadius: 7,
-                    border: 'none',
-                    background: 'var(--amber)',
-                    color: '#000',
-                    cursor: 'pointer',
-                    transition: 'background 0.12s, transform 0.1s',
-                    fontFamily: 'inherit',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--amber-soft)'
-                    e.currentTarget.style.transform = 'scale(1.02)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'var(--amber)'
-                    e.currentTarget.style.transform = 'scale(1)'
-                  }}
-                >
-                  <Pxi name="play" size={9} />
-                  Approve
-                </button>
+                  <button
+                    onClick={onApprove}
+                    className="font-display"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      padding: '8px 22px',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      borderRadius: 8,
+                      border: 'none',
+                      background: 'var(--amber)',
+                      color: '#000',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 20px rgba(234,179,8,0.2), 0 2px 8px rgba(234,179,8,0.15)',
+                      transition: 'transform 0.1s, box-shadow 0.15s',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.03)'
+                      e.currentTarget.style.boxShadow = '0 0 28px rgba(234,179,8,0.3), 0 4px 12px rgba(234,179,8,0.2)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.boxShadow = '0 0 20px rgba(234,179,8,0.2), 0 2px 8px rgba(234,179,8,0.15)'
+                    }}
+                  >
+                    <Pxi name="play" size={9} />
+                    Approve
+                  </button>
               </div>
             ) : (
               <div

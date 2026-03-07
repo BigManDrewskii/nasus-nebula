@@ -312,25 +312,26 @@ export class WorkspaceManager {
   }
 
   /**
-   * Resolve the task workspace directory consistently.
+   * Resolve the base workspace directory (without task subdirectory).
+   * All Rust commands (workspace_read, workspace_write, docker_create_container, etc.)
+   * append task-{id} themselves — so this must return just the base path.
    */
   public async getWorkspacePath(taskId: string): Promise<string> {
     if (!this.initialized) await this.init()
 
     const base = this.basePath?.trim() || '/tmp/nasus-workspace'
-    // Stable folder name that doesn't change when task title is set later
-    const folderName = `task-${taskId}`
 
-    // Use absolute paths for the backend commands
+    // Already absolute — return as-is
     if (base.startsWith('/') || base.includes(':')) {
-      return `${base}/${folderName}`
+      return base
     }
+    // Relative base — resolve against home dir
     try {
       const { homeDir, join } = await import('@tauri-apps/api/path')
       const home = await homeDir()
-      return await join(home, base, folderName)
+      return await join(home, base)
     } catch {
-      return `${base}/${folderName}`
+      return base
     }
   }
 
