@@ -24,6 +24,7 @@ import type {
 } from './gatewayTypes'
 import { getActiveGateways } from './gatewayTypes'
 import { getGlobalRateLimiter, type RateLimiterStats } from './rateLimiter'
+import { isRetryableError } from '../../lib/errors'
 
 // ─── Circuit Breaker Constants ──────────────────────────────────────────────
 
@@ -49,24 +50,6 @@ function isAbortError(error: unknown): boolean {
     if (error.name === 'AbortError') return true
     const msg = error.message.toLowerCase()
     if (msg.includes('aborted') || msg.includes('aborterror') || msg.includes('the operation was aborted')) return true
-  }
-  return false
-}
-
-function isRetryableError(error: unknown): boolean {
-  // Never retry aborts — they are intentional cancellations
-  if (isAbortError(error)) return false
-
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase()
-    // Network errors (excluding abort which is handled above)
-    if (msg.includes('fetch') || msg.includes('network') || msg.includes('timeout') || msg.includes('econnrefused')) {
-      return true
-    }
-    // HTTP status codes embedded in error messages
-    for (const code of RETRYABLE_STATUS_CODES) {
-      if (msg.includes(`${code}`) || msg.includes(`http ${code}`)) return true
-    }
   }
   return false
 }

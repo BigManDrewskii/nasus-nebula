@@ -93,10 +93,26 @@ export function categorizeError(error: Error | string | unknown): ErrorCategory 
   return 'unknown'
 }
 
+/** HTTP status codes that indicate a transient/retryable error */
+const RETRYABLE_STATUS_CODES = [429, 500, 502, 503, 504, 529]
+
 /**
  * Determine if an error is retryable based on its category.
+ *
+ * Returns false for intentional cancellations (AbortError), and true for
+ * network/timeout errors and transient HTTP status codes (429, 5xx).
  */
 export function isRetryableError(error: Error | unknown): boolean {
+  // Never retry aborts — they are intentional cancellations
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') return false
+    const msg = error.message.toLowerCase()
+    if (msg.includes('aborted') || msg.includes('aborterror') || msg.includes('the operation was aborted')) return false
+    // HTTP status codes embedded in error messages
+    for (const code of RETRYABLE_STATUS_CODES) {
+      if (msg.includes(`${code}`) || msg.includes(`http ${code}`)) return true
+    }
+  }
   const category = categorizeError(error)
   return category === 'network' || category === 'timeout'
 }
