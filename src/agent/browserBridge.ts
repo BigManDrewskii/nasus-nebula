@@ -63,6 +63,11 @@ async function getTauriSession(): Promise<string> {
   return tauriSessionId
 }
 
+/** Expose the current session ID for tools that need it directly */
+export async function getTauriSessionId(): Promise<string> {
+  return getTauriSession()
+}
+
 /** Check if the browser sidecar is running */
 export async function pingExtension(): Promise<boolean> {
   try {
@@ -81,13 +86,13 @@ export interface NavigateResult {
 
 export async function browserNavigate(url: string, _newTab = false): Promise<NavigateResult> {
   const sessionId = await getTauriSession()
-  emitBrowserActivity('navigate', { url })
-  await tauriInvoke('browser_navigate', { sessionId, url })
+  emitBrowserActivity('navigate', { url, sessionId })
+  const response = await tauriInvoke<{ url?: string; title?: string }>('browser_navigate', { sessionId, url })
   return {
     success: true,
     tabId: 0,
-    url,
-    title: '',
+    url: response?.url ?? url,
+    title: response?.title ?? '',
   }
 }
 
@@ -174,7 +179,8 @@ export interface TabInfo {
 
 export async function browserGetTabs(): Promise<TabInfo[]> {
   const sessionId = await getTauriSession()
-  return await tauriInvokeOrThrow<TabInfo[]>('browser_get_tabs', { sessionId })
+  const result = await tauriInvokeOrThrow<{ tabs: TabInfo[] }>('browser_get_tabs', { sessionId })
+  return result.tabs ?? []
 }
 
 export interface WaitForResult {
@@ -202,7 +208,7 @@ export async function browserEval(
   params: { tabId?: number; expression: string; awaitPromise?: boolean }
 ): Promise<EvalResult> {
   const sessionId = await getTauriSession()
-  return await tauriInvokeOrThrow<EvalResult>('browser_eval', { sessionId, ...params })
+  return await tauriInvokeOrThrow<EvalResult>('browser_execute', { sessionId, ...params })
 }
 
 export interface SelectResult {
@@ -215,5 +221,11 @@ export async function browserSelect(
   params: { tabId?: number; selector: string; value?: string | number; label?: string }
 ): Promise<SelectResult> {
   const sessionId = await getTauriSession()
-  return await tauriInvokeOrThrow<SelectResult>('browser_select', { sessionId, ...params })
+  const { selector, value, label } = params
+  return await tauriInvokeOrThrow<SelectResult>('browser_select', {
+    sessionId,
+    selector,
+    value: value !== undefined ? String(value) : undefined,
+    label,
+  })
 }

@@ -1071,6 +1071,8 @@ pub fn run() {
         sidecar::browser_upload_file,
         sidecar::browser_cookies,
         sidecar::browser_set_stealth,
+        sidecar::browser_get_tabs,
+        sidecar::browser_select,
         sidecar::browser_aria_snapshot,
         sidecar::browser_check_sidecar_installed,
         sidecar::browser_install_sidecar,

@@ -1,7 +1,9 @@
 import { BaseTool } from '../core/BaseTool'
 import { toolSuccess, toolFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
-import { browserAriaSnapshot } from '../../../tauri'
+import { tauriInvoke } from '../../../tauri'
+import type { AriaSnapshotResult } from '../../../tauri'
+import { getTauriSessionId } from '../../browserBridge'
 
 /**
  * Capture the ARIA accessibility tree of the current page as YAML.
@@ -20,20 +22,20 @@ export class BrowserAriaSnapshotTool extends BaseTool {
   readonly parameters: ToolParameterSchema = {
     type: 'object',
     properties: {
-      session_id: { type: 'string', description: 'Browser session ID (from browser_start_session).' },
       selector: { type: 'string', description: 'CSS selector to snapshot (default: full page body).' },
     },
-    required: ['session_id'],
+    required: [],
   }
 
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const sessionId = String(args.session_id ?? '')
     const selector = args.selector ? String(args.selector) : undefined
 
-    if (!sessionId) return toolFailure('Missing session_id')
-
     try {
-      const result = await browserAriaSnapshot(sessionId, selector)
+      const sessionId = await getTauriSessionId()
+      const result = await tauriInvoke<AriaSnapshotResult>('browser_aria_snapshot', {
+        session_id: sessionId,
+        selector,
+      })
       if (!result) return toolFailure('No response from sidecar')
 
       const output = [

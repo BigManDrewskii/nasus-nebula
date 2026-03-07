@@ -451,7 +451,7 @@ pub async fn browser_navigate(
     _state: State<'_, AppState>,
     session_id: String,
     url: String,
-) -> Result<String, String> {
+) -> Result<serde_json::Value, String> {
     println!("[Browser] Navigate session {} to {}", session_id, url);
 
     let params = serde_json::json!({ "url": url.clone() });
@@ -459,10 +459,7 @@ pub async fn browser_navigate(
         .await
         .map_err(|e| e.to_string())?;
 
-    response.get("url")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Invalid response from sidecar".to_string())
+    Ok(response)
 }
 
 /// Take a screenshot
@@ -490,12 +487,24 @@ pub async fn browser_screenshot(
 pub async fn browser_click(
     _state: State<'_, AppState>,
     session_id: String,
-    selector: String,
+    selector: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
 ) -> Result<(), String> {
-    println!("[Browser] Click session {} selector {}", session_id, selector);
+    println!("[Browser] Click session {} selector {:?} coords {:?},{:?}", session_id, selector, x, y);
 
-    let params = serde_json::json!({ "selector": selector });
-    send_sidecar_command(&session_id, "click", Some(params))
+    let mut params = serde_json::Map::new();
+    if let Some(sel) = selector {
+        params.insert("selector".into(), serde_json::Value::String(sel));
+    }
+    if let Some(cx) = x {
+        params.insert("x".into(), serde_json::json!(cx));
+    }
+    if let Some(cy) = y {
+        params.insert("y".into(), serde_json::json!(cy));
+    }
+
+    send_sidecar_command(&session_id, "click", Some(serde_json::Value::Object(params)))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -760,6 +769,44 @@ pub async fn browser_set_stealth(
     response.get("stealth")
         .and_then(|v| v.as_bool())
         .ok_or_else(|| "Invalid response from sidecar".to_string())
+}
+
+/// Get all open tabs in the session
+#[tauri::command]
+pub async fn browser_get_tabs(
+    _state: State<'_, AppState>,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    println!("[Browser] Get tabs session {}", session_id);
+
+    send_sidecar_command(&session_id, "get_tabs", None)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Select an option in a <select> element
+#[tauri::command]
+pub async fn browser_select(
+    _state: State<'_, AppState>,
+    session_id: String,
+    selector: String,
+    value: Option<String>,
+    label: Option<String>,
+) -> Result<serde_json::Value, String> {
+    println!("[Browser] Select session {} selector {}", session_id, selector);
+
+    let mut params = serde_json::Map::new();
+    params.insert("selector".into(), serde_json::Value::String(selector));
+    if let Some(v) = value {
+        params.insert("value".into(), serde_json::Value::String(v));
+    }
+    if let Some(l) = label {
+        params.insert("label".into(), serde_json::Value::String(l));
+    }
+
+    send_sidecar_command(&session_id, "select", Some(serde_json::Value::Object(params)))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Sidecar Installation Commands ─────────────────────────────────────────────

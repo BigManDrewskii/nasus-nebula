@@ -72,19 +72,22 @@ async function handleScreenshot(session, { fullPage = false } = {}) {
 /**
  * Handle click
  */
-async function handleClick(session, { selector }) {
+async function handleClick(session, { selector, x, y }) {
   if (!session.page) {
     throw new Error('No active page in session');
   }
 
-  const element = session.page.locator(selector).first();
-  await element.scrollIntoViewIfNeeded();
-  await element.click();
-
-  return {
-    selector,
-    clicked: true,
-  };
+  if (selector) {
+    const element = session.page.locator(selector).first();
+    await element.scrollIntoViewIfNeeded();
+    await element.click();
+    return { selector, clicked: true };
+  } else if (x !== undefined && y !== undefined) {
+    await session.page.mouse.click(x, y);
+    return { x, y, clicked: true };
+  } else {
+    throw new Error('click requires selector or x,y coordinates');
+  }
 }
 
 /**
@@ -318,6 +321,44 @@ async function handleSetStealth(session, { enabled }) {
 }
 
 /**
+ * Handle get_tabs — returns info about the current page (single-page model)
+ */
+async function handleGetTabs(session) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+  const url = session.page.url();
+  const title = await session.page.title();
+  return {
+    tabs: [{ id: 0, url, title, active: true }],
+  };
+}
+
+/**
+ * Handle select — choose option in a <select> element by value or label
+ */
+async function handleSelect(session, { selector, value, label }) {
+  if (!session.page) {
+    throw new Error('No active page in session');
+  }
+  const element = session.page.locator(selector).first();
+  await element.scrollIntoViewIfNeeded();
+
+  let selectedValue;
+  if (value !== undefined) {
+    await element.selectOption({ value: String(value) });
+    selectedValue = String(value);
+  } else if (label !== undefined) {
+    await element.selectOption({ label: String(label) });
+    selectedValue = label;
+  } else {
+    throw new Error('select requires value or label');
+  }
+
+  return { selectedValue };
+}
+
+/**
  * Handle incoming WebSocket messages
  */
 async function handleMessage(ws, sessionId, message) {
@@ -374,17 +415,25 @@ async function handleMessage(ws, sessionId, message) {
         send(ws, 'cookies_result', await handleCookies(session, params));
         break;
 
-       case 'set_stealth':
-          send(ws, 'set_stealth_result', await handleSetStealth(session, params));
-          break;
+         case 'set_stealth':
+           send(ws, 'set_stealth_result', await handleSetStealth(session, params));
+           break;
 
-        case 'aria_snapshot':
-          send(ws, 'aria_snapshot_result', await handleAriaSnapshot(session, params ?? {}));
-          break;
+         case 'aria_snapshot':
+           send(ws, 'aria_snapshot_result', await handleAriaSnapshot(session, params ?? {}));
+           break;
 
-        case 'ping':
-        send(ws, 'pong');
-        break;
+         case 'get_tabs':
+           send(ws, 'get_tabs_result', await handleGetTabs(session));
+           break;
+
+         case 'select':
+           send(ws, 'select_result', await handleSelect(session, params));
+           break;
+
+         case 'ping':
+         send(ws, 'pong');
+         break;
 
       default:
         send(ws, 'error', { message: `Unknown message type: ${type}` });
@@ -402,9 +451,6 @@ async function startSession(ws, sessionId) {
 
     try {
       const browser = await chromium.launch({
-        // Use system Chrome — playwright-core ships no bundled browser.
-        // Falls back to headless mode if system Chrome is not found.
-        channel: 'chrome',
         headless: true,
         args: [
           '--disable-blink-features=AutomationControlled',

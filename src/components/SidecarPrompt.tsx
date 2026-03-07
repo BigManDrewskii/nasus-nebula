@@ -52,14 +52,11 @@ export function SidecarPrompt({ onInstallComplete, onSkip }: Props) {
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
+        flex: 1,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0, 0, 0, 0.7)',
-        backdropFilter: 'blur(8px)',
-        zIndex: 2000,
+        padding: 'var(--space-6)',
         animation: 'fadeIn 0.16s ease-out',
       }}
     >
@@ -68,10 +65,10 @@ export function SidecarPrompt({ onInstallComplete, onSkip }: Props) {
           background: 'rgba(18, 18, 18, 0.96)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: 12,
-          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.3)',
+          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.5)',
           padding: 'var(--space-6)',
           maxWidth: 420,
-          width: '90%',
+          width: '100%',
           animation: 'dropUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         }}
       >

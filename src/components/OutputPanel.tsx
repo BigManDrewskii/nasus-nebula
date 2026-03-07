@@ -127,14 +127,9 @@ export function OutputPanel({
     { id: 'code',    icon: 'code',    label: 'Code'    },
   ]
 
-  // ── Collapsed: render nothing (panel width is 0 via CSS; ChatHeader toggle handles expand) ──
-  if (collapsed) {
-    return null
-  }
-
-  // ── Expanded panel ──────────────────────────────────────────────────────────
+  // ── Render always — use visibility to avoid unmounting BrowserPreview etc on collapse ──
   return (
-    <div className="output-panel">
+    <div className="output-panel" style={collapsed ? { display: 'none' } : undefined}>
       <div className="output-panel-tabs" role="tablist" aria-label="Output tabs">
         {tabs.map((t) => (
           <button
