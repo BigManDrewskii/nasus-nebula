@@ -111,9 +111,8 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
               padding: '2px 6px',
               borderRadius: 4,
             }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--tx-secondary)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--tx-tertiary)'}
-          >
+              className="hover-text-secondary"
+            >
             {expanded ? (
               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Pxi name="chevron-up" size={8} /> Show less

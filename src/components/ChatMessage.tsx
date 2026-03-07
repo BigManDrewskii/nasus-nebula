@@ -28,19 +28,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       onClick={handleCopy}
       title={copied ? 'Copied!' : 'Copy message'}
-      className={`cm-copy-btn${copied ? ' cm-copy-btn--copied' : ''}`}
-      onMouseEnter={(e) => {
-        if (!copied) {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
-          e.currentTarget.style.color = 'var(--tx-secondary)'
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!copied) {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-          e.currentTarget.style.color = 'var(--tx-tertiary)'
-        }
-      }}
+        className={`cm-copy-btn${copied ? ' cm-copy-btn--copied' : ''} hover-bg-app-3 hover-text-secondary`}
     >
       <Pxi name={copied ? 'check' : 'copy'} size={11} />
       {copied ? 'Copied' : 'Copy'}
@@ -149,9 +137,7 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
           <div className="cm-error-actions">
             <button
               onClick={onRetry}
-              className="cm-retry-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.2)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.12)' }}
+                className="cm-retry-btn hover-bg-amber"
             >
               <Pxi name="refresh" size={11} />
               Try again

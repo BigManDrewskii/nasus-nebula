@@ -197,9 +197,7 @@ function ExpandBtn({ expanded, label, onToggle }: { expanded: boolean; label: st
   return (
     <button
       onClick={onToggle}
-      className="flex-v-center justify-center oc-expand-btn"
-      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--tx-secondary)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+        className="flex-v-center justify-center oc-expand-btn hover-bg-app-3 hover-text-secondary"
     >
       <Pxi name={expanded ? 'chevron-up' : 'chevron-down'} size={12} />
       {label}
@@ -400,9 +398,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
           {htmlFile && <ModeToggle mode={mode} setMode={setMode} options={['preview', 'files'] as const} />}
           <button
             onClick={() => downloadZip(files)}
-            className="flex-v-center oc-download-all-btn"
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(251,191,36,0.15)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(251,191,36,0.08)' }}
+              className="flex-v-center oc-download-all-btn hover-bg-app-3"
           >
             <Pxi name="download" size={12} />
             Download all
@@ -444,10 +440,8 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
                 <button
                   key={f.path}
                   onClick={() => setActiveFile(f)}
-                  className="flex-v-center oc-file-sidebar-btn"
-                  style={{ background: active ? 'rgba(251,191,36,0.1)' : 'transparent' }}
-                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)' }}
-                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = active ? 'rgba(251,191,36,0.1)' : 'transparent' }}
+                    className="flex-v-center oc-file-sidebar-btn hover-bg-app-3"
+                    style={{ background: active ? 'rgba(251,191,36,0.1)' : 'transparent' }}
                 >
                   <Pxi name={m.icon} size={12} style={{ color: active ? 'var(--amber)' : m.color, flexShrink: 0 }} />
                   <span

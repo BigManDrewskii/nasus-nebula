@@ -781,9 +781,7 @@ interface ChatViewProps {
                     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
                   }
                 }}
-                className="cv-new-msg-btn"
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.2)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(234,179,8,0.12)' }}
+                  className="cv-new-msg-btn hover-bg-amber"
               >
                 <Pxi name="arrow-down" size={10} />
                 New messages

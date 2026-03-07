@@ -166,9 +166,7 @@ export function OnboardingScreen() {
 
             <button
               onClick={() => setStep('provider')}
-              className="font-display onboarding-cta-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.9' }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = '1' }}
+              className="font-display onboarding-cta-btn hover-opacity-90"
             >
               Get started
               <Pxi name="arrow-right" size={12} style={{ color: '#000' }} />
@@ -194,13 +192,11 @@ export function OnboardingScreen() {
                       key={p.id}
                       type="button"
                       onClick={() => { setSelectedProvider(p); setApiKeyLocal(''); setCustomBase(''); setError('') }}
-                      className="onboarding-provider-card"
+                      className="onboarding-provider-card hover-bg-app-3"
                       style={{
                         border: isSel ? '1px solid oklch(64% 0.214 40.1 / 0.45)' : '1px solid rgba(255,255,255,0.08)',
                         background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'rgba(255,255,255,0.03)',
                       }}
-                      onMouseEnter={(e) => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.13)' } }}
-                      onMouseLeave={(e) => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' } }}
                     >
                       <div className="flex-v-center onboarding-provider-name-row">
                         <div
@@ -274,25 +270,21 @@ export function OnboardingScreen() {
             <div className="flex onboarding-nav">
               <button
                 onClick={() => setStep('welcome')}
-                className="onboarding-back-btn"
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
-              >
-                <Pxi name="arrow-left" size={11} />
-              </button>
-              <button
-                onClick={() => canContinueProvider && setStep('workspace')}
-                disabled={!canContinueProvider}
-                className="flex-1 flex-v-center justify-center onboarding-cta-btn"
-                style={{
-                  background: canContinueProvider ? 'linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%)' : 'rgba(255,255,255,0.07)',
-                  color: canContinueProvider ? '#000' : 'var(--tx-secondary)',
-                  boxShadow: canContinueProvider ? '0 4px 24px oklch(64% 0.214 40.1 / 0.25)' : 'none',
-                  opacity: canContinueProvider ? 1 : 0.5,
-                  cursor: canContinueProvider ? 'pointer' : 'not-allowed',
-                }}
-                onMouseEnter={(e) => { if (canContinueProvider) e.currentTarget.style.opacity = '0.9' }}
-                onMouseLeave={(e) => { if (canContinueProvider) e.currentTarget.style.opacity = '1' }}
+                  className="onboarding-back-btn hover-text-primary hover-border-strong"
+                >
+                  <Pxi name="arrow-left" size={11} />
+                </button>
+                  <button
+                    onClick={() => canContinueProvider && setStep('workspace')}
+                  disabled={!canContinueProvider}
+                  style={{
+                    background: canContinueProvider ? 'linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%)' : 'rgba(255,255,255,0.07)',
+                    color: canContinueProvider ? '#000' : 'var(--tx-secondary)',
+                    boxShadow: canContinueProvider ? '0 4px 24px oklch(64% 0.214 40.1 / 0.25)' : 'none',
+                    opacity: canContinueProvider ? 1 : 0.5,
+                    cursor: canContinueProvider ? 'pointer' : 'not-allowed',
+                  }}
+                  className="flex-1 flex-v-center justify-center onboarding-cta-btn hover-opacity-90"
               >
                 Continue
                 <Pxi name="arrow-right" size={12} style={{ color: canContinueProvider ? '#000' : 'var(--tx-secondary)' }} />
@@ -355,25 +347,21 @@ export function OnboardingScreen() {
             <div className="flex onboarding-nav">
               <button
                 onClick={() => setStep('provider')}
-                className="onboarding-back-btn"
-                onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
-              >
-                <Pxi name="arrow-left" size={11} />
-              </button>
-              <button
-                onClick={handleFinish}
-                disabled={saving}
-                className="flex-1 flex-v-center justify-center onboarding-cta-btn"
-                style={{
-                  background: 'linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%)',
-                  color: '#000',
-                  boxShadow: '0 4px 24px oklch(64% 0.214 40.1 / 0.25)',
-                  opacity: saving ? 0.6 : 1,
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                }}
-                onMouseEnter={(e) => { if (!saving) e.currentTarget.style.opacity = '0.9' }}
-                onMouseLeave={(e) => { if (!saving) e.currentTarget.style.opacity = '1' }}
+                  className="onboarding-back-btn hover-text-primary hover-border-strong"
+                >
+                  <Pxi name="arrow-left" size={11} />
+                </button>
+                  <button
+                    onClick={handleFinish}
+                  disabled={saving}
+                  style={{
+                    background: 'linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%)',
+                    color: '#000',
+                    boxShadow: '0 4px 24px oklch(64% 0.214 40.1 / 0.25)',
+                    opacity: saving ? 0.6 : 1,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                  }}
+                  className="flex-1 flex-v-center justify-center onboarding-cta-btn hover-opacity-90"
               >
                 {saving ? (
                   <><Pxi name="spinner-third" size={12} style={{ color: '#000' }} /> Saving…</>

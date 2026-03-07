@@ -66,9 +66,8 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               padding: '2px 8px',
               borderRadius: 4,
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(234,179,8,0.1)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
+              className="hover-bg-amber-soft"
+            >
             Show all
           </button>
         )}
@@ -123,9 +122,8 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               padding: '3px 10px',
               borderRadius: 4,
             }}
-            onMouseEnter={(e) => e.currentTarget.style.color = 'var(--tx-secondary)'}
-            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--tx-tertiary)'}
-          >
+              className="hover-text-secondary"
+            >
             <Pxi name="chevron-up" size={10} /> Collapse
           </button>
         </div>

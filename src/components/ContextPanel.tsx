@@ -305,13 +305,11 @@ function ModelSection() {
                     return (
                       <button key={m.id} type="button"
                         onClick={() => { setModel(m.id); setOpen(false); setSearch('') }}
-                        className="flex-v-center w-full cursor-pointer model-row"
-                        style={{
-                          color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                          background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
-                        }}
-                        onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                        onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent' }}
+                          className="flex-v-center w-full cursor-pointer model-row hover-bg-app-3"
+                          style={{
+                            color: isSel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                            background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
+                          }}
                       >
                         <span className="flex-1 truncate">{m.name}</span>
                         <span className="text-muted font-mono flex-shrink-0 model-ctx">{ctx}</span>
@@ -360,13 +358,11 @@ function ModelSection() {
               else setFreshLabel(`${Math.round(age / 3_600_000)}h ago`)
             }
           }}
-          className="model-trigger-btn"
-          style={{
-            background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)',
-            border: `1px solid ${open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
-          }}
-          onMouseEnter={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' } }}
-          onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)' } }}
+            className="model-trigger-btn hover-bg-app-3"
+            style={{
+              background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)',
+              border: `1px solid ${open ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.05)'}`,
+            }}
         >
           {/* Family icon */}
           <div
@@ -449,15 +445,13 @@ function ProviderSection() {
             const isHealthy = !health || health.status === 'healthy'
             return (
               <button
-                key={p.id}
-                onClick={() => pickProvider(p.id)}
-                className="flex-col items-center cursor-pointer provider-btn"
-                style={{
-                  background: isSel ? `${p.color}15` : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${isSel ? p.color + '55' : 'rgba(255,255,255,0.07)'}`,
-                }}
-                onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.02)' }}
+                  key={p.id}
+                  onClick={() => pickProvider(p.id)}
+                  className="flex-col items-center cursor-pointer provider-btn hover-bg-app-3"
+                  style={{
+                    background: isSel ? `${p.color}15` : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${isSel ? p.color + '55' : 'rgba(255,255,255,0.07)'}`,
+                  }}
               >
                 <div className="relative">
                   <Pxi name={p.icon} size={12} style={{ color: isSel ? p.color : 'var(--tx-tertiary)' }} />
@@ -492,16 +486,14 @@ function ProviderSection() {
               const isSel = routerConfig?.budget === b
               return (
                 <button key={b}
-                  onClick={() => setRouterConfig({ budget: b })}
-                  className="budget-btn"
-                  style={{
-                    fontWeight: isSel ? 600 : 400,
-                    border: `1px solid ${isSel ? (b === 'free' ? 'rgba(99,102,241,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.07)'}`,
-                    background: isSel ? (b === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
-                    color: isSel ? (b === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
-                  }}
-                  onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                  onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                    onClick={() => setRouterConfig({ budget: b })}
+                    className="budget-btn hover-bg-app-3"
+                    style={{
+                      fontWeight: isSel ? 600 : 400,
+                      border: `1px solid ${isSel ? (b === 'free' ? 'rgba(99,102,241,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.07)'}`,
+                      background: isSel ? (b === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
+                      color: isSel ? (b === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
+                    }}
                 >
                   {b === 'free' ? 'Free only' : 'Paid'}
                 </button>
@@ -534,9 +526,7 @@ function ParametersSection() {
         <button
           onClick={e => { e.stopPropagation(); reset() }}
           title="Reset to defaults"
-          className="param-reset-btn"
-          onMouseEnter={e => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+            className="param-reset-btn hover-text-primary"
         >
           Reset
         </button>
@@ -638,9 +628,7 @@ function SystemPromptSection() {
       {prompt && (
         <button
           onClick={() => handleChange('')}
-          className="text-muted cursor-pointer system-prompt-clear"
-          onMouseEnter={e => { e.currentTarget.style.color = '#f87171' }}
-          onMouseLeave={e => { e.currentTarget.style.color = 'var(--tx-muted)' }}
+            className="text-muted cursor-pointer system-prompt-clear hover-text-danger"
         >
           Clear
         </button>

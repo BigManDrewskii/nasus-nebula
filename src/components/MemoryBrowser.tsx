@@ -1,11 +1,5 @@
 /**
  * Memory Browser — Browse and search past task memories.
- *
- * Allows users to:
- * - View all stored memories
- * - Search memories by semantic similarity
- * - Filter by task, content type, or tags
- * - Pin important memories
  */
 
 import { useState, useEffect, memo } from 'react'
@@ -30,46 +24,59 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
 
   return (
     <div
-      className={`p-3 rounded-lg border transition-all cursor-pointer ${
-        isSelected
-          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-      }`}
+      className="flex-col mb-card"
+      style={{
+        padding: '10px 12px',
+        borderRadius: 8,
+          border: `1px solid ${isSelected ? 'var(--amber-a35)' : 'var(--glass-border)'}`,
+          background: isSelected ? 'var(--amber-a08)' : 'var(--glass-bg)',
+          cursor: 'pointer',
+          transition: 'border-color 0.12s, background 0.12s',
+      }}
       onClick={onSelect}
     >
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {meta.contentType && (
-              <span className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 capitalize">
-                {meta.contentType}
-              </span>
-            )}
-            {meta.framework && (
-              <span className="px-1.5 py-0.5 text-xs rounded bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400">
-                {meta.framework}
-              </span>
-            )}
-            <span className="text-xs text-gray-400">{date}</span>
-          </div>
+      <div className="flex-v-center justify-between mb-card-top">
+        <div className="flex-v-center" style={{ gap: 6, flexWrap: 'wrap' }}>
+          {meta.contentType && (
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              background: 'var(--bg-app-3)', color: 'var(--tx-muted)',
+              textTransform: 'capitalize',
+            }}>
+              {meta.contentType}
+            </span>
+          )}
+          {meta.framework && (
+            <span style={{
+              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              background: 'rgba(125,211,252,0.1)', color: 'var(--tok-key)',
+            }}>
+              {meta.framework}
+            </span>
+          )}
+          <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>{date}</span>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete() }}
-          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/50 text-gray-400 hover:text-red-500 transition-colors"
+          className="mb-delete-btn hover-text-red"
           title="Delete memory"
+          style={{ padding: 4, borderRadius: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', transition: 'color 0.12s' }}
         >
-          <Pxi name="x" className="w-4 h-4" />
+          <Pxi name="times" size={12} />
         </button>
       </div>
-      <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
+      <p style={{ fontSize: 12, color: 'var(--tx-secondary)', margin: '6px 0 0', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {memory.content}
       </p>
       {meta.tags && meta.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
+        <div className="flex-v-center" style={{ gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
           {meta.tags.map((tag) => (
             <span
               key={tag}
-              className="px-1.5 py-0.5 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+              style={{
+                fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                  background: 'var(--glass-bg)', color: 'var(--tx-muted)',
+              }}
             >
               #{tag}
             </span>
@@ -82,20 +89,13 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
 
 // ── Memory Stats ───────────────────────────────────────────────────────────────────
 
-interface MemoryStatsProps {
-  totalMemories: number
-  memoriesByTask: Record<string, number>
-}
-
-const MemoryStats = memo(({ totalMemories, memoriesByTask }: MemoryStatsProps) => {
-  return (
-    <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>{totalMemories} memories</span>
-      <span>·</span>
-      <span>{Object.keys(memoriesByTask).length} tasks</span>
-    </div>
-  )
-})
+const MemoryStats = memo(({ totalMemories, memoriesByTask }: { totalMemories: number; memoriesByTask: Record<string, number> }) => (
+  <div className="flex-v-center" style={{ gap: 8, fontSize: 11, color: 'var(--tx-muted)' }}>
+    <span>{totalMemories} memories</span>
+    <span style={{ opacity: 0.4 }}>·</span>
+    <span>{Object.keys(memoriesByTask).length} tasks</span>
+  </div>
+))
 
 // ── Memory Browser ──────────────────────────────────────────────────────────────────
 
@@ -111,30 +111,20 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
   const [filterType, setFilterType] = useState<'all' | MemoryMetadata['contentType']>('all')
   const [stats, setStats] = useState({ totalMemories: 0, memoriesByTask: {} as Record<string, number> })
 
-  // Load memories on mount
-  useEffect(() => {
-    loadMemories()
-  }, [])
+  useEffect(() => { loadMemories() }, [])
 
-  // Filter memories when search or filter changes
   useEffect(() => {
     let filtered = memories
-
-    // Apply type filter
     if (filterType !== 'all') {
       filtered = filtered.filter(m => m.metadata.contentType === filterType)
     }
-
-    // Apply search filter (semantic search)
     if (searchQuery.trim()) {
-      // For now, do text matching. In future, use memoryStore.search()
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(m =>
         m.content.toLowerCase().includes(query) ||
         m.metadata.tags?.some(t => t.toLowerCase().includes(query))
       )
     }
-
     setFilteredMemories(filtered)
   }, [memories, searchQuery, filterType])
 
@@ -142,27 +132,21 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
     try {
       const statsData = await memoryStore.stats()
       setStats(statsData)
-
-      // Load all memories (we'd need a getAll method, but for now search with empty query)
       const results = await memoryStore.search('', 100)
       setMemories(results)
       setFilteredMemories(results)
     } catch (error) {
-        log.error('Failed to load memories', error instanceof Error ? error : new Error(String(error)))
+      log.error('Failed to load memories', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
   const handleSearch = async () => {
-    if (!searchQuery.trim()) {
-      setFilteredMemories(memories)
-      return
-    }
-
+    if (!searchQuery.trim()) { setFilteredMemories(memories); return }
     try {
       const results = await memoryStore.search(searchQuery, 10)
       setFilteredMemories(results)
     } catch (error) {
-        log.error('Memory search failed', error instanceof Error ? error : new Error(String(error)))
+      log.error('Memory search failed', error instanceof Error ? error : new Error(String(error)))
     }
   }
 
@@ -175,59 +159,52 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
     }
   }
 
-  const handleSelect = (id: string) => {
-    setSelectedId(id === selectedId ? null : id)
-  }
-
-  const contentTypeOptions: Array<'all' | MemoryMetadata['contentType']> = [
-    'all',
-    'code',
-    'research',
-    'plan',
-    'output',
-    'conversation',
-  ]
+  const contentTypeOptions: Array<'all' | MemoryMetadata['contentType']> = ['all', 'code', 'research', 'plan', 'output', 'conversation']
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-gray-900">
+    <div className="flex-col mb-root">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-gray-900 dark:text-gray-100">Memory Browser</h3>
+      <div className="mb-header">
+        <div className="flex-v-center justify-between" style={{ marginBottom: 10 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx-primary)', margin: 0, letterSpacing: '0.04em' }}>Memory Browser</h3>
           {onClose && (
             <button
               onClick={onClose}
-              className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="hover-text-primary"
+              style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--tx-muted)', borderRadius: 4 }}
             >
-              <Pxi name="x" className="w-5 h-5 text-gray-500" />
+              <Pxi name="times" size={14} />
             </button>
           )}
         </div>
 
         {/* Search */}
-        <div className="relative">
+        <div style={{ position: 'relative' }}>
           <input
             type="text"
-            placeholder="Search memories..."
+            placeholder="Search memories…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="settings-input"
+            style={{ paddingLeft: 30, width: '100%', boxSizing: 'border-box' }}
           />
-          <Pxi name="search" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Pxi name="search" size={12} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx-muted)', pointerEvents: 'none' }} />
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex-v-center" style={{ gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
           {contentTypeOptions.map((type) => (
             <button
               key={type}
               onClick={() => setFilterType(type)}
-              className={`px-2 py-1 text-xs rounded capitalize transition-colors ${
-                filterType === type
-                  ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-              }`}
+              style={{
+                padding: '2px 8px', fontSize: 10, borderRadius: 4, border: 'none', cursor: 'pointer',
+                textTransform: 'capitalize', transition: 'background 0.1s, color 0.1s',
+                  background: filterType === type ? 'var(--amber-a16)' : 'var(--glass-bg)',
+                color: filterType === type ? 'var(--amber)' : 'var(--tx-muted)',
+                fontWeight: filterType === type ? 600 : 400,
+              }}
             >
               {type}
             </button>
@@ -236,17 +213,17 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       </div>
 
       {/* Stats */}
-      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+      <div className="mb-stats-row">
         <MemoryStats totalMemories={stats.totalMemories} memoriesByTask={stats.memoriesByTask} />
       </div>
 
       {/* Memory List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+      <div className="flex-col mb-list">
         {filteredMemories.length === 0 ? (
-          <div className="text-center py-8 text-gray-400">
-            <Pxi name="database" className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No memories found</p>
-            <p className="text-sm mt-1">Completed tasks will be automatically saved here</p>
+          <div className="flex-col flex-center mb-empty">
+            <Pxi name="database" size={28} style={{ color: 'var(--tx-muted)', opacity: 0.4, marginBottom: 8 }} />
+            <p style={{ fontSize: 12, color: 'var(--tx-muted)', margin: 0 }}>No memories found</p>
+            <p style={{ fontSize: 11, color: 'var(--tx-muted)', opacity: 0.6, margin: '4px 0 0' }}>Completed tasks will be automatically saved here</p>
           </div>
         ) : (
           filteredMemories.map((memory) => (
@@ -254,7 +231,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
               key={memory.id}
               memory={memory}
               isSelected={selectedId === memory.id}
-              onSelect={() => handleSelect(memory.id)}
+              onSelect={() => setSelectedId(memory.id === selectedId ? null : memory.id)}
               onDelete={() => handleDelete(memory.id)}
             />
           ))
@@ -262,12 +239,18 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+      <div className="mb-footer">
         <button
           onClick={() => memoryStore.clear().then(loadMemories)}
-          className="w-full px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex items-center justify-center gap-2"
+          className="flex-v-center justify-center hover-text-red"
+          style={{
+            width: '100%', padding: '7px 12px', fontSize: 11, borderRadius: 6,
+            border: '1px solid rgba(248,113,113,0.2)', background: 'transparent',
+            color: 'var(--tx-muted)', cursor: 'pointer', gap: 6,
+            transition: 'color 0.12s, border-color 0.12s',
+          }}
         >
-          <Pxi name="trash" className="w-4 h-4" />
+          <Pxi name="trash-alt" size={12} />
           Clear All Memories
         </button>
       </div>
@@ -277,11 +260,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
 
 // ── Compact Memory View (for sidebar) ───────────────────────────────────────────────
 
-interface CompactMemoryViewProps {
-  onSelectMemory?: (content: string) => void
-}
-
-export const CompactMemoryView = memo(({ onSelectMemory }: CompactMemoryViewProps) => {
+export const CompactMemoryView = memo(({ onSelectMemory }: { onSelectMemory?: (content: string) => void }) => {
   const [memories, setMemories] = useState<MemoryResult[]>([])
   const [expanded, setExpanded] = useState(false)
 
@@ -289,35 +268,39 @@ export const CompactMemoryView = memo(({ onSelectMemory }: CompactMemoryViewProp
     memoryStore.search('', 5).then(setMemories).catch(() => {})
   }, [])
 
-  if (memories.length === 0) {
-    return null
-  }
+  if (memories.length === 0) return null
 
   return (
-    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+      <div style={{ border: '1px solid var(--glass-border)', borderRadius: 8, overflow: 'hidden' }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        className="flex-v-center justify-between hover-bg-app-3"
+        style={{
+          width: '100%', padding: '8px 12px', background: 'var(--glass-bg)',
+          border: 'none', cursor: 'pointer', transition: 'background 0.12s',
+        }}
       >
-        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <Pxi name="database" className="w-4 h-4" />
+        <span className="flex-v-center" style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-secondary)', gap: 6 }}>
+          <Pxi name="database" size={12} style={{ color: 'var(--tx-tertiary)' }} />
           Memory ({memories.length})
         </span>
-        <Pxi
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          className="w-4 h-4 text-gray-400"
-        />
+        <Pxi name={expanded ? 'chevron-up' : 'chevron-down'} size={11} style={{ color: 'var(--tx-muted)' }} />
       </button>
 
       {expanded && (
-        <div className="p-2 space-y-1 max-h-48 overflow-y-auto">
+        <div className="flex-col" style={{ padding: '4px', maxHeight: 192, overflowY: 'auto' }}>
           {memories.map((memory) => (
             <button
               key={memory.id}
               onClick={() => onSelectMemory?.(memory.content)}
-              className="w-full text-left p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-xs text-gray-600 dark:text-gray-400"
+              className="hover-bg-app-3"
+              style={{
+                width: '100%', textAlign: 'left', padding: '6px 8px', borderRadius: 4,
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                fontSize: 11, color: 'var(--tx-muted)', transition: 'background 0.1s',
+              }}
             >
-              {memory.content.slice(0, 80)}{memory.content.length > 80 ? '...' : ''}
+              {memory.content.slice(0, 80)}{memory.content.length > 80 ? '…' : ''}
             </button>
           ))}
         </div>

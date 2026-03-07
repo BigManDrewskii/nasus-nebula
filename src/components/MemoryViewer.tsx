@@ -80,9 +80,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
               onClick={loadFiles}
               title="Refresh"
               aria-label="Refresh memory files"
-              className="mv-icon-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+                className="mv-icon-btn hover-text-primary"
             >
               <Pxi name="refresh" size={14} />
             </button>
@@ -90,15 +88,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             {files?.progress && (
               <button
                 onClick={() => onResume(files.progress)}
-                className="mv-resume-btn"
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.2)'
-                  e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.45)'
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.12)'
-                  e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.28)'
-                }}
+                  className="mv-resume-btn hover-bg-amber"
               >
                 <Pxi name="refresh" size={12} />
                 Resume Task
@@ -107,9 +97,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
             <button
               onClick={onClose}
               aria-label="Close memory viewer"
-              className="mv-close-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+              className="mv-close-btn hover-text-primary"
             >
               <Pxi name="times" size={14} />
             </button>
@@ -128,9 +116,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
                 role="tab"
                 aria-selected={isActiveTab}
                 aria-controls={`panel-${tab.id}`}
-                className={`mv-tab${isActiveTab ? ' mv-tab--active' : ''}`}
-                onMouseEnter={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-primary)' }}
-                onMouseLeave={(e) => { if (!isActiveTab) e.currentTarget.style.color = 'var(--tx-secondary)' }}
+                  className={`mv-tab${isActiveTab ? ' mv-tab--active' : ''} hover-text-primary`}
               >
                 <Pxi name={tab.icon} size={12} />
                 {tab.label}
@@ -175,9 +161,7 @@ export function MemoryViewer({ taskId, workspacePath, onResume, onClose }: Props
           {!isEmpty && currentContent && (
             <button
               onClick={() => downloadSingleFile(currentFilename, currentContent)}
-              className="mv-download-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+                className="mv-download-btn hover-text-secondary"
             >
               <Pxi name="download" size={12} />
               Download {currentFilename}

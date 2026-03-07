@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
+import ConfirmModal from './ConfirmModal'
 import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
 
 export function GatewaySettings() {
@@ -59,9 +60,7 @@ export function GatewaySettings() {
           })
           setExpandedId(id)
         }}
-        className="text-secondary gw-add-btn"
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)' }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
+        className="text-secondary gw-add-btn hover-bg-app-3"
       >
         + Add Custom Gateway
       </button>
@@ -148,6 +147,7 @@ function GatewayItem({
 }) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean, latencyMs?: number, error?: string } | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   const handleTest = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -173,13 +173,14 @@ function GatewayItem({
   }
 
   return (
-    <div
-      className="gw-item"
-      style={{
-        background: isExpanded ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
-        border: `1px solid ${isExpanded ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
-      }}
-    >
+    <>
+      <div
+        className="gw-item"
+        style={{
+          background: isExpanded ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${isExpanded ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
+        }}
+      >
       {/* Header */}
       <div onClick={onToggleExpand} className="flex-v-center gw-item-header">
         <div
@@ -303,17 +304,27 @@ function GatewayItem({
               )}
             </div>
 
-            <button
-              onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${gateway.label}?`)) onRemove() }}
-              className="gw-remove-btn"
-              onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(239,68,68,1)'}
-              onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(239,68,68,0.6)'}
-            >
-              <Pxi name="trash-alt" size={14} />
-            </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirmRemove(true) }}
+                className="gw-remove-btn hover-text-red"
+              >
+                <Pxi name="trash-alt" size={14} />
+              </button>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+
+      {confirmRemove && (
+        <ConfirmModal
+          title={`Remove ${gateway.label}?`}
+          message="This gateway will be removed and cannot be undone."
+          confirmLabel="Remove"
+          onConfirm={() => { setConfirmRemove(false); onRemove() }}
+          onCancel={() => setConfirmRemove(false)}
+          danger
+          />
+        )}
+    </>
   )
 }

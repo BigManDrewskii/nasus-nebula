@@ -116,10 +116,8 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             opacity: picking ? 0.6 : 1,
             whiteSpace: 'nowrap',
           }}
-          onMouseEnter={(e) => { if (!picking) e.currentTarget.style.background = 'rgba(234,179,8,0.08)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-        >
-          <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={12} style={{ color: 'var(--amber)' }} />
+          >
+            <Pxi name={picking ? 'spinner-third' : 'folder-open'} size={12} style={{ color: 'var(--amber)' }} />
           {picking ? 'Opening…' : 'Browse'}
         </button>
 
@@ -183,10 +181,8 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
                 transition: 'color 0.12s, background 0.12s',
                 flexShrink: 0,
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--amber-soft)' }}
-              onMouseLeave={(e) => { if (!showRecent) e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-            >
-              <Pxi name={showRecent ? 'chevron-up' : 'chevron-down'} size={12} />
+              >
+                <Pxi name={showRecent ? 'chevron-up' : 'chevron-down'} size={12} />
             </button>
           )}
         </div>
@@ -235,9 +231,8 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-              title={p}
+                title={p}
+                className="hover-bg-app-3"
             >
               <Pxi name="folder" size={12} style={{ color: 'var(--amber)', flexShrink: 0 }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p}</span>

@@ -3,6 +3,7 @@ import { FocusTrap } from 'focus-trap-react'
 import { tauriInvoke, checkOllama } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
 import { useAppStore } from '../store'
+import ConfirmModal from './ConfirmModal'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import { WorkspacePicker } from './WorkspacePicker'
@@ -172,6 +173,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   // Paid mode confirmation state
   const [pendingPaidMode, setPendingPaidMode] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   // Wrapped budget change handler with confirmation for paid mode
   const handleBudgetChange = (newBudget: string) => {
@@ -345,7 +347,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   }
 
   function handleReset() {
-    if (!confirm('Reset all settings to defaults? This will clear your API keys and preferences.')) return
+    setConfirmReset(true)
+  }
+
+  function doReset() {
+    setConfirmReset(false)
     setLocalOpenRouterKey('')
     setLocalRequestyKey('')
     setLocalDeepSeekKey('')
@@ -534,9 +540,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <button
               onClick={onClose}
               aria-label="Close settings"
-              className="text-tertiary settings-close-btn"
-              onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-primary)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+              className="text-tertiary settings-close-btn hover-text-primary"
             >
               <Pxi name="times" size={14} />
             </button>
@@ -563,19 +567,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   transition: 'background 0.12s, color 0.12s',
                   border: 'none',
                 }}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                    e.currentTarget.style.color = 'var(--tx-primary)'
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isActive) {
-                    e.currentTarget.style.background = 'transparent'
-                    e.currentTarget.style.color = 'var(--tx-secondary)'
-                  }
-                }}
-              >
+                >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             )
@@ -771,20 +763,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             transition: 'all 0.12s',
                             gap: 10,
                           }}
-                          className="flex-v-center"
-                        onMouseEnter={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isSelected) {
-                            e.currentTarget.style.background = 'transparent'
-                            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-                          }
-                        }}
-                      >
+                            className="flex-v-center settings-model-row"
+                        >
                         {/* Radio indicator */}
                         <div className="flex-center shrink-0" style={{
                           width: 18, height: 18, borderRadius: '50%',
@@ -906,32 +886,30 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   <div className="flex-col gap-2">
                   {/* Fetch row */}
                   <div className="flex-v-center gap-2">
-                      <button
-                        type="button"
-                          onClick={handleFetchModels}
-                          disabled={fetchingModels}
-                          className="flex-v-center"
-                          style={{
-                            gap: 6,
-                            padding: '4px 10px', borderRadius: 8, fontSize: 11,
-                            background: 'rgba(255,255,255,0.07)', border: 'none',
-                            cursor: fetchingModels ? 'default' : 'pointer',
-                            color: 'var(--tx-secondary)', transition: 'color 0.12s',
-                            opacity: fetchingModels ? 0.45 : 1,
-                          }}
-                        onMouseEnter={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-primary)' }}
-                        onMouseLeave={(e) => { if (!fetchingModels) e.currentTarget.style.color = 'var(--tx-secondary)' }}
-                        title={activeProvider === 'ollama' ? 'Refresh models from local Ollama' : 'Fetch all available models from OpenRouter'}
-                      >
-                        <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
-                        {fetchingModels ? 'Fetching…' : activeProvider === 'ollama' ? 'Refresh Ollama models' : 'Fetch all models'}
-                      </button>
-                      {fetchModelsError && (
-                        <span className="fetch-error">{fetchModelsError}</span>
-                      )}
-                      {fetchedCount !== null && !fetchModelsError && (
-                        <span className="text-tertiary fetch-count">{fetchedCount} models</span>
-                      )}
+                        <button
+                          type="button"
+                            onClick={handleFetchModels}
+                            disabled={fetchingModels}
+                            style={{
+                              gap: 6,
+                              padding: '4px 10px', borderRadius: 8, fontSize: 11,
+                              background: 'rgba(255,255,255,0.07)', border: 'none',
+                              cursor: fetchingModels ? 'default' : 'pointer',
+                              color: 'var(--tx-secondary)', transition: 'color 0.12s',
+                              opacity: fetchingModels ? 0.45 : 1,
+                            }}
+                            title={activeProvider === 'ollama' ? 'Refresh models from local Ollama' : 'Fetch all available models from OpenRouter'}
+                            className="flex-v-center hover-text-primary"
+                          >
+                          <Pxi name={fetchingModels ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
+                          {fetchingModels ? 'Fetching…' : activeProvider === 'ollama' ? 'Refresh Ollama models' : 'Fetch all models'}
+                        </button>
+                        {fetchModelsError && (
+                          <span className="fetch-error">{fetchModelsError}</span>
+                        )}
+                        {fetchedCount !== null && !fetchModelsError && (
+                          <span className="text-tertiary fetch-count">{fetchedCount} models</span>
+                        )}
                   </div>
 
                   {/* Model dropdown */}
@@ -1000,7 +978,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                                       key={m.id}
                                         type="button"
                                         onClick={() => { setLocalModel(m.id); setModelOpen(false); setModelSearch('') }}
-                                        className="flex-col w-full"
+                                        className="flex-col w-full hover-bg-app-3"
                                         style={{
                                           alignItems: 'flex-start',
                                           padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
@@ -1008,8 +986,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                                           background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
                                           transition: 'background 0.1s',
                                         }}
-                                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
                                     >
                                           <div className="flex-v-center justify-between w-full gap-2">
                                             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[13px]">{m.name}</span>
@@ -1140,25 +1116,17 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               >
               Cancel
             </button>
-            <button
-              onClick={checkAndSave}
-              disabled={busy}
-              className="flex-v-center"
-              style={{
-                gap: 8,
-                padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
-                background: saveError ? 'rgba(239,68,68,0.8)' : 'var(--amber)', color: '#000',
-                opacity: busy ? 0.45 : 1, transition: 'background 0.12s',
-              }}
-              onMouseEnter={(e) => {
-                if (!busy && !saveError) e.currentTarget.style.background = 'var(--amber-soft)'
-                else if (!busy && saveError) e.currentTarget.style.background = 'rgba(239,68,68,1)'
-              }}
-              onMouseLeave={(e) => {
-                if (!busy && !saveError) e.currentTarget.style.background = 'var(--amber)'
-                else if (!busy && saveError) e.currentTarget.style.background = 'rgba(239,68,68,0.8)'
-              }}
-            >
+              <button
+                onClick={checkAndSave}
+                disabled={busy}
+                className="flex-v-center settings-save-btn"
+                style={{
+                  gap: 8,
+                  padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                  background: saveError ? 'rgba(239,68,68,0.8)' : 'var(--amber)', color: '#000',
+                  opacity: busy ? 0.45 : 1, transition: 'background 0.12s',
+                }}
+              >
               {saveError ? (
                 <><Pxi name="exclamation-triangle" size={14} style={{ color: '#000' }} /> Failed to save</>
               ) : saved ? (
@@ -1205,14 +1173,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </div>
               </div>
             </div>
-            )}
-        </div>
-        </FocusTrap>
-      </div>
-    )
-}
+              )}
 
-// ─── OllamaStatusBanner ───────────────────────────────────────────────────────
+            {confirmReset && (
+              <ConfirmModal
+                title="Reset all settings?"
+                message="This will clear your API keys and restore all preferences to defaults."
+                confirmLabel="Reset"
+                onConfirm={doReset}
+                onCancel={() => setConfirmReset(false)}
+                danger
+              />
+            )}
+          </div>
+          </FocusTrap>
+        </div>
+      )
+  }
+  
+  // ─── OllamaStatusBanner ───────────────────────────────────────────────────────
 
 function OllamaStatusBanner() {
   const [status, setStatus] = useState<'checking' | 'running' | 'stopped'>('checking')
@@ -1391,18 +1370,16 @@ function ModelRouterSection({
           onClick={handleRefreshModels}
           disabled={refreshing}
           title="Fetch latest models from OpenRouter"
-          className="flex-v-center"
-          style={{
-            padding: '4px 8px', borderRadius: 6, fontSize: 10,
-            background: refreshing ? 'rgba(255,255,255,0.05)' : 'transparent',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: refreshing ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
-            cursor: refreshing ? 'wait' : 'pointer',
-            gap: 4,
-            transition: 'all 0.12s',
-          }}
-          onMouseEnter={(e) => { if (!refreshing) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-          onMouseLeave={(e) => { if (!refreshing) e.currentTarget.style.background = 'transparent' }}
+            className="flex-v-center hover-bg-app-3"
+            style={{
+              padding: '4px 8px', borderRadius: 6, fontSize: 10,
+              background: refreshing ? 'rgba(255,255,255,0.05)' : 'transparent',
+              border: '1px solid rgba(255,255,255,0.1)',
+              color: refreshing ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
+              cursor: refreshing ? 'wait' : 'pointer',
+              gap: 4,
+              transition: 'all 0.12s',
+            }}
         >
           <Pxi name={refreshing ? 'spinner-third' : 'refresh-cw'} size={12} style={{ animation: refreshing ? 'spin 1s linear infinite' : undefined }} />
           {refreshing ? 'Fetching...' : 'Refresh'}
@@ -1437,18 +1414,17 @@ function ModelRouterSection({
                 border: `1px solid ${isSel ? 'oklch(64% 0.214 40.1 / 0.4)' : 'rgba(255,255,255,0.08)'}`,
                 background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
                 color: isSel ? 'var(--amber)' : 'var(--tx-secondary)',
-                cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
-              }}
-              onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-              onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
-            >
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
+                  cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
+                }}
+                className="hover-bg-app-3"
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
 
-      {/* Budget: Free vs Paid (only in Auto mode) */}
+        {/* Budget: Free vs Paid (only in Auto mode) */}
       {isAutoMode && (
         <div>
           <div className="text-tertiary" style={{ fontSize: 10, marginBottom: 6, letterSpacing: '0.04em' }}>
@@ -1471,11 +1447,10 @@ function ModelRouterSection({
                     border: `1px solid ${isSel ? (opt.id === 'free' ? 'rgba(129,140,248,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.08)'}`,
                     background: isSel ? (opt.id === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
                     color: isSel ? (opt.id === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
-                    cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
-                  }}
-                  onMouseEnter={(e) => { if (!isSel) e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
-                  onMouseLeave={(e) => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
-                >
+                      cursor: 'pointer', transition: 'all 0.12s', fontWeight: isSel ? 600 : 400,
+                    }}
+                    className="hover-bg-app-3"
+                  >
                   {opt.label}
                 </button>
               )
@@ -1501,15 +1476,13 @@ function ModelRouterSection({
           <button
             type="button"
             onClick={() => setExpanded((o) => !o)}
-            className="flex-v-center text-tertiary"
-            style={{
-              gap: 5,
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 11, padding: '2px 0',
-              transition: 'color 0.12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--tx-secondary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
+              className="flex-v-center text-tertiary hover-text-secondary"
+              style={{
+                gap: 5,
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 11, padding: '2px 0',
+                transition: 'color 0.12s',
+              }}
           >
             <Pxi name={expanded ? 'chevron-down' : 'chevron-right'} size={12} />
             <span>{expanded ? 'Hide' : 'Customize'} enabled models ({visibleModels.filter((m) => isEnabled(m.id)).length}/{visibleModels.length})</span>

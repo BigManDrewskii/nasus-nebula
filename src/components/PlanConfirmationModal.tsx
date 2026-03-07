@@ -265,24 +265,14 @@ export const PlanView = memo(function PlanView({
         <div className="flex-v-center justify-end pv-approval-footer">
           <button
             onClick={onReject}
-            className="text-secondary pv-decline-btn"
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'var(--tx-primary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--tx-secondary)' }}
+              className="text-secondary pv-decline-btn hover-bg-app-3 hover-text-primary"
           >
             Decline
           </button>
 
           <button
             onClick={onApprove}
-            className="flex-v-center pv-approve-btn"
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-1px)'
-              e.currentTarget.style.boxShadow = '0 4px 22px rgba(234,179,8,0.38)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.boxShadow = '0 2px 14px rgba(234,179,8,0.25)'
-            }}
+              className="flex-v-center pv-approve-btn"
           >
             <Pxi name="play" size={9} />
             Approve

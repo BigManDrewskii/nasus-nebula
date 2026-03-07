@@ -143,10 +143,9 @@ function AttachmentChip({ attachment, onRemove }: ChipProps) {
           flexShrink: 0,
           padding: 0,
           transition: 'color 0.12s',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = '#f87171' }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--tx-tertiary)' }}
-      >
+          }}
+          className="hover-text-red"
+        >
         <Pxi name="times" size={9} />
       </button>
     </div>
@@ -203,15 +202,8 @@ export function AttachmentPreviewBar({
               transition: 'border-color 0.12s, color 0.12s',
               flexShrink: 0,
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'
-              e.currentTarget.style.color = 'var(--tx-secondary)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
-              e.currentTarget.style.color = 'var(--tx-tertiary)'
-            }}
-          >
+              className="apb-add-btn"
+            >
             <Pxi name="plus" size={9} />
             Add
           </button>

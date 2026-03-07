@@ -236,12 +236,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
               aria-label={rightCollapsed ? 'Show workspace panel' : 'Hide workspace panel'}
-              className="ch-panel-toggle"
-              style={{
-                background: rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)' }}
+              className="ch-panel-toggle hover-bg-app-3"
             >
               <Pxi name="columns" size={12} />
             </button>
