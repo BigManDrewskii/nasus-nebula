@@ -35,7 +35,7 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
     (_match, href) => {
       const f = resolve(href)
       if (!f) return _match
-      return `<style>${f.content}</style>`
+        return `<pre style="white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:12px;padding:8px;margin:0">${f.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
     },
   )
 

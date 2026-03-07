@@ -631,9 +631,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   max={200}
                   value={localMaxIterations}
                   onChange={(e) => setLocalMaxIterations(e.target.value)}
-                  className="settings-input placeholder-[var(--tx-muted)]"
-                  onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                  className="settings-input placeholder-[var(--tx-muted)]"}}
                 />
               </Field>
 
@@ -674,9 +672,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           max={600}
                           value={localMaxRPM}
                           onChange={(e) => setLocalMaxRPM(e.target.value)}
-                          className="settings-input placeholder-[var(--tx-muted)] flex-1"
-                          onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                          onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                          className="settings-input placeholder-[var(--tx-muted)] flex-1"}}
                         />
                           <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
                       </div>
@@ -833,9 +829,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       }}
                       placeholder="sk-or-v1-..."
                       className="settings-input placeholder-[var(--tx-muted)]"
-                      style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                      onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                      onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                      style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}}}
                     />
                   </Field>
                 )}
@@ -856,9 +850,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         }}
                         placeholder="req_..."
                         className="settings-input placeholder-[var(--tx-muted)]"
-                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}}}
                       />
                     </Field>
                   )}
@@ -879,9 +871,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         }}
                         placeholder="sk-..."
                         className="settings-input placeholder-[var(--tx-muted)]"
-                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                        onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                        onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}}}
                       />
                     </Field>
                   )}
@@ -1261,9 +1251,7 @@ function SearchSection({
         hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
       >
         <input type="password" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
-          placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
-          onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)' }}
+          placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"}}
         />
       </Field>
     </div>

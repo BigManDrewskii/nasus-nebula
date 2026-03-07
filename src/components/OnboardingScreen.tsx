@@ -229,9 +229,7 @@ export function OnboardingScreen() {
                     onChange={(e) => setCustomBase(e.target.value)}
                     placeholder={selectedProvider.placeholder}
                     autoFocus
-                    className="onboarding-input placeholder-[var(--tx-muted)]"
-                    onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
+                    className="onboarding-input placeholder-[var(--tx-muted)]"}}
                   />
                 </div>
               )}
@@ -248,9 +246,7 @@ export function OnboardingScreen() {
                   onChange={(e) => { setApiKeyLocal(e.target.value); setError('') }}
                   placeholder={isOllamaOrCustom ? 'Leave blank if auth disabled' : selectedProvider.placeholder}
                   autoFocus={!isOllamaOrCustom}
-                  className="onboarding-input placeholder-[var(--tx-muted)]"
-                  onFocus={(e) => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.5)' }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)' }}
+                  className="onboarding-input placeholder-[var(--tx-muted)]"}}
                   onKeyDown={(e) => { if (e.key === 'Enter' && canContinueProvider) setStep('workspace') }}
                 />
                 {error && <p className="onboarding-error">{error}</p>}

@@ -615,9 +615,7 @@ function SystemPromptSection() {
           onChange={e => handleChange(e.target.value)}
           placeholder="Add a system prompt or persona for the AI…"
           rows={3}
-          className="system-prompt-textarea"
-          onFocus={e => { e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.4)' }}
-          onBlur={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)' }}
+          className="system-prompt-textarea"}}
         />
         {chars > 0 && (
           <span className="text-muted font-mono absolute pointer-events-none system-prompt-char-count">

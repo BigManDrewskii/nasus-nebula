@@ -3357,6 +3357,10 @@ input[type="range"]::-moz-range-thumb {
   max-height: 200px;
 }
 
+.system-prompt-textarea:focus {
+  border-color: oklch(64% 0.214 40.1 / 0.4);
+}
+
 .system-prompt-char-count {
   bottom: 6px;
   right: 8px;
@@ -3861,6 +3865,11 @@ input[type="range"]::-moz-range-thumb {
   transition: border-color 0.12s;
   font-family: inherit;
   box-sizing: border-box;
+  outline: none;
+}
+
+.onboarding-input:focus {
+  border-color: oklch(64% 0.214 40.1 / 0.5);
 }
 
 .onboarding-error {

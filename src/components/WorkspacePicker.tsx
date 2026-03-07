@@ -18,6 +18,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
   const [checking, setChecking] = useState(false)
   const [valid, setValid] = useState<boolean | null>(null)
   const [picking, setPicking] = useState(false)
+  const [focused, setFocused] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -69,7 +70,9 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
     }
   }
 
-  const borderColor = error
+  const borderColor = focused
+    ? (error ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)')
+    : error
     ? 'rgba(239,68,68,0.4)'
     : valid === true
     ? 'rgba(52,211,153,0.4)'
@@ -137,10 +140,10 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             fontFamily: 'var(--font-mono)',
             minWidth: 0,
           }}
-          className="placeholder-[var(--tx-muted)]"
-          onFocus={(e) => { e.currentTarget.parentElement!.style.borderColor = error ? 'rgba(239,68,68,0.6)' : 'oklch(64% 0.214 40.1 / 0.5)' }}
-          onBlur={(e) => { e.currentTarget.parentElement!.style.borderColor = borderColor }}
-        />
+            className="placeholder-[var(--tx-muted)]"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          />
 
         {/* Status indicator + recent dropdown trigger */}
         <div style={{ paddingRight: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
