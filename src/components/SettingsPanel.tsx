@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
+import { FocusTrap } from 'focus-trap-react'
 import { tauriInvoke, checkOllama } from '../tauri'
 import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
 import { useAppStore } from '../store'
@@ -502,9 +503,16 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         className="fixed inset-0 z-50 flex-center settings-backdrop"
         onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
-        <div
-          className="fade-in flex-col settings-card"
+        <FocusTrap
+          focusTrapOptions={{
+            onDeactivate: onClose,
+            clickOutsideDeactivates: true,
+            escapeDeactivates: true,
+          }}
         >
+          <div
+            className="fade-in flex-col settings-card"
+          >
           {/* Header */}
           <div className="flex-v-center justify-between shrink-0 settings-header">
             <div className="flex-v-center gap-2">
@@ -1197,10 +1205,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </div>
               </div>
             </div>
-          )}
+            )}
+        </div>
+        </FocusTrap>
       </div>
-    </div>
-  )
+    )
 }
 
 // ─── OllamaStatusBanner ───────────────────────────────────────────────────────

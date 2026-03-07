@@ -47,19 +47,6 @@ export function StreamingStatus({ phase, currentTool, className = '' }: Streamin
         {isStreaming && currentTool ? `Using ${currentTool}…` : 'Thinking…'}
       </span>
 
-      {/* Inline keyframe animation for the pulse */}
-      <style>{`
-        @keyframes streamingPulse {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.4;
-            transform: scale(0.85);
-          }
-        }
-      `}</style>
     </div>
   )
 }

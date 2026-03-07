@@ -171,17 +171,10 @@ export function OutputPanel({
                   background: 'var(--amber)',
                   boxShadow: '0 0 6px rgba(234,179,8,0.5)',
                   animation: 'contentPulse 2s ease-in-out infinite',
-                }}
-              >
-                <style>{`
-                  @keyframes contentPulse {
-                    0%, 100% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.5; transform: scale(0.85); }
-                  }
-                `}</style>
-              </span>
-            )}
-          </button>
+                  }}
+                />
+              )}
+            </button>
         ))}
 
         <div className="output-panel-spacer" />

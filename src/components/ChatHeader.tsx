@@ -209,7 +209,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
         {/* Right cluster — sandbox + stop */}
         <div className="flex items-center gap-2 flex-shrink-0 flex-1 justify-end">
           {/* Sandbox pill — only when relevant */}
-          {(isActive || sandboxStatus === 'ready') && sandboxStatus !== 'idle' && sandboxStatus === 'starting' && (
+          {isActive && sandboxStatus === 'starting' && (
             <div className="ch-sandbox-starting">
               <span className="ch-sandbox-dot" />
               <span className="ch-sandbox-label">Starting</span>
@@ -235,7 +235,7 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
             <button
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}
-              aria-label="Open settings"
+              aria-label={rightCollapsed ? 'Show workspace panel' : 'Hide workspace panel'}
               className="ch-panel-toggle"
               style={{
                 background: rightCollapsed ? 'transparent' : 'rgba(255,255,255,0.06)',
