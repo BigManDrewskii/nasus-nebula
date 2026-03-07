@@ -366,8 +366,31 @@ export class ExecutionAgent extends BaseAgent {
         tracer.recordThinking(reasoningContent)
       }
 
-      // No tool calls = done
+      // No tool calls — check if task is truly done before stopping
       if (finishReason === 'stop' || toolCalls.length === 0) {
+        // Check if task_plan.md still has unchecked items — if so the agent
+        // stopped mid-task (likely by narrating instead of calling a tool).
+        // Inject a nudge and continue the loop instead of exiting.
+        const ws = getWorkspace(taskId)
+        const planContent = ws?.get('task_plan.md') ?? ''
+        const hasUncheckedItems = planContent.includes('[ ]') || planContent.includes('[?]') || planContent.includes('☐')
+
+        if (hasUncheckedItems) {
+          // Agent stopped mid-task — push the narration as assistant content so
+          // it's visible to the user, then nudge the model to continue with tools.
+          if (content) {
+            messages.push({ role: 'assistant', content })
+          }
+          this.pushOrReplaceSystemMessage(
+            messages,
+            '[MID-TASK STOP DETECTED]',
+            `[MID-TASK STOP DETECTED] You stopped without completing the task. task_plan.md still has unchecked items. DO NOT output text — call the next tool IMMEDIATELY to continue execution. No narration, no explanation — just the next tool call.`,
+          )
+          // Increment iteration counter manually since we're looping without the for-loop
+          this.emitIterationTick(taskId, iteration + 2)
+          continue
+        }
+
         if (content) {
           useAppStore.getState().appendRawHistory(taskId, [
             { role: 'assistant', content: content },

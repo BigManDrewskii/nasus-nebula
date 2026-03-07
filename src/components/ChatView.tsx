@@ -285,13 +285,21 @@ interface ChatViewProps {
     configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig }
   }, [apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig])
 
-  const runAgent = useCallback(async (
+    const runAgent = useCallback(async (
             taskId: string,
             agentMsgId: string,
             history: LlmMessage[],
             taskTitle: string,
           ) => {
             const cfg = configRef.current
+
+            // Reset stale router state from previous runs so the badge never
+            // shows a prior run's model/cost while this new run is starting.
+            useAppStore.getState().setTaskRouterState(taskId, {
+              modelId: '', displayName: '', reason: '',
+              totalCostUsd: 0, totalInputTokens: 0, totalOutputTokens: 0,
+              callCount: 0, isFree: false,
+            })
 
             // Determine the model to use based on routing mode.
             // In auto mode we resolve once here using Tauri backend.
@@ -664,6 +672,7 @@ interface ChatViewProps {
                 onShowOutput={onShowOutput}
                 onStop={handleStop}
                 taskRouterState={taskRouterEntry}
+                activeModelBadge={activeModelBadge}
                 gatewayHealth={gatewayHealth}
                 messageCount={messageCount}
                 userTurns={userTurns}

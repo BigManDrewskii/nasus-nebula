@@ -123,55 +123,62 @@ export function ToastOverlay({ workspaceWarning, rateLimitWarning, folderDropCon
 
 // ─── Header bar ────────────────────────────────────────────────────────────────
 
-  interface ChatHeaderProps {
-    task: Task
-    isActive: boolean
-    iteration: number
-    tokenCount: number
-    model: string
-    provider: string
-    routingMode: string
-    routerConfig?: { budget: string }
-    sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
-    outputVisible?: boolean
-    workspaceFileCount?: number
-    onShowOutput?: () => void
-    onStop: () => void
-    taskRouterState?: TaskRouterState | null
-    gatewayHealth?: GatewayHealth[]
-    messageCount?: number
-    userTurns?: number
-    rightCollapsed?: boolean
-    onToggleRight?: () => void
-    onToggleSidebar?: () => void
-  }
+    interface ChatHeaderProps {
+     task: Task
+     isActive: boolean
+     iteration: number
+     tokenCount: number
+     model: string
+     provider: string
+     routingMode: string
+     routerConfig?: { budget: string }
+     sandboxStatus: 'idle' | 'starting' | 'ready' | 'stopped' | 'error'
+     outputVisible?: boolean
+     workspaceFileCount?: number
+     onShowOutput?: () => void
+     onStop: () => void
+     taskRouterState?: TaskRouterState | null
+     /** The live model badge from the current run (replaces stale taskRouterState when active) */
+     activeModelBadge?: { modelId: string; displayName: string; reason: string; isFree?: boolean } | null
+     gatewayHealth?: GatewayHealth[]
+     messageCount?: number
+     userTurns?: number
+     rightCollapsed?: boolean
+     onToggleRight?: () => void
+     onToggleSidebar?: () => void
+   }
 
-  export function ChatHeader({
-    task,
-    isActive,
-    iteration,
-    tokenCount,
-    model: manualModel,
-    provider: manualProvider,
-    routingMode,
-      routerConfig: _routerConfig,
-    sandboxStatus,
-    outputVisible,
-    workspaceFileCount = 0,
-    onShowOutput,
-    onStop,
-    taskRouterState,
-    gatewayHealth = [],
-    messageCount: _messageCount = 0,
-    userTurns: _userTurns = 0,
-    rightCollapsed,
-    onToggleRight,
-      onToggleSidebar: _onToggleSidebar,
-  }: ChatHeaderProps) {
-    // Current model info from either the live task state or the store defaults
-    const activeModelId = taskRouterState?.modelId || manualModel
-    const activeModelName = taskRouterState?.displayName || (manualModel.split('/').pop() || manualModel)
-    const isAutoFree = routingMode === 'auto-free' || taskRouterState?.isFree
+   export function ChatHeader({
+     task,
+     isActive,
+     iteration,
+     tokenCount,
+     model: manualModel,
+     provider: manualProvider,
+     routingMode,
+       routerConfig: _routerConfig,
+     sandboxStatus,
+     outputVisible,
+     workspaceFileCount = 0,
+     onShowOutput,
+     onStop,
+     taskRouterState,
+     activeModelBadge,
+     gatewayHealth = [],
+     messageCount: _messageCount = 0,
+     userTurns: _userTurns = 0,
+     rightCollapsed,
+     onToggleRight,
+       onToggleSidebar: _onToggleSidebar,
+   }: ChatHeaderProps) {
+     // Model badge priority:
+     // 1. During an active run in auto mode → use activeModelBadge (live, from current routing call)
+     // 2. During an active run in manual mode → use manualModel (the user's chosen model)
+     // 3. Idle → always show manualModel (never show stale taskRouterState from a past run)
+     const liveRouterEntry = isActive && routingMode === 'auto' ? activeModelBadge ?? taskRouterState : null
+     const activeModelId = liveRouterEntry?.modelId || manualModel
+     const activeModelName = liveRouterEntry?.displayName || (manualModel.split('/').pop() || manualModel)
+     const isAutoFree = routingMode === 'auto-free' || (isActive && (liveRouterEntry?.isFree ?? false))
 
       // Provider info
       const isVercel = activeModelId.includes('vercel') || manualProvider === 'vercel'
