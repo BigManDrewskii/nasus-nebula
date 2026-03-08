@@ -631,7 +631,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   max={200}
                   value={localMaxIterations}
                   onChange={(e) => setLocalMaxIterations(e.target.value)}
-                  className="settings-input placeholder-[var(--tx-muted)]"}}
+                    className="settings-input placeholder-[var(--tx-muted)]"
                 />
               </Field>
 
