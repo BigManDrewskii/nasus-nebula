@@ -1100,6 +1100,8 @@ html, body, #root {
   width: 0 !important;
   min-width: 0 !important;
   max-width: 0 !important;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* Right output panel — fluid width, collapses to icon rail */
@@ -1118,6 +1120,7 @@ html, body, #root {
   min-width: 0;
   max-width: 0;
   overflow: hidden;
+  pointer-events: none;
 }
 
 /* Disable transition during active drag for immediate response */

@@ -235,7 +235,7 @@ export function ToastOverlay() {
           )}
 
           {/* Workspace panel toggle */}
-          {onToggleRight && (workspaceFileCount > 0 || !rightCollapsed) && (
+          {onToggleRight && (
             <button
               onClick={onToggleRight}
               title={rightCollapsed ? 'Show workspace panel (⌘⇧\\)' : 'Hide workspace panel (⌘⇧\\)'}

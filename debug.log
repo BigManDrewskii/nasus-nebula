@@ -259,3 +259,9 @@ data: {"id"... [truncated]
 2026-03-08T08:40:43.569Z [console][error] Update check failed: TypeError: Cannot read properties of undefined (reading 'invoke')
 2026-03-08T08:40:43.570Z [console][error] [08:40:43.564] [ERROR] [App] get_exa_key failed TypeError: Cannot read properties of undefined (reading 'invoke') 
 2026-03-08T08:40:43.570Z [console][error] Update check failed: TypeError: Cannot read properties of undefined (reading 'invoke')
+2026-03-08T08:48:02.966Z [console][log] [vite] connecting...
+2026-03-08T08:48:02.969Z [console][log] [vite] connected.
+2026-03-08T08:48:03.022Z [console][warn] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+2026-03-08T08:48:03.123Z [console][error] [08:48:03.116] [ERROR] [App] get_exa_key failed TypeError: Cannot read properties of undefined (reading 'invoke') 
+2026-03-08T08:48:03.124Z [console][error] Update check failed: TypeError: Cannot read properties of undefined (reading 'invoke')
+2026-03-08T08:48:03.124Z [console][error] [08:48:03.116] [ERROR] [App] get_exa_key failed TypeError: Cannot read properties of undefined (reading 'invoke') 

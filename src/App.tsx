@@ -310,19 +310,7 @@ function App() {
             />
         </div>
 
-          {/* ── Left sidebar re-open tab — shown when collapsed ── */}
-          {leftCollapsed && (
-            <button
-              onClick={toggleLeft}
-              title="Open sidebar (⌘B)"
-              className="sidebar-reopen-tab"
-            >
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              <span className="tab-label">Tasks</span>
-            </button>
-          )}
+
 
         {/* ── Chat ── */}
         <main id="main-content" className="app-chat">
@@ -382,25 +370,7 @@ function App() {
               </Suspense>
             )}
 
-          {/* Floating re-open tab — shown when panel is collapsed */}
-              {rightCollapsed && (
-                <button
-                  onClick={() => {
-                    setRightCollapsed(false)
-                    if (workspaceFiles.length > 0) {
-                      const hasHtml = workspaceFiles.some(f => f.ext === 'html')
-                      setRightActiveTab(hasHtml ? 'preview' : 'files')
-                    }
-                  }}
-                  title="Open workspace panel (⌘⇧\\)"
-                  className="workspace-reopen-tab"
-                >
-                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-                    <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  <span className="tab-label">Workspace</span>
-                </button>
-              )}
+
 
         {/* Offline banner */}
         {isOffline && (
@@ -456,6 +426,34 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* ── Reopen tabs — outside app-root so position:fixed is viewport-anchored ── */}
+      {leftCollapsed && (
+        <button onClick={toggleLeft} title="Open sidebar (⌘B)" className="sidebar-reopen-tab">
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span className="tab-label">Tasks</span>
+        </button>
+      )}
+      {rightCollapsed && (
+        <button
+          onClick={() => {
+            setRightCollapsed(false)
+            if (workspaceFiles.length > 0) {
+              const hasHtml = workspaceFiles.some(f => f.ext === 'html')
+              setRightActiveTab(hasHtml ? 'preview' : 'files')
+            }
+          }}
+          title="Open workspace panel (⌘⇧\\)"
+          className="workspace-reopen-tab"
+        >
+          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+            <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span className="tab-label">Workspace</span>
+        </button>
+      )}
     </ErrorBoundary>
   )
 }
