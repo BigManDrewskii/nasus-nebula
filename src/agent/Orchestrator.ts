@@ -222,11 +222,14 @@ export class AgentOrchestrator {
         return
       }
 
-      // Listen for approval events
-      const handleApprove = () => {
-        cleanup()
-        resolve({ approved: true, plan })
-      }
+        // Listen for approval events
+        const handleApprove = (e: Event) => {
+          cleanup()
+          // The event may carry an updated plan (from edit mode)
+          const detail = (e as CustomEvent<{ plan?: ExecutionPlan }>).detail
+          const approvedPlan = detail?.plan ?? plan
+          resolve({ approved: true, plan: approvedPlan })
+        }
 
       const handleReject = () => {
         cleanup()

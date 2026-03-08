@@ -5490,18 +5490,22 @@ input[type="range"]::-moz-range-thumb {
 
 /*
  * Layout:
- *   .plm-overlay  — fixed full-viewport layer, flex column, justify end
- *     .plm-backdrop — absolute inset 0, the dim layer (click = Skip)
- *     .plm-panel    — the actual card, sits at the bottom of the chat column
+ *   .plm-overlay  — absolute overlay inside the ChatView column (position:relative parent).
+ *                   top:0 / left:0 / right:0, bottom is set by JS to = inputAreaHeight.
+ *     .plm-backdrop — fills the overlay (click = Skip)
+ *     .plm-panel    — the actual card, pinned to the bottom of the overlay
  *
- * The panel slides up from the bottom of the input area, matching the input
- * max-width (780px) and left/right padding (px-5 = 20px) of ChatView.
+ * Using position:absolute (not fixed) keeps the panel inside the chat column
+ * and automatically adapts when the sidebar or output panel is resized.
  */
 
 .plm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* bottom is set inline by ChatView via inputAreaHeight */
+  z-index: 50;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
@@ -5513,7 +5517,7 @@ input[type="range"]::-moz-range-thumb {
 .plm-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   animation: fade-in 0.18s ease;
   pointer-events: auto;
@@ -5524,10 +5528,8 @@ input[type="range"]::-moz-range-thumb {
   position: relative;
   width: 100%;
   max-width: 780px;
-  /* match ChatView horizontal padding */
-  margin: 0 20px;
-  /* sit just above the input: input area is pb-5 pt-1 ≈ 24px, so we match that */
-  margin-bottom: 88px;
+  /* horizontal padding to match the input area (px-5 = 20px each side) */
+  margin: 0 20px 12px;
   background: #0f0f0f;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 16px;

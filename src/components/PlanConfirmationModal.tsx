@@ -91,12 +91,15 @@ export const PlanConfirmationModal = memo(function PlanConfirmationModal({
   taskId,
   onApprove,
   onReject,
+  inputAreaHeight = 0,
 }: {
   plan: ExecutionPlan
   /** The task ID — passed explicitly so approve/reject always target the right task */
   taskId: string
-  onApprove: (taskId: string) => void
+  onApprove: (taskId: string, updatedPlan?: ExecutionPlan) => void
   onReject: (taskId: string) => void
+  /** Height of the input area in px — the panel sits this many px above the bottom */
+  inputAreaHeight?: number
 }) {
   const [approving, setApproving] = useState(false)
   // Edit mode: shows a textarea to tweak the plan description before approving
@@ -143,15 +146,27 @@ export const PlanConfirmationModal = memo(function PlanConfirmationModal({
 
   function handleApprove() {
     setApproving(true)
-    onApprove(taskId)
+    if (editMode && editedDescription.trim() && editedDescription !== plan.description) {
+      // Pass the updated plan so the Orchestrator uses the edited description
+      const updatedPlan = { ...plan, description: editedDescription.trim() }
+      onApprove(taskId, updatedPlan)
+    } else {
+      onApprove(taskId)
+    }
   }
 
   const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
   const complexity = plan.complexity ?? 'medium'
   const hasFiles = plan.files && plan.files.length > 0
 
-  return (
-    <div className="plm-overlay" role="dialog" aria-modal="true" aria-label="Execution plan">
+    return (
+      <div
+        className="plm-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Execution plan"
+        style={{ bottom: inputAreaHeight > 0 ? inputAreaHeight : undefined }}
+      >
       {/* Dim backdrop — clicking it = Skip */}
       <div className="plm-backdrop" onClick={handleSkip} />
 

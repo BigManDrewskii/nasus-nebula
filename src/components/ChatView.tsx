@@ -132,6 +132,20 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       const messageListRef = useRef<HTMLDivElement>(null)
       const bottomRef = useRef<HTMLDivElement>(null)
       const pillHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+      const inputWrapRef = useRef<HTMLDivElement>(null)
+      const [inputAreaHeight, setInputAreaHeight] = useState(0)
+
+      // Keep inputAreaHeight in sync so the plan panel always sits flush above the input
+      useEffect(() => {
+        const el = inputWrapRef.current
+        if (!el) return
+        const ro = new ResizeObserver(entries => {
+          setInputAreaHeight(entries[0]?.contentRect.height ?? 0)
+        })
+        ro.observe(el)
+        setInputAreaHeight(el.getBoundingClientRect().height)
+        return () => ro.disconnect()
+      }, [])
 
     const [tokenCount, setTokenCount] = useState(0)
     const [showMemory, setShowMemory] = useState(false)
@@ -609,11 +623,13 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
-      if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStopRef.current?.() }
+      // When the plan modal is open, Escape is handled by the modal itself (Skip).
+      // Don't let the ChatView handler also fire stopAgent on the same keypress.
+      if (e.key === 'Escape' && isActive && !showMemory && !pendingPlan) { e.preventDefault(); handleStopRef.current?.() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, showMemory, onOpenSettings])
+  }, [isActive, showMemory, onOpenSettings, pendingPlan])
 
   // Slice from index 1 to skip the persisted welcome message (shown only in empty state)
   const visibleMessages = messages.slice(1)
@@ -755,18 +771,19 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
             </div>
           )}
 
-              {/* Plan confirmation panel — sits above the input, outside the scroll container */}
+              {/* Plan confirmation panel — absolutely positioned above the input, constrained to this column */}
               {pendingPlan && task && (
                 <PlanConfirmationModal
                   plan={pendingPlan}
                   taskId={task.id}
                   onApprove={approvePlan}
                   onReject={rejectPlan}
+                  inputAreaHeight={inputAreaHeight}
                 />
               )}
 
               {/* Input */}
-              <div className="flex-shrink-0 px-5 pb-5 pt-1">
+              <div ref={inputWrapRef} className="flex-shrink-0 px-5 pb-5 pt-1">
                 <div className="max-w-[780px] mx-auto">
               {/* Meta strip — routing preview + cost, consolidated */}
               {(activeModelBadge || routingPreview || taskCostBadge) && (

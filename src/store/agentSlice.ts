@@ -16,8 +16,9 @@ export interface AgentSlice {
   setCurrentPlan: (plan: ExecutionPlan | null) => void
   setCurrentPhase: (phase: number) => void
   setCurrentStep: (step: number) => void
-  /** Approve the pending plan. Pass the taskId explicitly so it's always correct. */
-  approvePlan: (taskId: string) => void
+  /** Approve the pending plan. Pass the taskId explicitly so it's always correct.
+   *  Optionally pass an updatedPlan if the user edited the plan before approving. */
+  approvePlan: (taskId: string, updatedPlan?: ExecutionPlan) => void
   /** Reject (Skip) the pending plan. Stops the agent and sets task to 'stopped'. */
   rejectPlan: (taskId: string) => void
 
@@ -42,19 +43,25 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   setCurrentPhase: (phase) => set({ currentPhase: phase }),
   setCurrentStep: (step) => set({ currentStep: step }),
 
-  approvePlan: (taskId: string) => {
+  approvePlan: (taskId: string, updatedPlan?: ExecutionPlan) => {
     set({ planApprovalStatus: 'approved', pendingPlan: null, currentPlan: null })
-    window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${taskId}`))
+    window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${taskId}`, {
+      detail: updatedPlan ? { plan: updatedPlan } : undefined,
+    }))
   },
 
   rejectPlan: (taskId: string) => {
     set({ planApprovalStatus: 'rejected', pendingPlan: null })
-    // Stop the running agent cleanly
-    stopWebAgent(taskId)
-    // Mark task stopped (not failed — user chose to skip)
-    const store = get() as { updateTaskStatus?: (id: string, status: string) => void }
-    if (store.updateTaskStatus) store.updateTaskStatus(taskId, 'stopped')
+    // Fire the reject event FIRST — the Orchestrator's waitForApproval is listening
+    // for this event. If we call stopWebAgent() first, the AbortSignal fires and
+    // resolves the Promise as 'cancelled' before 'rejected', causing the wrong status.
     window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${taskId}`))
+    // Stop the agent after a microtask so the event handler runs first
+    Promise.resolve().then(() => {
+      stopWebAgent(taskId)
+      const store = get() as { updateTaskStatus?: (id: string, status: string) => void }
+      if (store.updateTaskStatus) store.updateTaskStatus(taskId, 'stopped')
+    })
   },
 
   resetPlanState: () => {
