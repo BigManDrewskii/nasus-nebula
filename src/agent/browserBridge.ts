@@ -31,8 +31,10 @@ async function ensureSidecarRunning(): Promise<void> {
   const { browserCheckSidecarInstalled } = await import('../tauri')
   const status = await browserCheckSidecarInstalled()
   if (!status.installed) {
+    // Signal the BrowserPreview panel to show the install prompt
+    window.dispatchEvent(new CustomEvent('nasus:browser-needs-install'))
     throw new Error(
-      'Browser automation requires Chromium (~300MB). Please install it from the browser panel in the right sidebar.'
+      'Browser automation requires Chromium (~300MB). The install prompt has been opened in the Browser panel.'
     )
   }
 
@@ -41,6 +43,8 @@ async function ensureSidecarRunning(): Promise<void> {
   // Give it a moment to start
   await new Promise(resolve => setTimeout(resolve, 1500))
   log.info('Browser sidecar started')
+  // Open the browser panel immediately — before session creation
+  emitBrowserActivity('sidecar_started')
 }
 
 async function getTauriSession(): Promise<string> {

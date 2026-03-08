@@ -65,12 +65,28 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
     return trimmed
   }, [])
 
-  // Check initial sidecar status
-  useEffect(() => {
-    tauriInvoke<boolean>('browser_is_sidecar_running')
-      .then((running) => setSidecarStatus(running ? 'running' : 'stopped'))
-      .catch(() => setSidecarStatus('stopped'))
-  }, [])
+    // Check initial sidecar status — and if already running, auto-connect a session
+    useEffect(() => {
+      tauriInvoke<boolean>('browser_is_sidecar_running')
+        .then(async (running) => {
+          if (running) {
+            setSidecarStatus('running')
+            // Try to reattach to an existing session if we don't have one yet
+            try {
+              const result = await tauriInvoke<{ session_id: string; websocket_url: string }>('browser_start_session')
+              if (result) {
+                setSession(result)
+                connectWebSocket(result.websocket_url)
+              }
+            } catch {
+              // Session may already exist — that's fine
+            }
+          } else {
+            setSidecarStatus('stopped')
+          }
+        })
+        .catch(() => setSidecarStatus('stopped'))
+    }, [connectWebSocket])
 
   // Connect to the sidecar WebSocket
   const connectWebSocket = useCallback((wsUrl: string) => {
@@ -276,29 +292,43 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
     }
   }, [])
 
-  useEffect(() => {
-    const handleBrowserActivity = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { type: string; sessionId?: string }
-      if (detail.type === 'session_started' && detail.sessionId) {
-        const agentSessionId = detail.sessionId
-        const wsUrl = `ws://localhost:4750/ws/${agentSessionId}`
-        setSession({ session_id: agentSessionId, websocket_url: wsUrl })
+    useEffect(() => {
+      const handleBrowserActivity = (e: Event) => {
+        const detail = (e as CustomEvent).detail as { type: string; sessionId?: string }
+
+        // Any activity from the agent means the sidecar is running — always sync status
         setSidecarStatus('running')
-        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) connectWebSocket(wsUrl)
-      } else if (detail.type === 'navigate' && detail.sessionId) {
-        if (!session || session.session_id !== detail.sessionId) {
+
+        if (detail.sessionId) {
           const wsUrl = `ws://localhost:4750/ws/${detail.sessionId}`
-          setSession({ session_id: detail.sessionId, websocket_url: wsUrl })
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) connectWebSocket(wsUrl)
+          // Adopt the agent's session if we don't have one yet or it changed
+          setSession(prev => {
+            if (!prev || prev.session_id !== detail.sessionId) {
+              return { session_id: detail.sessionId!, websocket_url: wsUrl }
+            }
+            return prev
+          })
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            connectWebSocket(wsUrl)
+          }
         }
-        setAgentDriving(true)
-      } else if (['click', 'type', 'scroll'].includes(detail.type)) {
-        setAgentDriving(true)
+
+        if (['navigate', 'click', 'type', 'scroll'].includes(detail.type)) {
+          setAgentDriving(true)
+        }
       }
-    }
-    window.addEventListener('nasus:browser-activity', handleBrowserActivity)
-    return () => window.removeEventListener('nasus:browser-activity', handleBrowserActivity)
-  }, [session, connectWebSocket])
+
+      const handleNeedsInstall = () => {
+        setShowPrompt(true)
+      }
+
+      window.addEventListener('nasus:browser-activity', handleBrowserActivity)
+      window.addEventListener('nasus:browser-needs-install', handleNeedsInstall)
+      return () => {
+        window.removeEventListener('nasus:browser-activity', handleBrowserActivity)
+        window.removeEventListener('nasus:browser-needs-install', handleNeedsInstall)
+      }
+    }, [connectWebSocket])
 
   const agentDrivingTimerRef = useRef<number | null>(null)
   useEffect(() => {
