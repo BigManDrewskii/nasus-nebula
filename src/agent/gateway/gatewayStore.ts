@@ -217,6 +217,13 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
           provider: string
         }>('get_config').catch(() => null)
 
+        // Load per-provider keys from OS keyring — the most reliable persistence path
+        const [orKeyringKey, reqKeyringKey, dsKeyringKey] = await Promise.all([
+          tauriInvoke<string>('get_provider_key', { provider: 'openrouter' }).catch(() => ''),
+          tauriInvoke<string>('get_provider_key', { provider: 'requesty' }).catch(() => ''),
+          tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => ''),
+        ])
+
         const { gateways: currentGateways } = get()
 
         let updatedGateways: GatewayConfig[]
@@ -256,6 +263,15 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         } else {
           updatedGateways = currentGateways
         }
+
+        // Overlay keyring keys — these take priority over everything else since they
+        // are written by SettingsPanel.checkAndSave and are the most up-to-date values
+        updatedGateways = updatedGateways.map(g => {
+          if (g.id === 'openrouter' && orKeyringKey) return { ...g, apiKey: orKeyringKey }
+          if (g.id === 'requesty'   && reqKeyringKey) return { ...g, apiKey: reqKeyringKey }
+          if (g.id === 'deepseek'   && dsKeyringKey) return { ...g, apiKey: dsKeyringKey }
+          return g
+        })
 
         set({ gateways: updatedGateways })
 

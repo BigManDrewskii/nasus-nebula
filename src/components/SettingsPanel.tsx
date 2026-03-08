@@ -153,19 +153,37 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       useEffect(() => {
         const state = useAppStore.getState()
 
-        const orKey = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
-        if (orKey) setLocalOpenRouterKey(orKey)
-
-        const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey || ''
-        if (reqKey) setLocalRequestyKey(reqKey)
-
-        const dsKey = state.gateways.find((g) => g.id === 'deepseek')?.apiKey || ''
-        if (dsKey) setLocalDeepSeekKey(dsKey)
-
         const p = state.provider
         if (p === 'openrouter' || p === 'requesty' || p === 'ollama' || p === 'deepseek') {
           setActiveProvider(p)
         }
+
+        // Load all provider keys from the OS keyring. This is the primary persistence
+        // path — provider keys are NOT persisted in localStorage (partialize strips them).
+        Promise.all([
+          tauriInvoke<string>('get_provider_key', { provider: 'openrouter' }).catch(() => ''),
+          tauriInvoke<string>('get_provider_key', { provider: 'requesty' }).catch(() => ''),
+          tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => ''),
+        ]).then(([orKey, reqKey, dsKey]) => {
+          // Prefer keyring value; fall back to in-memory gateway state
+          const resolvedOrKey  = orKey  || state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey || ''
+          const resolvedReqKey = reqKey || state.gateways.find((g) => g.id === 'requesty')?.apiKey   || ''
+          const resolvedDsKey  = dsKey  || state.gateways.find((g) => g.id === 'deepseek')?.apiKey   || ''
+          if (resolvedOrKey)  setLocalOpenRouterKey(resolvedOrKey)
+          if (resolvedReqKey) setLocalRequestyKey(resolvedReqKey)
+          if (resolvedDsKey)  setLocalDeepSeekKey(resolvedDsKey)
+        }).catch(() => {
+          // Browser mode fallback — read from in-memory gateway state or sessionStorage
+          const orKey  = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
+            || (() => { try { return sessionStorage.getItem('nasus:key:openrouter') ?? '' } catch { return '' } })()
+          const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey
+            || (() => { try { return sessionStorage.getItem('nasus:key:requesty') ?? '' } catch { return '' } })()
+          const dsKey  = state.gateways.find((g) => g.id === 'deepseek')?.apiKey
+            || (() => { try { return sessionStorage.getItem('nasus:key:deepseek') ?? '' } catch { return '' } })()
+          if (orKey)  setLocalOpenRouterKey(orKey)
+          if (reqKey) setLocalRequestyKey(reqKey)
+          if (dsKey)  setLocalDeepSeekKey(dsKey)
+        })
 
         // Exa key is stripped from localStorage by partialize. Read it back from the
         // OS keyring (Tauri) on every panel open so the field is never blank.
@@ -446,6 +464,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           log.warn('Failed to save gateways', e instanceof Error ? e : new Error(String(e)))
           // Non-fatal — save_config below still persists the active key
         }
+
+        // Persist provider keys to the OS keyring (same mechanism as Exa key).
+        // This is the most reliable persistence path for Tauri desktop — the
+        // tauri-plugin-store `save_gateways` path has proven unreliable.
+        const keyringWrites = [
+          tauriInvoke('set_provider_key', { provider: 'openrouter', key: localOpenRouterKey.trim() }),
+          tauriInvoke('set_provider_key', { provider: 'requesty',   key: localRequestyKey.trim() }),
+          tauriInvoke('set_provider_key', { provider: 'deepseek',   key: localDeepSeekKey.trim() }),
+        ]
+        await Promise.all(keyringWrites).catch((e) => {
+          log.warn('Failed to save provider keys to keyring', e instanceof Error ? e : new Error(String(e)))
+        })
 
         // Persist keys to sessionStorage so that loadGatewayConfig's browser-mode
         // fallback path (Tauri not available) can recover them across HMR reloads.

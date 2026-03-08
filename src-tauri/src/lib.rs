@@ -438,6 +438,28 @@ async fn set_exa_key(state: State<'_, AppState>, key: String) -> NasusResult<()>
     Ok(())
 }
 
+/// Get a provider API key from the OS keyring.
+/// provider: "openrouter" | "requesty" | "deepseek"
+#[tauri::command]
+async fn get_provider_key(provider: String) -> NasusResult<String> {
+    let service_name = format!("nasus-provider-{}", provider);
+    Ok(search::keys::get_api_key(&service_name).unwrap_or_default())
+}
+
+/// Save a provider API key to the OS keyring.
+/// provider: "openrouter" | "requesty" | "deepseek"
+#[tauri::command]
+async fn set_provider_key(provider: String, key: String) -> NasusResult<()> {
+    let service_name = format!("nasus-provider-{}", provider);
+    if key.is_empty() {
+        let _ = search::keys::delete_api_key(&service_name);
+    } else {
+        search::keys::set_api_key(&service_name, &key)
+            .map_err(|e| NasusError::Config(e))?;
+    }
+    Ok(())
+}
+
 // --- Workspace Commands ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1160,6 +1182,8 @@ pub fn run() {
         get_search_config,
         get_exa_key,
         set_exa_key,
+        get_provider_key,
+        set_provider_key,
         workspace_list,
           workspace_read,
           workspace_read_binary,
