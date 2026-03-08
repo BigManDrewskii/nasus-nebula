@@ -381,7 +381,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     async function checkAndSave() {
       const errs = validate()
-      if ((activeProvider === 'openrouter' || activeProvider === 'requesty' || activeProvider === 'deepseek') && Object.keys(errs).length > 0) { setErrors(errs); return }
+      if ((activeProvider === 'openrouter' || activeProvider === 'requesty' || activeProvider === 'deepseek') && Object.keys(errs).length > 0) {
+        setErrors(errs)
+        // Auto-switch to the tab containing the first error so it's visible
+        if (errs.apiKey) setSettingsTab('model')
+        else if (errs.workspacePath) setSettingsTab('general')
+        return
+      }
       setErrors({})
       setSaving(true)
       setSaveError(null)
@@ -504,10 +510,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         return
       }
 
-        setSaving(false)
-        setSaved(true)
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-        savedTimerRef.current = setTimeout(() => { setSaved(false); onClose() }, 900)
+      setSaving(false)
+          setSaved(true)
+          if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+          savedTimerRef.current = setTimeout(() => { setSaved(false); onClose() }, 1400)
     }
 
 
@@ -1101,6 +1107,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             )}
           </div>
         </div>{/* end scrollable */}
+
+          {/* Validation summary — visible from any tab */}
+          {Object.keys(errors).length > 0 && (
+            <div style={{
+              margin: '0 20px',
+              padding: '8px 12px',
+              borderRadius: 8,
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.25)',
+              fontSize: 11,
+              color: '#fca5a5',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <Pxi name="exclamation-triangle" size={12} style={{ flexShrink: 0 }} />
+              {errors.apiKey || errors.workspacePath}
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex-v-center justify-between shrink-0 settings-footer">
