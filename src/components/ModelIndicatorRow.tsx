@@ -36,6 +36,7 @@ export function ModelIndicatorRow() {
     <button
       onClick={() => openSettings('model')}
       title="Change model"
+      className="model-indicator-row"
       style={{
         width: '100%',
         display: 'flex',
@@ -48,14 +49,6 @@ export function ModelIndicatorRow() {
         cursor: 'pointer',
         transition: 'background 0.12s, border-color 0.12s',
         textAlign: 'left',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background     = 'rgba(255,255,255,0.04)'
-        e.currentTarget.style.borderColor    = 'rgba(255,255,255,0.07)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background     = 'transparent'
-        e.currentTarget.style.borderColor    = 'transparent'
       }}
     >
       {/* Health dot */}

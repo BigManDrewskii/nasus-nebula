@@ -66,35 +66,24 @@ export function ModelSelectorTrigger() {
         />
       )}
 
-        <button
-          ref={triggerRef}
-          onClick={() => setOpen(!open)}
-          type="button"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '4px 8px',
-            borderRadius: 6,
-            background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
-            border: open ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.07)',
-            cursor: 'pointer',
-            transition: 'background 0.12s ease, border-color 0.12s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (!open) {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!open) {
-              e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
-            }
-          }}
-          title={model}
-        >
+          <button
+            ref={triggerRef}
+            onClick={() => setOpen(!open)}
+            type="button"
+            className="model-selector-trigger"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              borderRadius: 6,
+              background: open ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+              border: open ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(255,255,255,0.07)',
+              cursor: 'pointer',
+              transition: 'background 0.12s ease, border-color 0.12s ease',
+            }}
+            title={model}
+          >
           <span
             style={{
               fontSize: 10.5,

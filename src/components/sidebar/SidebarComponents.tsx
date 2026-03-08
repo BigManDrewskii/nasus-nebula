@@ -82,34 +82,12 @@ export function SidebarButton({
 
   const finalStyle = { ...baseStyle, ...variantStyles[variant] }
 
-  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || variant === 'primary') return
-    e.currentTarget.style.background = 'var(--sidebar-hover-bg)'
-    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-  }
-
-  const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (disabled || variant === 'primary') return
-    if (variant === 'secondary') {
-      e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
-    } else if (variant === 'danger') {
-      e.currentTarget.style.background = 'rgba(239,68,68,0.15)'
-      e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'
-    } else {
-      e.currentTarget.style.background = 'transparent'
-      e.currentTarget.style.borderColor = 'transparent'
-    }
-  }
-
   return (
     <button
-      className={`sidebar-button ${className}`}
+      className={`sidebar-button variant-${variant} ${className}`}
       disabled={disabled}
       onClick={onClick}
       style={finalStyle}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {icon && <Pxi name={icon} size={s.iconSize} />}
       {children}
@@ -233,34 +211,12 @@ export function RailButton({ icon, title, active = false, amber = false, onClick
     borderColor: 'oklch(64% 0.214 40.1 / 0.15)',
   } : {}
 
-  const handleMouseEnter = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (active) return
-    if (amber) {
-      e.currentTarget.style.background = 'oklch(64% 0.214 40.1 / 0.08)'
-      e.currentTarget.style.borderColor = 'oklch(64% 0.214 40.1 / 0.3)'
-      e.currentTarget.style.color = 'var(--amber-soft)'
-    } else {
-      e.currentTarget.style.background = 'rgba(255,255,255,0.07)'
-      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
-      e.currentTarget.style.color = 'var(--tx-primary)'
-    }
-  }
-
-  const handleMouseLeave = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (active) return
-    e.currentTarget.style.background = 'transparent'
-    e.currentTarget.style.borderColor = 'transparent'
-    e.currentTarget.style.color = 'var(--tx-muted)'
-  }
-
   return (
     <button
-      className="sidebar-rail-btn"
+      className={`sidebar-rail-btn${amber ? ' accent-hover' : ''}${active ? ' active' : ''}`}
       onClick={onClick}
       title={title}
       style={{ ...baseStyle, ...activeStyle }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       <Pxi name={icon} size={11} />
     </button>

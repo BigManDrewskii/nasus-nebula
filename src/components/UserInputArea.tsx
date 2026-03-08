@@ -270,36 +270,29 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
         {/* Right: send / stop */}
         <div className="uia-toolbar-right">
           {isWorking && onStop ? (
-            <button
-              onClick={onStop}
-              title="Stop generating (Esc)"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 11px',
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 500,
-                background: 'rgba(239,68,68,0.07)',
-                border: '1px solid rgba(239,68,68,0.2)',
-                color: 'var(--red-fg)',
-                cursor: 'pointer',
-                transition: 'background 0.12s, border-color 0.12s',
-                animation: 'buttonAppear 0.15s ease',
-                flexShrink: 0,
-                letterSpacing: '0.01em',
-                fontFamily: 'inherit',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.13)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.38)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(239,68,68,0.07)'
-                e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
-              }}
-            >
+              <button
+                onClick={onStop}
+                title="Stop generating (Esc)"
+                className="btn-stop-agent"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '5px 11px',
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  background: 'rgba(239,68,68,0.07)',
+                  border: '1px solid rgba(239,68,68,0.2)',
+                  color: 'var(--red-fg)',
+                  cursor: 'pointer',
+                  transition: 'background 0.12s, border-color 0.12s',
+                  animation: 'buttonAppear 0.15s ease',
+                  flexShrink: 0,
+                  letterSpacing: '0.01em',
+                  fontFamily: 'inherit',
+                }}
+              >
               <StopIcon />
               Stop
             </button>
@@ -309,6 +302,7 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
               disabled={!canSend}
               title="Send (Enter)"
               aria-label="Send message"
+              className="btn-send-message"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -324,18 +318,6 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
                 transition: 'background 0.12s, transform 0.1s, opacity 0.12s',
                 animation: 'buttonAppear 0.15s ease',
                 flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                if (canSend) {
-                  e.currentTarget.style.background = 'var(--amber-soft)'
-                  e.currentTarget.style.transform = 'scale(1.05)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (canSend) {
-                  e.currentTarget.style.background = 'var(--amber)'
-                  e.currentTarget.style.transform = 'scale(1)'
-                }
               }}
             >
               <Pxi name="arrow-up" size={12} />
@@ -378,6 +360,7 @@ function ToolbarButton({
       disabled={disabled}
       title={title}
       aria-label={ariaLabel}
+      className="btn-attach-file"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -392,18 +375,6 @@ function ToolbarButton({
         flexShrink: 0,
         padding: 0,
         transition: 'color 0.12s, background 0.12s',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled && !active) {
-          e.currentTarget.style.color = 'var(--tx-secondary)'
-          e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active) {
-          e.currentTarget.style.color = 'var(--tx-tertiary)'
-          e.currentTarget.style.background = 'transparent'
-        }
       }}
     >
       {children}

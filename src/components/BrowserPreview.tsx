@@ -527,22 +527,16 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                     No history yet
                   </div>
                 ) : (
-                  history.map((entry, index) => (
-                    <button
-                      key={entry.timestamp}
-                      onClick={() => { navigate(entry.url); setHistoryIndex(index) }}
-                      className="bp-history-item"
-                      style={{
-                        background: index === historyIndex ? 'var(--sidebar-active-bg)' : 'transparent',
-                        color: index === historyIndex ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (index !== historyIndex) e.currentTarget.style.background = 'var(--sidebar-hover-bg)'
-                      }}
-                      onMouseLeave={(e) => {
-                        if (index !== historyIndex) e.currentTarget.style.background = 'transparent'
-                      }}
-                    >
+                    history.map((entry, index) => (
+                      <button
+                        key={entry.timestamp}
+                        onClick={() => { navigate(entry.url); setHistoryIndex(index) }}
+                        className={`bp-history-item${index === historyIndex ? ' active' : ''}`}
+                        style={{
+                          background: index === historyIndex ? 'var(--sidebar-active-bg)' : 'transparent',
+                          color: index === historyIndex ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                        }}
+                      >
                       <span className="bp-history-title" style={{ fontWeight: index === historyIndex ? 500 : 400 }}>
                         {entry.title}
                       </span>

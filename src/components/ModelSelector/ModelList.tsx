@@ -202,29 +202,24 @@ export function ModelList({
               pointerEvents: 'none',
             }}
           />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="Search models..."
-            autoFocus
-            style={{
-              width: '100%',
-              padding: '6px 10px 6px 30px',
-              borderRadius: 6,
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              background: '#111',
-              color: 'var(--tx-primary)',
-              fontSize: 12,
-              outline: 'none',
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)'
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'
-            }}
-          />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Search models..."
+              autoFocus
+              className="model-list-input"
+              style={{
+                width: '100%',
+                padding: '6px 10px 6px 30px',
+                borderRadius: 6,
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                background: '#111',
+                color: 'var(--tx-primary)',
+                fontSize: 12,
+                outline: 'none',
+              }}
+            />
         </div>
       </div>
 

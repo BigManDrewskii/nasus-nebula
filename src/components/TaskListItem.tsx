@@ -219,33 +219,26 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
 
           {!hovered && <StatusDot status={task.status} />}
 
-          {hovered && (
-            <button
-              onClick={openMenu}
-              aria-label="Open task actions"
-              style={{
-                flexShrink: 0,
-                width: 24,
-                height: 24,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 5,
-                border: 'none',
-                cursor: 'pointer',
-                background: 'rgba(255,255,255,0.06)',
-                color: 'var(--tx-tertiary)',
-                transition: 'all 0.1s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.12)'
-                e.currentTarget.style.color = 'var(--tx-secondary)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-                e.currentTarget.style.color = 'var(--tx-tertiary)'
-              }}
-            >
+            {hovered && (
+              <button
+                onClick={openMenu}
+                aria-label="Open task actions"
+                className="task-action-btn"
+                style={{
+                  flexShrink: 0,
+                  width: 24,
+                  height: 24,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 5,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: 'var(--tx-tertiary)',
+                  transition: 'all 0.1s',
+                }}
+              >
               <Pxi name="ellipses-vertical" size={12} />
             </button>
           )}

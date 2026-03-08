@@ -5370,3 +5370,79 @@ input[type="range"]::-moz-range-thumb {
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--tx-primary);
 }
+
+/* ─── Final Hover/Focus Utilities ─── */
+
+/* Sidebar Buttons */
+.sidebar-button.variant-secondary:not(:disabled):hover {
+  background: var(--sidebar-hover-bg) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+.sidebar-button.variant-danger:not(:disabled):hover {
+  background: rgba(239,68,68,0.25) !important;
+  border-color: rgba(239,68,68,0.4) !important;
+}
+.sidebar-button.variant-ghost:not(:disabled):hover {
+  background: var(--sidebar-hover-bg) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
+
+/* Rail Button */
+.sidebar-rail-btn:not(.active):hover {
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+  color: var(--tx-primary) !important;
+}
+.sidebar-rail-btn.accent-hover:not(.active):hover {
+  background: oklch(64% 0.214 40.1 / 0.08) !important;
+  border-color: oklch(64% 0.214 40.1 / 0.3) !important;
+  color: var(--amber-soft) !important;
+}
+
+/* Sidebar ghost button with amber accent (e.g. New Task) */
+.sidebar-button.variant-ghost.accent-hover:not(:disabled):hover {
+  background: oklch(64% 0.214 40.1 / 0.08) !important;
+  border-color: oklch(64% 0.214 40.1 / 0.3) !important;
+  color: var(--amber-soft) !important;
+}
+
+/* User Input Area */
+.btn-stop-agent:hover {
+  background: rgba(239,68,68,0.13) !important;
+  border-color: rgba(239,68,68,0.38) !important;
+}
+.btn-send-message:not(:disabled):hover {
+  background: var(--amber-soft) !important;
+  transform: scale(1.05);
+}
+.btn-attach-file:not(:disabled):hover {
+  color: var(--tx-secondary) !important;
+  background: rgba(255,255,255,0.05) !important;
+}
+
+/* Task List Item */
+.task-action-btn:hover {
+  background: rgba(255,255,255,0.12) !important;
+  color: var(--tx-secondary) !important;
+}
+
+/* Model Components */
+.model-selector-trigger:not([data-open="true"]):hover {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+.model-item-row:hover {
+  background: rgba(255,255,255,0.05) !important;
+}
+.model-indicator-row:hover {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.07) !important;
+}
+.model-list-input:focus {
+  border-color: rgba(255,255,255,0.15) !important;
+}
+
+/* Browser Preview History */
+.browser-history-item:not(.active):hover {
+  background: var(--sidebar-hover-bg) !important;
+}

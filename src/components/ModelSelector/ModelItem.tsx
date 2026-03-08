@@ -35,6 +35,7 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
   return (
     <div
       onClick={onSelect}
+      className="model-item-row"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -49,16 +50,6 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
             : 'transparent',
         borderLeft: isSelected ? '2px solid oklch(64% 0.214 40.1)' : '2px solid transparent',
         transition: 'background 0.1s',
-      }}
-      onMouseEnter={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isSelected) {
-          e.currentTarget.style.background = 'transparent'
-        }
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
