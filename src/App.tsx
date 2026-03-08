@@ -126,20 +126,20 @@ function App() {
     checkSidecarInstalled()
   }, [checkSidecarInstalled])
 
-  // Check for updates on startup
+  // Check for updates on startup (production only — no update.json exists in dev)
   useEffect(() => {
+    if (import.meta.env.DEV) return
     const doUpdateCheck = async () => {
       try {
         const update = await check()
-          if (update) {
+        if (update) {
           await update.install()
           await relaunch()
         }
-      } catch (error) {
-        console.error("Update check failed:", error)
+      } catch {
+        // No update available or network unreachable — silent in production too
       }
     }
-
     doUpdateCheck()
   }, [])
 

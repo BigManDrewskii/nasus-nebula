@@ -225,8 +225,14 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     if (!autoCapableProviders.includes(provider)) {
       set((st) => ({ routerConfig: { ...st.routerConfig, mode: 'manual' } }))
     }
-    get().fetchModelsForProvider(provider)
-    const defaultModels: Record<string, string> = {
+      // Don't auto-fetch Ollama models on every provider switch — Ollama may not
+      // be running and the repeated failed requests cause console noise. Ollama
+      // models are fetched on demand from SettingsPanel when the user opens that
+      // section. Other providers are fine to fetch eagerly.
+      if (provider !== 'ollama') {
+        get().fetchModelsForProvider(provider)
+      }
+      const defaultModels: Record<string, string> = {
       openrouter: 'anthropic/claude-sonnet-4-20250514',
       requesty: 'anthropic/claude-sonnet-4-20250514',
       deepseek: 'deepseek-chat',

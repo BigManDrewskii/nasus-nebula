@@ -130,7 +130,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const [_checkingOllama, setCheckingOllama] = useState(false)
     const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'openrouter')
 
+    // Only probe Ollama if the user is actually on the Ollama provider tab —
+    // avoids repeated failed connections when Ollama isn't installed/running.
     useEffect(() => {
+      if (activeProvider !== 'ollama') return
       async function init() {
         setCheckingOllama(true)
         const ok = await checkOllama()
@@ -138,7 +141,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         setCheckingOllama(false)
       }
       init()
-    }, [])
+    }, [activeProvider])
 
     // Sync gateway keys into local state. Runs on mount AND whenever
     // gatewayConfigReady flips to true (i.e. after loadGatewayConfig finishes).
