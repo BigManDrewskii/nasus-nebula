@@ -842,17 +842,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     hint={<>Your OpenRouter key. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="settings-link">openrouter.ai/keys</a></>}
                     error={errors.apiKey}
                   >
-                    <input
-                      type="password"
-                      value={localOpenRouterKey}
-                      onChange={(e) => {
-                        setLocalOpenRouterKey(e.target.value)
-                        setErrors((p) => ({ ...p, apiKey: undefined }))
-                      }}
-                        placeholder="sk-or-v1-..."
-                        className="settings-input placeholder-[var(--tx-muted)]"
-                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                      />
+                      <input
+                        type="password"
+                        name="openrouter-api-key"
+                        autoComplete="off"
+                        value={localOpenRouterKey}
+                        onChange={(e) => {
+                          setLocalOpenRouterKey(e.target.value)
+                          setErrors((p) => ({ ...p, apiKey: undefined }))
+                        }}
+                          placeholder="sk-or-v1-..."
+                          className="settings-input placeholder-[var(--tx-muted)]"
+                          style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
+                        />
                   </Field>
                 )}
 
@@ -863,17 +865,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" className="settings-link">app.requesty.ai</a></>}
                       error={errors.apiKey}
                     >
-                      <input
-                        type="password"
-                        value={localRequestyKey}
-                        onChange={(e) => {
-                          setLocalRequestyKey(e.target.value)
-                          setErrors((p) => ({ ...p, apiKey: undefined }))
-                        }}
-                        placeholder="req_..."
-                        className="settings-input placeholder-[var(--tx-muted)]"
-                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                      />
+                        <input
+                          type="password"
+                          name="requesty-api-key"
+                          autoComplete="off"
+                          value={localRequestyKey}
+                          onChange={(e) => {
+                            setLocalRequestyKey(e.target.value)
+                            setErrors((p) => ({ ...p, apiKey: undefined }))
+                          }}
+                          placeholder="req_..."
+                          className="settings-input placeholder-[var(--tx-muted)]"
+                          style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
+                        />
                     </Field>
                   )}
 
@@ -884,17 +888,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                       hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" className="settings-link">platform.deepseek.com/api-keys</a></>}
                       error={errors.apiKey}
                     >
-                      <input
-                        type="password"
-                        value={localDeepSeekKey}
-                        onChange={(e) => {
-                          setLocalDeepSeekKey(e.target.value)
-                          setErrors((p) => ({ ...p, apiKey: undefined }))
-                        }}
-                        placeholder="sk-..."
-                        className="settings-input placeholder-[var(--tx-muted)]"
-                        style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                      />
+                        <input
+                          type="password"
+                          name="deepseek-api-key"
+                          autoComplete="off"
+                          value={localDeepSeekKey}
+                          onChange={(e) => {
+                            setLocalDeepSeekKey(e.target.value)
+                            setErrors((p) => ({ ...p, apiKey: undefined }))
+                          }}
+                          placeholder="sk-..."
+                          className="settings-input placeholder-[var(--tx-muted)]"
+                          style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
+                        />
                     </Field>
                   )}
 
@@ -1291,9 +1297,9 @@ function SearchSection({
       <Field label="Exa API Key" icon="key"
         hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
       >
-        <input type="password" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
-            placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
-        />
+          <input type="password" name="exa-api-key" autoComplete="off" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
+              placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
+          />
       </Field>
     </div>
     )
