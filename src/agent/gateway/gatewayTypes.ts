@@ -140,7 +140,7 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: '',
     priority: 0,
-    enabled: false,
+    enabled: true,
     nativeRouting: true,
     maxRetries: 2,
     timeoutMs: 180_000,

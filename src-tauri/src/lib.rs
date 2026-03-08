@@ -70,7 +70,6 @@ pub struct AppState {
     /// the Rust side emits a "nasus:stop-task" event and TypeScript handles it.
     pub active_tasks: Mutex<HashSet<String>>,
     pub sidecar: sidecar::SharedSidecarState,
-    pub gateway_state: gateway::GatewayState,
     /// Shared SQLite connection — avoids opening a new file handle on every command.
     /// WAL mode is enabled on init for better concurrent read performance.
     pub db: Arc<Mutex<Connection>>,
@@ -1100,6 +1099,7 @@ pub fn run() {
       .plugin(tauri_plugin_store::Builder::new().build())
       .plugin(tauri_plugin_shell::init())
       .plugin(tauri_plugin_dialog::init())
+      .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let cache_path = app_data_dir.join("search_cache.db");
@@ -1122,12 +1122,10 @@ pub fn run() {
 
             let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
 
-              // Create GatewayState once and share the Arc so both AppState and the
-              // standalone manage() call below point at the same manager instance.
-              let gateway_state = gateway::GatewayState::new(gateway::default_gateways());
-              let gateway_state_shared = gateway::GatewayState {
-                  manager: Arc::clone(&gateway_state.manager),
-              };
+              // Manage GatewayState as standalone Tauri state so that
+              // gateway::get_gateways / save_gateways / get_gateway_health commands
+              // (which use tauri::State<'_, GatewayState>) can resolve it.
+              app.manage(gateway::GatewayState::new(gateway::default_gateways()));
 
               app.manage(AppState {
                   config: Mutex::new(Config {
@@ -1144,15 +1142,10 @@ pub fn run() {
                   sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
                       sidecar::SidecarState::new(sidecar_path)
                   ))),
-                  gateway_state,
                   db: Arc::new(Mutex::new(db_conn)),
               });
 
-              // Also manage GatewayState as its own standalone state so that
-              // gateway::get_gateways / save_gateways / get_gateway_health commands
-              // (which use tauri::State<'_, GatewayState>) can resolve it.
-              app.manage(gateway_state_shared);
-            Ok(())
+              Ok(())
         })
       .invoke_handler(tauri::generate_handler![
         get_config,

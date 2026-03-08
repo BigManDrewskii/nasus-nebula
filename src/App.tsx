@@ -1,5 +1,4 @@
 // Orchids was here
-import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react'
@@ -15,6 +14,7 @@ import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
+import { tauriInvoke } from './tauri'
 
 const log = createLogger('App')
 
@@ -109,7 +109,7 @@ function App() {
       store.loadGatewayConfig().catch(err => log.error('loadGatewayConfig failed', err))
 
       // Load Exa API key from OS keyring — never stored in localStorage
-      invoke<string>('get_exa_key')
+      tauriInvoke<string>('get_exa_key')
         .then((key) => { if (key) store.setExaKey(key) })
         .catch(err => log.error('get_exa_key failed', err))
 

@@ -22,6 +22,8 @@
     "store:allow-delete",
     "store:allow-clear",
     "store:allow-keys",
-    "store:allow-has"
-  ]
-}
+      "store:allow-has",
+      "updater:allow-check",
+      "updater:default"
+    ]
+  }
