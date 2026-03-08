@@ -6,11 +6,19 @@ import ConfirmModal from './ConfirmModal'
 import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
 import { tauriInvoke } from '../tauri'
 
+/** Serialize GatewayConfig to what the Rust `save_gateways` command expects.
+ *  The Rust struct uses `gateway_type` (camelCase: `gatewayType`) but our TS type uses `type`.
+ */
+function serializeGateway(g: GatewayConfig): Record<string, unknown> {
+  const { type, ...rest } = g as GatewayConfig & { type: string }
+  return { ...rest, gatewayType: type }
+}
+
 /** Persist all current gateways to the Tauri secure store (fire-and-forget). */
 async function persistGateways() {
   try {
     const gateways = useAppStore.getState().gateways
-    await tauriInvoke('save_gateways', { gateways })
+    await tauriInvoke('save_gateways', { gateways: gateways.map(serializeGateway) })
   } catch { /* non-fatal in browser mode */ }
 }
 

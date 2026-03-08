@@ -65,29 +65,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
     return trimmed
   }, [])
 
-    // Check initial sidecar status — and if already running, auto-connect a session
-    useEffect(() => {
-      tauriInvoke<boolean>('browser_is_sidecar_running')
-        .then(async (running) => {
-          if (running) {
-            setSidecarStatus('running')
-            // Try to reattach to an existing session if we don't have one yet
-            try {
-              const result = await tauriInvoke<{ session_id: string; websocket_url: string }>('browser_start_session')
-              if (result) {
-                setSession(result)
-                connectWebSocket(result.websocket_url)
-              }
-            } catch {
-              // Session may already exist — that's fine
-            }
-          } else {
-            setSidecarStatus('stopped')
-          }
-        })
-        .catch(() => setSidecarStatus('stopped'))
-    }, [connectWebSocket])
-
   // Connect to the sidecar WebSocket
   const connectWebSocket = useCallback((wsUrl: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -165,6 +142,28 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       setSidecarStatus('error')
     }
   }, [sidecarInstalled, sidecarPromptShown, checkSidecarInstalled])
+
+  // Check initial sidecar status — and if already running, auto-connect a session
+  useEffect(() => {
+    tauriInvoke<boolean>('browser_is_sidecar_running')
+      .then(async (running) => {
+        if (running) {
+          setSidecarStatus('running')
+          try {
+            const result = await tauriInvoke<{ session_id: string; websocket_url: string }>('browser_start_session')
+            if (result) {
+              setSession(result)
+              connectWebSocket(result.websocket_url)
+            }
+          } catch {
+            // Session may already exist — that's fine
+          }
+        } else {
+          setSidecarStatus('stopped')
+        }
+      })
+      .catch(() => setSidecarStatus('stopped'))
+  }, [connectWebSocket])
 
   const stopSidecar = useCallback(async () => {
     try {

@@ -130,7 +130,7 @@ export function OnboardingScreen() {
         try {
           const { useAppStore: store } = await import('../store')
           const updatedGateways = store.getState().gateways
-          await tauriInvoke('save_gateways', { gateways: updatedGateways })
+            await tauriInvoke('save_gateways', { gateways: updatedGateways.map(({ type: gatewayType, ...rest }) => ({ ...rest, gatewayType })) })
         } catch { /* non-fatal */ }
 
         setApiBase(effectiveBase)

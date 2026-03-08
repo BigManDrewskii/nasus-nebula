@@ -432,7 +432,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         // This is the primary persistence path — get_gateways reads them back on reload.
         try {
           const updatedGateways = useAppStore.getState().gateways
-          await tauriInvoke('save_gateways', { gateways: updatedGateways })
+            await tauriInvoke('save_gateways', { gateways: updatedGateways.map(({ type: gatewayType, ...rest }) => ({ ...rest, gatewayType })) })
         } catch (e) {
           log.warn('Failed to save gateways', e instanceof Error ? e : new Error(String(e)))
           // Non-fatal — save_config below still persists the active key
