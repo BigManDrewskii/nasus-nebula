@@ -618,7 +618,7 @@ function SystemPromptSection({ open, onToggle }: { open: boolean; onToggle: () =
           onChange={e => handleChange(e.target.value)}
           placeholder="Add a system prompt or persona for the AI…"
           rows={3}
-          className="system-prompt-textarea"}}
+            className="system-prompt-textarea"
         />
         {chars > 0 && (
           <span className="text-muted font-mono absolute pointer-events-none system-prompt-char-count">
