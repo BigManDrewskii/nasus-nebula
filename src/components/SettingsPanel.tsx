@@ -169,17 +169,26 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
         // Exa key is stripped from localStorage by partialize. Read it back from the
         // OS keyring (Tauri) on every panel open so the field is never blank.
-        tauriInvoke<string>('get_exa_key').then((key) => {
-          if (key) {
-            setLocalExaKey(key)
-            // Also sync back into the store so search.ts picks it up immediately
-            useAppStore.getState().setExaKey(key)
-          }
-        }).catch(() => {
-          // Browser mode — fall back to the store value (may have been set via sessionStorage)
-          const storedExa = useAppStore.getState().exaKey
-          if (storedExa) setLocalExaKey(storedExa)
-        })
+          tauriInvoke<string>('get_exa_key').then((key) => {
+            // Guard: ignore any value that looks like a gateway API key (sk-…, req_…)
+            // rather than a real Exa key. This prevents a past accidental cross-save
+            // from showing a provider key in the Exa field.
+            const looksLikeExaKey = key && (key.startsWith('exa_') || (!key.startsWith('sk-') && !key.startsWith('req_')))
+            if (looksLikeExaKey) {
+              setLocalExaKey(key)
+              // Also sync back into the store so search.ts picks it up immediately
+              useAppStore.getState().setExaKey(key)
+            } else if (key && !looksLikeExaKey) {
+              // Stale/contaminated keychain entry — remove it so the field starts clean
+              tauriInvoke('set_exa_key', { key: '' }).catch(() => {})
+            }
+          }).catch(() => {
+            // Browser mode — fall back to the store value (may have been set via sessionStorage)
+            const storedExa = useAppStore.getState().exaKey
+            if (storedExa && (storedExa.startsWith('exa_') || (!storedExa.startsWith('sk-') && !storedExa.startsWith('req_')))) {
+              setLocalExaKey(storedExa)
+            }
+          })
       }, [gatewayConfigReady])
 
     // Local router config state
@@ -843,6 +852,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     error={errors.apiKey}
                   >
                       <input
+                        key="openrouter-key-input"
                         type="password"
                         name="openrouter-api-key"
                         autoComplete="off"
@@ -858,18 +868,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </Field>
                 )}
 
-                  {activeProvider === 'requesty' && (
-                    <Field
-                      label="Requesty API Key"
-                      icon="key"
-                      hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" className="settings-link">app.requesty.ai</a></>}
-                      error={errors.apiKey}
-                    >
-                        <input
-                          type="password"
-                          name="requesty-api-key"
-                          autoComplete="off"
-                          value={localRequestyKey}
+                    {activeProvider === 'requesty' && (
+                      <Field
+                        label="Requesty API Key"
+                        icon="key"
+                        hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" className="settings-link">app.requesty.ai</a></>}
+                        error={errors.apiKey}
+                      >
+                          <input
+                            key="requesty-key-input"
+                            type="password"
+                            name="requesty-api-key"
+                            autoComplete="off"
+                            value={localRequestyKey}
                           onChange={(e) => {
                             setLocalRequestyKey(e.target.value)
                             setErrors((p) => ({ ...p, apiKey: undefined }))
@@ -881,18 +892,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     </Field>
                   )}
 
-                  {activeProvider === 'deepseek' && (
-                    <Field
-                      label="DeepSeek API Key"
-                      icon="key"
-                      hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" className="settings-link">platform.deepseek.com/api-keys</a></>}
-                      error={errors.apiKey}
-                    >
-                        <input
-                          type="password"
-                          name="deepseek-api-key"
-                          autoComplete="off"
-                          value={localDeepSeekKey}
+                    {activeProvider === 'deepseek' && (
+                      <Field
+                        label="DeepSeek API Key"
+                        icon="key"
+                        hint={<>Your DeepSeek key. Get one at <a href="https://platform.deepseek.com/api-keys" target="_blank" rel="noreferrer" className="settings-link">platform.deepseek.com/api-keys</a></>}
+                        error={errors.apiKey}
+                      >
+                          <input
+                            key="deepseek-key-input"
+                            type="password"
+                            name="deepseek-api-key"
+                            autoComplete="off"
+                            value={localDeepSeekKey}
                           onChange={(e) => {
                             setLocalDeepSeekKey(e.target.value)
                             setErrors((p) => ({ ...p, apiKey: undefined }))
@@ -1297,7 +1309,7 @@ function SearchSection({
       <Field label="Exa API Key" icon="key"
         hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
       >
-          <input type="password" name="exa-api-key" autoComplete="off" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
+            <input key="exa-key-input" type="password" name="exa-api-key" autoComplete="off" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
               placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
           />
       </Field>
