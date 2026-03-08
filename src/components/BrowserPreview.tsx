@@ -7,7 +7,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Pxi } from './Pxi'
-import { SidecarPrompt } from './SidecarPrompt'
 import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { createLogger } from '../lib/logger'
@@ -32,9 +31,8 @@ interface HistoryEntry {
 type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error'
 
 export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
-  const { sidecarInstalled, sidecarPromptShown, checkSidecarInstalled, setSidecarInstalled } = useAppStore()
+  const { checkSidecarInstalled } = useAppStore()
   const [sidecarStatus, setSidecarStatus] = useState<SidecarStatus>('stopped')
-  const [showPrompt, setShowPrompt] = useState(false)
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
   const [, setCurrentUrl] = useState<string>('')
@@ -122,13 +120,8 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   useEffect(() => { startSessionRef.current = startSession }, [startSession])
 
   const startSidecar = useCallback(async () => {
-    if (!sidecarInstalled) {
-      const isInstalled = await checkSidecarInstalled()
-      if (!isInstalled && !sidecarPromptShown) {
-        setShowPrompt(true)
-        return
-      }
-    }
+    // Ensure node_modules are present (sidecar auto-installs npm deps if missing)
+    await checkSidecarInstalled()
 
     setSidecarStatus('starting')
     setError(null)
@@ -141,7 +134,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
       setError(err as string)
       setSidecarStatus('error')
     }
-  }, [sidecarInstalled, sidecarPromptShown, checkSidecarInstalled])
+  }, [checkSidecarInstalled])
 
   // Check initial sidecar status — and if already running, auto-connect a session
   useEffect(() => {
@@ -293,40 +286,34 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
 
     useEffect(() => {
       const handleBrowserActivity = (e: Event) => {
-        const detail = (e as CustomEvent).detail as { type: string; sessionId?: string }
+          const detail = (e as CustomEvent).detail as { type: string; sessionId?: string }
 
-        // Any activity from the agent means the sidecar is running — always sync status
-        setSidecarStatus('running')
+          // Any activity from the agent means the sidecar is running — always sync status
+          setSidecarStatus('running')
 
-        if (detail.sessionId) {
-          const wsUrl = `ws://localhost:4750/ws/${detail.sessionId}`
-          // Adopt the agent's session if we don't have one yet or it changed
-          setSession(prev => {
-            if (!prev || prev.session_id !== detail.sessionId) {
-              return { session_id: detail.sessionId!, websocket_url: wsUrl }
+          if (detail.sessionId) {
+            const wsUrl = `ws://localhost:4750/ws/${detail.sessionId}`
+            // Adopt the agent's session if we don't have one yet or it changed
+            setSession(prev => {
+              if (!prev || prev.session_id !== detail.sessionId) {
+                return { session_id: detail.sessionId!, websocket_url: wsUrl }
+              }
+              return prev
+            })
+            if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+              connectWebSocket(wsUrl)
             }
-            return prev
-          })
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            connectWebSocket(wsUrl)
+          }
+
+          if (['navigate', 'click', 'type', 'scroll'].includes(detail.type)) {
+            setAgentDriving(true)
           }
         }
 
-        if (['navigate', 'click', 'type', 'scroll'].includes(detail.type)) {
-          setAgentDriving(true)
+        window.addEventListener('nasus:browser-activity', handleBrowserActivity)
+        return () => {
+          window.removeEventListener('nasus:browser-activity', handleBrowserActivity)
         }
-      }
-
-      const handleNeedsInstall = () => {
-        setShowPrompt(true)
-      }
-
-      window.addEventListener('nasus:browser-activity', handleBrowserActivity)
-      window.addEventListener('nasus:browser-needs-install', handleNeedsInstall)
-      return () => {
-        window.removeEventListener('nasus:browser-activity', handleBrowserActivity)
-        window.removeEventListener('nasus:browser-needs-install', handleNeedsInstall)
-      }
     }, [connectWebSocket])
 
   const agentDrivingTimerRef = useRef<number | null>(null)
@@ -354,13 +341,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         <div className="bp-status-dot" style={{ background: statusDotColor }} />
 
         {/* Controls */}
-        {sidecarStatus === 'stopped' && (
-          <button onClick={startSidecar} className="bp-btn bp-btn--primary">
-            <Pxi name="globe" size={12} />
-            Start Browser
-          </button>
-        )}
-
         {sidecarStatus === 'running' && (
           <>
             {session && (
@@ -484,21 +464,8 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         </div>
       )}
 
-      {/* Sidecar installation prompt */}
-      {showPrompt && (
-        <SidecarPrompt
-          onInstallComplete={() => {
-            setShowPrompt(false)
-            setSidecarInstalled(true)
-            startSidecar()
-          }}
-          onSkip={() => setShowPrompt(false)}
-        />
-      )}
-
       {/* Main content area */}
-      {!showPrompt && (
-        <div className="bp-content">
+      <div className="bp-content">
           {/* Browser preview area */}
           <div className="bp-viewport">
             {screenshot ? (
@@ -533,11 +500,11 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                 <span className="bp-empty-title">
                   {sidecarStatus === 'running' ? 'Enter a URL to browse' : 'Browser not started'}
                 </span>
-                <span className="bp-empty-subtitle">
-                  {sidecarStatus === 'running'
-                    ? 'Type a URL above and press Enter,\nor let the agent navigate for you.'
-                    : 'Click "Start Browser" above to launch\nthe agent-controlled browser session.'}
-                </span>
+                  <span className="bp-empty-subtitle">
+                    {sidecarStatus === 'running'
+                      ? 'Type a URL above and press Enter,\nor let the agent navigate for you.'
+                      : 'Ask the agent to browse a URL,\nor type one above to get started.'}
+                  </span>
               </div>
             )}
           </div>
@@ -574,10 +541,9 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
                   ))
                 )}
               </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
+              </div>
+            )}
+          </div>
+      </div>
+    )
 }

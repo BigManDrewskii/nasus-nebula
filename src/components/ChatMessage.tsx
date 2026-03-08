@@ -1,4 +1,8 @@
-import { useState, memo, useMemo } from 'react'
+import { useState, memo, useMemo, lazy, Suspense } from 'react'
+
+const MessageExpandModal = lazy(() =>
+  import('./MessageExpandModal').then(m => ({ default: m.MessageExpandModal }))
+)
 import type { Message, MessageAttachment, AttachmentCategory, OutputCardFile, AgentStep } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
@@ -64,6 +68,29 @@ function normalizeAgentContent(text: string): string {
   }
 
   return s.trim()
+}
+
+/** Split normalized text into first 1-2 sentences (preview) and the rest. */
+function splitSentences(text: string): { preview: string; rest: string } {
+  // Match sentence-ending punctuation followed by whitespace + capital letter / quote
+  // Skips common abbreviations (single caps like "I.", "A." are allowed to split;
+  // multi-cap sequences like "U.S." or "Dr." are not matched by this pattern)
+  const sentences: number[] = []
+  const re = /[.!?](?=\s+[A-Z"'])/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    sentences.push(m.index + 1) // position after the punctuation
+  }
+
+  if (sentences.length < 2) {
+    return { preview: text, rest: '' }
+  }
+
+  const cutAt = sentences[1]
+  return {
+    preview: text.slice(0, cutAt).trim(),
+    rest: text.slice(cutAt).trim(),
+  }
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -338,26 +365,34 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
 // ─── Agent message ────────────────────────────────────────────────────────────
 
 const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
-  const [hovered, setHovered] = useState(false)
-  const hasSteps    = (message.steps?.length ?? 0) > 0
-  const hasContent  = message.content.trim().length > 0
-  const isStreaming = message.streaming
-  const hasError    = !!message.error
-  const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
+    const [hovered, setHovered] = useState(false)
+    const [expanded, setExpanded] = useState(false)
+    const hasSteps    = (message.steps?.length ?? 0) > 0
+    const hasContent  = message.content.trim().length > 0
+    const isStreaming = message.streaming
+    const hasError    = !!message.error
+    const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
 
-    const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
+      const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
 
-      // Normalize agent content: split colon-joined narration runs into paragraphs,
-      // fix missing spaces after punctuation, strip pure-opener sentences.
-      // Applied always (streaming too) so the text doesn't reflow on settle.
-      const cleanedContent = useMemo(() => {
-        return normalizeAgentContent(debouncedContent)
-      }, [debouncedContent])
+        // Normalize agent content: split colon-joined narration runs into paragraphs,
+        // fix missing spaces after punctuation, strip pure-opener sentences.
+        // Applied always (streaming too) so the text doesn't reflow on settle.
+        const cleanedContent = useMemo(() => {
+          return normalizeAgentContent(debouncedContent)
+        }, [debouncedContent])
 
-    const renderedContent = useMemo(
-      () => hasContent ? <MarkdownRenderer content={cleanedContent} /> : null,
-      [cleanedContent, hasContent],
-    )
+      // Split into preview (1-2 sentences) + rest; only truncate after streaming ends
+      const { preview, rest } = useMemo(
+        () => hasContent ? splitSentences(cleanedContent) : { preview: '', rest: '' },
+        [cleanedContent, hasContent],
+      )
+      const hasTruncation = rest.length > 0 && !isStreaming
+
+      const renderedPreview = useMemo(
+        () => hasContent ? <MarkdownRenderer content={isStreaming ? cleanedContent : preview} /> : null,
+        [preview, cleanedContent, hasContent, isStreaming],
+      )
 
   const outputCardFiles = useMemo<OutputCardFile[]>(() => {
     if (!message.steps) return []
@@ -423,10 +458,27 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
           {hasContent && (
             <div className={hasSteps ? 'cm-response-divider' : 'cm-response-start'}>
               <div className="cm-prose agent-prose">
-                {renderedContent}
+                {renderedPreview}
               </div>
               {isStreaming && (
                 <span className="cm-cursor" />
+              )}
+              {hasTruncation && (
+                <button
+                  className="cm-expand-btn hover-bg-app-3"
+                  onClick={() => setExpanded(true)}
+                >
+                  <Pxi name="ellipsis-h" size={11} />
+                  Read more
+                </button>
+              )}
+              {expanded && (
+                <Suspense fallback={null}>
+                  <MessageExpandModal
+                    content={cleanedContent}
+                    onClose={() => setExpanded(false)}
+                  />
+                </Suspense>
               )}
             </div>
           )}

@@ -829,39 +829,16 @@ pub async fn browser_check_sidecar_installed(
     let node_modules_path = sidecar.sidecar_dir.join("node_modules");
     let has_node_modules = node_modules_path.exists();
 
-    // Check for Chromium in the expected Playwright location
-    // Playwright stores browsers in a cache directory
-    let chromium_path = sidecar.sidecar_dir.join("node_modules")
-        .join("playwright-core")
-        .join("local-registry")
-        .join("chromium");
-
-    // Also check the global cache location (Playwright stores as chromium-<version>)
-    let has_global_chromium = dirs::home_dir()
-        .and_then(|home| home.join(".cache").join("ms-playwright").canonicalize().ok())
-        .as_ref()
-        .and_then(|p| std::fs::read_dir(p).ok())
-        .map_or(false, |entries| {
-            entries.filter_map(|e| e.ok())
-                .any(|entry| {
-                    let name = entry.file_name();
-                    let name_str = name.to_string_lossy();
-                    name_str.starts_with("chromium-") && entry.path().is_dir()
-                })
-        });
-
-    let has_chromium = chromium_path.exists() || has_global_chromium;
-
+    // No longer requires a locally-installed Chromium — the sidecar connects to
+    // system Chrome via CDP and only falls back to headless Chromium if available.
     Ok(SidecarInstallStatus {
-        installed: has_node_modules && has_chromium,
+        installed: has_node_modules,
         has_node_modules,
-        has_chromium,
-        message: if has_node_modules && has_chromium {
+        has_chromium: true, // system Chrome used via CDP — no install needed
+        message: if has_node_modules {
             "Sidecar is ready".to_string()
-        } else if !has_node_modules {
-            "Dependencies not installed".to_string()
         } else {
-            "Chromium not installed".to_string()
+            "Dependencies not installed".to_string()
         },
     })
 }

@@ -444,40 +444,68 @@ async function handleMessage(ws, sessionId, message) {
 }
 
 /**
+ * Launch a browser — tries to connect to system Chrome via CDP first,
+ * falls back to launching headless Chromium if Chrome isn't running with
+ * --remote-debugging-port=9222.
+ */
+async function launchBrowser() {
+  // Try CDP connection to system Chrome first (no download required)
+  try {
+    const browser = await chromium.connectOverCDP('http://localhost:9222')
+    console.log('[Sidecar] Connected to system Chrome via CDP')
+    return { browser, viaCDP: true }
+  } catch {
+    // Chrome not running with CDP endpoint — fall back to headless Chromium
+    console.log('[Sidecar] No CDP endpoint found — launching headless Chromium')
+    const browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process',
+      ],
+    })
+    return { browser, viaCDP: false }
+  }
+}
+
+/**
  * Start a new browser session
  */
 async function startSession(ws, sessionId) {
-  console.log(`[Sidecar] Starting session: ${sessionId}`);
+  console.log(`[Sidecar] Starting session: ${sessionId}`)
 
-    try {
-      const browser = await chromium.launch({
-        headless: true,
-        args: [
-          '--disable-blink-features=AutomationControlled',
-          '--disable-features=IsolateOrigins,site-per-process',
-        ],
-      });
+  try {
+    const { browser, viaCDP } = await launchBrowser()
 
-    const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    });
+    let context
+    if (viaCDP) {
+      // With CDP, reuse existing context or create a fresh one
+      const contexts = browser.contexts()
+      context = contexts.length > 0 ? contexts[0] : await browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+      })
+    } else {
+      context = await browser.newContext({
+        viewport: { width: 1920, height: 1080 },
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      })
+    }
 
-    const page = await context.newPage();
+    const page = await context.newPage()
 
     // Set up console logging
     page.on('console', msg => {
-      console.log(`[Browser Console] ${msg.type()}: ${msg.text()}`);
-    });
+      console.log(`[Browser Console] ${msg.type()}: ${msg.text()}`)
+    })
 
-    sessions.set(sessionId, { browser, context, page, ws });
-    send(ws, 'session_ready', { sessionId });
+    sessions.set(sessionId, { browser, context, page, ws, viaCDP })
+    send(ws, 'session_ready', { sessionId })
 
-    console.log(`[Sidecar] Session ready: ${sessionId}`);
+    console.log(`[Sidecar] Session ready: ${sessionId}`)
   } catch (error) {
-    console.error(`[Sidecar] Error starting session:`, error);
-    send(ws, 'error', { message: `Failed to start session: ${error.message}` });
-    ws.close();
+    console.error(`[Sidecar] Error starting session:`, error)
+    send(ws, 'error', { message: `Failed to start session: ${error.message}` })
+    ws.close()
   }
 }
 
@@ -491,9 +519,13 @@ async function stopSession(sessionId) {
     console.log(`[Sidecar] Stopping session: ${sessionId}`);
 
     try {
-      await session.browser.close();
+      await session.page.close();
+      // Only close the browser if we launched it ourselves (not CDP)
+      if (!session.viaCDP) {
+        await session.browser.close();
+      }
     } catch (error) {
-      console.error(`[Sidecar] Error closing browser:`, error);
+      console.error(`[Sidecar] Error closing session:`, error);
     }
 
     sessions.delete(sessionId);
