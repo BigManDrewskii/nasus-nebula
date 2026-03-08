@@ -54,6 +54,8 @@ export interface StreamCallbacks {
   queryParams?: Record<string, string>
   /** Enable JSON output mode */
   jsonMode?: boolean
+  /** Hard tool constraint — forces the model to call a specific tool or any tool */
+  toolChoice?: { type: 'function'; function: { name: string } } | 'auto' | 'required'
 }
 
 export interface LlmResponse {
@@ -226,6 +228,7 @@ export async function streamCompletion(
         model: unifiedModel,
           messages: coreMessages,
         tools: Object.keys(sdkTools).length > 0 ? sdkTools : undefined,
+        toolChoice: cb.toolChoice,
         onFinish: async (event) => {
         if (event.usage) {
           const input = event.usage.inputTokens ?? 0;

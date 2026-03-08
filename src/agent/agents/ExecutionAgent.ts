@@ -10,10 +10,9 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
-import { streamCompletion, cheapestModel, powerfulModel, chatOnceViaGateway, type LlmResponse } from '../llm'
+import { streamCompletion, powerfulModel, type LlmResponse } from '../llm'
 import { startTurnTracking, flushTurnFiles, type SearchStatusCallback } from '../tools'
 import { workspaceManager } from '../workspace/WorkspaceManager'
-import { sanitizeMessages } from '../messageUtils'
 import { executeTool as executeRegistryTool } from '../tools/index'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
@@ -797,9 +796,7 @@ export class ExecutionAgent extends BaseAgent {
 
         // Truncate tool output
         const output = typeof rawOutput === 'string'
-          ? rawOutput.length > 15_000
-            ? rawOutput.slice(0, 7_500) + '\n\n[…truncated…]\n\n' + rawOutput.slice(-5_000)
-            : rawOutput
+          ? this.truncateOutput(rawOutput, fnName)
           : JSON.stringify(rawOutput)
 
         traceSpan?.end(output, isError)
@@ -928,6 +925,25 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     }
   }
 
+  private truncateOutput(output: string, toolName: string): string {
+    const lines = output.split('\n')
+    let maxLines = 150
+
+    if (toolName.startsWith('read_file')) maxLines = 300
+    if (toolName.startsWith('list_files')) maxLines = 100
+    if (toolName.startsWith('search_files')) maxLines = 200
+
+    if (lines.length <= maxLines) return output
+
+    const headCount = Math.ceil(maxLines * 0.7)
+    const tailCount = Math.floor(maxLines * 0.3)
+    const head = lines.slice(0, headCount).join('\n')
+    const tail = lines.slice(lines.length - tailCount).join('\n')
+    const omitted = lines.length - (headCount + tailCount)
+
+    return `${head}\n\n[... ${omitted} lines omitted for brevity ...]\n\n${tail}`
+  }
+
   private compressThreshold(model: string): number {
     for (const [re, ctx] of CONTEXT_WINDOWS) {
       if (re.test(model)) {
@@ -942,117 +958,46 @@ Strategy: Write files directly with write_file/edit_file. Use python_execute for
     taskId: string,
     messageId: string,
   ): Promise<number> {
-    const toolResultIndices = messages
-      .map((m, i) => (m.role === 'tool' ? i : -1))
-      .filter((i) => i >= 0)
+    const toolCallBlocks: { assistantIndex: number; toolResultIndices: number[] }[] = []
 
-    if (toolResultIndices.length <= 8) return 0
-
-      // Identify messages to compress (keep first 3 and last 5)
-      const keepFirst = 3
-      const keepLast = 5
-      const middleIndices = toolResultIndices.slice(keepFirst, toolResultIndices.length - keepLast)
-      const toRemove = new Set<number>()
-
-      // Add middle tool results to the removal set
-      for (const idx of middleIndices) {
-        toRemove.add(idx)
-      }
-
-      // Mark assistant messages whose tool results are ALL in toRemove (full block removal only).
-      // For assistant messages where only SOME results would be removed, also add the remaining
-      // result indices so we never produce a partial tool_call block.
-      for (let i = 0; i < messages.length; i++) {
-        const m = messages[i]
-        if (m.role === 'assistant' && m.tool_calls?.length) {
-          let j = i + 1
-          const resultIndices: number[] = []
-          while (j < messages.length && messages[j].role === 'tool') {
-            resultIndices.push(j)
-            j++
-          }
-          if (resultIndices.length === 0) continue
-
-          const removedCount = resultIndices.filter(idx => toRemove.has(idx)).length
-          if (removedCount > 0) {
-            // Partial or full removal: always remove the entire block atomically
-            toRemove.add(i)
-            for (const idx of resultIndices) toRemove.add(idx)
-          }
+    // Identify all atomic tool call blocks (assistant message + following tool results)
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i]
+      if (m.role === 'assistant' && m.tool_calls?.length) {
+        const block = { assistantIndex: i, toolResultIndices: [] as number[] }
+        let j = i + 1
+        while (j < messages.length && messages[j].role === 'tool') {
+          block.toolResultIndices.push(j)
+          j++
         }
-      }
-
-    // Build a text summary of the removed messages for the LLM to summarize
-    const removedContent: string[] = []
-    for (const idx of Array.from(toRemove).sort((a, b) => a - b)) {
-      const m = messages[idx]
-      if (m.role === 'assistant' && m.tool_calls) {
-        for (const tc of m.tool_calls) {
-          removedContent.push(`Called: ${tc.function.name}(${tc.function.arguments.slice(0, 100)})`)
+        if (block.toolResultIndices.length > 0) {
+          toolCallBlocks.push(block)
         }
-      } else if (m.role === 'tool') {
-        const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-        removedContent.push(`Result: ${content.slice(0, 200)}`)
       }
     }
 
-    // Generate a compressed summary using a cheap/fast model
-    let summary = ''
-    try {
-      const summaryPrompt = `Summarize these agent actions and their results in 3-5 bullet points. Focus on: what was attempted, what was discovered, what files were created/modified, and any errors encountered.\n\n${removedContent.join('\n')}`
+    if (toolCallBlocks.length <= 8) return 0
 
-      const store = useAppStore.getState()
-      const { openRouterModels } = store
-      // Use a gateway-aware cheap model for context compression summaries.
-      // When gateway=deepseek, OR slugs like "deepseek/deepseek-chat-v3-0324:free"
-      // are invalid on api.deepseek.com — use the direct API model ID instead.
-      const conn = store.resolveConnection()
-      let cheapModel: string
-      if (conn.provider === 'deepseek') {
-        cheapModel = 'deepseek-chat'
-      } else {
-        cheapModel = openRouterModels.length > 0
-          ? cheapestModel(openRouterModels)
-          : 'anthropic/claude-3-haiku'
+    // Mask middle blocks — keep first 3 and last 5 intact
+    const toMask = toolCallBlocks.slice(3, -5)
+    let maskedCount = 0
+
+    for (const block of toMask) {
+      for (const toolIndex of block.toolResultIndices) {
+        const toolMessage = messages[toolIndex]
+        if (toolMessage && toolMessage.role === 'tool') {
+          toolMessage.content = '[Observation masked for brevity. The tool call was successful.]'
+          maskedCount++
+        }
       }
-
-      summary = await chatOnceViaGateway(summaryPrompt, 500, cheapModel) || ''
-    } catch (e) {
-      log.error('Compression summary generation failed', e instanceof Error ? e : new Error(String(e)))
-      // If summary generation fails, fall back to a basic list
-      summary = removedContent.slice(0, 10).join('\n')
     }
 
-    const removedCount = toRemove.size
-    const kept = messages.filter((_, i) => !toRemove.has(i))
+    if (maskedCount > 0) {
+      const step: AgentStep = { kind: 'context_compressed', removedCount: maskedCount }
+      useAppStore.getState().addStep(taskId, messageId, step)
+    }
 
-      // Insert the summary as a system message, placed after all leading system
-      // messages (system prompt + preamble injections) to preserve cache prefix ordering.
-      if (kept.length > 1) {
-        // Find the insertion point: first non-system message index
-        let insertIdx = 0
-        while (insertIdx < kept.length && kept[insertIdx].role === 'system') {
-          insertIdx++
-        }
-        // Clamp to at least 1 (after the main system prompt) and at most kept.length
-        insertIdx = Math.max(1, Math.min(insertIdx, kept.length))
-        kept.splice(insertIdx, 0, {
-          role: 'system',
-          content: `[Context compressed — ${removedCount} messages summarized]\n${summary}\n\n[Recovery: Read task_plan.md for current phase, findings.md for research, progress.md for action history.]`,
-        })
-      }
-
-      // Post-compression: remove any orphaned tool results so the history
-      // is always valid before the next LLM call (rule: tool must follow tool_calls).
-      const cleanedKept = sanitizeMessages(kept)
-
-      messages.length = 0
-      messages.push(...cleanedKept)
-
-      const step: AgentStep = { kind: 'context_compressed', removedCount }
-    useAppStore.getState().addStep(taskId, messageId, step)
-
-    return removedCount
+    return maskedCount
   }
 
   private getContextWindow(modelId: string): number {

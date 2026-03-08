@@ -167,18 +167,6 @@ export class ContextBuilder {
       // 3. Tool definitions (cacheable)
       // Tools are added separately in the API call, but we track cacheability here
       const processedTools = formatTools(tools, options)
-      // Add inactive note to system if masking
-      if (options.maskInactiveTools) {
-        const inactiveTools = processedTools.filter(t => t.inactive)
-        if (inactiveTools.length > 0) {
-          const inactiveNames = inactiveTools.map(t => t.function.name).join(', ')
-          messages.push({
-            role: 'system',
-            content: `Note: Some tools are temporarily unavailable: ${inactiveNames}. Use the available tools.`,
-          })
-        }
-      }
-
       // 4. Memory context (not cacheable - varies by request)
     let retrievedMemories: MemoryResult[] = []
     if (options.includeMemory) {
