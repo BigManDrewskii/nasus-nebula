@@ -1,9 +1,18 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import ConfirmModal from './ConfirmModal'
 import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
+import { tauriInvoke } from '../tauri'
+
+/** Persist all current gateways to the Tauri secure store (fire-and-forget). */
+async function persistGateways() {
+  try {
+    const gateways = useAppStore.getState().gateways
+    await tauriInvoke('save_gateways', { gateways })
+  } catch { /* non-fatal in browser mode */ }
+}
 
 export function GatewaySettings() {
   const { gateways, updateGateway, addGateway, removeGateway, checkGatewayHealth, gatewayHealth } = useAppStore(useShallow(s => ({
@@ -15,6 +24,16 @@ export function GatewaySettings() {
     gatewayHealth: s.gatewayHealth,
   })))
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const handleUpdate = useCallback((id: string, updates: Partial<GatewayConfig>) => {
+    updateGateway(id, updates)
+    persistGateways()
+  }, [updateGateway])
+
+  const handleRemove = useCallback((id: string) => {
+    removeGateway(id)
+    persistGateways()
+  }, [removeGateway])
 
   return (
     <div className="flex-col gw-root">
@@ -30,36 +49,37 @@ export function GatewaySettings() {
 
       <div className="flex-col gw-list">
         {gateways.sort((a, b) => a.priority - b.priority).map((gw) => (
-          <GatewayItem
-            key={gw.id}
-            gateway={gw}
-            health={gatewayHealth.find(h => h.gatewayId === gw.id)}
-            isExpanded={expandedId === gw.id}
-            onToggleExpand={() => setExpandedId(expandedId === gw.id ? null : gw.id)}
-            onUpdate={(updates) => updateGateway(gw.id, updates)}
-            onRemove={() => removeGateway(gw.id)}
-            onTest={() => checkGatewayHealth(gw.id)}
-          />
-        ))}
-      </div>
+            <GatewayItem
+              key={gw.id}
+              gateway={gw}
+              health={gatewayHealth.find(h => h.gatewayId === gw.id)}
+              isExpanded={expandedId === gw.id}
+              onToggleExpand={() => setExpandedId(expandedId === gw.id ? null : gw.id)}
+              onUpdate={(updates) => handleUpdate(gw.id, updates)}
+              onRemove={() => handleRemove(gw.id)}
+              onTest={() => checkGatewayHealth(gw.id)}
+            />
+          ))}
+        </div>
 
-      <button
-        onClick={() => {
-          const id = `custom-${Math.random().toString(36).slice(2, 7)}`
-          addGateway({
-            id,
-            type: 'custom',
-            label: 'New Gateway',
-            apiBase: '',
-            apiKey: '',
-            priority: 20,
-            enabled: true,
-            nativeRouting: false,
-            maxRetries: 2,
-            timeoutMs: 180_000,
-          })
-          setExpandedId(id)
-        }}
+        <button
+          onClick={() => {
+            const id = `custom-${Math.random().toString(36).slice(2, 7)}`
+            addGateway({
+              id,
+              type: 'custom',
+              label: 'New Gateway',
+              apiBase: '',
+              apiKey: '',
+              priority: 20,
+              enabled: true,
+              nativeRouting: false,
+              maxRetries: 2,
+              timeoutMs: 180_000,
+            })
+            setExpandedId(id)
+            persistGateways()
+          }}
         className="text-secondary gw-add-btn hover-bg-app-3"
       >
         + Add Custom Gateway

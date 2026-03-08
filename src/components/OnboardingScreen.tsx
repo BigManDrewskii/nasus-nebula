@@ -12,11 +12,35 @@ const PROVIDERS = [
     description: 'Access 400+ models with one key',
     placeholder: 'sk-or-v1-…',
     apiBase: 'https://openrouter.ai/api/v1',
-      defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
     helpUrl: 'https://openrouter.ai/keys',
     helpLabel: 'openrouter.ai/keys',
     requiresKey: true,
     dot: '#a78bfa',
+  },
+  {
+    id: 'requesty',
+    label: 'Requesty',
+    description: 'Smart LLM router with failover',
+    placeholder: 'req_…',
+    apiBase: 'https://router.requesty.ai/v1',
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
+    helpUrl: 'https://app.requesty.ai/getting-started',
+    helpLabel: 'app.requesty.ai',
+    requiresKey: true,
+    dot: '#60a5fa',
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek (Direct)',
+    description: 'DeepSeek V3 & R1 — direct & cheap',
+    placeholder: 'sk-…',
+    apiBase: 'https://api.deepseek.com/v1',
+    defaultModel: 'deepseek-chat',
+    helpUrl: 'https://platform.deepseek.com/api-keys',
+    helpLabel: 'platform.deepseek.com/api-keys',
+    requiresKey: true,
+    dot: '#f97316',
   },
   {
     id: 'ollama',
@@ -24,7 +48,7 @@ const PROVIDERS = [
     description: 'Run models locally',
     placeholder: 'http://localhost:11434/v1',
     apiBase: 'http://localhost:11434/v1',
-      defaultModel: 'llama3.3',
+    defaultModel: 'llama3.3',
     helpUrl: 'https://ollama.com',
     helpLabel: 'ollama.com',
     requiresKey: false,
@@ -77,23 +101,38 @@ export function OnboardingScreen() {
   const effectiveBase = isOllamaOrCustom ? customBase.trim() : selectedProvider.apiBase
   const canContinueProvider = isOllamaOrCustom ? effectiveBase.length > 0 : apiKey.trim().length > 0
 
-  async function handleFinish() {
-    setSaving(true)
-    setWorkspaceError('')
-    try {
-      const key  = apiKey.trim()
-      const path = workspacePath.trim()
-      await tauriInvoke('save_config', {
-        apiKey: key,
-          model: selectedProvider.defaultModel || 'anthropic/claude-3.7-sonnet',
-        workspacePath: path,
-        apiBase: effectiveBase,
-        provider: selectedProvider.id,
-      })
+    async function handleFinish() {
+      setSaving(true)
+      setWorkspaceError('')
+      try {
+        const key  = apiKey.trim()
+        const path = workspacePath.trim()
+        await tauriInvoke('save_config', {
+          apiKey: key,
+          model: selectedProvider.defaultModel || 'anthropic/claude-sonnet-4-20250514',
+          workspacePath: path,
+          apiBase: effectiveBase,
+          provider: selectedProvider.id,
+        })
         setApiKey(key)
-        if (key && selectedProvider.id === 'openrouter') {
-          updateGateway('openrouter', { apiKey: key })
+        // Update the matching gateway with the entered key and enable it.
+        // All known gateway IDs map 1:1 with provider IDs.
+        const knownGateways = ['openrouter', 'requesty', 'deepseek', 'ollama']
+        for (const gwId of knownGateways) {
+          if (gwId === selectedProvider.id) {
+            updateGateway(gwId, { apiKey: key, enabled: true })
+          } else {
+            // Disable non-selected gateways so resolveConnection always picks the right one
+            updateGateway(gwId, { enabled: false })
+          }
         }
+        // Persist all gateways (with the updated key) to the Tauri secure store
+        try {
+          const { useAppStore: store } = await import('../store')
+          const updatedGateways = store.getState().gateways
+          await tauriInvoke('save_gateways', { gateways: updatedGateways })
+        } catch { /* non-fatal */ }
+
         setApiBase(effectiveBase)
         setProvider(selectedProvider.id)
         if (path) {
@@ -102,11 +141,11 @@ export function OnboardingScreen() {
         }
         setStep('done')
         setTimeout(() => setOnboardingComplete(), 1200)
-    } catch (err) {
-      setWorkspaceError(String(err))
-      setSaving(false)
+      } catch (err) {
+        setWorkspaceError(String(err))
+        setSaving(false)
+      }
     }
-  }
 
   return (
     <div className="onboarding-root">

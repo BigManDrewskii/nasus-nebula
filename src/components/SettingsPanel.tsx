@@ -143,30 +143,44 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       init()
     }, [activeProvider])
 
-    // Sync gateway keys into local state. Runs on mount AND whenever
-    // gatewayConfigReady flips to true (i.e. after loadGatewayConfig finishes).
-    // Without this, the panel opens with empty key fields because partialize
-    // strips all gateway apiKeys from localStorage — they're only restored
-    // asynchronously by loadGatewayConfig reading from the Tauri secure store.
-    const gatewayConfigReady = useAppStore((s) => s.gatewayConfigReady)
+      // Sync gateway keys into local state. Runs on mount AND whenever
+      // gatewayConfigReady flips to true (i.e. after loadGatewayConfig finishes).
+      // Without this, the panel opens with empty key fields because partialize
+      // strips all gateway apiKeys from localStorage — they're only restored
+      // asynchronously by loadGatewayConfig reading from the Tauri secure store.
+      const gatewayConfigReady = useAppStore((s) => s.gatewayConfigReady)
 
-    useEffect(() => {
-      const state = useAppStore.getState()
+      useEffect(() => {
+        const state = useAppStore.getState()
 
-      const orKey = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
-      if (orKey) setLocalOpenRouterKey(orKey)
+        const orKey = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
+        if (orKey) setLocalOpenRouterKey(orKey)
 
-      const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey || ''
-      if (reqKey) setLocalRequestyKey(reqKey)
+        const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey || ''
+        if (reqKey) setLocalRequestyKey(reqKey)
 
-      const dsKey = state.gateways.find((g) => g.id === 'deepseek')?.apiKey || ''
-      if (dsKey) setLocalDeepSeekKey(dsKey)
+        const dsKey = state.gateways.find((g) => g.id === 'deepseek')?.apiKey || ''
+        if (dsKey) setLocalDeepSeekKey(dsKey)
 
-      const p = state.provider
-      if (p === 'openrouter' || p === 'requesty' || p === 'ollama' || p === 'deepseek') {
-        setActiveProvider(p)
-      }
-    }, [gatewayConfigReady])
+        const p = state.provider
+        if (p === 'openrouter' || p === 'requesty' || p === 'ollama' || p === 'deepseek') {
+          setActiveProvider(p)
+        }
+
+        // Exa key is stripped from localStorage by partialize. Read it back from the
+        // OS keyring (Tauri) on every panel open so the field is never blank.
+        tauriInvoke<string>('get_exa_key').then((key) => {
+          if (key) {
+            setLocalExaKey(key)
+            // Also sync back into the store so search.ts picks it up immediately
+            useAppStore.getState().setExaKey(key)
+          }
+        }).catch(() => {
+          // Browser mode — fall back to the store value (may have been set via sessionStorage)
+          const storedExa = useAppStore.getState().exaKey
+          if (storedExa) setLocalExaKey(storedExa)
+        })
+      }, [gatewayConfigReady])
 
     // Local router config state
 
