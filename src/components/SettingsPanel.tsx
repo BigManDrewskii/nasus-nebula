@@ -520,13 +520,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   return (
       <div
         className="fixed inset-0 z-50 flex-center settings-backdrop"
-        onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
       >
         <FocusTrap
           focusTrapOptions={{
-            onDeactivate: onClose,
-            clickOutsideDeactivates: true,
+            initialFocus: false,
+            allowOutsideClick: true,
             escapeDeactivates: true,
+            onDeactivate: onClose,
           }}
         >
           <div

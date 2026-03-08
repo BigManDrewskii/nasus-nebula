@@ -419,29 +419,21 @@ function SidebarFooter({ onSettings }: { onSettings: () => void }) {
         onMouseEnter={() => setHov(true)}
         onMouseLeave={() => setHov(false)}
         title="Settings (⌘,)"
-        className="sb-footer-btn"
-        style={{
-          background: hov ? 'rgba(255,255,255,0.04)' : 'transparent',
-          border: `1px solid ${hov ? 'rgba(255,255,255,0.08)' : 'transparent'}`,
-        }}
+        className={`sb-footer-btn${hov ? ' sb-footer-btn--hov' : ''}`}
       >
-        <FooterModelInfo />
-        <span
-          className="sb-footer-shortcut"
-          style={{ color: hov ? 'var(--tx-muted)' : 'var(--tx-tertiary)' }}
-        >
-          ⌘,
+        <FooterModelInfo hov={hov} />
+        <span className="sb-footer-actions">
+          <span className="sb-footer-shortcut">⌘,</span>
+          <Pxi
+            name="cog"
+            size={12}
+            style={{
+              transition: 'color 0.15s, transform 0.35s',
+              transform: hov ? 'rotate(60deg)' : 'rotate(0deg)',
+              flexShrink: 0,
+            }}
+          />
         </span>
-        <Pxi
-          name="cog"
-          size={12}
-          style={{
-            color: hov ? 'var(--tx-primary)' : 'var(--tx-muted)',
-            transition: 'color 0.12s, transform 0.35s',
-            transform: hov ? 'rotate(60deg)' : 'rotate(0deg)',
-            flexShrink: 0,
-          }}
-        />
       </button>
     </div>
   )
@@ -449,7 +441,7 @@ function SidebarFooter({ onSettings }: { onSettings: () => void }) {
 
 // ── FooterModelInfo ────────────────────────────────────────────────────────────
 
-function FooterModelInfo() {
+function FooterModelInfo({ hov }: { hov: boolean }) {
   const { provider, model, gatewayHealth } = useAppStore(
     useShallow((s) => ({
       provider: s.provider,
@@ -467,7 +459,7 @@ function FooterModelInfo() {
   }[healthStatus]
 
   const shortModel   = model.includes('/') ? model.split('/').pop()! : model
-  const displayModel = shortModel.length > 22 ? shortModel.slice(0, 20) + '…' : shortModel
+  const displayModel = shortModel.length > 20 ? shortModel.slice(0, 18) + '…' : shortModel
 
   const providerLabel =
     provider === 'ollama' ? 'Local'      :
@@ -475,17 +467,18 @@ function FooterModelInfo() {
                             'OpenRouter'
 
   return (
-    <>
+    <span className="sb-footer-model-info">
       <span
         className="sb-health-dot"
         style={{
           backgroundColor: healthColor,
-          boxShadow: healthStatus === 'healthy' ? `0 0 5px ${healthColor}90` : undefined,
+          boxShadow: healthStatus === 'healthy' ? `0 0 6px ${healthColor}80` : undefined,
+          opacity: hov ? 1 : 0.85,
         }}
       />
       <span className="sb-footer-provider">{providerLabel}</span>
       <span className="sb-footer-sep">·</span>
       <span className="sb-footer-model">{displayModel}</span>
-    </>
+    </span>
   )
 }

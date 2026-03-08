@@ -197,12 +197,14 @@ function App() {
         if (e.key === '.') { e.preventDefault(); setRightCollapsed((v) => !v) }
         // Toggle right panel collapse: ⌘ Shift \
         if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
-        // Open model selector: ⌘ M
-        if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
+          // Open model selector: ⌘ M
+          if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
+          // Open settings: ⌘ ,
+          if (e.key === ',') { e.preventDefault(); openSettings() }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [openSettings])
 
   const toggleLeft   = useCallback(() => setLeftCollapsed((v) => !v),   [])
   const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
@@ -283,7 +285,9 @@ function App() {
         </a>
         <div className="app-root">
           {/* Tauri title bar drag region */}
-          <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
+          {!settingsOpen && (
+            <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
+          )}
           <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
 
           {/* ── Left Sidebar ── */}
