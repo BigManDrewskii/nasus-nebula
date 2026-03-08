@@ -1122,24 +1122,36 @@ pub fn run() {
 
             let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
 
-            app.manage(AppState {
-                config: Mutex::new(Config {
-                    api_key: "".into(),
-                    model: "anthropic/claude-3.7-sonnet".into(),
-                    workspace_path: "".into(),
-                    api_base: "https://openrouter.ai/api/v1".into(),
-                    provider: "openrouter".into(),
-                }),
-                router_config: Mutex::new(RouterConfig::default()),
-                search_config: Mutex::new(SearchConfig::default()),
-                search_service: Arc::new(SearchService::new(Some(cache_path))),
-                active_tasks: Mutex::new(HashSet::new()),
-                sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
-                    sidecar::SidecarState::new(sidecar_path)
-                ))),
-                gateway_state: gateway::GatewayState::new(gateway::default_gateways()),
-                db: Arc::new(Mutex::new(db_conn)),
-            });
+              // Create GatewayState once and share the Arc so both AppState and the
+              // standalone manage() call below point at the same manager instance.
+              let gateway_state = gateway::GatewayState::new(gateway::default_gateways());
+              let gateway_state_shared = gateway::GatewayState {
+                  manager: Arc::clone(&gateway_state.manager),
+              };
+
+              app.manage(AppState {
+                  config: Mutex::new(Config {
+                      api_key: "".into(),
+                      model: "anthropic/claude-3.7-sonnet".into(),
+                      workspace_path: "".into(),
+                      api_base: "https://openrouter.ai/api/v1".into(),
+                      provider: "openrouter".into(),
+                  }),
+                  router_config: Mutex::new(RouterConfig::default()),
+                  search_config: Mutex::new(SearchConfig::default()),
+                  search_service: Arc::new(SearchService::new(Some(cache_path))),
+                  active_tasks: Mutex::new(HashSet::new()),
+                  sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
+                      sidecar::SidecarState::new(sidecar_path)
+                  ))),
+                  gateway_state,
+                  db: Arc::new(Mutex::new(db_conn)),
+              });
+
+              // Also manage GatewayState as its own standalone state so that
+              // gateway::get_gateways / save_gateways / get_gateway_health commands
+              // (which use tauri::State<'_, GatewayState>) can resolve it.
+              app.manage(gateway_state_shared);
             Ok(())
         })
       .invoke_handler(tauri::generate_handler![
