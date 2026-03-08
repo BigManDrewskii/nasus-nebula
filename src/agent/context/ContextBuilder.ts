@@ -13,6 +13,7 @@
 import type { LlmMessage } from '../llm'
 import type { ToolDefinition } from '../llm'
 import { SYSTEM_PROMPT } from '../systemPrompt'
+import { sanitizeMessages } from '../messageUtils'
 import type { ExecutionPlan } from '../core/Agent'
 import { memoryStore, type MemoryResult } from '../memory/LocalMemoryStore'
 
@@ -186,8 +187,10 @@ export class ContextBuilder {
         messages.push({ role: 'system', content: buildPlanContext(plan) })
       }
 
-      // 6. User messages (not cacheable)
-      messages.push(...userMessages)
+      // 6. User messages — sanitize first to strip any broken tool_call sequences
+      // that may have accumulated from partial/failed streams, preventing repeated
+      // warnings on every subsequent LLM call for the same conversation.
+      messages.push(...sanitizeMessages(userMessages))
 
     // Calculate cache breakpoint (first non-cacheable message index)
     const cacheBreakpoint = cacheableMessages.length

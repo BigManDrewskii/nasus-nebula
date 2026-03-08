@@ -1295,28 +1295,37 @@ function ModelRouterSection({
 
   type UIModel = { id: string; name: string; tier: 'premium' | 'standard' | 'budget' | 'free'; provider: string }
 
-  const allModels: UIModel[] = registry.length > 0
-    ? registry.map((m) => ({
-        id: m.id,
-        name: m.display_name,
-        tier: m.cost_tier.toLowerCase() as UIModel['tier'],
-        provider: m.provider as string,
-      }))
-    : (openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS).map((m) => {
-        const pricing = parseFloat(m.pricing?.completion ?? '0')
-        const tier: UIModel['tier'] =
-          m.id.endsWith(':free') ? 'free'
-          : pricing === 0 ? 'free'
-          : pricing < 0.0000005 ? 'budget'
-          : pricing < 0.000005 ? 'standard'
-          : 'premium'
-        return {
+    const allModelsRaw: UIModel[] = registry.length > 0
+      ? registry.map((m) => ({
           id: m.id,
-          name: m.name,
-          tier,
-          provider: m.id.split('/')[0] ?? 'unknown',
-        }
-      })
+          name: m.display_name,
+          tier: m.cost_tier.toLowerCase() as UIModel['tier'],
+          provider: m.provider as string,
+        }))
+      : (openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS).map((m) => {
+          const pricing = parseFloat(m.pricing?.completion ?? '0')
+          const tier: UIModel['tier'] =
+            m.id.endsWith(':free') ? 'free'
+            : pricing === 0 ? 'free'
+            : pricing < 0.0000005 ? 'budget'
+            : pricing < 0.000005 ? 'standard'
+            : 'premium'
+          return {
+            id: m.id,
+            name: m.name,
+            tier,
+            provider: m.id.split('/')[0] ?? 'unknown',
+          }
+        })
+    // Deduplicate by id — two registry entries can share the same gateway-specific model ID
+    // (e.g. "DeepSeek R1" and "DeepSeek R1 0528" both map to deepseek-reasoner on the
+    // DeepSeek direct gateway), which causes React duplicate key warnings.
+    const seenIds = new Set<string>()
+    const allModels: UIModel[] = allModelsRaw.filter(m => {
+      if (seenIds.has(m.id)) return false
+      seenIds.add(m.id)
+      return true
+    })
 
   // Which models to show based on budget
   const visibleModels = budget === 'free'
