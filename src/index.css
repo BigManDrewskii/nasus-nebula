@@ -1675,21 +1675,22 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
 }
 
-.skeleton-bar::after {
+/* Shared shimmer overlay — structural properties for all skeleton variants */
+.skeleton-bar::after,
+.skeleton-title::after,
+.skeleton-circle::after,
+.skeleton-card::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 50%,
-    transparent 100%
-  );
+  inset: 0;
   animation: skeletonShimmer 1.5s ease-in-out infinite;
 }
+
+/* Per-variant shimmer highlight color */
+.skeleton-bar::after    { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%); }
+.skeleton-title::after  { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%); }
+.skeleton-circle::after { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%); }
+.skeleton-card::after   { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.02) 50%, transparent 100%); }
 
 /* Skeleton title - taller heading */
 .skeleton-title {
@@ -1700,22 +1701,6 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 4px;
   position: relative;
   overflow: hidden;
-}
-
-.skeleton-title::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.06) 50%,
-    transparent 100%
-  );
-  animation: skeletonShimmer 1.5s ease-in-out infinite;
 }
 
 /* Skeleton circle - for avatars, icons */
@@ -1729,22 +1714,6 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
 }
 
-.skeleton-circle::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.04) 50%,
-    transparent 100%
-  );
-  animation: skeletonShimmer 1.5s ease-in-out infinite;
-}
-
 /* Skeleton card - for card loading states */
 .skeleton-card {
   background: rgba(255, 255, 255, 0.02);
@@ -1753,22 +1722,6 @@ input[type="range"]::-moz-range-thumb {
   padding: 12px;
   position: relative;
   overflow: hidden;
-}
-
-.skeleton-card::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.02) 50%,
-    transparent 100%
-  );
-  animation: skeletonShimmer 1.5s ease-in-out infinite;
 }
 
 /* Skeleton animation */
@@ -5328,7 +5281,6 @@ input[type="range"]::-moz-range-thumb {
 
 .hover-bg-app-2:hover  { background-color: rgba(255,255,255,0.05); }
 .hover-bg-app-3:hover  { background-color: rgba(255,255,255,0.07); }
-.hover-bg-app-4:hover  { background-color: var(--bg-app-4); }
 .hover-text-primary:hover   { color: var(--tx-primary); }
 .hover-text-secondary:hover { color: var(--tx-secondary); }
 .hover-text-amber:hover     { color: var(--amber-soft); }
@@ -5371,7 +5323,7 @@ input[type="range"]::-moz-range-thumb {
 /* ─── ConfirmModal ─── */
 .confirm-modal-card {
   width: 340px; max-width: calc(100vw - 32px);
-  background: var(--bg-app-2);
+  background: #111213;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 14px;
   padding: 20px 22px 18px;
