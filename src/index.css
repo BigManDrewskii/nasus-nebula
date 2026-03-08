@@ -1208,6 +1208,9 @@ html, body, #root {
   flex-shrink: 0;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
   margin-left: auto;
+  /* Must opt out of the drag region so clicks are received */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 .sb-collapse-btn:hover {
   background: rgba(255, 255, 255, 0.09);
@@ -1952,6 +1955,9 @@ input[type="range"]::-moz-range-thumb {
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
+  /* Must opt out of drag region so the button receives clicks */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .context-rail-btn:hover {
@@ -5202,7 +5208,15 @@ input[type="range"]::-moz-range-thumb {
   display: flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: 6px;
   border: 1px solid rgba(255,255,255,0.06);
-  color: var(--tx-tertiary); cursor: pointer; transition: background 0.12s;
+  background: transparent;
+  color: var(--tx-tertiary); cursor: pointer; transition: background 0.12s, color 0.12s;
+  /* Must opt out of drag region so the button receives clicks */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.ch-panel-toggle:hover {
+  background: rgba(255,255,255,0.06);
+  color: var(--tx-secondary);
 }
 .ch-toast {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
@@ -5211,7 +5225,8 @@ input[type="range"]::-moz-range-thumb {
   background: rgba(13,13,13,0.95);
   box-shadow: 0 8px 24px rgba(0,0,0,0.5);
   backdrop-filter: blur(8px); animation: fadeIn 0.18s ease;
-  pointer-events: none; max-width: calc(100% - 48px);
+  /* Allow clicks to reach the onClick dismiss handler */
+  pointer-events: auto; cursor: pointer; max-width: calc(100% - 48px);
 }
 .ch-toast--amber { border: 1px solid rgba(234,179,8,0.35); }
 .ch-toast--red   { border: 1px solid rgba(239,68,68,0.35); }

@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
@@ -174,7 +175,10 @@ function ModelSection() {
   const [search, setSearch] = useState('')
   const [freeOnly, setFreeOnly] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
 
   const isAutoMode = routerConfig?.mode === 'auto'
   const meta = isAutoMode ? { label: 'AUTO', color: 'var(--amber)' } : familyMeta(model)
@@ -218,24 +222,67 @@ function ModelSection() {
 
   const [freshLabel, setFreshLabel] = useState<string | null>(null)
 
+  // Compute dropdown position when opening
+  const computeDropdownPosition = useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const dropdownWidth = 280
+    const dropdownMaxHeight = 360
+    // Try to open to the left; if not enough room, open to the right
+    const leftOfTrigger = rect.left - dropdownWidth - 6
+    const rightOfTrigger = rect.right + 6
+    const left = leftOfTrigger >= 8 ? leftOfTrigger : rightOfTrigger
+    // Align top with trigger, clamp to viewport
+    const top = Math.min(rect.top, window.innerHeight - dropdownMaxHeight - 8)
+    setDropdownStyle({
+      position: 'fixed',
+      top,
+      left,
+      width: dropdownWidth,
+      maxHeight: dropdownMaxHeight,
+      zIndex: 400,
+    })
+  }, [])
+
   useEffect(() => {
     if (!open) return
+    computeDropdownPosition()
     function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        triggerRef.current && !triggerRef.current.contains(target)
+      ) {
         setOpen(false); setSearch('')
       }
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setOpen(false); setSearch('') }
+    }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open])
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, computeDropdownPosition])
 
   useEffect(() => { if (open) setTimeout(() => searchRef.current?.focus(), 30) }, [open])
 
     return (
       <div ref={containerRef} className="model-section-wrap">
-        {/* Dropdown popup */}
-        {open && (
-          <div className="model-dropdown">
+        {/* Dropdown popup — rendered via portal to escape overflow:hidden/auto containers */}
+        {open && createPortal(
+          <div
+            ref={dropdownRef}
+            className="model-dropdown"
+            style={{
+              ...dropdownStyle,
+              // Override the CSS position:absolute with fixed from dropdownStyle
+              position: 'fixed',
+            }}
+          >
             {/* Dropdown header */}
             <div className="flex-shrink-0 model-dropdown-header">
               <div className="flex-v-center model-search-box">
@@ -339,7 +386,8 @@ function ModelSection() {
                 <span className="text-tertiary model-footer-text">Save API key in Settings to load all models</span>
               )}
             </div>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Model trigger label */}
@@ -348,6 +396,7 @@ function ModelSection() {
           Model
         </div>
         <button
+          ref={triggerRef}
           onClick={() => {
             const opening = !open
             setOpen(opening)
