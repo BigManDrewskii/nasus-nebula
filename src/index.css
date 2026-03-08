@@ -1081,7 +1081,7 @@ html, body, #root {
   padding-top: 28px;
 }
 
-/* Left sidebar — fluid width, collapses to icon rail */
+/* Left sidebar — fluid width, collapses fully with smooth transition */
 .app-sidebar-left {
   width: clamp(200px, 18vw, 280px);
   min-width: clamp(200px, 18vw, 280px);
@@ -1091,15 +1091,15 @@ html, body, #root {
   overflow: hidden;
   background: rgba(9, 9, 9, 0.4);
   backdrop-filter: var(--glass-blur);
-  transition: width var(--sidebar-transition),
-              min-width var(--sidebar-transition),
-              max-width var(--sidebar-transition);
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1),
+              min-width 0.25s cubic-bezier(0.4,0,0.2,1),
+              max-width 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 
 .app-sidebar-left.app-sidebar--collapsed {
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
 }
 
 /* Right output panel — fluid width, collapses to icon rail */
@@ -1182,6 +1182,79 @@ html, body, #root {
 .workspace-reopen-tab:active {
   background: rgba(50, 50, 50, 0.98);
   transform: translateY(-50%) translateX(1px);
+}
+
+/* ── Left sidebar collapse button (in brand row) ─────────────────────────── */
+.sb-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  margin-left: auto;
+}
+.sb-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+/* ── Sidebar re-open tab (left edge, mirrors workspace-reopen-tab) ─────────── */
+.sidebar-reopen-tab {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 32px;
+  padding: 18px 0;
+  background: rgba(28, 28, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  cursor: pointer;
+  color: var(--tx-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 3px 0 16px rgba(0, 0, 0, 0.4), inset -1px 0 0 rgba(255,255,255,0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
+}
+.sidebar-reopen-tab .tab-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  line-height: 1;
+  pointer-events: none;
+}
+.sidebar-reopen-tab svg {
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.sidebar-reopen-tab:hover {
+  background: rgba(42, 42, 42, 0.96);
+  color: var(--tx-primary);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5), inset -1px 0 0 rgba(255,255,255,0.07);
+}
+.sidebar-reopen-tab:active {
+  background: rgba(50, 50, 50, 0.98);
+  transform: translateY(-50%) translateX(-1px);
 }
 
 /* ── Panel Divider (resizable right panel) ────────────────────────────────── */
@@ -1599,9 +1672,8 @@ select:focus:not(:focus-visible) {
 
 /* ── Sidebar & ContextPanel transitions ──────────────────────────────────── */
 
-/* Left sidebar slide */
+/* Left sidebar slide (will-change hint — transition defined above) */
 .app-sidebar-left {
-  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
   will-change: width;
 }
 

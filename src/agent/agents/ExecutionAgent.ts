@@ -254,6 +254,10 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
+      // Determine active tools for the current plan phase (phase-aware masking)
+      const currentPhase = params.plan?.phases.find(p => p.status === 'in_progress')
+      const activeTools = currentPhase ? this.getActiveToolsForPhase(currentPhase.title) : []
+
       // Use ContextBuilder to produce a cache-optimised messages array.
       // It inserts: stable system prefix → env summary → cache breakpoint → memory → plan → user messages.
       const builtContext = await buildContext(
@@ -263,7 +267,8 @@ export class ExecutionAgent extends BaseAgent {
           includeMemory: true,
           maxMemoryItems: 3,
           includePlan: !!params.plan,
-          maskInactiveTools: false, // masking disabled until tool-phase logic is added
+          maskInactiveTools: activeTools.length > 0,
+          activeTools: activeTools.length > 0 ? activeTools : undefined,
         },
         params.plan,
         envSummary,
@@ -853,8 +858,37 @@ export class ExecutionAgent extends BaseAgent {
 
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
+  /**
+   * Map a plan phase title to a list of active tool names for phase-aware masking.
+   * Returns an empty array when all tools should remain available (no masking).
+   */
+  private getActiveToolsForPhase(phaseTitle: string): string[] {
+    const lowerTitle = phaseTitle.toLowerCase()
 
-    private buildEnvSummary(executionConfig?: ExecutionConfig): string {
+    // Always include utility tools regardless of phase
+    const always = ['think', 'complete', 'update_plan', 'save_memory', 'save_preference']
+
+    if (lowerTitle.includes('research') || lowerTitle.includes('gather') || lowerTitle.includes('search')) {
+      return [...always, 'search_web', 'http_fetch', 'browser_navigate', 'browser_extract', 'browser_extract_links', 'browser_screenshot', 'browser_analyze_screenshot', 'browser_aria_snapshot', 'browser_scroll', 'browser_wait_for', 'read_file', 'write_file']
+    }
+    if (lowerTitle.includes('plan') || lowerTitle.includes('structure') || lowerTitle.includes('design')) {
+      return [...always, 'write_file', 'edit_file', 'read_file', 'list_files']
+    }
+    if (lowerTitle.includes('implement') || lowerTitle.includes('write') || lowerTitle.includes('code') || lowerTitle.includes('build') || lowerTitle.includes('create')) {
+      return [...always, 'read_file', 'write_file', 'edit_file', 'patch_file', 'list_files', 'search_files', 'analyze_code', 'bash_execute', 'bash', 'python_execute', 'serve_preview', 'git', 'http_fetch']
+    }
+    if (lowerTitle.includes('verify') || lowerTitle.includes('test') || lowerTitle.includes('review') || lowerTitle.includes('check')) {
+      return [...always, 'read_file', 'list_files', 'bash_execute', 'bash', 'python_execute', 'analyze_code', 'browser_navigate', 'browser_screenshot', 'browser_analyze_screenshot', 'browser_extract']
+    }
+    if (lowerTitle.includes('browser') || lowerTitle.includes('web') || lowerTitle.includes('scrape') || lowerTitle.includes('navigate')) {
+      return [...always, 'browser_navigate', 'browser_click', 'browser_type', 'browser_extract', 'browser_extract_links', 'browser_screenshot', 'browser_analyze_screenshot', 'browser_aria_snapshot', 'browser_scroll', 'browser_wait_for', 'read_file', 'write_file']
+    }
+
+    // Default: no masking — return empty array so all tools stay active
+    return []
+  }
+
+  private buildEnvSummary(executionConfig?: ExecutionConfig): string {
     const hasSandbox = executionConfig?.executionMode === 'docker'
     
     // Core tools that are ALWAYS available

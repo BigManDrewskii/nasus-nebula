@@ -14,6 +14,55 @@ import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../cor
 import { cheapestModel, chatJsonViaGateway } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
 import { useAppStore } from '../../store'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('PlanningAgent')
+
+// ── Structured tool definition for forced JSON plan output ─────────────────────
+const CREATE_PLAN_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'create_plan',
+    description: "Creates a structured execution plan based on the user's request.",
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string', description: 'Brief 3-6 word title for the plan.' },
+        description: { type: 'string', description: 'One sentence overview of the plan.' },
+        rationale: { type: 'string', description: 'Why this approach was chosen.' },
+        complexity: { type: 'string', enum: ['low', 'medium', 'high'] },
+        estimatedSteps: { type: 'number' },
+        phases: {
+          type: 'array' as const,
+          items: {
+            type: 'object' as const,
+            properties: {
+              id: { type: 'string' },
+              title: { type: 'string' },
+              description: { type: 'string' },
+              steps: {
+                type: 'array' as const,
+                items: {
+                  type: 'object' as const,
+                  properties: {
+                    id: { type: 'string' },
+                    description: { type: 'string' },
+                    agent: { type: 'string', enum: ['executor', 'research'] },
+                    tools: { type: 'array' as const, items: { type: 'string' } },
+                    estimatedDuration: { type: 'number' },
+                  },
+                  required: ['id', 'description', 'agent', 'tools'],
+                },
+              },
+            },
+            required: ['id', 'title', 'description', 'steps'],
+          },
+        },
+      },
+      required: ['title', 'description', 'rationale', 'complexity', 'phases'],
+    },
+  },
+}
 
 /**
  * Planning context parameters.
@@ -83,14 +132,16 @@ export class PlanningAgent extends BaseAgent {
     const prompt = await this.buildPlanningPrompt(userInput, useMemory)
 
     try {
-      const response = await chatJsonViaGateway<any>(prompt, 1500, planModel)
+      // Try structured output (tool_choice) first; fall back to chatJsonViaGateway
+      const planData = await this.callWithStructuredOutput(prompt, planModel, conn)
+        ?? await chatJsonViaGateway<any>(prompt, 1500, planModel)
 
-      if (!response) {
+      if (!planData) {
         throw new Error('Failed to generate structured plan')
       }
 
       // Parse/Validate the response into an ExecutionPlan
-      const plan = this.validatePlan(response, userInput)
+      const plan = this.validatePlan(planData, userInput)
 
       return {
         state: this.state,
@@ -103,6 +154,62 @@ export class PlanningAgent extends BaseAgent {
         done: true,
         error: `Planning failed: ${error instanceof Error ? error.message : String(error)}`,
       }
+    }
+  }
+
+  /**
+   * Attempt to get a plan via forced tool_choice (structured output).
+   * Returns null if the provider doesn't support tool_choice or an error occurs,
+   * allowing the caller to fall back gracefully.
+   */
+  private async callWithStructuredOutput(
+    prompt: string,
+    model: string,
+    conn: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
+  ): Promise<any | null> {
+    // Providers known NOT to support tool_choice reliably
+    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek'
+    if (noToolChoice) return null
+
+    try {
+      const base = (conn.apiBase ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '')
+      const url = `${base}/chat/completions`
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${conn.apiKey}`,
+        ...(conn.extraHeaders ?? {}),
+      }
+      if (conn.provider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://nasus.app'
+        headers['X-Title'] = 'Nasus'
+      }
+
+      const body = JSON.stringify({
+        model,
+        max_tokens: 2000,
+        stream: false,
+        tools: [CREATE_PLAN_TOOL],
+        tool_choice: { type: 'function', function: { name: 'create_plan' } },
+        messages: [{ role: 'user', content: prompt }],
+      })
+
+      const resp = await fetch(url, { method: 'POST', headers, body })
+      if (!resp.ok) {
+        log.warn(`tool_choice request failed (HTTP ${resp.status}), falling back to chatJson`)
+        return null
+      }
+
+      const json = await resp.json()
+      const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0]
+      if (!toolCall?.function?.arguments) {
+        log.warn('No tool_call in response, falling back to chatJson')
+        return null
+      }
+
+      return JSON.parse(toolCall.function.arguments)
+    } catch (err) {
+      log.warn('callWithStructuredOutput failed, falling back to chatJson', err instanceof Error ? err : new Error(String(err)))
+      return null
     }
   }
 
@@ -324,3 +431,4 @@ export async function generatePlan(
     createdAt: new Date(),
   }
 }
+

@@ -80,12 +80,12 @@ function App() {
 
   // Layout state — loaded from localStorage BEFORE any effects that reference it
   const [savedLayout] = useState<LayoutState>(loadLayout)
+  const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
   const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
     savedLayout.sidebarPreference ?? 'auto'
   )
-  const [outputVisible, setOutputVisible] = useState(savedLayout.rightPanelVisible ?? true)
   const [rightPanelWidth, setRightPanelWidth] = useState(savedLayout.rightPanelWidth ?? 0.4)
 
   // Ref for the right sidebar element, used by PanelDivider to toggle resize class
@@ -145,17 +145,13 @@ function App() {
   }, [])
 
   // Listen for browser activity events and auto-open browser panel
-  // Use refs for the setters so the handler is never stale without re-registering
-  const outputVisibleRef = useRef(outputVisible)
   const rightCollapsedRef = useRef(rightCollapsed)
-  useEffect(() => { outputVisibleRef.current = outputVisible }, [outputVisible])
   useEffect(() => { rightCollapsedRef.current = rightCollapsed }, [rightCollapsed])
 
   useEffect(() => {
     const handler = () => {
       setBrowserActivityActive(true)
       // Auto-open and show browser panel
-      if (!outputVisibleRef.current) setOutputVisible(true)
       if (rightCollapsedRef.current) setRightCollapsed(false)
       setRightActiveTab('browser')
     }
@@ -190,14 +186,13 @@ function App() {
 
   // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed: false, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: outputVisible, configSections: useAppStore.getState().configSections, sidebarPreference })
-  }, [rightCollapsed, rightActiveTab, rightPanelWidth, outputVisible, sidebarPreference])
+    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: !rightCollapsed, configSections: useAppStore.getState().configSections, sidebarPreference })
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, sidebarPreference])
 
     // Auto-show + expand right panel when the agent creates its first file,
     // or when switching to a task that already has files.
     useEffect(() => {
       if (workspaceFiles.length > 0) {
-        if (!outputVisible) setOutputVisible(true)
         if (rightCollapsed) setRightCollapsed(false)
       }
     }, [workspaceFiles.length, activeTaskId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -207,8 +202,10 @@ function App() {
     function handler(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
         if (!mod) return
-        // Toggle right panel: ⌘ .
-        if (e.key === '.') { e.preventDefault(); setOutputVisible((v) => !v) }
+        // Toggle left sidebar: ⌘ B
+        if (e.key === 'b') { e.preventDefault(); setLeftCollapsed((v) => !v) }
+        // Toggle right panel: ⌘ . or ⌘ Shift \
+        if (e.key === '.') { e.preventDefault(); setRightCollapsed((v) => !v) }
         // Toggle right panel collapse: ⌘ Shift \
         if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
         // Open model selector: ⌘ M
@@ -218,6 +215,7 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  const toggleLeft   = useCallback(() => setLeftCollapsed((v) => !v),   [])
   const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
 
   useEffect(() => {
@@ -236,7 +234,6 @@ function App() {
     function onPreviewReady() {
       setRightActiveTab('preview')
       setRightCollapsed(false)
-      setOutputVisible(true)
     }
     window.addEventListener('nasus:preview-ready', onPreviewReady)
     return () => window.removeEventListener('nasus:preview-ready', onPreviewReady)
@@ -301,15 +298,31 @@ function App() {
           <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
 
           {/* ── Left Sidebar ── */}
-          <div className="app-sidebar-left">
+          <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
             <Sidebar
               tasks={tasks}
               activeTaskId={activeTaskId}
               onSelectTask={handleSelectTask}
               onNewTask={handleNewTask}
               onOpenSettings={() => openSettings()}
+              collapsed={leftCollapsed}
+              onToggleCollapse={toggleLeft}
             />
         </div>
+
+          {/* ── Left sidebar re-open tab — shown when collapsed ── */}
+          {leftCollapsed && (
+            <button
+              onClick={toggleLeft}
+              title="Open sidebar (⌘B)"
+              className="sidebar-reopen-tab"
+            >
+              <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+                <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span className="tab-label">Tasks</span>
+            </button>
+          )}
 
         {/* ── Chat ── */}
         <main id="main-content" className="app-chat">
@@ -317,50 +330,45 @@ function App() {
               task={activeTask}
               onNewTask={handleNewTask}
               onOpenSettings={() => openSettings()}
-              outputVisible={outputVisible}
-              onShowOutput={() => {
-                setOutputVisible(true)
-                setRightCollapsed(false)
-              }}
+              outputVisible={!rightCollapsed}
+              onShowOutput={() => setRightCollapsed(false)}
               workspaceFileCount={workspaceFiles.length}
               rightCollapsed={rightCollapsed}
               onToggleRight={toggleRight}
             />
         </main>
 
-        {/* ── Right Output Panel ── */}
-        {outputVisible && (
-          <PanelDivider
-            width={rightPanelWidth}
-            onWidthChange={setRightPanelWidth}
-            onCollapse={() => setRightCollapsed(true)}
-            onExpand={() => setRightCollapsed(false)}
-            previousWidth={0.4}
-            collapsed={rightCollapsed}
-            sidebarRef={sidebarRef}
-          />
-        )}
-
-        {outputVisible && (
-          <div
-            ref={sidebarRef}
-            className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}
-            style={rightCollapsed ? undefined : { width: `${rightPanelWidth * 100}%` }}
-          >
-            <OutputPanel
-              key={activeTaskId ?? 'none'}
-              files={workspaceFiles}
-              collapsed={rightCollapsed}
-              activeTab={rightActiveTab}
-              onTabChange={setRightActiveTab}
-              onCollapse={toggleRight}
-              onExpand={(tab) => {
-                if (tab) setRightActiveTab(tab)
-                setRightCollapsed(false)
-              }}
+          {/* ── Right Output Panel ── */}
+          {!rightCollapsed && (
+            <PanelDivider
+              width={rightPanelWidth}
+              onWidthChange={setRightPanelWidth}
+              onCollapse={() => setRightCollapsed(true)}
+              onExpand={() => setRightCollapsed(false)}
+              previousWidth={0.4}
+              collapsed={false}
+              sidebarRef={sidebarRef}
             />
-          </div>
-        )}
+          )}
+
+        <div
+          ref={sidebarRef}
+          className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}
+          style={rightCollapsed ? undefined : { width: `${rightPanelWidth * 100}%` }}
+        >
+          <OutputPanel
+            key={activeTaskId ?? 'none'}
+            files={workspaceFiles}
+            collapsed={rightCollapsed}
+            activeTab={rightActiveTab}
+            onTabChange={setRightActiveTab}
+            onCollapse={toggleRight}
+            onExpand={(tab) => {
+              if (tab) setRightActiveTab(tab)
+              setRightCollapsed(false)
+            }}
+          />
+        </div>
 
           {settingsOpen && (
               <Suspense fallback={null}>
@@ -374,14 +382,11 @@ function App() {
               </Suspense>
             )}
 
-          {/* Floating re-open tab — shown when panel is collapsed OR hidden but files exist */}
-              {(!outputVisible ? workspaceFiles.length > 0 : rightCollapsed) && (
+          {/* Floating re-open tab — shown when panel is collapsed */}
+              {rightCollapsed && (
                 <button
                   onClick={() => {
-                    // Always make the panel fully visible
-                    setOutputVisible(true)
                     setRightCollapsed(false)
-                    // Smart tab: if files exist pick the best tab, else keep current
                     if (workspaceFiles.length > 0) {
                       const hasHtml = workspaceFiles.some(f => f.ext === 'html')
                       setRightActiveTab(hasHtml ? 'preview' : 'files')

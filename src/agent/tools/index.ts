@@ -44,6 +44,7 @@ import { BrowserTypeTool } from './browser/BrowserTypeTool'
 import { BrowserExtractTool } from './browser/BrowserExtractTool'
 import { BrowserExtractLinksTool } from './browser/BrowserExtractLinksTool'
 import { BrowserScreenshotTool } from './browser/BrowserScreenshotTool'
+import { BrowserAnalyzeScreenshotTool } from './browser/BrowserAnalyzeScreenshotTool'
 import { BrowserScrollTool } from './browser/BrowserScrollTool'
 import { BrowserWaitForTool } from './browser/BrowserWaitForTool'
 import { BrowserAriaSnapshotTool } from './browser/BrowserAriaSnapshotTool'
@@ -83,6 +84,7 @@ toolRegistry.registerConstructor('browser_type', BrowserTypeTool)
 toolRegistry.registerConstructor('browser_extract', BrowserExtractTool)
 toolRegistry.registerConstructor('browser_extract_links', BrowserExtractLinksTool)
 toolRegistry.registerConstructor('browser_screenshot', BrowserScreenshotTool)
+toolRegistry.registerConstructor('browser_analyze_screenshot', BrowserAnalyzeScreenshotTool)
 toolRegistry.registerConstructor('browser_scroll', BrowserScrollTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
@@ -189,6 +191,7 @@ export {
   BrowserTypeTool,
   BrowserExtractTool,
   BrowserScreenshotTool,
+  BrowserAnalyzeScreenshotTool,
   BrowserScrollTool,
   BrowserWaitForTool,
   BrowserAriaSnapshotTool,

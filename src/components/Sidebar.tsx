@@ -13,6 +13,8 @@ interface SidebarProps {
   onSelectTask: (id: string) => void
   onNewTask: () => void
   onOpenSettings: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,7 +50,7 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings }: SidebarProps) {
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed, onToggleCollapse }: SidebarProps) {
   const [search, setSearch]         = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -91,7 +93,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
     return (
       <aside className="sidebar sb-root">
         {/* ── Expanded full sidebar ── */}
-        <SidebarBrand />
+        <SidebarBrand onCollapse={onToggleCollapse} />
 
         <div className="sb-new-task-wrap">
           <NewTaskButton onClick={onNewTask} />
@@ -180,7 +182,8 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 
 // ── Brand ─────────────────────────────────────────────────────────────────────
 
-function SidebarBrand() {
+function SidebarBrand({ onCollapse }: { onCollapse?: () => void }) {
+  const [hov, setHov] = useState(false)
   return (
     <div data-tauri-drag-region className="sb-brand">
         <div className="sb-brand-logo-wrap">
@@ -190,6 +193,19 @@ function SidebarBrand() {
         <div className="sb-brand-text-wrap">
           <span className="font-display sb-brand-name">NASUS</span>
         </div>
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            onMouseEnter={() => setHov(true)}
+            onMouseLeave={() => setHov(false)}
+            title="Collapse sidebar (⌘B)"
+            aria-label="Collapse sidebar"
+            className="sb-collapse-btn"
+            style={{ color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)' }}
+          >
+            <Pxi name="chevron-left" size={11} />
+          </button>
+        )}
     </div>
   )
 }
