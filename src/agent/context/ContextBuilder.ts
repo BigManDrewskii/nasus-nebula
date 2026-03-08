@@ -106,8 +106,9 @@ function formatTools(
 
 /**
  * Build context for plan injection.
+ * Exported so Orchestrator and other consumers share one canonical formatter.
  */
-function buildPlanContext(plan: ExecutionPlan): string {
+export function buildPlanContext(plan: ExecutionPlan): string {
   const phaseList = plan.phases.map((p, idx) => {
     const steps = p.steps.map((s) => `  - ${s.description}`).join('\n')
     return `Phase ${idx + 1}: ${p.title}\n${steps}`
@@ -210,14 +211,18 @@ export class ContextBuilder {
 
   /**
    * Extract a search query from user messages for memory retrieval.
+   *
+   * Uses the LAST user message, not the first, so that multi-turn conversations
+   * (task resumes, follow-up requests) retrieve memory relevant to the current
+   * intent rather than the original task intent.
    */
   private extractQuery(userMessages: LlmMessage[]): string {
     const userMsgs = userMessages.filter(m => m.role === 'user')
     if (userMsgs.length === 0) return ''
 
-    // Use the first user message as the query
-    const first = userMsgs[0]
-    return typeof first.content === 'string' ? first.content : JSON.stringify(first.content)
+    // Use the last user message as the query — most relevant in multi-turn sessions
+    const last = userMsgs[userMsgs.length - 1]
+    return typeof last.content === 'string' ? last.content : JSON.stringify(last.content)
   }
 
   /**

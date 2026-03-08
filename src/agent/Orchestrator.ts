@@ -15,6 +15,7 @@ import type { ExecutionConfig as SandboxConfig } from './sandboxRuntime'
 import { PlanningAgent, generatePlan } from './agents/PlanningAgent'
 import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAgent'
 import { useAppStore } from '../store'
+import { buildPlanContext } from './context/ContextBuilder'
 
 /**
  * Orchestrator configuration.
@@ -161,7 +162,8 @@ export class AgentOrchestrator {
     // which breaks Anthropic providers that reject mid-conversation system messages).
     // Find the LAST user-role message specifically — the last element of userMessages
     // may be a tool result on task resume, which would corrupt it.
-    const planContext = this.buildPlanContext(plan)
+      // buildPlanContext gives the base plan block; append execution instruction here
+      const planContext = buildPlanContext(plan) + '\n\nMark phases as complete by updating task_plan.md with checkboxes.'
     const lastUserIdx = (() => {
       for (let i = params.userMessages.length - 1; i >= 0; i--) {
         if (params.userMessages[i].role === 'user') return i
@@ -202,30 +204,9 @@ export class AgentOrchestrator {
     await this.executionAgent.execute(executionParams)
   }
 
-  /**
-   * Build plan context to inject into the execution.
-   */
-  private buildPlanContext(plan: ExecutionPlan): string {
-    const phaseList = plan.phases.map((p, idx) => {
-      const steps = p.steps.map((s, sIdx) => `  ${sIdx + 1}. ${s.description}`).join('\n')
-      return `Phase ${idx + 1}: ${p.title}\n${steps}`
-    }).join('\n\n')
-
-    return `[Approved Execution Plan]
-
-Title: ${plan.title}
-Description: ${plan.description}
-Estimated Steps: ${plan.estimatedSteps}
-
-${phaseList}
-
-Follow this plan systematically. Complete each phase before moving to the next one.
-Mark phases as complete by updating task_plan.md with checkboxes.`
-  }
-
-  /**
-   * Wait for user approval of the plan.
-   */
+    /**
+     * Wait for user approval of the plan.
+     */
   private async waitForApproval(
     taskId: string,
     _messageId: string,

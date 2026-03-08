@@ -10,7 +10,7 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
-import { streamCompletion, powerfulModel, type LlmResponse } from '../llm'
+import { streamCompletion, powerfulModel, isReasoningModel, type LlmResponse } from '../llm'
 import { startTurnTracking, flushTurnFiles, type SearchStatusCallback } from '../tools'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import { executeTool as executeRegistryTool } from '../tools/index'
@@ -20,7 +20,7 @@ import type { AgentStep } from '../../types'
 import { detectStack, seedStackTemplate } from '../stackTemplates'
 import { getToolDefinitions } from '../tools/index'
 import type { ToolCall } from '../llm'
-import { verifyExecution, type VerificationContext } from './VerificationAgent'
+import { verifyExecution, verifyPhaseGate, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS, CONTEXT_WINDOWS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
@@ -179,7 +179,8 @@ export class ExecutionAgent extends BaseAgent {
 
       // Determine active tools for the current plan phase (phase-aware masking)
       const currentPhase = params.plan?.phases.find(p => p.status === 'in_progress')
-      const activeTools = currentPhase ? this.getActiveToolsForPhase(currentPhase.title) : []
+      const phaseStepTools = currentPhase?.steps.map(s => s.tools ?? [])
+      const activeTools = currentPhase ? this.getActiveToolsForPhase(currentPhase.title, phaseStepTools) : []
 
       // Use ContextBuilder to produce a cache-optimised messages array.
       // It inserts: stable system prefix → env summary → cache breakpoint → memory → plan → user messages.
@@ -344,6 +345,7 @@ export class ExecutionAgent extends BaseAgent {
           reasoningContent,
           toolDefs,
           env,
+          params.plan,
         )
 
     if (toolResult === 'aborted' || toolResult === 'complete') {
@@ -605,6 +607,7 @@ export class ExecutionAgent extends BaseAgent {
     reasoningContent: string | null | undefined,
     toolDefs: ReturnType<typeof getToolDefinitions>,
     env: 'sandbox' | 'browser-only',
+    plan?: ExecutionConfigParams['plan'],
   ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
@@ -620,13 +623,9 @@ export class ExecutionAgent extends BaseAgent {
       }
       if (reasoningContent) {
         const currentModel = useAppStore.getState().model
-        const isReasoningModel =
-          currentModel.includes('deepseek-r1') ||
-          currentModel.includes('deepseek-reasoner') ||
-          currentModel.includes('deepseek/deepseek-r1')
-          if (isReasoningModel) {
-            assistantMsg.reasoning_content = reasoningContent
-          }
+        if (isReasoningModel(currentModel)) {
+          assistantMsg.reasoning_content = reasoningContent
+        }
       }
     messages.push(assistantMsg)
 
@@ -662,8 +661,29 @@ export class ExecutionAgent extends BaseAgent {
          continue
        }
 
+       // ── Identical-call loop detection ──────────────────────────────────────
+       // If the model calls the same tool with the exact same args more than
+       // IDENTICAL_CALL_CAP times, it's stuck without surfacing an error.
+       // Inject a strategy-shift nudge rather than silently re-executing.
+       if (this.errorTracker.recordCall(fnName, args)) {
+         const loopMsg = `[LOOP DETECTED] You have called "${fnName}" with the same arguments ${ErrorTracker.IDENTICAL_CALL_CAP + 1}+ times. The result will not change. You MUST try a different approach, use a different tool, or re-read the task plan and pivot strategy.`
+         this.emitToolResult(taskId, messageId, callId, loopMsg, true)
+         messages.push({
+           role: 'tool',
+           content: `Error: ${loopMsg}`,
+           tool_call_id: callId,
+           tool_name: fnName,
+         })
+         this.pushOrReplaceSystemMessage(
+           messages,
+           '[LOOP DETECTED]',
+           `[LOOP DETECTED] "${fnName}" has been called with identical arguments repeatedly. Do NOT call it again with the same args. Change strategy.`,
+         )
+         continue
+       }
+
        // ── Hard block: tool exceeded strike cap — short-circuit without calling it ──
-       if (this.errorTracker.isBlocked(fnName)) {
+        if (this.errorTracker.isBlocked(fnName)) {
          const prevErrors = this.errorTracker.attempts(fnName)
          const blockMsg =
            `[BLOCKED] "${fnName}" has been disabled after ${this.errorTracker.getStrikes(fnName)} consecutive failures.\n` +
@@ -755,12 +775,28 @@ export class ExecutionAgent extends BaseAgent {
         tool_name: fnName,
       })
 
-       // Auto-update task plan progress on meaningful work (not bookkeeping tools)
-       const nonProgressTools = new Set([
-         'think', 'update_plan', 'save_memory', 'save_preference',
-         'read_file', 'list_files', 'search_files', 'analyze_code',
-       ])
-       if (!isError && !nonProgressTools.has(fnName)) {
+      // ── Phase-gate verification ────────────────────────────────────────────
+      // After update_plan marks a phase as complete, run a quick (no-LLM)
+      // verification gate. If it finds truncated files or syntax errors it
+      // injects a correction nudge before the next iteration — not after.
+      if (!isError && fnName === 'update_plan' && plan) {
+        const gateIssues = await this.runPhaseGate(plan, taskId)
+        if (gateIssues.length > 0) {
+          const issueLines = gateIssues.map(i => `- ${i.message}${i.correction ? ` → ${i.correction}` : ''}`).join('\n')
+          this.pushOrReplaceSystemMessage(
+            messages,
+            '[Phase Gate]',
+            `[Phase Gate] Quick verification found issues in the files written so far:\n${issueLines}\n\nAddress these before continuing to the next phase.`,
+          )
+        }
+      }
+
+       // Auto-update task plan progress — only for write_file/edit_file/patch_file,
+       // not every non-trivial tool call. Prevents false-positive advancement when
+       // the model does multiple reads, shell commands, or saves before a real step completes.
+       // The LLM is instructed to use update_plan — this is a safety net for file writes only.
+       const writeTools = new Set(['write_file', 'edit_file', 'patch_file'])
+       if (!isError && writeTools.has(fnName)) {
          this.updateTaskPlanProgress(taskId)
        }
 
@@ -784,14 +820,66 @@ export class ExecutionAgent extends BaseAgent {
   // ── Helper Methods ─────────────────────────────────────────────────────────────
 
   /**
-   * Map a plan phase title to a list of active tool names for phase-aware masking.
-   * Returns an empty array when all tools should remain available (no masking).
+   * Run a quick (no-LLM) phase-gate verification after update_plan signals
+   * phase completion. Returns only error/warning issues found in current files.
    */
-  private getActiveToolsForPhase(phaseTitle: string): string[] {
-    const lowerTitle = phaseTitle.toLowerCase()
+  private async runPhaseGate(
+    plan: ExecutionConfigParams['plan'],
+    taskId: string,
+  ): Promise<import('./VerificationAgent').VerificationResult['issues']> {
+    if (!plan) return []
+    const workspace = workspaceManager.getWorkspaceSync(taskId)
+    if (!workspace) return []
 
+    const createdFiles: Array<{ path: string; content: string }> = []
+    for (const [path, content] of workspace.entries()) {
+      if (!path.startsWith('.') && path !== 'task_plan.md' && path !== 'findings.md') {
+        createdFiles.push({ path, content })
+      }
+    }
+    if (createdFiles.length === 0) return []
+
+    try {
+      const result = await verifyPhaseGate({
+        task: { id: taskId, title: plan.title, status: 'in_progress', createdAt: new Date() },
+        userInput: plan.title,
+        messages: [],
+        tools: [],
+        taskId,
+        plan,
+        executionOutput: '',
+        createdFiles,
+        quick: true,
+      })
+      // Only surface errors, not warnings — to avoid noise on minor items
+      return result.issues.filter(i => i.type === 'error')
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Map a plan phase to a list of active tool names for phase-aware masking.
+   * Returns an empty array when all tools should remain available (no masking).
+   *
+   * Priority order:
+   * 1. If the phase's steps have explicit tool lists, use their union (data-driven).
+   * 2. Fall back to keyword matching on the phase title (legacy).
+   */
+  private getActiveToolsForPhase(phaseTitle: string, phaseStepTools?: string[][]): string[] {
     // Always include utility tools regardless of phase
     const always = ['think', 'complete', 'update_plan', 'save_memory', 'save_preference']
+
+    // ── Data-driven: use tools declared in the plan steps ─────────────────────
+    if (phaseStepTools && phaseStepTools.length > 0) {
+      const declared = phaseStepTools.flat().filter(Boolean)
+      if (declared.length > 0) {
+        return [...new Set([...always, ...declared])]
+      }
+    }
+
+    // ── Keyword fallback ───────────────────────────────────────────────────────
+    const lowerTitle = phaseTitle.toLowerCase()
 
     if (lowerTitle.includes('research') || lowerTitle.includes('gather') || lowerTitle.includes('search')) {
       return [...always, 'search_web', 'http_fetch', 'browser_navigate', 'browser_extract', 'browser_extract_links', 'browser_screenshot', 'browser_analyze_screenshot', 'browser_aria_snapshot', 'browser_scroll', 'browser_wait_for', 'read_file', 'write_file']
@@ -909,7 +997,12 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
       for (const toolIndex of block.toolResultIndices) {
         const toolMessage = messages[toolIndex]
         if (toolMessage && toolMessage.role === 'tool') {
-          toolMessage.content = '[Observation masked for brevity. The tool call was successful.]'
+          // Replace the message object (not mutate) so any external references
+          // to the original object retain the full content for observability.
+          messages[toolIndex] = {
+            ...toolMessage,
+            content: '[Observation masked for brevity. The tool call was successful.]',
+          }
           maskedCount++
         }
       }

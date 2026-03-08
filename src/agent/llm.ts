@@ -75,6 +75,20 @@ export interface LlmResponse {
 // IMPORTANT: 'deepseek-reasoner' is the model ID for BOTH R1 and R1-0528 on
 // api.deepseek.com. We must check the model registry supportsTools field first
 // before falling back to name-based heuristics to handle this ambiguity.
+
+/**
+ * Returns true if the model emits `reasoning_content` tokens (DeepSeek R1 family).
+ * Use this single utility instead of scattered inline string checks.
+ */
+export function isReasoningModel(modelId: string): boolean {
+  const id = modelId.toLowerCase()
+  return (
+    id.includes('deepseek-r1') ||
+    id.includes('deepseek-reasoner') ||
+    id.includes('deepseek/deepseek-r1')
+  )
+}
+
 function modelSupportsTools(model: string): boolean {
   // Registry lookup takes precedence — it has the definitive supportsTools value
   // for each canonical model, including the ambiguous deepseek-reasoner case.

@@ -378,7 +378,10 @@ Respond ONLY with the JSON, no other text.`
 
 /**
  * Convenience function to generate a plan.
+ * Uses a module-level singleton to avoid spinning up a new agent on every call.
  */
+const _sharedPlanningAgent = new PlanningAgent('planning', 'planner')
+
 export async function generatePlan(
   userInput: string,
   apiKey: string,
@@ -387,12 +390,11 @@ export async function generatePlan(
   provider: string,
   config?: PlanningConfig,
 ): Promise<ExecutionPlan> {
-  const agent = new PlanningAgent('planning', 'planner')
-  if (config) agent.setConfig(config)
+  if (config) _sharedPlanningAgent.setConfig(config)
 
-    const result = await agent.execute({
-      task: { id: 'planning-task', title: 'Planning Task', status: 'pending', createdAt: new Date() },
-      userInput,
+  const result = await _sharedPlanningAgent.execute({
+    task: { id: 'planning-task', title: 'Planning Task', status: 'pending', createdAt: new Date() },
+    userInput,
     messages: [],
     tools: [],
     apiKey,

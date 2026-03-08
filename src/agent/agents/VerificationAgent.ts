@@ -7,6 +7,11 @@
  * 3. Validates file operations
  * 4. Suggests corrections when needed
  * 5. Provides structured feedback for self-correction
+ *
+ * It can be used in two modes:
+ * - Full mode (default): runs all checks including LLM analysis
+ * - Quick mode: runs only code-level checks (no LLM call), used as a
+ *   periodic phase gate inside the execution loop
  */
 
 import { BaseAgent } from '../core/BaseAgent'
@@ -15,6 +20,36 @@ import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../co
 import { chatOnceViaGateway } from '../llm'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import { useAppStore } from '../../store'
+import { createLogger } from '../../lib/logger'
+
+const log = createLogger('VerificationAgent')
+
+// ── Structured tool definition for forced JSON verification output ─────────────
+const VERIFY_TOOL = {
+  type: 'function' as const,
+  function: {
+    name: 'report_issues',
+    description: 'Report issues found in the execution output.',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        issues: {
+          type: 'array' as const,
+          items: {
+            type: 'object' as const,
+            properties: {
+              type: { type: 'string', enum: ['error', 'warning', 'suggestion'] },
+              message: { type: 'string' },
+              correction: { type: 'string' },
+            },
+            required: ['type', 'message'],
+          },
+        },
+      },
+      required: ['issues'],
+    },
+  },
+}
 
 /**
  * Verification context parameters.
@@ -28,6 +63,12 @@ export interface VerificationContext extends AgentContext {
   executionOutput: string
   /** Files created during execution */
   createdFiles?: Array<{ path: string; content: string }>
+  /**
+   * Quick mode: skip the LLM-based analysis step.
+   * Use for periodic phase-gate checks inside the execution loop.
+   * Default: false (full verification).
+   */
+  quick?: boolean
 }
 
 /**
@@ -371,8 +412,8 @@ export class VerificationAgent extends BaseAgent {
       })
     }
 
-    // LLM-based analysis for deeper issues
-    const deepIssues = await this.analyzeWithLLM(context)
+    // LLM-based analysis for deeper issues (skipped in quick mode)
+      const deepIssues = context.quick ? [] : await this.analyzeWithLLM(context)
     issues.push(...deepIssues)
 
     return issues
@@ -380,14 +421,12 @@ export class VerificationAgent extends BaseAgent {
 
   /**
    * Use LLM to analyze execution for deeper issues.
+   * Tries forced tool_choice (structured output) first; falls back to
+   * free-text + regex JSON parse if the provider doesn't support it.
    */
   private async analyzeWithLLM(context: VerificationContext): Promise<AgentIssue[]> {
     const { executionOutput, plan } = context
 
-    // Resolve a gateway-aware model for verification.
-    // context.model is typed on AgentContext but may be undefined at call sites
-    // (e.g. ExecutionAgent.runVerification). Fall through to resolveConnection() so
-    // we always pick a model valid for the active gateway rather than an OR hardcode.
     const conn = useAppStore.getState().resolveConnection()
     const verifyModel: string = conn.model || 'anthropic/claude-3-haiku'
 
@@ -406,29 +445,74 @@ Check for:
 3. Missing deliverables
 4. Quality issues
 
-Respond in JSON format:
-{
-  "issues": [
-    {
-      "type": "error" | "warning" | "suggestion",
-      "message": "Brief description",
-      "correction": "How to fix"
+If no issues found, return an empty issues array.`
+
+    // ── Try structured output via tool_choice ──────────────────────────────
+    const structured = await this.callWithStructuredOutput(prompt, verifyModel, conn)
+    if (structured) {
+      return (structured.issues || []) as AgentIssue[]
     }
-  ]
-}
 
-If no issues found, return {"issues": []}.`
-
+    // ── Fallback: free-text + regex parse ─────────────────────────────────
     try {
-      const response = await chatOnceViaGateway(prompt, 1000, verifyModel)
-
-      const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+      const response = await chatOnceViaGateway(prompt + '\n\nRespond ONLY with JSON: { "issues": [...] }', 1000, verifyModel)
+      const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || response.match(/(\{[\s\S]*\})/)
       const jsonStr = jsonMatch ? jsonMatch[1] : response
-
       const parsed = JSON.parse(jsonStr)
       return parsed.issues || []
     } catch {
       return []
+    }
+  }
+
+  /**
+   * Attempt structured output via forced tool_choice.
+   * Returns null if the provider doesn't support it.
+   */
+  private async callWithStructuredOutput(
+    prompt: string,
+    model: string,
+    conn: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
+  ): Promise<{ issues: AgentIssue[] } | null> {
+    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek'
+    if (noToolChoice) return null
+
+    try {
+      const base = (conn.apiBase ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '')
+      const url = `${base}/chat/completions`
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${conn.apiKey}`,
+        ...(conn.extraHeaders ?? {}),
+      }
+      if (conn.provider === 'openrouter') {
+        headers['HTTP-Referer'] = 'https://nasus.app'
+        headers['X-Title'] = 'Nasus'
+      }
+
+      const body = JSON.stringify({
+        model,
+        max_tokens: 1000,
+        stream: false,
+        tools: [VERIFY_TOOL],
+        tool_choice: { type: 'function', function: { name: 'report_issues' } },
+        messages: [{ role: 'user', content: prompt }],
+      })
+
+      const resp = await fetch(url, { method: 'POST', headers, body })
+      if (!resp.ok) {
+        log.warn(`Verification tool_choice failed (HTTP ${resp.status}), falling back to free-text`)
+        return null
+      }
+
+      const json = await resp.json()
+      const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0]
+      if (!toolCall?.function?.arguments) return null
+
+      return JSON.parse(toolCall.function.arguments) as { issues: AgentIssue[] }
+    } catch (err) {
+      log.warn('Verification callWithStructuredOutput failed', err instanceof Error ? err : new Error(String(err)))
+      return null
     }
   }
 
@@ -519,13 +603,18 @@ If no issues found, return {"issues": []}.`
 }
 
 /**
+ * Module-level singleton — avoids spinning up a new VerificationAgent on every call.
+ * VerificationAgent has no per-instance mutable state beyond BaseAgent internals.
+ */
+const _sharedVerificationAgent = new VerificationAgent('verification', 'verifier')
+
+/**
  * Convenience function to verify execution results.
  */
 export async function verifyExecution(
   context: VerificationContext,
 ): Promise<VerificationResult> {
-  const agent = new VerificationAgent('verification', 'verifier')
-  const result = await agent.execute(context)
+  const result = await _sharedVerificationAgent.execute(context)
 
   if (result.metadata?.verificationResult) {
     return result.metadata.verificationResult as VerificationResult
@@ -544,4 +633,15 @@ export async function verifyExecution(
     confidence: 1.0,
     corrections: [],
   }
+}
+
+/**
+ * Quick phase-gate verification — no LLM call.
+ * Returns issues found by code-level checks only.
+ * Use inside the execution loop after phase transitions.
+ */
+export async function verifyPhaseGate(
+  context: VerificationContext,
+): Promise<VerificationResult> {
+  return verifyExecution({ ...context, quick: true })
 }
