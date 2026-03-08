@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { ExecutionPlan } from '../agent/core/Agent'
+import { stopWebAgent } from '../agent/index'
 
 export interface AgentSlice {
   pendingPlan: ExecutionPlan | null
@@ -15,8 +16,10 @@ export interface AgentSlice {
   setCurrentPlan: (plan: ExecutionPlan | null) => void
   setCurrentPhase: (phase: number) => void
   setCurrentStep: (step: number) => void
-  approvePlan: () => void
-  rejectPlan: () => void
+  /** Approve the pending plan. Pass the taskId explicitly so it's always correct. */
+  approvePlan: (taskId: string) => void
+  /** Reject (Skip) the pending plan. Stops the agent and sets task to 'stopped'. */
+  rejectPlan: (taskId: string) => void
 
   resetPlanState: () => void
 
@@ -39,21 +42,20 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   setCurrentPhase: (phase) => set({ currentPhase: phase }),
   setCurrentStep: (step) => set({ currentStep: step }),
 
-  approvePlan: () => {
-    const activeTaskId = (get() as { activeTaskId?: string | null }).activeTaskId
+  approvePlan: (taskId: string) => {
     set({ planApprovalStatus: 'approved', pendingPlan: null, currentPlan: null })
-    if (activeTaskId) {
-      window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${activeTaskId}`))
-    }
+    window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${taskId}`))
   },
 
-    rejectPlan: () => {
-      const activeTaskId = (get() as { activeTaskId?: string | null }).activeTaskId
-      set({ planApprovalStatus: 'rejected', pendingPlan: null })
-      if (activeTaskId) {
-        window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${activeTaskId}`))
-      }
-    },
+  rejectPlan: (taskId: string) => {
+    set({ planApprovalStatus: 'rejected', pendingPlan: null })
+    // Stop the running agent cleanly
+    stopWebAgent(taskId)
+    // Mark task stopped (not failed — user chose to skip)
+    const store = get() as { updateTaskStatus?: (id: string, status: string) => void }
+    if (store.updateTaskStatus) store.updateTaskStatus(taskId, 'stopped')
+    window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${taskId}`))
+  },
 
   resetPlanState: () => {
     set({

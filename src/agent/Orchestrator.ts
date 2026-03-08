@@ -296,8 +296,8 @@ export class AgentOrchestrator {
       }),
     )
 
-    // Update task status
-    useAppStore.getState().updateTaskStatus(taskId, 'failed')
+    // User chose to skip — mark stopped, not failed
+    useAppStore.getState().updateTaskStatus(taskId, 'stopped')
   }
 }
 

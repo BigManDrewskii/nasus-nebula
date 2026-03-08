@@ -1,16 +1,17 @@
 /**
- * PlanConfirmationModal — Lovable-style full-screen plan overlay.
+ * PlanConfirmationModal — Lovable-style plan panel anchored above the chat input.
  *
- * Shows on every new agent run. Three actions:
- *   Skip    — bypass planning entirely, run the agent directly
- *   Edit    — (future) edit the plan inline; for now same as approve
- *   Approve — approve and begin execution (shows loading spinner)
+ * Renders as a fixed panel that sits just above the input area (bottom of chat).
+ * Three actions:
+ *   Skip    — close panel + stop agent (task set to 'stopped')
+ *   Edit    — enter edit mode so user can tweak the plan description before approving
+ *   Approve — approve and begin execution
  *
  * PlanView (compact) — used inline in the message list during execution.
- * CompactPlanView     — thin alias kept for backwards compat.
+ * CompactPlanView    — thin alias for PlanView in read-only mode.
  */
 
-import { memo, useState, useEffect } from 'react'
+import { memo, useState, useEffect, useRef, useCallback } from 'react'
 import type { ExecutionPlan, PlanPhase, PlanStep, PlanFile } from '../agent/core/Agent'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
@@ -70,14 +71,14 @@ function PhaseRow({ phase, index }: { phase: PlanPhase; index: number }) {
   )
 }
 
-// ─── Complexity badge ─────────────────────────────────────────────────────────
+// ─── Complexity badge colors ──────────────────────────────────────────────────
 
-const COMPLEXITY_COLOR = {
-  low: 'rgba(74,222,128,0.15)',
-  medium: 'rgba(234,179,8,0.15)',
-  high: 'rgba(248,113,113,0.15)',
+const COMPLEXITY_BG = {
+  low: 'rgba(74,222,128,0.12)',
+  medium: 'rgba(234,179,8,0.12)',
+  high: 'rgba(248,113,113,0.12)',
 }
-const COMPLEXITY_TEXT = {
+const COMPLEXITY_FG = {
   low: '#4ade80',
   medium: '#eab308',
   high: '#f87171',
@@ -87,27 +88,62 @@ const COMPLEXITY_TEXT = {
 
 export const PlanConfirmationModal = memo(function PlanConfirmationModal({
   plan,
+  taskId,
   onApprove,
   onReject,
 }: {
   plan: ExecutionPlan
-  onApprove: () => void
-  onReject: () => void
+  /** The task ID — passed explicitly so approve/reject always target the right task */
+  taskId: string
+  onApprove: (taskId: string) => void
+  onReject: (taskId: string) => void
 }) {
   const [approving, setApproving] = useState(false)
+  // Edit mode: shows a textarea to tweak the plan description before approving
+  const [editMode, setEditMode] = useState(false)
+  const [editedDescription, setEditedDescription] = useState(plan.description ?? '')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Close on Escape → treat as "Skip"
+  // Focus textarea when edit mode opens
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onReject()
+    if (editMode) {
+      setTimeout(() => textareaRef.current?.focus(), 60)
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onReject])
+  }, [editMode])
+
+  // Escape: if in edit mode, exit edit mode; otherwise skip
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      if (editMode) {
+        setEditMode(false)
+      } else {
+        onReject(taskId)
+      }
+    }
+  }, [editMode, onReject, taskId])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
+  function handleSkip() {
+    onReject(taskId)
+  }
+
+  function handleEdit() {
+    setEditMode(true)
+    setEditedDescription(plan.description ?? plan.title)
+  }
+
+  function handleEditCancel() {
+    setEditMode(false)
+    setEditedDescription(plan.description ?? '')
+  }
 
   function handleApprove() {
     setApproving(true)
-    onApprove()
+    onApprove(taskId)
   }
 
   const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
@@ -115,14 +151,13 @@ export const PlanConfirmationModal = memo(function PlanConfirmationModal({
   const hasFiles = plan.files && plan.files.length > 0
 
   return (
-    <div className="plm-backdrop" onClick={onReject}>
-      <div
-        className="plm-card"
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Execution plan"
-      >
+    <div className="plm-overlay" role="dialog" aria-modal="true" aria-label="Execution plan">
+      {/* Dim backdrop — clicking it = Skip */}
+      <div className="plm-backdrop" onClick={handleSkip} />
+
+      {/* The panel itself sits above the input */}
+      <div className="plm-panel" onClick={e => e.stopPropagation()}>
+
         {/* ── Header ── */}
         <div className="plm-header">
           <div className="plm-header-icon">
@@ -136,8 +171,8 @@ export const PlanConfirmationModal = memo(function PlanConfirmationModal({
             <span
               className="plm-complexity-badge"
               style={{
-                background: COMPLEXITY_COLOR[complexity],
-                color: COMPLEXITY_TEXT[complexity],
+                background: COMPLEXITY_BG[complexity],
+                color: COMPLEXITY_FG[complexity],
               }}
             >
               {complexity}
@@ -146,70 +181,116 @@ export const PlanConfirmationModal = memo(function PlanConfirmationModal({
               {plan.phases.length} phases · {totalSteps} steps
             </span>
           </div>
+          {/* Close (Skip) button in corner */}
+          <button className="plm-close-btn" onClick={handleSkip} aria-label="Skip plan">
+            <Pxi name="x" size={10} />
+          </button>
         </div>
 
-        {/* ── Description ── */}
-        {plan.description && (
-          <p className="plm-description">{plan.description}</p>
-        )}
-
-        {/* ── Scrollable body ── */}
-        <div className="plm-body custom-scrollbar">
-          {/* Phases */}
-          <div className="plm-phases">
-            {plan.phases.map((phase, i) => (
-              <PhaseRow key={phase.id} phase={phase} index={i} />
-            ))}
+        {/* ── Edit mode ── */}
+        {editMode ? (
+          <div className="plm-edit-body">
+            <p className="plm-edit-label">
+              Edit the plan description before approving:
+            </p>
+            <textarea
+              ref={textareaRef}
+              className="plm-edit-textarea custom-scrollbar"
+              value={editedDescription}
+              onChange={e => setEditedDescription(e.target.value)}
+              rows={5}
+              spellCheck={false}
+            />
+            <div className="plm-edit-footer">
+              <button className="plm-btn plm-btn--skip" onClick={handleEditCancel}>
+                Cancel
+              </button>
+              <button
+                className="plm-btn plm-btn--approve"
+                onClick={handleApprove}
+                disabled={approving}
+              >
+                {approving ? (
+                  <>
+                    <span className="plm-spinner" />
+                    Starting…
+                  </>
+                ) : (
+                  <>
+                    <Pxi name="play" size={9} />
+                    Approve &amp; run
+                  </>
+                )}
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            {/* ── Scrollable body ── */}
+            <div className="plm-body custom-scrollbar">
+              {/* Plan description */}
+              {plan.description && (
+                <p className="plm-description">{plan.description}</p>
+              )}
 
-          {/* Files */}
-          {hasFiles && (
-            <div className="plm-files-section">
-              <p className="plm-files-label">
-                <Pxi name="file-code" size={10} style={{ marginRight: 5 }} />
-                Files affected
-              </p>
-              <div className="plm-files-grid">
-                {plan.files!.map((f, i) => (
-                  <FileChip key={i} file={f} />
+              {/* Phases */}
+              <div className="plm-phases">
+                {plan.phases.map((phase, i) => (
+                  <PhaseRow key={phase.id} phase={phase} index={i} />
                 ))}
               </div>
-            </div>
-          )}
-        </div>
 
-        {/* ── Footer ── */}
-        <div className="plm-footer">
-          <button className="plm-btn plm-btn--skip" onClick={onReject}>
-            Skip
-          </button>
-          <div className="plm-footer-right">
-            <button
-              className="plm-btn plm-btn--edit"
-              onClick={handleApprove}
-              disabled={approving}
-            >
-              Edit
-            </button>
-            <button
-              className="plm-btn plm-btn--approve"
-              onClick={handleApprove}
-              disabled={approving}
-            >
-              {approving ? (
-                <>
-                  <span className="plm-spinner" />
-                  Starting…
-                </>
-              ) : (
-                <>
-                  <Pxi name="play" size={9} />
-                  Approve plan
-                </>
+              {/* Files */}
+              {hasFiles && (
+                <div className="plm-files-section">
+                  <p className="plm-files-label">
+                    <Pxi name="file-code" size={10} style={{ marginRight: 5 }} />
+                    Files affected
+                  </p>
+                  <div className="plm-files-grid">
+                    {plan.files!.map((f, i) => (
+                      <FileChip key={i} file={f} />
+                    ))}
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
-        </div>
+            </div>
+
+            {/* ── Footer ── */}
+            <div className="plm-footer">
+              <button className="plm-btn plm-btn--skip" onClick={handleSkip}>
+                Skip
+              </button>
+              <div className="plm-footer-right">
+                <button
+                  className="plm-btn plm-btn--edit"
+                  onClick={handleEdit}
+                  disabled={approving}
+                >
+                  <Pxi name="pencil" size={9} />
+                  Edit
+                </button>
+                <button
+                  className="plm-btn plm-btn--approve"
+                  onClick={handleApprove}
+                  disabled={approving}
+                >
+                  {approving ? (
+                    <>
+                      <span className="plm-spinner" />
+                      Starting…
+                    </>
+                  ) : (
+                    <>
+                      <Pxi name="play" size={9} />
+                      Approve plan
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
@@ -320,9 +401,8 @@ const PhaseBlock = memo(function PhaseBlock({
 })
 
 export const PlanView = memo(function PlanView({
-  plan, onApprove, onReject, currentPhase, currentStep, isReadOnly,
+  plan, currentPhase, currentStep, isReadOnly,
 }: PlanViewProps) {
-  const isApproval = !!onApprove && !!onReject && !isReadOnly
   const [collapsed, setCollapsed] = useState(false)
 
   const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
@@ -335,60 +415,43 @@ export const PlanView = memo(function PlanView({
     <div
       className="fade-in pv-root"
       style={{
-        border: isApproval ? '1px solid rgba(234,179,8,0.2)' : '1px solid rgba(255,255,255,0.08)',
-        boxShadow: isApproval
-          ? '0 0 0 1px rgba(234,179,8,0.05) inset, 0 12px 40px rgba(0,0,0,0.5)'
-          : '0 4px 20px rgba(0,0,0,0.35)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
       }}
     >
       {/* Header */}
       <div
         className="flex-v-center pv-header"
         style={{ borderBottom: collapsed ? 'none' : '1px solid rgba(255,255,255,0.06)' }}
-        onClick={() => setCollapsed(o => !o)}
+        onClick={() => !isReadOnly && setCollapsed(o => !o)}
       >
         <div
           className="flex-center flex-shrink-0 pv-header-icon"
           style={{
-            background: isApproval ? 'rgba(234,179,8,0.1)' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${isApproval ? 'rgba(234,179,8,0.2)' : 'rgba(255,255,255,0.08)'}`,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.08)',
           }}
         >
-          {isApproval
-            ? <NasusLogo size={14} fill="var(--amber)" />
-            : <Pxi name="cpu" size={13} className="text-secondary" />
-          }
+          <Pxi name="cpu" size={13} className="text-secondary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p
-            className="font-display pv-header-title"
-            style={{ color: isApproval ? 'var(--amber-soft)' : 'var(--tx-primary)' }}
-          >
-            {isApproval ? 'Execution Plan' : plan.title}
+          <p className="font-display pv-header-title" style={{ color: 'var(--tx-primary)' }}>
+            {plan.title}
           </p>
-          {isApproval ? (
-            <p className="text-tertiary pv-header-subtitle truncate">{plan.title}</p>
-          ) : (
-            <p className="text-tertiary font-mono pv-header-subtitle">
-              Phase {completedPhases + 1} / {plan.phases.length}
-            </p>
-          )}
+          <p className="text-tertiary font-mono pv-header-subtitle">
+            Phase {completedPhases + 1} / {plan.phases.length}
+          </p>
         </div>
         <div className="flex-v-center flex-shrink-0 pv-header-right">
-          {isApproval && !collapsed && (
-            <span className="font-mono text-muted pv-phases-badge">
-              {plan.phases.length} phases · {totalSteps} steps
-            </span>
+          {!isReadOnly && (
+            <div className="flex-center pv-chevron-btn">
+              <Pxi name={collapsed ? 'chevron-down' : 'chevron-up'} size={10} className="text-tertiary" />
+            </div>
           )}
-          <div className="flex-center pv-chevron-btn">
-            <Pxi name={collapsed ? 'chevron-down' : 'chevron-up'} size={10} className="text-tertiary" />
-          </div>
-        </div>
-        {!isApproval && (
           <div className="pv-progress-track absolute">
             <div className="pv-progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
-        )}
+        </div>
       </div>
 
       {/* Body */}
@@ -397,9 +460,9 @@ export const PlanView = memo(function PlanView({
           <div
             className="custom-scrollbar flex-col pv-phases-list"
             style={{
-              maxHeight: isApproval ? 400 : 340,
-              padding: isApproval ? '10px 14px 14px' : '10px 12px 12px',
-              gap: isApproval ? 0 : 3,
+              maxHeight: 340,
+              padding: '10px 12px 12px',
+              gap: 3,
             }}
           >
             {plan.phases.map((phase, i) => (
@@ -413,12 +476,10 @@ export const PlanView = memo(function PlanView({
               />
             ))}
           </div>
-          {!isApproval && (
-            <div className="flex-v-center pv-exec-footer">
-              <span className="pv-exec-pulse" />
-              <span className="text-tertiary font-mono pv-exec-total">{totalSteps} steps total</span>
-            </div>
-          )}
+          <div className="flex-v-center pv-exec-footer">
+            <span className="pv-exec-pulse" />
+            <span className="text-tertiary font-mono pv-exec-total">{totalSteps} steps total</span>
+          </div>
         </>
       )}
     </div>

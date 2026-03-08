@@ -722,15 +722,6 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                       </div>
                     ))}
 
-                      {/* Plan approval modal — rendered as fixed overlay */}
-                      {pendingPlan && (
-                        <PlanConfirmationModal
-                          plan={pendingPlan}
-                          onApprove={approvePlan}
-                          onReject={rejectPlan}
-                        />
-                      )}
-
                     <div ref={bottomRef} />
                   </div>
                 </div>
@@ -763,6 +754,16 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
               </button>
             </div>
           )}
+
+              {/* Plan confirmation panel — sits above the input, outside the scroll container */}
+              {pendingPlan && task && (
+                <PlanConfirmationModal
+                  plan={pendingPlan}
+                  taskId={task.id}
+                  onApprove={approvePlan}
+                  onReject={rejectPlan}
+                />
+              )}
 
               {/* Input */}
               <div className="flex-shrink-0 px-5 pb-5 pt-1">
