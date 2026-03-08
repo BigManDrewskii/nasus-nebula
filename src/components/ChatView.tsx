@@ -21,7 +21,7 @@ import { ChatEmptyState } from './chat/ChatEmptyState'
 interface ChatViewProps {
   task: Task | null
   onNewTask: () => void
-  onOpenSettings: () => void
+  onOpenSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
     outputVisible?: boolean
     onShowOutput?: () => void
     workspaceFileCount?: number
@@ -31,7 +31,7 @@ interface ChatViewProps {
     onToggleRight?: () => void
   }
   
-  export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
+export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
   const {
       messages: allMessages,
       getMessages,
@@ -443,7 +443,7 @@ interface ChatViewProps {
           const needsKey = effectiveProvider !== 'ollama' && !effectiveKey.trim()
             if (needsKey) {
               addToast('Add your API key in Settings before sending.', 'red')
-              onOpenSettings()
+              onOpenSettings('model')
               return
             }
 
@@ -608,13 +608,12 @@ interface ChatViewProps {
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === 'n') { e.preventDefault(); onNewTask() }
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
       if (e.key === 'Escape' && isActive && !showMemory) { e.preventDefault(); handleStopRef.current?.() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, showMemory, onNewTask, onOpenSettings])
+  }, [isActive, showMemory, onOpenSettings])
 
   // Slice from index 1 to skip the persisted welcome message (shown only in empty state)
   const visibleMessages = messages.slice(1)

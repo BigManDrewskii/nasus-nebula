@@ -191,7 +191,9 @@ function App() {
     function handler(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
         if (!mod) return
-        // Toggle left sidebar: ⌘ B
+          // New task: ⌘ N
+          if (e.key === 'n') { e.preventDefault(); handleNewTask() }
+          // Toggle left sidebar: ⌘ B
         if (e.key === 'b') { e.preventDefault(); setLeftCollapsed((v) => !v) }
         // Toggle right panel: ⌘ . or ⌘ Shift \
         if (e.key === '.') { e.preventDefault(); setRightCollapsed((v) => !v) }
@@ -310,7 +312,7 @@ function App() {
           <ChatView
               task={activeTask}
               onNewTask={handleNewTask}
-              onOpenSettings={() => openSettings()}
+              onOpenSettings={(tab) => openSettings(tab)}
               outputVisible={!rightCollapsed}
               onShowOutput={() => setRightCollapsed(false)}
               workspaceFileCount={workspaceFiles.length}

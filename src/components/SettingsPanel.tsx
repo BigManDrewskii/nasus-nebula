@@ -201,15 +201,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     const [modelSearch, setModelSearch] = useState('')
     const modelRef = useRef<HTMLDivElement>(null)
     const modelSearchRef = useRef<HTMLInputElement>(null)
-    const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+      const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    useEffect(() => {
-      return () => {
-        if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-        if (refreshMsgTimerRef.current) clearTimeout(refreshMsgTimerRef.current)
-      }
-    }, [])
+      useEffect(() => {
+        return () => {
+          if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+        }
+      }, [])
 
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null)
@@ -1284,6 +1282,7 @@ function ModelRouterSection({
   onModelOverridesChange: (v: Record<string, boolean>) => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const refreshMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { routerConfig, openRouterModels } = useAppStore(useShallow(s => ({
     routerConfig: s.routerConfig,
     openRouterModels: s.openRouterModels,

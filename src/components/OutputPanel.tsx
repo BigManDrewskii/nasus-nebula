@@ -141,7 +141,7 @@ export function OutputPanel({
   // ── Render always — use visibility to avoid unmounting BrowserPreview etc on collapse ──
   return (
     <div className="output-panel" style={collapsed ? { display: 'none' } : undefined}>
-      <div className="output-panel-tabs" role="tablist" aria-label="Output tabs" data-tauri-drag-region="false">
+      <div className="output-panel-tabs" role="tablist" aria-label="Output tabs">
         {tabs.map((t) => (
           <button
             key={t.id}

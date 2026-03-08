@@ -523,6 +523,9 @@ html, body, #root {
   backdrop-filter: blur(10px);
   flex-shrink: 0;
   height: 40px;
+  /* Opt out of titlebar drag region so all tab buttons receive click events */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .output-panel-spacer {
