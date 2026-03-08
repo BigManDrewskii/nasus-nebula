@@ -526,12 +526,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           focusTrapOptions={{
             initialFocus: false,
             allowOutsideClick: true,
-            escapeDeactivates: true,
-            onDeactivate: onClose,
+            escapeDeactivates: false,
           }}
         >
           <div
             className="fade-in flex-col settings-card"
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose() } }}
           >
           {/* Header */}
           <div className="flex-v-center justify-between shrink-0 settings-header">
