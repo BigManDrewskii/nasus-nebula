@@ -111,7 +111,16 @@ export function OutputPanel({
       }
 
     window.addEventListener('nasus:tool-complete', handleToolComplete)
-    return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
+      return () => window.removeEventListener('nasus:tool-complete', handleToolComplete)
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Switch to Preview tab when serve_preview fires (including browser-mode no-Docker case)
+  useEffect(() => {
+    const handlePreviewReady = () => {
+      setTab('preview')
+    }
+    window.addEventListener('nasus:preview-ready', handlePreviewReady)
+    return () => window.removeEventListener('nasus:preview-ready', handlePreviewReady)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track file count changes separately from the tool-complete listener

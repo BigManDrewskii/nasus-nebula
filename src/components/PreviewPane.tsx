@@ -29,13 +29,13 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
     return byName.get(clean)
   }
 
-  // Inline <link rel="stylesheet" href="...">
+    // Inline <link rel="stylesheet" href="...">
   let result = html.replace(
     /<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*\/?>/gi,
     (_match, href) => {
       const f = resolve(href)
       if (!f) return _match
-        return `<pre style="white-space:pre-wrap;word-break:break-all;font-family:monospace;font-size:12px;padding:8px;margin:0">${f.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`
+      return `<style>${f.content}</style>`
     },
   )
 

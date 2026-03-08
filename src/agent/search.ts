@@ -48,49 +48,64 @@ export type SearchStatusCallback = (event: SearchStatusEvent) => void
  * Fallback search using DuckDuckGo (no API key required).
  */
 async function duckduckgoSearch(query: string, numResults = 5): Promise<SearchResult[]> {
-  // Use the HTML version of DuckDuckGo for easier scraping
-  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
   try {
-    // Add a small delay to avoid rate limiting
-    await new Promise(r => setTimeout(r, 1000))
+    await new Promise(r => setTimeout(r, 500))
 
-    const response = await tauriInvoke<string>('http_fetch', { 
-      url,
+    const response = await tauriInvoke<string>('http_fetch', {
+      url: searchUrl,
       headers: [
-        'User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        'User-Agent', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language', 'en-US,en;q=0.9',
       ]
     })
     if (!response) return []
-    
-    // Response format from Tauri http_fetch is "status\nbody"
+
+    // Tauri http_fetch returns "status\nbody"
     const firstNewline = response.indexOf('\n')
     if (firstNewline === -1) return []
     const html = response.slice(firstNewline + 1)
-    
+
     const results: SearchResult[] = []
-    // Regex to match DuckDuckGo HTML results
-    // Title and URL: <a class="result__a" href="(url)">(title)</a>
-    // Snippet: <a class="result__snippet" ...>(snippet)</a>
-    const resultRegex = /<div class="result nav-link[\s\S]*?<a class="result__a" href="([^"]+)">([\s\S]*?)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
-    
-    let match
-    while ((match = resultRegex.exec(html)) !== null && results.length < numResults) {
-      const url = match[1]
-      const title = match[2].replace(/<[^>]*>/g, '').trim()
-      const snippet = match[3].replace(/<[^>]*>/g, '').trim()
-      
-      if (url && title) {
-        results.push({
-          title,
-          url,
-          snippet,
-          provider: 'duckduckgo'
-        })
+
+    // Extract all result__a links — DDG wraps real URL in a redirect: //duckduckgo.com/l/?uddg=<encoded>
+    // Also handle href that is already a direct URL
+    const titleRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
+    const snippetRegex = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+
+    const titles: Array<{ url: string; title: string }> = []
+    let m: RegExpExecArray | null
+    while ((m = titleRegex.exec(html)) !== null) {
+      let href = m[1].replace(/&amp;/g, '&')
+      // Decode DDG redirect: //duckduckgo.com/l/?uddg=<URL>&rut=...
+      const uddg = href.match(/[?&]uddg=([^&]+)/)
+      if (uddg) {
+        try { href = decodeURIComponent(uddg[1]) } catch { /* keep raw */ }
+      } else if (href.startsWith('//')) {
+        href = 'https:' + href
       }
+      const title = m[2].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim()
+      if (href && title) titles.push({ url: href, title })
     }
+
+    const snippets: string[] = []
+    while ((m = snippetRegex.exec(html)) !== null) {
+      snippets.push(m[1].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim())
+    }
+
+    for (let i = 0; i < Math.min(titles.length, numResults); i++) {
+      results.push({
+        title: titles[i].title,
+        url: titles[i].url,
+        snippet: snippets[i] ?? '',
+        provider: 'duckduckgo',
+      })
+    }
+
     return results
   } catch (e) {
-      log.warn('DuckDuckGo fallback failed', e instanceof Error ? e : new Error(String(e)))
+    log.warn('DuckDuckGo fallback failed', e instanceof Error ? e : new Error(String(e)))
     return []
   }
 }
@@ -152,7 +167,7 @@ export async function runSearch(
       query,
       message: `No results found for "${query}"`,
     })
-    return ''
+    throw new Error(`No search results found for "${query}". Try rephrasing the query or use http_fetch with a direct URL instead.`)
   }
 
   onStatus?.({

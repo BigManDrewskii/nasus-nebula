@@ -45,8 +45,17 @@ export class ServePreviewTool extends BaseTool {
     const cfg: ExecutionConfig = this.executionConfig || { executionMode: 'disabled' }
 
     if (cfg.executionMode === 'disabled') {
-      return toolFailure(
-        'serve_preview requires Docker. Make sure Docker Desktop is running.'
+      // In browser mode (no Docker), HTML files are already rendered live in the Preview tab.
+      // Emit the preview-ready event so the UI switches to the Preview tab automatically.
+      window.dispatchEvent(
+        new CustomEvent('nasus:preview-ready', {
+          detail: { port: null, url: null },
+        }),
+      )
+      return toolSuccess(
+        'Preview is ready. The HTML file is rendered live in the Preview tab.\n' +
+        'The browser renders your HTML + inlined CSS and JS automatically.\n' +
+        'No local server is needed — the Preview tab updates every time you write a file.'
       )
     }
 
