@@ -183,7 +183,6 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
 // ── Brand ─────────────────────────────────────────────────────────────────────
 
 function SidebarBrand({ onCollapse }: { onCollapse?: () => void }) {
-  const [hov, setHov] = useState(false)
   return (
     <div data-tauri-drag-region className="sb-brand">
         <div className="sb-brand-logo-wrap">
@@ -195,16 +194,13 @@ function SidebarBrand({ onCollapse }: { onCollapse?: () => void }) {
         </div>
         {onCollapse && (
           <button
-            onClick={onCollapse}
-            onMouseEnter={() => setHov(true)}
-            onMouseLeave={() => setHov(false)}
-            title="Collapse sidebar (⌘B)"
-            aria-label="Collapse sidebar"
-            className="sb-collapse-btn"
-            style={{ color: hov ? 'var(--tx-secondary)' : 'var(--tx-muted)' }}
-          >
-            <Pxi name="chevron-left" size={11} />
-          </button>
+              onClick={onCollapse}
+              title="Collapse sidebar (⌘B)"
+              aria-label="Collapse sidebar"
+              className="sb-collapse-btn"
+            >
+              <Pxi name="chevron-left" size={11} />
+            </button>
         )}
     </div>
   )

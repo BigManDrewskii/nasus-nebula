@@ -189,34 +189,12 @@ export interface RailButtonProps {
 }
 
 export function RailButton({ icon, title, active = false, amber = false, onClick, style }: RailButtonProps) {
-  const baseStyle: React.CSSProperties = {
-    width: '32px',
-    height: '32px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: '8px',
-    border: '1px solid transparent',
-    background: 'transparent',
-    color: 'var(--tx-muted)',
-    cursor: 'pointer',
-    flexShrink: 0,
-    transition: 'background 0.12s, border-color 0.12s, color 0.12s',
-    margin: '1px 0',
-    ...style,
-  }
-
-  const activeStyle = active ? {
-    background: 'oklch(64% 0.214 40.1 / 0.05)',
-    borderColor: 'oklch(64% 0.214 40.1 / 0.15)',
-  } : {}
-
   return (
     <button
-      className={`sidebar-rail-btn${amber ? ' accent-hover' : ''}${active ? ' active' : ''}`}
+      className={`sidebar-rail-btn${amber ? ' sidebar-rail-btn--amber' : ''}${active ? ' active' : ''}`}
       onClick={onClick}
       title={title}
-      style={{ ...baseStyle, ...activeStyle }}
+      style={style}
     >
       <Pxi name={icon} size={11} />
     </button>

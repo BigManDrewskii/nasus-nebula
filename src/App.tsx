@@ -13,7 +13,6 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
-import { useSidebarResponsive } from './hooks/useSidebarResponsive'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
 
@@ -159,19 +158,9 @@ function App() {
     return () => window.removeEventListener('nasus:browser-activity', handler as EventListener)
   }, [setBrowserActivityActive])
 
-  // Responsive hook for window-size-aware sidebar behavior
-    const responsive = useSidebarResponsive({
-      leftManual: false,
-      rightManual: rightCollapsed,
-      userPreference: sidebarPreference,
-    })
 
-    // Auto-collapse panels based on window size
-    useEffect(() => {
-      if (responsive.shouldAutoCollapseRight && !rightCollapsed) {
-        setRightCollapsed(true)
-      }
-    }, [responsive.shouldAutoCollapseRight, rightCollapsed])
+
+
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()
