@@ -10,22 +10,60 @@ import { useDebouncedStreaming } from '../hooks/useStreaming'
 import { logger } from '../lib/logger'
 import { MarkdownRenderer } from './MarkdownRenderer'
 
-// ─── Narration filter ─────────────────────────────────────────────────────────
-// Strips leading agent narration sentences ("Now I'll...", "Let me...", etc.)
-// that leak through when the model narrates before tool calls, leaving only
-// the substantive summary content.
+// ─── Agent content normalizer ─────────────────────────────────────────────────
+// The model often emits a long run-on stream with colons as separators between
+// narration steps, e.g.:
+//   "Now I'll fetch the file:Now let me create the structure:Let me update..."
+// This normalizer:
+//   1. Inserts \n\n before any colon-joined narration openers so each step
+//      becomes its own paragraph for the markdown renderer.
+//   2. Adds a missing space after sentence-ending punctuation before a capital.
+//   3. Strips up to 2 pure-narration opener sentences from the very beginning
+//      (the ones with no substance, just "Now I'll…").
 
-const NARRATION_RE = /^(?:Now I(?:'ll| will| can| need to| should)|Let me|I(?:'ll| will| can| need to| should| am going to)|Next[, ]I(?:'ll| will)|First[, ]I(?:'ll| will)|Now let(?:'s| me)|I've just|I have just|I(?:'ll| will) now|Everything looks)[^.!?\n]*[.!?]\s*/i
+// Narration openers we split on (after a colon or period with no space)
+const NARRATION_OPENER =
+  /(?<=\S):(?=(?:Now I(?:'ll| will| can| need to| should)\b|Let me\b|I(?:'ll| will| need to| should| am going to)\b|Next[, ]I(?:'ll| will)\b|First[, ]I(?:'ll| will)\b|Now let(?:'s| me)\b|I've just\b|I have just\b|I(?:'ll| will) now\b))/g
 
-function stripLeadingNarration(text: string): string {
-  let s = text.trimStart()
-  // Iteratively strip matching leading sentences (up to 8 times to handle runs)
-  for (let i = 0; i < 8; i++) {
-    const m = s.match(NARRATION_RE)
-    if (!m) break
-    s = s.slice(m[0].length).trimStart()
+// Leading pure-narration sentence (no substantive content — just an action opener)
+const LEADING_NARRATION_RE =
+  /^(?:Now I(?:'ll| will| can| need to| should)|Let me|I(?:'ll| will| can| need to| should| am going to)|Next[, ]I(?:'ll| will)|First[, ]I(?:'ll| will)|Now let(?:'s| me)|I've just|I have just|I(?:'ll| will) now|Everything looks)[^.!?\n]*[.!?]\s*/i
+
+function normalizeAgentContent(text: string): string {
+  if (!text.trim()) return text
+
+  // Step 1: split colon-joined narration runs into separate paragraphs
+  let s = text.replace(NARRATION_OPENER, '\n\n')
+
+  // Step 2: ensure space after sentence-ending punctuation before capital letter
+  // e.g. "done.Now" → "done. Now"
+  s = s.replace(/([.!?])([A-Z])/g, '$1 $2')
+
+  // Step 3: strip leading pure-narration openers (up to 3) and orphaned fragments
+  // (short tail text left after a colon split, e.g. " css file\n\nNow I'll…")
+  s = s.trimStart()
+  for (let i = 0; i < 3; i++) {
+    // Match a leading narration sentence
+    const m = s.match(LEADING_NARRATION_RE)
+    if (m) {
+      s = s.slice(m[0].length).trimStart()
+      continue
+    }
+    // If the leading "paragraph" (before first \n\n) is a short orphaned fragment
+    // (< 40 chars, no verb, likely a dangling noun phrase), drop it
+    const paraEnd = s.indexOf('\n\n')
+    if (paraEnd !== -1 && paraEnd < 40) {
+      const frag = s.slice(0, paraEnd).trim()
+      // Only drop if it looks like a fragment (no period/sentence structure)
+      if (frag.length < 35 && !/[.!?]$/.test(frag)) {
+        s = s.slice(paraEnd).trimStart()
+        continue
+      }
+    }
+    break
   }
-  return s
+
+  return s.trim()
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -309,13 +347,12 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
     const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
 
-    // Strip leading narration sentences the agent emits before calling tools
-    // (e.g. "Now I'll…", "Let me…", "I'll start by…"). Only applied to the
-    // final settled content (not while streaming) to avoid flickering.
-    const cleanedContent = useMemo(() => {
-      if (isStreaming) return debouncedContent
-      return stripLeadingNarration(debouncedContent)
-    }, [debouncedContent, isStreaming])
+      // Normalize agent content: split colon-joined narration runs into paragraphs,
+      // fix missing spaces after punctuation, strip pure-opener sentences.
+      // Applied always (streaming too) so the text doesn't reflow on settle.
+      const cleanedContent = useMemo(() => {
+        return normalizeAgentContent(debouncedContent)
+      }, [debouncedContent])
 
     const renderedContent = useMemo(
       () => hasContent ? <MarkdownRenderer content={cleanedContent} /> : null,

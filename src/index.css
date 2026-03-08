@@ -1877,10 +1877,13 @@ input[type="range"]::-moz-range-thumb {
   margin-bottom: 0;
 }
 
-/* Tighten agent prose paragraph spacing */
+/* Agent prose paragraph spacing — enough breathing room between narration steps */
 .agent-prose p {
   margin-top: 0;
-  margin-bottom: 0.6em;
+  margin-bottom: 0.85em;
+}
+.agent-prose > div > p:only-child {
+  margin-bottom: 0;
 }
 
 .agent-prose h1,
