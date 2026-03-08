@@ -672,7 +672,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           max={600}
                           value={localMaxRPM}
                           onChange={(e) => setLocalMaxRPM(e.target.value)}
-                          className="settings-input placeholder-[var(--tx-muted)] flex-1"}}
+                           className="settings-input placeholder-[var(--tx-muted)] flex-1"
                         />
                           <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
                       </div>
