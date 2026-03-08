@@ -831,10 +831,14 @@ export class ExecutionAgent extends BaseAgent {
         tool_name: fnName,
       })
 
-      // Auto-update task plan progress on success
-      if (!isError && fnName !== 'think' && fnName !== 'update_plan') {
-        this.updateTaskPlanProgress(taskId)
-      }
+       // Auto-update task plan progress on meaningful work (not bookkeeping tools)
+       const nonProgressTools = new Set([
+         'think', 'update_plan', 'save_memory', 'save_preference',
+         'read_file', 'list_files', 'search_files', 'analyze_code',
+       ])
+       if (!isError && !nonProgressTools.has(fnName)) {
+         this.updateTaskPlanProgress(taskId)
+       }
 
       if (fnName === 'complete') return 'complete'
     }
@@ -904,9 +908,9 @@ For web projects: copy a template with bash_execute, then serve_preview to start
     }
 
     return `[Environment] Browser-only mode. No shell access.
-Available: ${coreTools}, bash (cat/ls/echo/mkdir ONLY), python_execute (WASM).
-NOT available: bash_execute, git, serve_preview, npm/node/pip/curl.
-Strategy: Write files directly with write_file/edit_file. Use python_execute for computation. Use browser tools for web interaction. Use http_fetch for networking.`
+Available: ${coreTools}, bash (cat/ls/echo/mkdir ONLY), python_execute (WASM), serve_preview (fires preview tab — use after writing HTML/CSS/JS files).
+NOT available: bash_execute, git, npm/node/pip/curl.
+Strategy: Write files directly with write_file/edit_file. Call serve_preview when HTML output is ready. Use python_execute for computation. Use browser tools for web interaction. Use http_fetch for networking.`
   }
 
   /**

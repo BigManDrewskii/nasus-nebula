@@ -40,8 +40,8 @@ export class SearchWebTool extends BaseTool {
     required: ['query'],
   }
 
-  /** Simple static cache to avoid redundant searches in the same session */
-  private static cache: Map<string, string> = new Map()
+  /** Cache keyed by taskId::query::numResults — prevents cross-task cache poisoning */
+  private cache: Map<string, string> = new Map()
 
   /** Optional: injected by the execution layer for UI status updates */
   private searchConfig?: SearchConfig
@@ -60,15 +60,16 @@ export class SearchWebTool extends BaseTool {
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const query = args.query as string | undefined
     const numResults = Math.min(Math.max((args.num_results as number) || 5, 1), 10)
+    const taskId = (args.__taskId as string | undefined) ?? 'global'
 
     if (!query?.trim()) {
       return toolFailure('query is required and must be non-empty')
     }
 
-    // Check cache
-    const cacheKey = `${query.toLowerCase().trim()}::${numResults}`
-    if (SearchWebTool.cache.has(cacheKey)) {
-      const cached = SearchWebTool.cache.get(cacheKey)!
+    // Check cache — keyed by taskId so results don't bleed between tasks
+    const cacheKey = `${taskId}::${query.toLowerCase().trim()}::${numResults}`
+    if (this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey)!
       return toolSuccess(`[Cached Results]\n${cached}`)
     }
 
@@ -77,12 +78,12 @@ export class SearchWebTool extends BaseTool {
       
       // Save to cache
       if (output && output.length > 0) {
-        SearchWebTool.cache.set(cacheKey, output)
+        this.cache.set(cacheKey, output)
         
         // Prune cache if it gets too large
-        if (SearchWebTool.cache.size > 50) {
-          const first = SearchWebTool.cache.keys().next().value
-          if (first) SearchWebTool.cache.delete(first)
+        if (this.cache.size > 50) {
+          const first = this.cache.keys().next().value
+          if (first) this.cache.delete(first)
         }
       }
 

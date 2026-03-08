@@ -10,7 +10,23 @@ import { useDebouncedStreaming } from '../hooks/useStreaming'
 import { logger } from '../lib/logger'
 import { MarkdownRenderer } from './MarkdownRenderer'
 
-// ─── Copy button ──────────────────────────────────────────────────────────────
+// ─── Narration filter ─────────────────────────────────────────────────────────
+// Strips leading agent narration sentences ("Now I'll...", "Let me...", etc.)
+// that leak through when the model narrates before tool calls, leaving only
+// the substantive summary content.
+
+const NARRATION_RE = /^(?:Now I(?:'ll| will| can| need to| should)|Let me|I(?:'ll| will| can| need to| should| am going to)|Next[, ]I(?:'ll| will)|First[, ]I(?:'ll| will)|Now let(?:'s| me)|I've just|I have just|I(?:'ll| will) now|Everything looks)[^.!?\n]*[.!?]\s*/i
+
+function stripLeadingNarration(text: string): string {
+  let s = text.trimStart()
+  // Iteratively strip matching leading sentences (up to 8 times to handle runs)
+  for (let i = 0; i < 8; i++) {
+    const m = s.match(NARRATION_RE)
+    if (!m) break
+    s = s.slice(m[0].length).trimStart()
+  }
+  return s
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
@@ -291,12 +307,20 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   const hasError    = !!message.error
   const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
 
-  const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
+    const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
 
-  const renderedContent = useMemo(
-    () => hasContent ? <MarkdownRenderer content={debouncedContent} /> : null,
-    [debouncedContent, hasContent],
-  )
+    // Strip leading narration sentences the agent emits before calling tools
+    // (e.g. "Now I'll…", "Let me…", "I'll start by…"). Only applied to the
+    // final settled content (not while streaming) to avoid flickering.
+    const cleanedContent = useMemo(() => {
+      if (isStreaming) return debouncedContent
+      return stripLeadingNarration(debouncedContent)
+    }, [debouncedContent, isStreaming])
+
+    const renderedContent = useMemo(
+      () => hasContent ? <MarkdownRenderer content={cleanedContent} /> : null,
+      [cleanedContent, hasContent],
+    )
 
   const outputCardFiles = useMemo<OutputCardFile[]>(() => {
     if (!message.steps) return []

@@ -95,13 +95,12 @@ toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotToo
 export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: { name: string; description: string; parameters: JSONSchema7 } }> {
   const allTools = toolRegistry.getToolDefinitions()
 
-  if (env === 'browser-only') {
-    // Remove tools that require shell/sandbox
-    const excludeInBrowserMode = new Set([
-      'bash_execute',
-      'git',
-      'serve_preview',
-    ])
+    if (env === 'browser-only') {
+      // Remove tools that require shell/sandbox
+      const excludeInBrowserMode = new Set([
+        'bash_execute',
+        'git',
+      ])
     return allTools
       .filter(t => !excludeInBrowserMode.has(t.function.name))
       .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
