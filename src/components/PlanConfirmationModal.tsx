@@ -1,15 +1,221 @@
 /**
- * PlanView — execution plan card.
+ * PlanConfirmationModal — Lovable-style full-screen plan overlay.
  *
- * Approval state  : full card, amber accent, phases listed, Approve / Decline CTA
- * Execution state : compact progress card, current phase highlighted, collapses when done
- * Collapsed state : single-line breadcrumb strip
+ * Shows on every new agent run. Three actions:
+ *   Skip    — bypass planning entirely, run the agent directly
+ *   Edit    — (future) edit the plan inline; for now same as approve
+ *   Approve — approve and begin execution (shows loading spinner)
+ *
+ * PlanView (compact) — used inline in the message list during execution.
+ * CompactPlanView     — thin alias kept for backwards compat.
  */
 
-import { memo, useState } from 'react'
-import type { ExecutionPlan, PlanPhase, PlanStep } from '../agent/core/Agent'
+import { memo, useState, useEffect } from 'react'
+import type { ExecutionPlan, PlanPhase, PlanStep, PlanFile } from '../agent/core/Agent'
 import { Pxi } from './Pxi'
 import { NasusLogo } from './NasusLogo'
+
+// ─── File action badge ────────────────────────────────────────────────────────
+
+const ACTION_COLOR: Record<PlanFile['action'], string> = {
+  create: 'var(--green, #4ade80)',
+  modify: 'var(--amber, #eab308)',
+  delete: '#f87171',
+}
+
+const ACTION_LABEL: Record<PlanFile['action'], string> = {
+  create: '+',
+  modify: '~',
+  delete: '−',
+}
+
+function FileChip({ file }: { file: PlanFile }) {
+  const parts = file.path.split('/')
+  const name = parts.pop() ?? file.path
+  const dir = parts.join('/')
+  return (
+    <div className="plm-file-chip">
+      <span className="plm-file-action" style={{ color: ACTION_COLOR[file.action] }}>
+        {ACTION_LABEL[file.action]}
+      </span>
+      {dir && <span className="plm-file-dir">{dir}/</span>}
+      <span className="plm-file-name">{name}</span>
+    </div>
+  )
+}
+
+// ─── Phase row (in modal) ─────────────────────────────────────────────────────
+
+function PhaseRow({ phase, index }: { phase: PlanPhase; index: number }) {
+  const [open, setOpen] = useState(index === 0)
+  return (
+    <div className="plm-phase">
+      <button className="plm-phase-header" onClick={() => setOpen(o => !o)}>
+        <span className="plm-phase-num">{index + 1}</span>
+        <span className="plm-phase-title">{phase.title}</span>
+        <span className="plm-phase-step-count">{phase.steps.length} steps</span>
+        <Pxi name={open ? 'chevron-up' : 'chevron-down'} size={9} className="plm-phase-chevron" />
+      </button>
+      {open && (
+        <div className="plm-steps">
+          {phase.steps.map((step: PlanStep) => (
+            <div key={step.id} className="plm-step">
+              <span className="plm-step-dot" />
+              <span className="plm-step-text">{step.description}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Complexity badge ─────────────────────────────────────────────────────────
+
+const COMPLEXITY_COLOR = {
+  low: 'rgba(74,222,128,0.15)',
+  medium: 'rgba(234,179,8,0.15)',
+  high: 'rgba(248,113,113,0.15)',
+}
+const COMPLEXITY_TEXT = {
+  low: '#4ade80',
+  medium: '#eab308',
+  high: '#f87171',
+}
+
+// ─── Main modal ───────────────────────────────────────────────────────────────
+
+export const PlanConfirmationModal = memo(function PlanConfirmationModal({
+  plan,
+  onApprove,
+  onReject,
+}: {
+  plan: ExecutionPlan
+  onApprove: () => void
+  onReject: () => void
+}) {
+  const [approving, setApproving] = useState(false)
+
+  // Close on Escape → treat as "Skip"
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onReject()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onReject])
+
+  function handleApprove() {
+    setApproving(true)
+    onApprove()
+  }
+
+  const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
+  const complexity = plan.complexity ?? 'medium'
+  const hasFiles = plan.files && plan.files.length > 0
+
+  return (
+    <div className="plm-backdrop" onClick={onReject}>
+      <div
+        className="plm-card"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Execution plan"
+      >
+        {/* ── Header ── */}
+        <div className="plm-header">
+          <div className="plm-header-icon">
+            <NasusLogo size={16} fill="var(--amber)" />
+          </div>
+          <div className="plm-header-text">
+            <h2 className="plm-title">Here's the plan</h2>
+            <p className="plm-subtitle">{plan.title}</p>
+          </div>
+          <div className="plm-header-meta">
+            <span
+              className="plm-complexity-badge"
+              style={{
+                background: COMPLEXITY_COLOR[complexity],
+                color: COMPLEXITY_TEXT[complexity],
+              }}
+            >
+              {complexity}
+            </span>
+            <span className="plm-meta-pill">
+              {plan.phases.length} phases · {totalSteps} steps
+            </span>
+          </div>
+        </div>
+
+        {/* ── Description ── */}
+        {plan.description && (
+          <p className="plm-description">{plan.description}</p>
+        )}
+
+        {/* ── Scrollable body ── */}
+        <div className="plm-body custom-scrollbar">
+          {/* Phases */}
+          <div className="plm-phases">
+            {plan.phases.map((phase, i) => (
+              <PhaseRow key={phase.id} phase={phase} index={i} />
+            ))}
+          </div>
+
+          {/* Files */}
+          {hasFiles && (
+            <div className="plm-files-section">
+              <p className="plm-files-label">
+                <Pxi name="file-code" size={10} style={{ marginRight: 5 }} />
+                Files affected
+              </p>
+              <div className="plm-files-grid">
+                {plan.files!.map((f, i) => (
+                  <FileChip key={i} file={f} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="plm-footer">
+          <button className="plm-btn plm-btn--skip" onClick={onReject}>
+            Skip
+          </button>
+          <div className="plm-footer-right">
+            <button
+              className="plm-btn plm-btn--edit"
+              onClick={handleApprove}
+              disabled={approving}
+            >
+              Edit
+            </button>
+            <button
+              className="plm-btn plm-btn--approve"
+              onClick={handleApprove}
+              disabled={approving}
+            >
+              {approving ? (
+                <>
+                  <span className="plm-spinner" />
+                  Starting…
+                </>
+              ) : (
+                <>
+                  <Pxi name="play" size={9} />
+                  Approve plan
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ─── Inline execution view (used in message list during run) ──────────────────
 
 interface PlanViewProps {
   plan: ExecutionPlan
@@ -19,8 +225,6 @@ interface PlanViewProps {
   currentStep?: number
   isReadOnly?: boolean
 }
-
-// ─── Step line ────────────────────────────────────────────────────────────────
 
 function StepLine({ step, isCurrent, isDone }: { step: PlanStep; isCurrent: boolean; isDone: boolean }) {
   return (
@@ -45,8 +249,6 @@ function StepLine({ step, isCurrent, isDone }: { step: PlanStep; isCurrent: bool
     </div>
   )
 }
-
-// ─── Phase block ──────────────────────────────────────────────────────────────
 
 const PhaseBlock = memo(function PhaseBlock({
   phase, phaseNumber, isCurrent, isDone, currentStep,
@@ -87,7 +289,6 @@ const PhaseBlock = memo(function PhaseBlock({
     )
   }
 
-  // Active phase
   return (
     <div className="pv-phase-active">
       <div className="flex-v-center pv-phase-active-header">
@@ -104,7 +305,6 @@ const PhaseBlock = memo(function PhaseBlock({
           {phase.steps.length} steps
         </span>
       </div>
-
       <div className="flex-col pv-phase-steps">
         {phase.steps.map((step, i) => (
           <StepLine
@@ -119,13 +319,11 @@ const PhaseBlock = memo(function PhaseBlock({
   )
 })
 
-// ─── Main PlanView ────────────────────────────────────────────────────────────
-
 export const PlanView = memo(function PlanView({
   plan, onApprove, onReject, currentPhase, currentStep, isReadOnly,
 }: PlanViewProps) {
   const isApproval = !!onApprove && !!onReject && !isReadOnly
-  const [collapsed, setCollapsed] = useState(isApproval ? true : false)
+  const [collapsed, setCollapsed] = useState(false)
 
   const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
   const completedPhases = currentPhase ?? 0
@@ -161,7 +359,6 @@ export const PlanView = memo(function PlanView({
             : <Pxi name="cpu" size={13} className="text-secondary" />
           }
         </div>
-
         <div className="flex-1 min-w-0">
           <p
             className="font-display pv-header-title"
@@ -177,7 +374,6 @@ export const PlanView = memo(function PlanView({
             </p>
           )}
         </div>
-
         <div className="flex-v-center flex-shrink-0 pv-header-right">
           {isApproval && !collapsed && (
             <span className="font-mono text-muted pv-phases-badge">
@@ -188,13 +384,9 @@ export const PlanView = memo(function PlanView({
             <Pxi name={collapsed ? 'chevron-down' : 'chevron-up'} size={10} className="text-tertiary" />
           </div>
         </div>
-
         {!isApproval && (
           <div className="pv-progress-track absolute">
-            <div
-              className="pv-progress-fill"
-              style={{ width: `${progressPct}%` }}
-            />
+            <div className="pv-progress-fill" style={{ width: `${progressPct}%` }} />
           </div>
         )}
       </div>
@@ -202,12 +394,6 @@ export const PlanView = memo(function PlanView({
       {/* Body */}
       {!collapsed && (
         <>
-          {isApproval && plan.description && (
-            <div className="pv-description-wrap">
-              <p className="text-secondary pv-description">{plan.description}</p>
-            </div>
-          )}
-
           <div
             className="custom-scrollbar flex-col pv-phases-list"
             style={{
@@ -217,40 +403,16 @@ export const PlanView = memo(function PlanView({
             }}
           >
             {plan.phases.map((phase, i) => (
-              isApproval ? (
-                <div
-                  key={phase.id}
-                  className="flex pv-approval-phase"
-                  style={{ borderBottom: i < plan.phases.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}
-                >
-                  <span className="flex-center flex-shrink-0 font-mono pv-approval-phase-num">
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="pv-approval-phase-title">{phase.title}</p>
-                    {phase.description && (
-                      <p className="text-tertiary pv-approval-phase-desc">{phase.description}</p>
-                    )}
-                  </div>
-                  {phase.steps.length > 0 && (
-                    <span className="font-mono text-muted flex-shrink-0 pv-approval-step-count">
-                      {phase.steps.length}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <PhaseBlock
-                  key={phase.id}
-                  phase={phase}
-                  phaseNumber={i + 1}
-                  isCurrent={i === (currentPhase ?? 0)}
-                  isDone={i < (currentPhase ?? 0)}
-                  currentStep={i === (currentPhase ?? 0) ? currentStep : undefined}
-                />
-              )
+              <PhaseBlock
+                key={phase.id}
+                phase={phase}
+                phaseNumber={i + 1}
+                isCurrent={i === (currentPhase ?? 0)}
+                isDone={i < (currentPhase ?? 0)}
+                currentStep={i === (currentPhase ?? 0) ? currentStep : undefined}
+              />
             ))}
           </div>
-
           {!isApproval && (
             <div className="flex-v-center pv-exec-footer">
               <span className="pv-exec-pulse" />
@@ -259,43 +421,9 @@ export const PlanView = memo(function PlanView({
           )}
         </>
       )}
-
-      {/* Approval footer */}
-      {isApproval && (
-        <div className="flex-v-center justify-end pv-approval-footer">
-          <button
-            onClick={onReject}
-              className="text-secondary pv-decline-btn hover-bg-app-3 hover-text-primary"
-          >
-            Decline
-          </button>
-
-          <button
-            onClick={onApprove}
-              className="flex-v-center pv-approve-btn"
-          >
-            <Pxi name="play" size={9} />
-            Approve
-          </button>
-        </div>
-      )}
     </div>
   )
 })
-
-// ─── Legacy exports ───────────────────────────────────────────────────────────
-
-export const PlanConfirmationModal = memo(({ plan, onApprove, onReject }: {
-  plan: ExecutionPlan
-  onApprove: () => void
-  onReject: () => void
-}) => (
-  <div className="pv-modal-backdrop">
-    <div className="pv-modal-inner">
-      <PlanView plan={plan} onApprove={onApprove} onReject={onReject} />
-    </div>
-  </div>
-))
 
 export const CompactPlanView = memo(({ plan, currentPhase, currentStep }: {
   plan: ExecutionPlan

@@ -106,6 +106,13 @@ export interface ExecutionPlan {
   phases: PlanPhase[]
   dependencies: string[]
   createdAt: Date
+  /** Files that will be created or modified by this plan */
+  files?: PlanFile[]
+}
+
+export interface PlanFile {
+  path: string
+  action: 'create' | 'modify' | 'delete'
 }
 
 /**

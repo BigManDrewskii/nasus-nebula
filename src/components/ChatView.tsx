@@ -13,7 +13,7 @@ import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
-import { PlanView } from './PlanConfirmationModal'
+import { PlanView, PlanConfirmationModal } from './PlanConfirmationModal'
 import { resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
@@ -722,34 +722,14 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                       </div>
                     ))}
 
-                    {/* Planning View — approval only, disappears once approved */}
-                    {pendingPlan && (
-                      <div className="cv-plan-wrap animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        {/* Amber separator */}
-                        <div className="cv-plan-separator" />
-
-                        {/* Plan intro */}
-                        <div className="cv-plan-intro">
-                          <div className="cv-plan-avatar">
-                            <NasusLogo size={15} fill="var(--amber)" />
-                          </div>
-                          <p className="cv-plan-intro-text">
-                            I've analyzed your request and created an execution plan. Review the phases below and approve to begin.
-                          </p>
-                        </div>
-
-                        {/* Plan card */}
-                        <div className="cv-plan-card">
-                          <PlanView
-                            plan={pendingPlan}
-                            onApprove={approvePlan}
-                            onReject={rejectPlan}
-                            currentPhase={0}
-                            currentStep={0}
-                          />
-                        </div>
-                      </div>
-                    )}
+                      {/* Plan approval modal — rendered as fixed overlay */}
+                      {pendingPlan && (
+                        <PlanConfirmationModal
+                          plan={pendingPlan}
+                          onApprove={approvePlan}
+                          onReject={rejectPlan}
+                        />
+                      )}
 
                     <div ref={bottomRef} />
                   </div>

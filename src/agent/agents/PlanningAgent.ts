@@ -10,7 +10,7 @@
 
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
-import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase } from '../core/Agent'
+import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase, PlanFile } from '../core/Agent'
 import { cheapestModel, chatJsonViaGateway } from '../llm'
 import { memoryStore } from '../memory/LocalMemoryStore'
 import { useAppStore } from '../../store'
@@ -56,6 +56,18 @@ const CREATE_PLAN_TOOL = {
               },
             },
             required: ['id', 'title', 'description', 'steps'],
+          },
+        },
+        files: {
+          type: 'array' as const,
+          description: 'Files that will be created or modified by this plan.',
+          items: {
+            type: 'object' as const,
+            properties: {
+              path: { type: 'string' },
+              action: { type: 'string', enum: ['create', 'modify', 'delete'] },
+            },
+            required: ['path', 'action'],
           },
         },
       },
@@ -316,9 +328,15 @@ Respond ONLY with the JSON, no other text.`
         rationale: parsed.rationale,
         complexity: (parsed.complexity as 'low' | 'medium' | 'high') || 'medium',
         estimatedSteps: phases.reduce((sum, p) => sum + p.steps.length, 0),
-        phases,
-        dependencies: [],
-        createdAt: new Date(),
+          phases,
+          files: Array.isArray(parsed.files)
+            ? (parsed.files as any[]).map((f): PlanFile => ({
+                path: String(f.path || ''),
+                action: (['create', 'modify', 'delete'].includes(f.action) ? f.action : 'create') as PlanFile['action'],
+              }))
+            : undefined,
+          dependencies: [],
+          createdAt: new Date(),
       }
     } catch {
       // Fallback: create a simple plan if validation failed
