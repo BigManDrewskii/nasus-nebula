@@ -159,16 +159,19 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
   setManualModel: (modelId) => set({ manualModelId: modelId }),
 
-  saveGatewayConfig: async () => {
-    try {
-      const { tauriInvoke } = await import('../../tauri')
-      const { gateways, routingMode, manualModelId } = get()
+    saveGatewayConfig: async () => {
+      try {
+        const { tauriInvoke } = await import('../../tauri')
+        const { gateways, routingMode, manualModelId } = get()
 
-      // Persist all gateways (metadata + enabled/disabled/priority/labels) via the
-      // dedicated Tauri command. API keys are NOT sent here — they are already
-      // persisted by Zustand's persist middleware (apiKey field in AppState).
-      // The Rust side masks keys as "***" before writing to disk.
-      await tauriInvoke('save_gateways', { gateways })
+        // The Rust GatewayConfig uses `gateway_type` (serialized as `gatewayType`),
+        // but the frontend type uses `type`. Map before sending so Rust can deserialize.
+        const rustGateways = gateways.map(({ type: gatewayType, ...rest }) => ({
+          ...rest,
+          gatewayType,
+        }))
+
+        await tauriInvoke('save_gateways', { gateways: rustGateways })
 
       // Also keep the legacy single-gateway config in sync so older code paths work
       const primary = gateways.find((g) => g.enabled) ?? gateways[0]
@@ -194,7 +197,16 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
         // Primary: restore full gateway configs (including per-provider keys) from
         // the Tauri secure store via save_gateways / get_gateways.
-        const savedGateways = await tauriInvoke<GatewayConfig[]>('get_gateways').catch(() => null)
+          // Rust returns `gatewayType` (from snake_case gateway_type) — map back to `type`
+          // so the rest of the frontend codebase never sees `gatewayType`.
+          type RustGateway = Omit<GatewayConfig, 'type'> & { gatewayType?: GatewayConfig['type']; type?: GatewayConfig['type'] }
+          const rawGateways = await tauriInvoke<RustGateway[]>('get_gateways').catch(() => null)
+          const savedGateways: GatewayConfig[] | null = rawGateways
+            ? rawGateways.map(({ gatewayType, type, ...rest }) => ({
+                ...rest,
+                type: (type ?? gatewayType ?? 'custom') as GatewayConfig['type'],
+              }))
+            : null
 
         // Fallback: read the legacy single-key config for backward compatibility
         const config = await tauriInvoke<{

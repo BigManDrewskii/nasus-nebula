@@ -13,7 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'deepseek' | 'custom'
+export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'deepseek' | 'litellm' | 'direct' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
