@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
+import { useAppEventListeners } from './hooks/useAppEventListeners'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
 import { tauriInvoke } from './tauri'
@@ -56,7 +57,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, setBrowserActivityActive, resetPlanState } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, resetPlanState } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
@@ -69,7 +70,6 @@ function App() {
         closeSettings: s.closeSettings,
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
-        setBrowserActivityActive: s.setBrowserActivityActive,
         resetPlanState: s.resetPlanState,
       })),
     )
@@ -143,24 +143,15 @@ function App() {
     doUpdateCheck()
   }, [])
 
-  // Listen for browser activity events and auto-open browser panel
-  const rightCollapsedRef = useRef(rightCollapsed)
-  useEffect(() => { rightCollapsedRef.current = rightCollapsed }, [rightCollapsed])
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
-  useEffect(() => {
-    const handler = () => {
-      setBrowserActivityActive(true)
-      // Auto-open and show browser panel
-      if (rightCollapsedRef.current) setRightCollapsed(false)
-      setRightActiveTab('browser')
-    }
-    window.addEventListener('nasus:browser-activity', handler as EventListener)
-    return () => window.removeEventListener('nasus:browser-activity', handler as EventListener)
-  }, [setBrowserActivityActive])
-
-
-
-
+  useAppEventListeners({
+    setRightCollapsed,
+    setRightActiveTab,
+    setPruneNotice,
+    setMemoryBrowserOpen,
+    setIsOffline,
+  })
 
   // Silently keep the OpenRouter model list fresh in the background
   useModelSync()
@@ -210,46 +201,6 @@ function App() {
 
   const toggleLeft   = useCallback(() => setLeftCollapsed((v) => !v),   [])
   const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
-
-  useEffect(() => {
-    function onPruned(e: Event) {
-      const count = (e as CustomEvent).detail?.count ?? 1
-      const msg = `${count} oldest task${count > 1 ? 's were' : ' was'} removed to stay under the 50-task limit.`
-      setPruneNotice(msg)
-      setTimeout(() => setPruneNotice(null), 5000)
-    }
-    window.addEventListener('nasus:tasks-pruned', onPruned)
-    return () => window.removeEventListener('nasus:tasks-pruned', onPruned)
-  }, [])
-
-  // When serve_preview signals a live dev server, auto-switch the Output panel to Preview
-  useEffect(() => {
-    function onPreviewReady() {
-      setRightActiveTab('preview')
-      setRightCollapsed(false)
-    }
-    window.addEventListener('nasus:preview-ready', onPreviewReady)
-    return () => window.removeEventListener('nasus:preview-ready', onPreviewReady)
-  }, [])
-
-  // Allow other components to open MemoryBrowser via a custom event
-  useEffect(() => {
-    const open = () => setMemoryBrowserOpen(true)
-    window.addEventListener('nasus:open-memory-browser', open)
-    return () => window.removeEventListener('nasus:open-memory-browser', open)
-  }, [])
-
-  const [isOffline, setIsOffline] = useState(!navigator.onLine)
-  useEffect(() => {
-    const goOffline = () => setIsOffline(true)
-    const goOnline  = () => setIsOffline(false)
-    window.addEventListener('offline', goOffline)
-    window.addEventListener('online',  goOnline)
-    return () => {
-      window.removeEventListener('offline', goOffline)
-      window.removeEventListener('online',  goOnline)
-    }
-  }, [])
 
   const handleNewTask = useCallback(() => {
     const task: Task = {
@@ -368,58 +319,22 @@ function App() {
 
 
         {/* Offline banner */}
-        {isOffline && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 300,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-              padding: '6px 16px',
-              background: 'rgba(239,68,68,0.12)',
-              borderBottom: '1px solid rgba(239,68,68,0.25)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            <Pxi name="wifi" size={11} style={{ color: '#f87171' }} />
-            <span style={{ fontSize: 11.5, color: '#f87171', fontWeight: 500 }}>
-              No internet connection — agent cannot run until connectivity is restored
-            </span>
-          </div>
-        )}
+          {isOffline && (
+            <div className="app-offline-banner">
+              <Pxi name="wifi" size={11} style={{ color: '#f87171' }} />
+              <span style={{ fontSize: 11.5, color: '#f87171', fontWeight: 500 }}>
+                No internet connection — agent cannot run until connectivity is restored
+              </span>
+            </div>
+          )}
 
-        {/* Task prune notice */}
-        {pruneNotice && (
-          <div
-            style={{
-              position: 'fixed',
-              bottom: 20,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 200,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 16px',
-              borderRadius: 12,
-              background: 'rgba(13,13,13,0.96)',
-              border: '1px solid rgba(234,179,8,0.3)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-              animation: 'fadeIn 0.18s ease',
-              pointerEvents: 'none',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <Pxi name="info-circle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
-          </div>
-        )}
+          {/* Task prune notice */}
+          {pruneNotice && (
+            <div className="app-prune-notice">
+              <Pxi name="info-circle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
+            </div>
+          )}
       </div>
 
       {/* ── Reopen tabs — outside app-root so position:fixed is viewport-anchored ── */}

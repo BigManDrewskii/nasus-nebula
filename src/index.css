@@ -5453,3 +5453,39 @@ input[type="range"]::-moz-range-thumb {
 .browser-history-item:not(.active):hover {
   background: var(--sidebar-hover-bg) !important;
 }
+
+/* ── App-level notification overlays ────────────────────────────────────────── */
+
+.app-offline-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 16px;
+  background: rgba(239,68,68,0.12);
+  border-bottom: 1px solid rgba(239,68,68,0.25);
+  backdrop-filter: blur(8px);
+}
+
+.app-prune-notice {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(13,13,13,0.96);
+  border: 1px solid rgba(234,179,8,0.3);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.18s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}

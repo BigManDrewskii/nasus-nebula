@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand'
 
 export interface UISlice {
-  /** Config accordion state (sidebar settings sections) — DEPRECATED, kept for compatibility */
+  /** Config accordion open/closed state — persisted to localStorage via layout save */
   configSections: Record<string, boolean>
   settingsOpen: boolean
   settingsTab: 'general' | 'model' | 'execution' | 'search' | 'about'

@@ -329,6 +329,39 @@ export async function streamCompletion(
 }
 
 /**
+ * Shared fetch helper for chatOnce and chatJson.
+ * Returns the raw text content from choices[0].message.content, or null on failure.
+ */
+async function rawChatRequest(
+  apiBase: string,
+  apiKey: string,
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  maxTokens: number,
+  extraHeaders?: Record<string, string>,
+): Promise<string | null> {
+  await getGlobalRateLimiter().acquire()
+  const url = `${(apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    ...extraHeaders,
+  }
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false }),
+  })
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '')
+    log.error('rawChatRequest HTTP error', undefined, { status: resp.status, body: errText })
+    return null
+  }
+  const json = await resp.json()
+  return (json?.choices?.[0]?.message?.content ?? '').trim() || null
+}
+
+/**
  * Non-streaming call — used for auto-title (cheap single-turn).
  * Uses a direct fetch instead of generateText to avoid SDK response-parsing
  * issues with chunked-encoded responses from DeepSeek and other providers.
@@ -342,34 +375,10 @@ export async function chatOnce(
   extraHeaders?: Record<string, string>,
 ): Promise<string> {
   try {
-    await getGlobalRateLimiter().acquire()
-
-    const base = (apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')
-    const url = `${base}/chat/completions`
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
-    }
-    const body = JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: userPrompt }],
-      max_tokens: 500,
-      stream: false,
-    })
-
-    const resp = await fetch(url, { method: 'POST', headers, body })
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '')
-        log.error('chatOnce HTTP error', undefined, { status: resp.status, body: errText })
-      return ''
-    }
-
-    const json = await resp.json()
-    return (json?.choices?.[0]?.message?.content ?? '').trim()
+    return (await rawChatRequest(apiBase, apiKey, model, [{ role: 'user', content: userPrompt }], 500, extraHeaders)) ?? ''
   } catch (err) {
     const cause = (err instanceof Error ? err : null)?.cause as Record<string, unknown> | null | undefined
-      log.error('chatOnce failed', err instanceof Error ? err : new Error(String(err)), cause ? { cause: (cause as { message?: string })?.message ?? String(cause) } : undefined)
+    log.error('chatOnce failed', err instanceof Error ? err : new Error(String(err)), cause ? { cause: (cause as { message?: string })?.message ?? String(cause) } : undefined)
     return ''
   }
 }
@@ -388,35 +397,12 @@ export async function chatJson<T>(
   extraHeaders?: Record<string, string>,
 ): Promise<T | null> {
   try {
-    await getGlobalRateLimiter().acquire()
-
-    const base = (apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')
-    const url = `${base}/chat/completions`
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
-    }
-    const body = JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: _maxTokens,
-      stream: false,
-    })
-
-    const resp = await fetch(url, { method: 'POST', headers, body })
-    if (!resp.ok) {
-      const errText = await resp.text().catch(() => '')
-        log.error(`chatJson HTTP error ${resp.status}: ${errText}`)
-      return null
-    }
-
-    const json = await resp.json()
-    const text = (json?.choices?.[0]?.message?.content ?? '').trim()
+    const text = await rawChatRequest(apiBase, apiKey, model, [{ role: 'user', content: prompt }], _maxTokens, extraHeaders)
+    if (!text) return null
     const clean = text.replace(/```json\n?|```\n?/g, '').trim()
     return JSON.parse(clean) as T
   } catch (err) {
-      log.error('chatJson failed', err instanceof Error ? err : new Error(String(err)))
+    log.error('chatJson failed', err instanceof Error ? err : new Error(String(err)))
     return null
   }
 }

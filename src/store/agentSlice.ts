@@ -47,9 +47,13 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
     }
   },
 
-  rejectPlan: () => {
-    set({ planApprovalStatus: 'rejected', pendingPlan: null })
-  },
+    rejectPlan: () => {
+      const activeTaskId = (get() as { activeTaskId?: string | null }).activeTaskId
+      set({ planApprovalStatus: 'rejected', pendingPlan: null })
+      if (activeTaskId) {
+        window.dispatchEvent(new CustomEvent(`nasus:plan-reject-${activeTaskId}`))
+      }
+    },
 
   resetPlanState: () => {
     set({

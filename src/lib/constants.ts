@@ -122,3 +122,30 @@ export const RATE_LIMIT_WINDOW_MS = 5000 as const
 
 /** Default error message when API key is missing */
 export const MISSING_API_KEY_MESSAGE = 'Please enter your API key in Settings' as const
+
+// ── Model Context Windows ────────────────────────────────────────────────────────────
+
+/**
+ * Context window sizes (tokens) per model family.
+ * Matched in order — first match wins.
+ */
+export const CONTEXT_WINDOWS: Array<[RegExp, number]> = [
+  [/claude-3[.-]5|claude-3[.-]7|claude-sonnet-4|claude-opus-4/, 200_000],
+  [/claude-3-haiku/, 200_000],
+  [/gpt-4\.1/, 1_000_000],
+  [/gpt-4o/, 128_000],
+  [/o1|o3|o4/, 200_000],
+  [/gemini-2\.5/, 1_048_576],
+  [/gemini-2\.0/, 1_048_576],
+  [/gemini-1\.5/, 1_048_576],
+  [/deepseek-r1-0528/, 128_000],
+  [/deepseek-r1/, 128_000],
+  [/deepseek-v3|deepseek-chat|deepseek-reasoner/, 128_000],
+  [/deepseek/, 64_000],
+  [/llama-3\.[23]-\d+b/, 128_000],
+  [/llama-3\.3/, 128_000],
+  [/mistral-large|mistral-medium/, 128_000],
+  [/mixtral/, 32_000],
+  [/qwen-2\.5|qwq/, 131_072],
+  [/command-r/, 128_000],
+]
