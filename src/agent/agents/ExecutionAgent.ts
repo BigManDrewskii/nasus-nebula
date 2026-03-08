@@ -10,7 +10,7 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
-import { streamCompletion, powerfulModel, isReasoningModel, type LlmResponse } from '../llm'
+import { streamCompletion, powerfulModel, isReasoningModel, cheapestModel, chatOnceViaGateway, type LlmResponse } from '../llm'
 import { startTurnTracking, flushTurnFiles, type SearchStatusCallback } from '../tools'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import { executeTool as executeRegistryTool } from '../tools/index'
@@ -849,6 +849,9 @@ export class ExecutionAgent extends BaseAgent {
         plan,
         executionOutput: '',
         createdFiles,
+        // IMPORTANT: quick:true is required — this call must never trigger an LLM
+        // (no apiKey/model/provider are provided). Removing quick:true would result
+        // in analyzeWithLLM being called with empty credentials and silently failing.
         quick: true,
       })
       // Only surface errors, not warnings — to avoid noise on minor items
@@ -1001,7 +1004,7 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
           // to the original object retain the full content for observability.
           messages[toolIndex] = {
             ...toolMessage,
-            content: '[Observation masked for brevity. The tool call was successful.]',
+              content: '[Observation masked for brevity.]',
           }
           maskedCount++
         }
@@ -1043,9 +1046,8 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
 
-        // Match checkbox formats: [ ] or [?] or ☐
-        const hasUnchecked = /\[?\s*\]|☐/.test(line)
-        if (hasUnchecked && (line.includes('[ ]') || line.includes('[?]') || line.includes('☐'))) {
+        // Match checkbox formats: [ ], [?], or ☐
+        if (line.includes('[ ]') || line.includes('[?]') || line.includes('☐')) {
           if (checkCount === this.completedCheckboxes) {
             // Mark this checkbox as complete
             if (line.includes('[ ]')) {

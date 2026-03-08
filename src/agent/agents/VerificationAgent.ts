@@ -17,7 +17,7 @@
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
-import { chatOnceViaGateway } from '../llm'
+import { chatOnceViaGateway, cheapestModel } from '../llm'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import { useAppStore } from '../../store'
 import { createLogger } from '../../lib/logger'
@@ -427,8 +427,18 @@ export class VerificationAgent extends BaseAgent {
   private async analyzeWithLLM(context: VerificationContext): Promise<AgentIssue[]> {
     const { executionOutput, plan } = context
 
-    const conn = useAppStore.getState().resolveConnection()
-    const verifyModel: string = conn.model || 'anthropic/claude-3-haiku'
+    const store = useAppStore.getState()
+    const conn = store.resolveConnection()
+    // Use a cheap model for verification — never use the (potentially expensive)
+    // execution model. Mirror the same DeepSeek guard used in PlanningAgent.
+    let verifyModel: string
+    if (conn.provider === 'deepseek') {
+      verifyModel = 'deepseek-chat'
+    } else {
+      verifyModel = store.openRouterModels.length > 0
+        ? cheapestModel(store.openRouterModels)
+        : 'anthropic/claude-3-haiku'
+    }
 
     const prompt = `You are a Verification Agent. Review the following execution results and identify any issues.
 

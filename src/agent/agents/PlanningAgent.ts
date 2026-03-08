@@ -47,7 +47,7 @@ const CREATE_PLAN_TOOL = {
                   properties: {
                     id: { type: 'string' },
                     description: { type: 'string' },
-                    agent: { type: 'string', enum: ['executor', 'research'] },
+                    agent: { type: 'string', enum: ['executor', 'specialist'] },
                     tools: { type: 'array' as const, items: { type: 'string' } },
                     estimatedDuration: { type: 'number' },
                   },
@@ -275,7 +275,7 @@ Guidelines:
 - Each phase should have 1-6 steps
 - Use tool names from: search_web, http_fetch, read_file, write_file, python_execute, bash_execute, browser_navigate, browser_click, browser_extract, browser_screenshot
 - Keep descriptions concise and actionable
-- Set agent to "executor" for most steps, "research" for web searches
+- Set agent to "executor" for most steps, "specialist" for web searches and external API calls
 - estimatedDuration is in seconds
 
 Respond ONLY with the JSON, no other text.`
