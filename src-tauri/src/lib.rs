@@ -1238,6 +1238,7 @@ pub fn run() {
         sidecar::browser_get_tabs,
         sidecar::browser_select,
         sidecar::browser_aria_snapshot,
+        sidecar::browser_read_page,
         sidecar::browser_check_sidecar_installed,
         sidecar::browser_install_sidecar,
     ])

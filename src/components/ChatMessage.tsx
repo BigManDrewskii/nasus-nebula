@@ -1,8 +1,4 @@
-import { useState, memo, useMemo, lazy, Suspense } from 'react'
-
-const MessageExpandModal = lazy(() =>
-  import('./MessageExpandModal').then(m => ({ default: m.MessageExpandModal }))
-)
+import { useState, memo, useMemo } from 'react'
 import type { Message, MessageAttachment, AttachmentCategory, OutputCardFile, AgentStep } from '../types'
 import { AgentStepsView } from './AgentStepsView'
 import { NasusLogo } from './NasusLogo'
@@ -15,82 +11,21 @@ import { logger } from '../lib/logger'
 import { MarkdownRenderer } from './MarkdownRenderer'
 
 // ─── Agent content normalizer ─────────────────────────────────────────────────
-// The model often emits a long run-on stream with colons as separators between
-// narration steps, e.g.:
-//   "Now I'll fetch the file:Now let me create the structure:Let me update..."
-// This normalizer:
-//   1. Inserts \n\n before any colon-joined narration openers so each step
-//      becomes its own paragraph for the markdown renderer.
-//   2. Adds a missing space after sentence-ending punctuation before a capital.
-//   3. Strips up to 2 pure-narration opener sentences from the very beginning
-//      (the ones with no substance, just "Now I'll…").
+// Splits colon-joined narration runs into separate paragraphs so each step
+// becomes its own paragraph for the markdown renderer, and fixes missing spaces
+// after sentence-ending punctuation.
+// Content is never stripped — the user sees the full response.
 
-// Narration openers we split on (after a colon or period with no space)
 const NARRATION_OPENER =
   /(?<=\S):(?=(?:Now I(?:'ll| will| can| need to| should)\b|Let me\b|I(?:'ll| will| need to| should| am going to)\b|Next[, ]I(?:'ll| will)\b|First[, ]I(?:'ll| will)\b|Now let(?:'s| me)\b|I've just\b|I have just\b|I(?:'ll| will) now\b))/g
 
-// Leading pure-narration sentence (no substantive content — just an action opener)
-const LEADING_NARRATION_RE =
-  /^(?:Now I(?:'ll| will| can| need to| should)|Let me|I(?:'ll| will| can| need to| should| am going to)|Next[, ]I(?:'ll| will)|First[, ]I(?:'ll| will)|Now let(?:'s| me)|I've just|I have just|I(?:'ll| will) now|Everything looks)[^.!?\n]*[.!?]\s*/i
-
 function normalizeAgentContent(text: string): string {
   if (!text.trim()) return text
-
-  // Step 1: split colon-joined narration runs into separate paragraphs
+  // Split colon-joined narration runs into paragraphs
   let s = text.replace(NARRATION_OPENER, '\n\n')
-
-  // Step 2: ensure space after sentence-ending punctuation before capital letter
-  // e.g. "done.Now" → "done. Now"
+  // Ensure space after sentence-ending punctuation before capital letter
   s = s.replace(/([.!?])([A-Z])/g, '$1 $2')
-
-  // Step 3: strip leading pure-narration openers (up to 3) and orphaned fragments
-  // (short tail text left after a colon split, e.g. " css file\n\nNow I'll…")
-  s = s.trimStart()
-  for (let i = 0; i < 3; i++) {
-    // Match a leading narration sentence
-    const m = s.match(LEADING_NARRATION_RE)
-    if (m) {
-      s = s.slice(m[0].length).trimStart()
-      continue
-    }
-    // If the leading "paragraph" (before first \n\n) is a short orphaned fragment
-    // (< 40 chars, no verb, likely a dangling noun phrase), drop it
-    const paraEnd = s.indexOf('\n\n')
-    if (paraEnd !== -1 && paraEnd < 40) {
-      const frag = s.slice(0, paraEnd).trim()
-      // Only drop if it looks like a fragment (no period/sentence structure)
-      if (frag.length < 35 && !/[.!?]$/.test(frag)) {
-        s = s.slice(paraEnd).trimStart()
-        continue
-      }
-    }
-    break
-  }
-
-  return s.trim()
-}
-
-/** Split normalized text into first 1-2 sentences (preview) and the rest. */
-function splitSentences(text: string): { preview: string; rest: string } {
-  // Match sentence-ending punctuation followed by whitespace + capital letter / quote
-  // Skips common abbreviations (single caps like "I.", "A." are allowed to split;
-  // multi-cap sequences like "U.S." or "Dr." are not matched by this pattern)
-  const sentences: number[] = []
-  const re = /[.!?](?=\s+[A-Z"'])/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    sentences.push(m.index + 1) // position after the punctuation
-  }
-
-  if (sentences.length < 2) {
-    return { preview: text, rest: '' }
-  }
-
-  const cutAt = sentences[1]
-  return {
-    preview: text.slice(0, cutAt).trim(),
-    rest: text.slice(cutAt).trim(),
-  }
+  return s
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -366,33 +301,25 @@ function UserBubble({ content, attachments }: { content: string; attachments?: M
 
 const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message: Message; onRetry?: () => void }) {
     const [hovered, setHovered] = useState(false)
-    const [expanded, setExpanded] = useState(false)
     const hasSteps    = (message.steps?.length ?? 0) > 0
     const hasContent  = message.content.trim().length > 0
     const isStreaming = message.streaming
     const hasError    = !!message.error
     const isWaiting   = !hasContent && !hasSteps && isStreaming && !hasError
 
-      const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 50)
+    const debouncedContent = useDebouncedStreaming(message.content, isStreaming ?? false, 80)
 
-        // Normalize agent content: split colon-joined narration runs into paragraphs,
-        // fix missing spaces after punctuation, strip pure-opener sentences.
-        // Applied always (streaming too) so the text doesn't reflow on settle.
-        const cleanedContent = useMemo(() => {
-          return normalizeAgentContent(debouncedContent)
-        }, [debouncedContent])
+    // Normalize: split colon-joined narration into paragraphs, fix spacing.
+    // Never strips content — full response always shown.
+    const cleanedContent = useMemo(
+      () => normalizeAgentContent(debouncedContent),
+      [debouncedContent],
+    )
 
-      // Split into preview (1-2 sentences) + rest; only truncate after streaming ends
-      const { preview, rest } = useMemo(
-        () => hasContent ? splitSentences(cleanedContent) : { preview: '', rest: '' },
-        [cleanedContent, hasContent],
-      )
-      const hasTruncation = rest.length > 0 && !isStreaming
-
-      const renderedPreview = useMemo(
-        () => hasContent ? <MarkdownRenderer content={isStreaming ? cleanedContent : preview} /> : null,
-        [preview, cleanedContent, hasContent, isStreaming],
-      )
+    const rendered = useMemo(
+      () => hasContent ? <MarkdownRenderer content={cleanedContent} /> : null,
+      [cleanedContent, hasContent],
+    )
 
   const outputCardFiles = useMemo<OutputCardFile[]>(() => {
     if (!message.steps) return []
@@ -458,28 +385,9 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
           {hasContent && (
             <div className={hasSteps ? 'cm-response-divider' : 'cm-response-start'}>
               <div className="cm-prose agent-prose">
-                {renderedPreview}
+                {rendered}
               </div>
-              {isStreaming && (
-                <span className="cm-cursor" />
-              )}
-              {hasTruncation && (
-                <button
-                  className="cm-expand-btn hover-bg-app-3"
-                  onClick={() => setExpanded(true)}
-                >
-                  <Pxi name="ellipsis-h" size={11} />
-                  Read more
-                </button>
-              )}
-              {expanded && (
-                <Suspense fallback={null}>
-                  <MessageExpandModal
-                    content={cleanedContent}
-                    onClose={() => setExpanded(false)}
-                  />
-                </Suspense>
-              )}
+              {isStreaming && <span className="cm-cursor" />}
             </div>
           )}
 

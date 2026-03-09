@@ -13,7 +13,7 @@ import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
-import { PlanView, PlanConfirmationModal } from './PlanConfirmationModal'
+import { PlanView, PlanConfirmationModal, PlanTrackingModal } from './PlanConfirmationModal'
 import { resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
@@ -65,6 +65,9 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       lastGatewayEvent,
         addStep: _addStep,
       addToast,
+      currentPlan,
+      currentPhase,
+      currentStep,
     } = useAppStore(
     useShallow((s) => ({
       messages: s.messages,
@@ -88,18 +91,21 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
       enableVerification: s.enableVerification,
       routerConfig: s.routerConfig,
       routingMode: s.routerConfig.mode,
-      pendingPlan: s.pendingPlan,
-      approvePlan: s.approvePlan,
-      rejectPlan: s.rejectPlan,
-      setSandboxStatus: s.setSandboxStatus,
-      sandboxStatus: s.sandboxStatus,
-      extensionConnected: s.extensionConnected,
-      extensionVersion: s.extensionVersion,
-        gatewayHealth: s.gatewayHealth,
-        lastGatewayEvent: s.lastGatewayEvent,
-        addStep: s.addStep,
-        addToast: s.addToast,
-      })),
+        pendingPlan: s.pendingPlan,
+        approvePlan: s.approvePlan,
+        rejectPlan: s.rejectPlan,
+        setSandboxStatus: s.setSandboxStatus,
+        sandboxStatus: s.sandboxStatus,
+        extensionConnected: s.extensionConnected,
+        extensionVersion: s.extensionVersion,
+          gatewayHealth: s.gatewayHealth,
+          lastGatewayEvent: s.lastGatewayEvent,
+          addStep: s.addStep,
+          addToast: s.addToast,
+          currentPlan: s.currentPlan,
+          currentPhase: s.currentPhase,
+          currentStep: s.currentStep,
+        })),
   )
 
     // Monitor gateway failovers and show notifications
@@ -150,6 +156,7 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
     const [tokenCount, setTokenCount] = useState(0)
     const [showMemory, setShowMemory] = useState(false)
     const [queuedMsg, setQueuedMsg] = useState<string | null>(null)
+    const [planModalOpen, setPlanModalOpen] = useState(false)
     const [activeModelBadge, setActiveModelBadge] = useState<{ modelId: string; displayName: string; reason: string } | null>(null)
     // Routing preview from store
     const { routingPreview, setRoutingPreview, taskRouterState } = useAppStore(
@@ -658,6 +665,16 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
           <DropZoneOverlay isDragOver={isDragOver} dragMode={dragMode} />
 
           <ToastOverlay />
+
+      {/* Plan tracking modal — opened from the Plan chip in the header */}
+      {planModalOpen && currentPlan && (
+        <PlanTrackingModal
+          plan={currentPlan}
+          currentPhase={currentPhase}
+          currentStep={currentStep}
+          onClose={() => setPlanModalOpen(false)}
+        />
+      )}
       {showMemory && taskWorkspacePath && (
         <MemoryViewer
           taskId={task.id}
@@ -688,6 +705,10 @@ export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onSho
                 userTurns={userTurns}
                 rightCollapsed={_rightCollapsed}
               onToggleRight={_onToggleRight}
+              currentPlan={currentPlan}
+              currentPhase={currentPhase}
+              currentStep={currentStep}
+              onPlanClick={() => setPlanModalOpen(true)}
             />
 
           {/* Sandbox error banner */}

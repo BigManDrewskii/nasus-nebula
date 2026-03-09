@@ -508,3 +508,79 @@ export const CompactPlanView = memo(({ plan, currentPhase, currentStep }: {
 }) => (
   <PlanView plan={plan} currentPhase={currentPhase} currentStep={currentStep} isReadOnly />
 ))
+
+// ─── Plan tracking modal (opened from the Plan chip in the header) ─────────────
+
+export function PlanTrackingModal({
+  plan,
+  currentPhase,
+  currentStep,
+  onClose,
+}: {
+  plan: ExecutionPlan
+  currentPhase?: number
+  currentStep?: number
+  onClose: () => void
+}) {
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const totalSteps = plan.phases.reduce((s, p) => s + p.steps.length, 0)
+  const completedPhases = currentPhase ?? 0
+  const progressPct = plan.phases.length > 0
+    ? Math.round((completedPhases / plan.phases.length) * 100)
+    : 0
+
+  return (
+    <div className="ptm-overlay" onClick={onClose}>
+      <div className="ptm-panel" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="ptm-header">
+          <div className="ptm-header-left">
+            <Pxi name="cpu" size={12} style={{ color: 'var(--amber)' }} />
+            <span className="ptm-title">{plan.title}</span>
+          </div>
+          <div className="ptm-header-right">
+            <span className="ptm-progress-label font-mono">
+              Phase {completedPhases + 1}/{plan.phases.length}
+            </span>
+            <button className="ptm-close" onClick={onClose} aria-label="Close">
+              <Pxi name="x" size={10} />
+            </button>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div className="ptm-progress-track">
+          <div className="ptm-progress-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+
+        {/* Phase list — reuses PhaseBlock from PlanView */}
+        <div className="ptm-body custom-scrollbar">
+          {plan.phases.map((phase, i) => (
+            <PhaseBlock
+              key={phase.id}
+              phase={phase}
+              phaseNumber={i + 1}
+              isCurrent={i === completedPhases}
+              isDone={i < completedPhases}
+              currentStep={i === completedPhases ? currentStep : undefined}
+            />
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="ptm-footer">
+          <span className="ptm-pulse" />
+          <span className="ptm-total font-mono">{totalSteps} steps total</span>
+        </div>
+      </div>
+    </div>
+  )
+}

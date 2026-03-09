@@ -8,6 +8,7 @@
 import type { Task } from '../types'
 import type { TaskRouterState } from '../store'
 import type { GatewayHealth } from '../agent/gateway/gatewayTypes'
+import type { ExecutionPlan } from '../agent/core/Agent'
 import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
@@ -131,6 +132,11 @@ export function ToastOverlay() {
      rightCollapsed?: boolean
      onToggleRight?: () => void
      onToggleSidebar?: () => void
+     /** Current execution plan — shows the Plan chip when set */
+     currentPlan?: ExecutionPlan | null
+     currentPhase?: number
+     currentStep?: number
+     onPlanClick?: () => void
    }
 
    export function ChatHeader({
@@ -155,6 +161,9 @@ export function ToastOverlay() {
      rightCollapsed,
      onToggleRight,
        onToggleSidebar: _onToggleSidebar,
+     currentPlan,
+     currentPhase = 0,
+     onPlanClick,
    }: ChatHeaderProps) {
      const liveRouterEntry = isActive && routingMode === 'auto' ? activeModelBadge ?? taskRouterState : null
      const activeModelId = liveRouterEntry?.modelId || manualModel
@@ -180,7 +189,7 @@ export function ToastOverlay() {
           </h2>
         </div>
 
-        {/* Center — compact model + cost pill */}
+        {/* Center — compact model + cost pill + plan chip */}
         <div className="ch-center">
           <div
             title={[
@@ -208,6 +217,16 @@ export function ToastOverlay() {
               </>
             )}
           </div>
+
+          {/* Plan chip — visible whenever a plan is active */}
+          {currentPlan && (
+            <button className="ch-plan-chip" onClick={onPlanClick} title="View execution plan">
+              <Pxi name="cpu" size={9} />
+              <span>Plan</span>
+              <span className="ch-plan-phase">{currentPhase + 1}/{currentPlan.phases.length}</span>
+              <span className="ch-plan-pulse" />
+            </button>
+          )}
         </div>
 
         {/* Right cluster — sandbox + stop */}

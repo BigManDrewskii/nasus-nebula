@@ -17,6 +17,7 @@ import { getWorkspace } from './tools'
 type StackId =
   | 'nextjs-shadcn'
   | 'react-spa'
+  | 'html-daisyui'
   | 'html-tailwind'
   | 'html-plain'
   | 'python-script'
@@ -35,6 +36,28 @@ interface DetectedStack {
 }
 
 const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; contextInjection: string }> = [
+  {
+    id: 'html-daisyui',
+    label: 'HTML + DaisyUI',
+    patterns: [
+      /daisyui/i,
+      /daisy\s*ui/i,
+      /daisy/i,
+    ],
+    contextInjection:
+      'Stack detected: HTML + Tailwind CSS + DaisyUI v4.\n' +
+      'IMPORTANT — DaisyUI v4 API (NOT v5):\n' +
+      '  - Theme config: data-theme="mytheme" on <html>, defined via tailwind.config daisyui.themes\n' +
+      '  - Component classes: btn, card, navbar, hero, stats, stat, badge, modal, drawer, etc.\n' +
+      '  - btn-group is DEPRECATED — use join class: <div class="join"><button class="btn join-item">\n' +
+      '  - btm-nav replaces btm-nav for mobile bottom nav\n' +
+      '  - stat layout: <div class="stats shadow"><div class="stat"> inside\n' +
+      '  - navbar layout: <div class="navbar"><div class="navbar-start/center/end">\n' +
+      '  - CDN: <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" />\n' +
+      '         <script src="https://cdn.tailwindcss.com"></script>\n' +
+      'APPLY all Web Design Quality Standards (layout, font pairing, animation rules).\n' +
+      'After serve_preview, call browser_screenshot(full_page=true) and verify layout.',
+  },
   {
     id: 'nextjs-shadcn',
     label: 'Next.js + shadcn/ui',
@@ -144,7 +167,9 @@ const STACK_PATTERNS: Array<{ id: StackId; label: string; patterns: RegExp[]; co
     ],
     contextInjection:
       'Stack detected: HTML + Tailwind CSS. Template pre-loaded at /workspace/index.html with Tailwind CDN. ' +
-      'Write HTML/CSS directly. No build step needed — the file renders immediately.',
+      'Write HTML/CSS directly. No build step needed — the file renders immediately.\n' +
+      'APPLY all Web Design Quality Standards: font pairing (not Inter alone), two-column hero, horizontal stats, grid features, entrance animations.\n' +
+      'After serve_preview, call browser_screenshot(full_page=true) and verify layout before complete().',
   },
   {
     id: 'python-script',
@@ -210,10 +235,18 @@ const NEXTJS_SHADCN_HTML = `<!DOCTYPE html>
     }
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', sans-serif; }
+    @media (prefers-reduced-motion: no-preference) {
+      .animate-fade-up { animation: fadeUp 0.6s ease both; }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    }
     /* shadcn-style button */
     .btn { display:inline-flex;align-items:center;justify-content:center;border-radius:0.375rem;font-size:0.875rem;font-weight:500;height:2.5rem;padding:0 1rem;cursor:pointer;border:none;transition:background 0.15s,opacity 0.15s; }
     .btn-primary { background:hsl(222.2,47.4%,11.2%);color:hsl(210,40%,98%); }
@@ -258,8 +291,12 @@ const REACT_SPA_HTML = `<!DOCTYPE html>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <style> * { box-sizing: border-box; } body { font-family: 'Inter', sans-serif; margin: 0; } </style>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; margin: 0; }
+    h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 <body>
   <div id="root"></div>
@@ -279,6 +316,50 @@ const REACT_SPA_HTML = `<!DOCTYPE html>
 </body>
 </html>`
 
+const HTML_DAISYUI_HTML = `<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Page</title>
+  <!-- DaisyUI v4 + Tailwind -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font pairing: Sora (headings) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Sora', 'sans-serif'],
+            body: ['DM Sans', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'DM Sans', sans-serif; margin: 0; }
+    h1, h2, h3, h4 { font-family: 'Sora', sans-serif; }
+    @media (prefers-reduced-motion: no-preference) {
+      .animate-fade-up {
+        animation: fadeUp 0.6s ease both;
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Content goes here -->
+</body>
+</html>`
+
 const HTML_TAILWIND_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -286,10 +367,34 @@ const HTML_TAILWIND_HTML = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Page</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Font pairing: Plus Jakarta Sans (headings) + Inter (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"Plus Jakarta Sans"', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    h1, h2, h3, h4 { font-family: '"Plus Jakarta Sans"', sans-serif; }
+    @media (prefers-reduced-motion: no-preference) {
+      .animate-fade-up {
+        animation: fadeUp 0.6s ease both;
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(24px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+    }
   </style>
 </head>
 <body>
@@ -342,6 +447,9 @@ export function seedStackTemplate(taskId: string, stackId: StackId): void {
       break
     case 'react-spa':
       if (!ws.has('index.html')) ws.set('index.html', REACT_SPA_HTML)
+      break
+    case 'html-daisyui':
+      if (!ws.has('index.html')) ws.set('index.html', HTML_DAISYUI_HTML)
       break
     case 'html-tailwind':
     case 'html-plain':

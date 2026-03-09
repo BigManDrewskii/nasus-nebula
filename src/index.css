@@ -5934,3 +5934,181 @@ input[type="range"]::-moz-range-thumb {
   animation: spin 0.6s linear infinite;
   flex-shrink: 0;
 }
+
+/* ─── Plan chip (header center cluster) ────────────────────────────────────── */
+
+.ch-center {
+  gap: 6px;
+}
+
+.ch-plan-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(234, 179, 8, 0.28);
+  background: rgba(234, 179, 8, 0.08);
+  color: rgba(234, 179, 8, 0.85);
+  font-size: 10px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.ch-plan-chip:hover {
+  background: rgba(234, 179, 8, 0.15);
+  border-color: rgba(234, 179, 8, 0.45);
+}
+
+.ch-plan-phase {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--tx-tertiary);
+  letter-spacing: 0.02em;
+}
+
+.ch-plan-pulse {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--amber, #eab308);
+  animation: statusPulse 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* ─── Plan tracking modal (fixed overlay) ──────────────────────────────────── */
+
+.ptm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  animation: fadeIn 0.18s ease-out both;
+}
+
+.ptm-panel {
+  width: 100%;
+  max-width: 500px;
+  background: #0d0d0d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  animation: fadeIn 0.18s ease-out both;
+}
+
+.ptm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.ptm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ptm-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.ptm-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--tx-primary);
+  font-family: var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptm-progress-label {
+  font-size: 10px;
+  color: var(--tx-tertiary);
+}
+
+.ptm-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--tx-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.ptm-close:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--tx-secondary);
+}
+
+.ptm-progress-track {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.ptm-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--amber, #eab308), rgba(234, 179, 8, 0.5));
+  transition: width 0.4s ease;
+  border-radius: 0 1px 1px 0;
+}
+
+.ptm-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ptm-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.ptm-pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber, #eab308);
+  animation: statusPulse 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.ptm-total {
+  font-size: 10px;
+  color: var(--tx-tertiary);
+}

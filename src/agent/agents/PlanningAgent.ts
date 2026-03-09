@@ -245,6 +245,21 @@ User Request: ${userMessage}`
       }
     }
 
+    // Inject UI-specific planning phases for web/design tasks
+    const isUITask = /landing|website|webpage|hero|ui|ux|design|frontend|page|layout|component|dashboard|portfolio|app\s+(?:ui|design)/i.test(userMessage)
+    if (isUITask) {
+      prompt += `
+
+This is a UI/web task. Your plan MUST include the following phases in order:
+1. Design Setup — fetch Web Interface Guidelines (http_fetch the Vercel guidelines URL), choose font pairing, define color palette and accent color (NOT purple-to-blue gradient)
+2. HTML Structure — write semantic HTML: nav (logo left, links right, CTA rightmost), two-column hero (text + visual), features grid, stats row (horizontal), footer
+3. Styling & Animation — apply Tailwind classes, entrance animations (@keyframes fadeUp), hover states, section spacing
+4. Visual Verification — call browser_screenshot(full_page=true), check for: broken nav, text-only hero, stacked stats, empty sections, fix any issues found
+5. Guidelines Audit — check output against fetched Vercel Web Interface Guidelines, fix any violations
+
+Each phase must use the correct tools. Do NOT collapse these into a single "implement" phase.`
+    }
+
     prompt += `
 
 Consider:

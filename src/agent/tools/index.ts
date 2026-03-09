@@ -48,6 +48,7 @@ import { BrowserAnalyzeScreenshotTool } from './browser/BrowserAnalyzeScreenshot
 import { BrowserScrollTool } from './browser/BrowserScrollTool'
 import { BrowserWaitForTool } from './browser/BrowserWaitForTool'
 import { BrowserAriaSnapshotTool } from './browser/BrowserAriaSnapshotTool'
+import { BrowserReadPageTool } from './browser/BrowserReadPageTool'
 
 /**
  * Global tool registry instance.
@@ -88,6 +89,7 @@ toolRegistry.registerConstructor('browser_analyze_screenshot', BrowserAnalyzeScr
 toolRegistry.registerConstructor('browser_scroll', BrowserScrollTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
+toolRegistry.registerConstructor('browser_read_page', BrowserReadPageTool)
 
 /**
  * Get tool function definitions for OpenAI function calling.
@@ -194,4 +196,5 @@ export {
   BrowserScrollTool,
   BrowserWaitForTool,
   BrowserAriaSnapshotTool,
+  BrowserReadPageTool,
 } from './browser'
