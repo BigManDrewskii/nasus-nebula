@@ -1131,18 +1131,39 @@ pub fn run() {
             let db_conn = open_db(&app_data_dir)
                 .expect("Failed to open nasus.db");
 
-            // Get the sidecar directory path
+            // Get the sidecar directory path (writable, persists across launches)
             let mut sidecar_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             sidecar_dir.push("sidecar");
             let _ = std::fs::create_dir_all(&sidecar_dir);
 
-            // Note: The actual sidecar files are in src-tauri/sidecar during development
-            // In production, they would be bundled with the app
-            let dev_sidecar_path = std::env::current_dir()
-                .ok()
-                .and_then(|p| p.join("src-tauri").join("sidecar").canonicalize().ok());
+            // Resolve where the sidecar source files (package.json + index.js) live.
+            // Priority:
+            //   1. src-tauri/sidecar/ relative to current_dir  (tauri dev — works when CWD is the project root)
+            //   2. ../src-tauri/sidecar/ (CWD might be src-tauri itself)
+            //   3. The bundled resource dir (tauri build — files are copied there via tauri.conf.json resources)
+            //   4. The app-data sidecar dir (fallback — files must be copied there by browser_install_sidecar)
+            let has_package_json = |p: &std::path::PathBuf| p.join("package.json").exists();
 
-            let sidecar_path = dev_sidecar_path.unwrap_or(sidecar_dir);
+            let sidecar_source = std::env::current_dir().ok().and_then(|cwd| {
+                // Try cwd/src-tauri/sidecar first (project root CWD)
+                let p1 = cwd.join("src-tauri").join("sidecar");
+                if has_package_json(&p1) { return p1.canonicalize().ok(); }
+                // Try cwd/sidecar (CWD is already src-tauri)
+                let p2 = cwd.join("sidecar");
+                if has_package_json(&p2) { return p2.canonicalize().ok(); }
+                None
+            }).or_else(|| {
+                // Bundled resource dir
+                app.path().resource_dir().ok().and_then(|r| {
+                    let p = r.join("sidecar");
+                    if has_package_json(&p) { Some(p) } else { None }
+                })
+            });
+
+            // If we found a source dir with package.json, use it directly.
+            // Otherwise fall back to app_data sidecar dir — browser_install_sidecar
+            // will copy the bundled files there on first install.
+            let sidecar_path = sidecar_source.unwrap_or(sidecar_dir);
 
               // Manage GatewayState as standalone Tauri state so that
               // gateway::get_gateways / save_gateways / get_gateway_health commands

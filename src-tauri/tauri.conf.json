@@ -50,6 +50,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "sidecar/package.json": "sidecar/package.json",
+      "sidecar/index.js": "sidecar/index.js"
+    },
     "macOS": {
       "minimumSystemVersion": "10.15"
     }

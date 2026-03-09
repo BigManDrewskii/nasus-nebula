@@ -1134,7 +1134,7 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
 
   private emitChunk(taskId: string, messageId: string, delta: string): void {
     useAppStore.getState().appendChunk(taskId, messageId, delta)
-    window.dispatchEvent(new CustomEvent('nasus:stream-chunk', { detail: { taskId, messageId } }))
+    window.dispatchEvent(new CustomEvent('nasus:stream-chunk', { detail: { taskId, messageId, delta } }))
   }
 
   private emitTokenUsage(taskId: string, prompt: number, completion: number, total: number): void {

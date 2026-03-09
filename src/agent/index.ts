@@ -13,6 +13,7 @@ import type { ExecutionConfig } from './sandboxRuntime'
 import { disposeSandbox } from './sandboxRuntime'
 import { processTaskWithOrchestrator, type OrchestratorConfig } from './Orchestrator'
 import { workspaceManager } from './workspace/WorkspaceManager'
+import { useAppStore } from '../store'
 
 const log = createLogger('Agent')
 
@@ -51,6 +52,11 @@ export interface RunWebAgentParams {
 }
 
 export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
+  // Reset any stale plan state from a previous run before starting.
+  // Without this, pendingPlan / planApprovalStatus from task N bleeds into task N+1
+  // causing the plan modal to show stale state or waitForApproval to mis-fire.
+  useAppStore.getState().resetPlanState()
+
   // Cancel any concurrent run for this task before starting a new one.
   // Only abort if there's already a controller registered (i.e., a true concurrent run).
   // Don't call stopWebAgent here — that also disposes the sandbox, which we don't want
@@ -78,9 +84,9 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
 
       // Skip planning for:
       // 1. Short messages (< 80 chars) — unlikely to need a multi-phase plan
-      // 2. Follow-up turns (> 2 messages) — already have context/plan from previous turns
+      // 2. Follow-up turns (> 2 user messages) — already have context/plan from previous turns
       const isShortMessage = userMessage.trim().length < 80
-      const isFollowUp = params.userMessages.filter(m => m.role === 'user').length > 1
+      const isFollowUp = params.userMessages.filter(m => m.role === 'user').length > 2
       const shouldSkipPlanning = isShortMessage || isFollowUp
 
       await processTaskWithOrchestrator(

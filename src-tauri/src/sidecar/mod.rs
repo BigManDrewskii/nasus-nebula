@@ -463,7 +463,7 @@ async fn get_session(
 
 use crate::AppState;
 use crate::{NasusError, NasusResult};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri::Emitter;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -890,6 +890,49 @@ pub async fn browser_install_sidecar(
 
     let emit_progress = |message: String| { let _ = app.emit("sidecar:install_progress", message); };
 
+    // ── Step 1: ensure package.json and index.js exist in sidecar_dir ──────────
+    // In production the sidecar_dir is the app-data sidecar dir which starts empty.
+    // We copy the bundled resource files into it so npm install has something to work with.
+    let package_json = sidecar_dir.join("package.json");
+    let index_js = sidecar_dir.join("index.js");
+
+    if !package_json.exists() || !index_js.exists() {
+        emit_progress("Copying sidecar files...".into());
+
+        // Try bundled resource dir first (production)
+        let resource_sidecar: Option<std::path::PathBuf> = app.path().resource_dir()
+            .ok()
+            .map(|r: std::path::PathBuf| r.join("sidecar"));
+
+        // Also try dev paths: cwd/src-tauri/sidecar and cwd/sidecar
+        let dev_source = std::env::current_dir().ok().and_then(|cwd| {
+            let p1 = cwd.join("src-tauri").join("sidecar");
+            if p1.join("package.json").exists() { return Some(p1); }
+            let p2 = cwd.join("sidecar");
+            if p2.join("package.json").exists() { return Some(p2); }
+            None
+        });
+
+        let source_dir = dev_source
+            .or_else(|| resource_sidecar.filter(|p: &std::path::PathBuf| p.join("package.json").exists()))
+            .ok_or_else(|| NasusError::Sidecar(
+                "Cannot find sidecar source files. Please report this bug.".into()
+            ))?;
+
+        let _ = std::fs::create_dir_all(&sidecar_dir);
+
+        for filename in &["package.json", "index.js"] {
+            let src = source_dir.join(filename);
+            let dst = sidecar_dir.join(filename);
+            if src.exists() && !dst.exists() {
+                std::fs::copy(&src, &dst).map_err(|e| {
+                    NasusError::Sidecar(format!("Failed to copy {}: {}", filename, e))
+                })?;
+            }
+        }
+    }
+
+    // ── Step 2: npm install ────────────────────────────────────────────────────
     emit_progress("Installing npm dependencies...".into());
 
     let npm_output = std::process::Command::new("npm")
@@ -901,6 +944,7 @@ pub async fn browser_install_sidecar(
 
     match npm_output {
         Ok(output) if output.status.success() => {
+            // ── Step 3: install Playwright Chromium ────────────────────────────
             emit_progress("Installing Chromium browser...".into());
             let pw_output = std::process::Command::new("npx")
                 .args(["playwright", "install", "chromium"])

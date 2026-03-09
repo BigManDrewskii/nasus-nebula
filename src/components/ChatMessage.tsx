@@ -436,9 +436,7 @@ export const ChatMessage = memo(function ChatMessage({ message, onRetry }: { mes
 
   if (prev.author === 'user' && prev.content !== next.content) return false
 
-  if (prev.author === 'agent' && !prev.streaming && !next.streaming && prev.content !== next.content) {
-    return false
-  }
+  if (prev.author === 'agent' && prev.content !== next.content) return false
 
   if (prev.attachments?.length !== next.attachments?.length) return false
 
