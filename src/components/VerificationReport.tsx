@@ -88,10 +88,10 @@ const VerificationIssues = memo(({ issues }: { issues: VerificationIssue[] }) =>
                 size={12}
                 style={{ color: s.color, flexShrink: 0 }}
               />
-              <span style={{ fontSize: 12, fontWeight: 600, color: s.color }}>{issue.message}</span>
+              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: s.color }}>{issue.message}</span>
             </div>
             {issue.correction && (
-              <p className="vr-issue-correction" style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 4 }}>
+              <p className="vr-issue-correction" style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', marginTop: 4 }}>
                 {issue.correction}
               </p>
             )}
@@ -128,16 +128,16 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
             size={14}
             style={{ color: passed ? 'var(--tok-str)' : 'var(--red-fg)' }}
             />
-            <span style={{ fontSize: 12, fontWeight: 700, color: passed ? 'var(--tok-str)' : 'var(--red-fg)' }}>
+            <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: passed ? 'var(--tok-str)' : 'var(--red-fg)' }}>
             {passed ? 'Verification Passed' : 'Verification Failed'}
           </span>
           {attempt > 1 && (
-            <span style={{ fontSize: 10, color: 'var(--tx-muted)', marginLeft: 4 }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', marginLeft: 4 }}>
               attempt {attempt}/{maxAttempts}
             </span>
           )}
         </div>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', fontVariantNumeric: 'tabular-nums' }}>
           {confidencePercent}% confidence
         </span>
       </div>
@@ -146,7 +146,7 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
       <div className="flex-col vr-body" style={{ padding: '12px 14px', gap: 12 }}>
         {/* Checklist */}
         <div>
-          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Checklist
           </span>
           <VerificationChecklist result={result} />
@@ -155,7 +155,7 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
         {/* Issues */}
         {!passed && result.issues.length > 0 && (
           <div className="flex-col" style={{ gap: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Issues Found
             </span>
             <VerificationIssues issues={result.issues} />
@@ -165,12 +165,12 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
         {/* Corrections */}
         {!passed && result.corrections.length > 0 && (
           <div className="flex-col" style={{ gap: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Suggested Corrections
             </span>
             <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {result.corrections.map((correction, idx) => (
-                <li key={idx} className="flex-v-center" style={{ gap: 6, fontSize: 12, color: 'var(--tx-secondary)' }}>
+                <li key={idx} className="flex-v-center" style={{ gap: 6, fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>
                   <span style={{ color: 'var(--tx-muted)', minWidth: 16, textAlign: 'right', flexShrink: 0 }}>{idx + 1}.</span>
                   <span>{correction}</span>
                 </li>
@@ -198,7 +198,7 @@ export const VerificationBadge = memo(({ result }: { result: VerificationReportD
         gap: 4,
         padding: '2px 8px',
         borderRadius: 999,
-        fontSize: 10,
+        fontSize: 'var(--text-xs)',
         fontWeight: 600,
           background: passed ? 'rgba(134,239,172,0.12)' : 'var(--red-a13)',
           color: passed ? 'var(--tok-str)' : 'var(--red-fg)',

@@ -84,10 +84,10 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
 
           {/* Label + description */}
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={chip.label}>
               {chip.label}
             </div>
-            <div style={{ fontSize: 10.5, color: 'var(--tx-tertiary)', marginTop: 1 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)', marginTop: 1 }}>
               {chip.description}
             </div>
           </div>

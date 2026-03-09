@@ -37,11 +37,11 @@ export function ChatEmptyState({
         <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 5 }}>
           <h3
             className="font-display font-semibold"
-            style={{ fontSize: 20, color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.025em', lineHeight: 1.2 }}
+            style={{ fontSize: 'var(--text-2xl)', color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.025em', lineHeight: 1.2 }}
           >
             What would you like to build?
           </h3>
-          <p style={{ fontSize: 12.5, color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
             Describe your task and Nasus will get to work
           </p>
         </div>
@@ -55,7 +55,7 @@ export function ChatEmptyState({
             <div style={{
               position: 'absolute', top: -22, right: 2,
               display: 'flex', alignItems: 'center', gap: 5,
-              fontSize: 9.5, fontWeight: 500, color: '#22c55e', opacity: 0.8,
+              fontSize: 'var(--text-2xs)', fontWeight: 500, color: '#22c55e', opacity: 0.8,
             }}>
               <span style={{
                 width: 5, height: 5, borderRadius: '50%', background: '#22c55e',
@@ -88,13 +88,13 @@ export function ChatEmptyState({
           ].map(({ key, label }) => (
             <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <kbd style={{
-                fontSize: 9, fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--text-2xs)', fontFamily: 'var(--font-mono)',
                 color: 'var(--tx-secondary)',
                 background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: 4, padding: '1px 5px',
               }}>{key}</kbd>
-              <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>{label}</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)' }}>{label}</span>
             </span>
           ))}
         </div>

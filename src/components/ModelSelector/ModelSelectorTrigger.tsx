@@ -86,7 +86,7 @@ export function ModelSelectorTrigger() {
           >
           <span
             style={{
-              fontSize: 10.5,
+              fontSize: 'var(--text-xs)',
               fontFamily: 'var(--font-mono)',
               color: open ? 'var(--tx-primary)' : 'var(--tx-secondary)',
               maxWidth: 100,

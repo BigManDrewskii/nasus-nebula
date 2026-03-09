@@ -98,7 +98,7 @@ export function ThinkingIndicator({ visible, activeModel, currentTool }: Thinkin
         </div>
 
         <span style={{
-          fontSize: 12,
+          fontSize: 'var(--text-sm)',
           color: 'var(--tx-secondary)',
           fontWeight: 400,
           letterSpacing: '-0.005em',
@@ -108,7 +108,7 @@ export function ThinkingIndicator({ visible, activeModel, currentTool }: Thinkin
 
         {activeModel && (
           <span style={{
-            fontSize: 10,
+            fontSize: 'var(--text-xs)',
             color: 'var(--tx-muted)',
             fontFamily: 'var(--font-mono)',
             paddingLeft: 4,

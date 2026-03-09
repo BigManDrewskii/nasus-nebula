@@ -57,7 +57,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, resetPlanState } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, resetPlanState, textScale } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
@@ -71,6 +71,7 @@ function App() {
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
         resetPlanState: s.resetPlanState,
+        textScale: s.textScale,
       })),
     )
 
@@ -125,6 +126,11 @@ function App() {
   useEffect(() => {
     checkSidecarInstalled()
   }, [checkSidecarInstalled])
+
+  // Apply text scale as a data attribute on <html> — CSS vars key off this
+  useEffect(() => {
+    document.documentElement.dataset.scale = textScale ?? 'default'
+  }, [textScale])
 
   // Check for updates on startup (production only — no update.json exists in dev)
   useEffect(() => {
@@ -322,7 +328,7 @@ function App() {
           {isOffline && (
             <div className="app-offline-banner">
               <Pxi name="wifi" size={11} style={{ color: '#f87171' }} />
-              <span style={{ fontSize: 11.5, color: '#f87171', fontWeight: 500 }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', fontWeight: 500 }}>
                 No internet connection — agent cannot run until connectivity is restored
               </span>
             </div>
@@ -332,7 +338,7 @@ function App() {
           {pruneNotice && (
             <div className="app-prune-notice">
               <Pxi name="info-circle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
+              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
             </div>
           )}
       </div>

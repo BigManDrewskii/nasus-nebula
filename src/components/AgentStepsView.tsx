@@ -389,11 +389,11 @@ const ToolPairRow = memo(function ToolPairRow({ pair }: { pair: ToolPair }) {
             }}
           >
             {label}
-            {sublabel && !isMemoryFile && (
-              <span className="tool-sublabel">
-                {sublabel}
-              </span>
-            )}
+              {sublabel && !isMemoryFile && (
+                <span className="tool-sublabel" title={sublabel}>
+                  {sublabel}
+                </span>
+              )}
           </span>
 
           {isExpandable && (
@@ -451,9 +451,9 @@ function ToolGroupRow({ group }: { group: ToolGroup }) {
         <span className="tool-icon" style={{ opacity: 1 }}>
           <Pxi name={icon} size={13} style={{ color: iconColor }} />
         </span>
-        <span className="tool-label" style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
-          {actionVerb} {pairs.length} files
-        </span>
+          <span className="tool-label" style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)' }}>
+              {actionVerb} {pairs.length} files
+            </span>
         {open && (
           <span className="tool-group-badge">
             expanded
@@ -578,7 +578,7 @@ function FilePathBar({ path, lang, success, icon }: { path: string; lang: string
   return (
     <div className="filepath-bar">
       <Pxi name={icon} size={12} style={{ color: 'var(--tx-tertiary)', flexShrink: 0 }} />
-      <span className="filepath-text">
+      <span className="filepath-text" title={path}>
         {path}
       </span>
       {lang && (
@@ -622,7 +622,7 @@ function DiffBlock({ removed, added }: { removed: string; added: string }) {
         '--diff-del-line-bg': 'rgba(239,68,68,0.08)',
         '--diff-add-text-color': 'rgba(167,243,208,0.9)',
         '--diff-del-text-color': '#fca5a5',
-        '--diff-font-size': '11px',
+        '--diff-font-size': 'var(--text-2xs)',
       } as React.CSSProperties}
     >
       <DiffView
@@ -648,7 +648,7 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
     <div style={{ position: 'relative' }}>
       <pre
         style={{
-          fontSize: 11,
+          fontSize: 'var(--text-2xs)',
           fontFamily: 'var(--font-mono)',
           lineHeight: 1.65,
           whiteSpace: 'pre-wrap',
@@ -809,8 +809,8 @@ function BrowserActionRow({ step }: { step: Extract<AgentStep, { kind: 'browser_
         {label}
       </span>
       {subtitle && (
-        <span className="browser-subtitle">
-          {subtitle.length > 60 ? subtitle.slice(0, 60) + '…' : subtitle}
+        <span className="browser-subtitle" title={subtitle}>
+          {subtitle}
         </span>
       )}
     </div>

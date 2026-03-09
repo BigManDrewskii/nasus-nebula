@@ -142,7 +142,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              fontSize: 12,
+              fontSize: 'var(--text-sm)',
               fontWeight: 500,
               color: 'var(--tx-primary)',
               fontFamily: 'inherit',
@@ -203,10 +203,11 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
           </span>
 
           <span
+            title={task.title}
             style={{
               flex: 1,
               minWidth: 0,
-              fontSize: 11.5,
+              fontSize: 'var(--text-xs)',
               fontWeight: isActive ? 500 : 400,
               lineHeight: 1.35,
               overflow: 'hidden',

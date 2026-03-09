@@ -68,6 +68,8 @@ export interface TaskTokenUsage {
 
 // ── Slice definition ──────────────────────────────────────────────────────
 
+export type TextScale = 'compact' | 'default'
+
 export interface SettingsSlice {
   apiKey: string
   model: string
@@ -107,6 +109,8 @@ export interface SettingsSlice {
   routingPreview: { modelId: string; displayName: string; reason: string } | null
   /** Per-task router state (model used, cost, etc.) keyed by taskId */
   taskRouterState: Record<string, TaskRouterState>
+  /** UI text density: 'compact' (11px body) | 'default' (13px body) */
+  textScale: TextScale
 
   setApiKey: (key: string) => void
   setModel: (model: string) => void
@@ -136,6 +140,7 @@ export interface SettingsSlice {
   updateTokenUsage: (taskId: string, usage: { promptTokens: number; completionTokens: number }, modelId: string) => void
   setRateLimitEnabled: (enabled: boolean) => void
   setMaxRequestsPerMinute: (max: number) => void
+  setTextScale: (scale: TextScale) => void
 }
 
 // Needed at runtime but type is defined in gatewayStore — access via get() cast
@@ -186,6 +191,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   },
   routingPreview: null,
   taskRouterState: {},
+  textScale: 'default',
 
   setApiKey: (key) => {
     set({ apiKey: key })
@@ -447,4 +453,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     set({ maxRequestsPerMinute: max })
     updateGlobalRateLimiterConfig({ maxRequests: max })
   },
+
+  setTextScale: (scale) => set({ textScale: scale }),
 })

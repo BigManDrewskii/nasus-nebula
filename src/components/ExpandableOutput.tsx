@@ -38,7 +38,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
           <Pxi name={isError ? 'alert-circle' : 'file-text'} size={14} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
           {fileName && (
             <span style={{
-              fontSize: 10.5,
+              fontSize: 'var(--text-xs)',
               fontFamily: 'var(--font-mono)',
               color: 'var(--tx-secondary)',
               maxWidth: 150,
@@ -49,7 +49,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               {fileName}
             </span>
           )}
-          <span style={{ fontSize: 9, color: 'var(--tx-tertiary)' }}>
+          <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--tx-tertiary)' }}>
             {formatBytes(output.length)}
           </span>
         </div>
@@ -61,7 +61,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               background: 'transparent',
               border: 'none',
               color: 'var(--amber)',
-              fontSize: 10,
+              fontSize: 'var(--text-xs)',
               cursor: 'pointer',
               padding: '2px 8px',
               borderRadius: 4,
@@ -77,7 +77,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
       <pre style={{
         margin: 0,
         padding: '10px 12px',
-        fontSize: 11,
+        fontSize: 'var(--text-xs)',
         fontFamily: 'var(--font-mono)',
         lineHeight: 1.5,
         color: isError ? '#fca5a5' : 'var(--tx-secondary)',
@@ -117,7 +117,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               background: 'transparent',
               border: 'none',
               color: 'var(--tx-tertiary)',
-              fontSize: 10,
+              fontSize: 'var(--text-xs)',
               cursor: 'pointer',
               padding: '3px 10px',
               borderRadius: 4,

@@ -321,7 +321,7 @@ function ModelSection() {
                     style={{ left: freeOnly ? 'calc(100% - 12px)' : 2 }}
                   />
                 </div>
-                <span style={{ fontSize: 11, color: freeOnly ? '#818cf8' : 'var(--tx-secondary)' }}>Free only</span>
+                <span style={{ fontSize: 'var(--text-xs)', color: freeOnly ? '#818cf8' : 'var(--tx-secondary)' }}>Free only</span>
                 {freeModels.length > 0 && (
                   <span className="font-mono free-count-badge">
                     {freeModels.length}

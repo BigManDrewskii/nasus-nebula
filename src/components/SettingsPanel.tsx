@@ -69,6 +69,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     gatewayHealth,
     rateLimitEnabled, setRateLimitEnabled,
     maxRequestsPerMinute, setMaxRequestsPerMinute,
+    textScale, setTextScale,
   } = useAppStore(useShallow(s => ({
     model: s.model,
     workspacePath: s.workspacePath,
@@ -99,6 +100,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setRateLimitEnabled: s.setRateLimitEnabled,
     maxRequestsPerMinute: s.maxRequestsPerMinute,
     setMaxRequestsPerMinute: s.setMaxRequestsPerMinute,
+    textScale: s.textScale,
+    setTextScale: s.setTextScale,
   })))
 
   const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
@@ -594,12 +597,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <div className="flex-v-center justify-between shrink-0 settings-header">
             <div className="flex-v-center gap-2">
               <Pxi name="cog" size={14} className="text-amber" />
-              <h2 style={{ fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
+              <h2 style={{ fontSize: 'var(--text-xs)', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
             </div>
             {/* OpenRouter badge */}
             <div className="flex-v-center gap-2">
                 <span style={{
-                  fontSize: 10, padding: '2px 8px', borderRadius: 6,
+                  fontSize: 'var(--text-xs)', padding: '2px 8px', borderRadius: 6,
                   background: isPaid ? 'rgba(234,179,8,0.12)' : 'rgba(34,197,94,0.12)',
                   color: isPaid ? 'var(--amber-soft)' : '#4ade80',
                   fontWeight: 600, letterSpacing: '0.04em', border: `1px solid ${isPaid ? 'rgba(234,179,8,0.2)' : 'rgba(34,197,94,0.2)'}`
@@ -631,7 +634,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   borderRadius: 8,
                   background: isActive ? 'var(--amber)' : 'transparent',
                   color: isActive ? '#000' : 'var(--tx-secondary)',
-                  fontSize: 11,
+                  fontSize: 'var(--text-xs)',
                   fontWeight: isActive ? 600 : 400,
                   letterSpacing: '0.02em',
                   cursor: 'pointer',
@@ -654,7 +657,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <Field
               label="Workspace Path"
               icon="folder-open"
-              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-secondary)' }}>/workspace</code></>}
+              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)' }}>/workspace</code></>}
               error={errors.workspacePath}
             >
               <WorkspacePicker
@@ -684,8 +687,39 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               </button>
             </div>
 
-              {/* ── Max Iterations ── */}
-              <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
+                {/* ── Text Density ── */}
+                <div className="flex-v-center justify-between settings-banner">
+                  <div className="flex-col gap-0.5">
+                    <span className="text-[12px] font-medium text-[var(--tx-primary)]">Text size</span>
+                    <span className="text-tertiary text-[10px]">Controls the UI font density across the entire app</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: 3 }}>
+                    {(['default', 'compact'] as const).map((scale) => (
+                      <button
+                        key={scale}
+                        type="button"
+                        onClick={() => setTextScale(scale)}
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: 6,
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 500,
+                          fontFamily: 'var(--font-sans)',
+                          background: textScale === scale ? 'var(--amber)' : 'transparent',
+                          color: textScale === scale ? '#000' : 'var(--tx-secondary)',
+                          transition: 'background 0.15s, color 0.15s',
+                        }}
+                      >
+                        {scale.charAt(0).toUpperCase() + scale.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Max Iterations ── */}
+                <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
                 <input
                   type="number"
                   min={1}
@@ -853,7 +887,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           <div className="flex-1 text-left min-w-0">
                             <div className="flex-v-center gap-1.5">
                               <span style={{
-                                fontSize: 13, fontWeight: 500,
+                                fontSize: 'var(--text-base)', fontWeight: 500,
                                 color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
                               }}>
                                 {opt.label}
@@ -962,7 +996,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             disabled={fetchingModels}
                             style={{
                               gap: 6,
-                              padding: '4px 10px', borderRadius: 8, fontSize: 11,
+                              padding: '4px 10px', borderRadius: 8, fontSize: 'var(--text-xs)',
                               background: 'rgba(255,255,255,0.07)', border: 'none',
                               cursor: fetchingModels ? 'default' : 'pointer',
                               color: 'var(--tx-secondary)', transition: 'color 0.12s',
@@ -989,7 +1023,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         onClick={() => setModelOpen((o) => !o)}
                         className="flex-v-center justify-between w-full"
                         style={{
-                          padding: '8px 12px', borderRadius: 8, fontSize: 13, outline: 'none', cursor: 'pointer',
+                          padding: '8px 12px', borderRadius: 8, fontSize: 'var(--text-base)', outline: 'none', cursor: 'pointer',
                           background: '#0d0d0d',
                           border: `1px solid ${modelOpen ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
                           color: 'var(--tx-primary)', transition: 'border-color 0.12s',
@@ -1114,7 +1148,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     width: 8, height: 8, borderRadius: '50%',
                     background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)40',
                   }} />
-                  <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>
                     Docker — Enabled
                   </span>
                 </div>
@@ -1178,7 +1212,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               borderRadius: 8,
               background: 'rgba(239,68,68,0.1)',
               border: '1px solid rgba(239,68,68,0.25)',
-              fontSize: 11,
+              fontSize: 'var(--text-xs)',
               color: '#fca5a5',
               display: 'flex',
               alignItems: 'center',
@@ -1211,7 +1245,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 className="flex-v-center settings-save-btn"
                 style={{
                   gap: 8,
-                  padding: '8px 16px', fontSize: 12, fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
+                  padding: '8px 16px', fontSize: 'var(--text-sm)', fontWeight: 600, borderRadius: 8, border: 'none', cursor: busy ? 'not-allowed' : 'pointer',
                   background: saveError ? 'rgba(239,68,68,0.8)' : 'var(--amber)', color: '#000',
                   opacity: busy ? 0.45 : 1, transition: 'background 0.12s',
                 }}
@@ -1471,7 +1505,7 @@ function ModelRouterSection({
           title="Fetch latest models from OpenRouter"
             className="flex-v-center hover-bg-app-3"
             style={{
-              padding: '4px 8px', borderRadius: 6, fontSize: 10,
+              padding: '4px 8px', borderRadius: 6, fontSize: 'var(--text-xs)',
               background: refreshing ? 'rgba(255,255,255,0.05)' : 'transparent',
               border: '1px solid rgba(255,255,255,0.1)',
               color: refreshing ? 'var(--tx-muted)' : 'var(--tx-tertiary)',
@@ -1486,7 +1520,7 @@ function ModelRouterSection({
       </div>
       {refreshMessage && (
         <div style={{
-          fontSize: 10, padding: '6px 8px', borderRadius: 6,
+          fontSize: 'var(--text-xs)', padding: '6px 8px', borderRadius: 6,
           background: refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
           color: refreshMessage.startsWith('Failed') ? '#fca5a5' : '#86efac',
           border: `1px solid ${refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`,
@@ -1509,7 +1543,7 @@ function ModelRouterSection({
               onClick={() => onModeChange(opt.id === 'auto' ? 'auto' : mode === 'auto' ? 'anthropic/claude-3.7-sonnet' : mode)}
               title={opt.desc}
               style={{
-                flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 12,
+                flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
                 border: `1px solid ${isSel ? 'oklch(64% 0.214 40.1 / 0.4)' : 'rgba(255,255,255,0.08)'}`,
                 background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
                 color: isSel ? 'var(--amber)' : 'var(--tx-secondary)',
@@ -1526,7 +1560,7 @@ function ModelRouterSection({
         {/* Budget: Free vs Paid (only in Auto mode) */}
       {isAutoMode && (
         <div>
-          <div className="text-tertiary" style={{ fontSize: 10, marginBottom: 6, letterSpacing: '0.04em' }}>
+          <div className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginBottom: 6, letterSpacing: '0.04em' }}>
             Budget
           </div>
             <div className="flex-v-center gap-1.5">
@@ -1542,7 +1576,7 @@ function ModelRouterSection({
                   onClick={() => onBudgetChange(opt.id)}
                   title={opt.desc}
                   style={{
-                    flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 12,
+                    flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
                     border: `1px solid ${isSel ? (opt.id === 'free' ? 'rgba(129,140,248,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.08)'}`,
                     background: isSel ? (opt.id === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
                     color: isSel ? (opt.id === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
@@ -1561,7 +1595,7 @@ function ModelRouterSection({
       {/* Hint about free tier */}
       {isAutoMode && budget === 'free' && (
         <div style={{
-          padding: '8px 10px', borderRadius: 8, fontSize: 11,
+          padding: '8px 10px', borderRadius: 8, fontSize: 'var(--text-xs)',
           background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
           color: '#a5b4fc', lineHeight: 1.55,
         }}>
@@ -1579,7 +1613,7 @@ function ModelRouterSection({
               style={{
                 gap: 5,
                 background: 'none', border: 'none', cursor: 'pointer',
-                fontSize: 11, padding: '2px 0',
+                fontSize: 'var(--text-xs)', padding: '2px 0',
                 transition: 'color 0.12s',
               }}
           >
@@ -1621,20 +1655,20 @@ function ModelRouterSection({
                       {/* Model info */}
                       <div className="flex-1 min-w-0">
                       <div style={{
-                        fontSize: 12, color: enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
+                        fontSize: 'var(--text-sm)', color: enabled ? 'var(--tx-primary)' : 'var(--tx-tertiary)',
                         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         transition: 'color 0.1s',
                       }}>
                         {m.name}
                       </div>
-                      <div className="text-tertiary" style={{ fontSize: 10, marginTop: 1 }}>
+                      <div className="text-tertiary" style={{ fontSize: 'var(--text-xs)', marginTop: 1 }}>
                         {m.provider}
                       </div>
                     </div>
 
                     {/* Tier badge */}
                     <span style={{
-                      fontSize: 9.5, padding: '2px 6px', borderRadius: 5, flexShrink: 0,
+                      fontSize: 'var(--text-2xs)', padding: '2px 6px', borderRadius: 5, flexShrink: 0,
                       background: tier.bg, color: tier.color, fontWeight: 500,
                     }}>
                       {tier.label}

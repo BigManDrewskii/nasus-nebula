@@ -298,7 +298,7 @@ function ModelSection({ open, onToggle }: { open: boolean; onToggle: () => void 
               <div className="free-toggle-track" style={{ background: freeOnly ? '#818cf8' : 'rgba(255,255,255,0.12)' }}>
                 <span className="free-toggle-thumb" style={{ left: freeOnly ? 'calc(100% - 12px)' : 2 }} />
               </div>
-              <span style={{ fontSize: 11, color: freeOnly ? '#818cf8' : 'var(--tx-secondary)' }}>Free only</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: freeOnly ? '#818cf8' : 'var(--tx-secondary)' }}>Free only</span>
               {freeModels.length > 0 && (
                 <span className="font-mono free-count-badge">{freeModels.length}</span>
               )}

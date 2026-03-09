@@ -34,6 +34,7 @@ export type {
   RouterConfig,
   TaskRouterState,
   TaskTokenUsage,
+  TextScale,
 } from './settingsSlice'
 
 type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice & ToastSlice
@@ -74,8 +75,9 @@ export const useAppStore = create<AppState>()(
         routerConfig: state.routerConfig,
         extensionConnected: state.extensionConnected,
         extensionVersion: state.extensionVersion,
-        sidecarPromptShown: state.sidecarPromptShown,
-        // Gateway slice — strip API keys before writing to localStorage
+          sidecarPromptShown: state.sidecarPromptShown,
+          textScale: state.textScale,
+          // Gateway slice — strip API keys before writing to localStorage
         gateways: state.gateways.map(g => ({ ...g, apiKey: '' })),
         openRouterModels: state.openRouterModels,
         modelsLastFetched: state.modelsLastFetched,

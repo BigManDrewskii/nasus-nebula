@@ -216,7 +216,7 @@ export function ModelList({
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 background: '#111',
                 color: 'var(--tx-primary)',
-                fontSize: 12,
+                fontSize: 'var(--text-sm)',
                 outline: 'none',
               }}
             />
@@ -240,7 +240,7 @@ export function ModelList({
               padding: '24px 10px',
               textAlign: 'center',
               color: 'var(--tx-tertiary)',
-              fontSize: 12,
+              fontSize: 'var(--text-sm)',
             }}
           >
             {searchQuery ? `No models found for "${searchQuery}"` : 'No models available'}
@@ -256,7 +256,7 @@ export function ModelList({
                     alignItems: 'center',
                     gap: 6,
                     padding: '8px 0 4px',
-                    fontSize: 10,
+                    fontSize: 'var(--text-xs)',
                     fontWeight: 600,
                     color: '#22c55e',
                   }}
@@ -294,7 +294,7 @@ export function ModelList({
                     alignItems: 'center',
                     gap: 6,
                     padding: groupedModels.free.length > 0 ? '12px 0 4px' : '8px 0 4px',
-                    fontSize: 10,
+                    fontSize: 'var(--text-xs)',
                     fontWeight: 600,
                     color: 'oklch(64% 0.214 40.1)',
                   }}

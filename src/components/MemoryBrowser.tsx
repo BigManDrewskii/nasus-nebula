@@ -39,7 +39,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
         <div className="flex-v-center" style={{ gap: 6, flexWrap: 'wrap' }}>
           {meta.contentType && (
             <span style={{
-              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
               background: 'var(--bg-app-3)', color: 'var(--tx-muted)',
               textTransform: 'capitalize',
             }}>
@@ -48,13 +48,13 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
           )}
           {meta.framework && (
             <span style={{
-              fontSize: 10, padding: '1px 6px', borderRadius: 4,
+              fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
               background: 'rgba(125,211,252,0.1)', color: 'var(--tok-key)',
             }}>
               {meta.framework}
             </span>
           )}
-          <span style={{ fontSize: 10, color: 'var(--tx-muted)' }}>{date}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)' }}>{date}</span>
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete() }}
@@ -65,7 +65,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
           <Pxi name="times" size={12} />
         </button>
       </div>
-      <p style={{ fontSize: 12, color: 'var(--tx-secondary)', margin: '6px 0 0', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', margin: '6px 0 0', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {memory.content}
       </p>
       {meta.tags && meta.tags.length > 0 && (
@@ -74,7 +74,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
             <span
               key={tag}
               style={{
-                fontSize: 10, padding: '1px 6px', borderRadius: 4,
+                fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
                   background: 'var(--glass-bg)', color: 'var(--tx-muted)',
               }}
             >
@@ -90,7 +90,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
 // ── Memory Stats ───────────────────────────────────────────────────────────────────
 
 const MemoryStats = memo(({ totalMemories, memoriesByTask }: { totalMemories: number; memoriesByTask: Record<string, number> }) => (
-  <div className="flex-v-center" style={{ gap: 8, fontSize: 11, color: 'var(--tx-muted)' }}>
+  <div className="flex-v-center" style={{ gap: 8, fontSize: 'var(--text-xs)', color: 'var(--tx-muted)' }}>
     <span>{totalMemories} memories</span>
     <span style={{ opacity: 0.4 }}>·</span>
     <span>{Object.keys(memoriesByTask).length} tasks</span>
@@ -166,7 +166,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
       {/* Header */}
       <div className="mb-header">
         <div className="flex-v-center justify-between" style={{ marginBottom: 10 }}>
-          <h3 style={{ fontSize: 12, fontWeight: 700, color: 'var(--tx-primary)', margin: 0, letterSpacing: '0.04em' }}>Memory Browser</h3>
+          <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--tx-primary)', margin: 0, letterSpacing: '0.04em' }}>Memory Browser</h3>
           {onClose && (
             <button
               onClick={onClose}
@@ -199,7 +199,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
               key={type}
               onClick={() => setFilterType(type)}
               style={{
-                padding: '2px 8px', fontSize: 10, borderRadius: 4, border: 'none', cursor: 'pointer',
+                padding: '2px 8px', fontSize: 'var(--text-xs)', borderRadius: 4, border: 'none', cursor: 'pointer',
                 textTransform: 'capitalize', transition: 'background 0.1s, color 0.1s',
                   background: filterType === type ? 'var(--amber-a16)' : 'var(--glass-bg)',
                 color: filterType === type ? 'var(--amber)' : 'var(--tx-muted)',
@@ -222,8 +222,8 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
         {filteredMemories.length === 0 ? (
           <div className="flex-col flex-center mb-empty">
             <Pxi name="database" size={28} style={{ color: 'var(--tx-muted)', opacity: 0.4, marginBottom: 8 }} />
-            <p style={{ fontSize: 12, color: 'var(--tx-muted)', margin: 0 }}>No memories found</p>
-            <p style={{ fontSize: 11, color: 'var(--tx-muted)', opacity: 0.6, margin: '4px 0 0' }}>Completed tasks will be automatically saved here</p>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-muted)', margin: 0 }}>No memories found</p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', opacity: 0.6, margin: '4px 0 0' }}>Completed tasks will be automatically saved here</p>
           </div>
         ) : (
           filteredMemories.map((memory) => (
@@ -244,7 +244,7 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
           onClick={() => memoryStore.clear().then(loadMemories)}
           className="flex-v-center justify-center hover-text-red"
           style={{
-            width: '100%', padding: '7px 12px', fontSize: 11, borderRadius: 6,
+            width: '100%', padding: '7px 12px', fontSize: 'var(--text-xs)', borderRadius: 6,
             border: '1px solid rgba(248,113,113,0.2)', background: 'transparent',
             color: 'var(--tx-muted)', cursor: 'pointer', gap: 6,
             transition: 'color 0.12s, border-color 0.12s',
@@ -280,7 +280,7 @@ export const CompactMemoryView = memo(({ onSelectMemory }: { onSelectMemory?: (c
           border: 'none', cursor: 'pointer', transition: 'background 0.12s',
         }}
       >
-        <span className="flex-v-center" style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-secondary)', gap: 6 }}>
+        <span className="flex-v-center" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--tx-secondary)', gap: 6 }}>
           <Pxi name="database" size={12} style={{ color: 'var(--tx-tertiary)' }} />
           Memory ({memories.length})
         </span>
@@ -297,7 +297,7 @@ export const CompactMemoryView = memo(({ onSelectMemory }: { onSelectMemory?: (c
               style={{
                 width: '100%', textAlign: 'left', padding: '6px 8px', borderRadius: 4,
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                fontSize: 11, color: 'var(--tx-muted)', transition: 'background 0.1s',
+                fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', transition: 'background 0.1s',
               }}
             >
               {memory.content.slice(0, 80)}{memory.content.length > 80 ? '…' : ''}

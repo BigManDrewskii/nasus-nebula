@@ -14,7 +14,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
   const isLong = output.length > 1000 || lines.length > 10
 
   return (
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>
       {/* Command bar */}
       {command && (
         <div style={{
@@ -26,7 +26,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
           borderBottom: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '6px 6px 0 0',
         }}>
-          <span style={{ color: 'var(--amber)', fontSize: 10 }}>$</span>
+          <span style={{ color: 'var(--amber)', fontSize: 'var(--text-xs)' }}>$</span>
           <span style={{
             color: 'var(--tx-secondary)',
             overflow: 'hidden',
@@ -84,7 +84,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {exitCode !== undefined && (
             <span style={{
-              fontSize: 9,
+              fontSize: 'var(--text-2xs)',
               fontFamily: 'var(--font-mono)',
               padding: '1px 5px',
               borderRadius: 4,
@@ -94,7 +94,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
               exit {exitCode}
             </span>
           )}
-          <span style={{ fontSize: 10, color: 'var(--tx-tertiary)' }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)' }}>
             {lines.length} line{lines.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -106,7 +106,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
               background: 'transparent',
               border: 'none',
               color: 'var(--tx-tertiary)',
-              fontSize: 10,
+              fontSize: 'var(--text-xs)',
               cursor: 'pointer',
               padding: '2px 6px',
               borderRadius: 4,

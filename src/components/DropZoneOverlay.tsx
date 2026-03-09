@@ -73,19 +73,19 @@ export function DropZoneOverlay({ isDragOver, dragMode = 'files' }: DropZoneOver
         <div style={{ textAlign: 'center' }}>
           {isFolder ? (
             <>
-              <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--tx-primary)' }}>
+              <p style={{ fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--tx-primary)' }}>
                 Drop folder to open
               </p>
-              <p style={{ fontSize: 12, color: 'var(--tx-secondary)', marginTop: 4 }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', marginTop: 4 }}>
                 Sets it as your workspace — just like VS Code
               </p>
             </>
           ) : (
             <>
-              <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--tx-primary)' }}>
+              <p style={{ fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--tx-primary)' }}>
                 Drop files here
               </p>
-              <p style={{ fontSize: 12, color: 'var(--tx-secondary)', marginTop: 4 }}>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', marginTop: 4 }}>
                 Images, documents, code, archives
               </p>
             </>

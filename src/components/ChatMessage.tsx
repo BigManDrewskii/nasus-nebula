@@ -211,7 +211,7 @@ function AttachmentGrid({ attachments }: { attachments: MessageAttachment[] }) {
           <div key={att.id} className="cm-attachment-file">
             <Pxi name={icon} size={14} style={{ color, flexShrink: 0 }} />
             <div className="cm-attachment-file-info">
-              <p className="cm-attachment-name">{att.name}</p>
+              <p className="cm-attachment-name" title={att.name}>{att.name}</p>
               <p className="cm-attachment-size">{formatBytes(att.size)}</p>
             </div>
           </div>

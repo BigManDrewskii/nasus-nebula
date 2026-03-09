@@ -99,8 +99,8 @@ export function PreviewPane({ files }: PreviewPaneProps) {
     return (
       <div className="preview-empty">
         <Pxi name="browser" size={28} style={{ color: 'var(--tx-dim)', marginBottom: 12 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 500 }}>No preview yet</span>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', fontWeight: 500 }}>No preview yet</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
           Ask the agent to build an HTML page<br />and it will render live here.
         </span>
       </div>

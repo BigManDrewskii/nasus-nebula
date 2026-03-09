@@ -20,7 +20,7 @@ export function StreamingStatus({ phase, currentTool, className = '' }: Streamin
         display: 'inline-flex',
         alignItems: 'center',
         gap: '6px',
-        fontSize: '11px',
+        fontSize: 'var(--text-xs)',
         color: textColor,
         fontWeight: 500,
       }}

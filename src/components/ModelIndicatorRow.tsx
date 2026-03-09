@@ -66,7 +66,7 @@ export function ModelIndicatorRow() {
       {/* Provider */}
       <span
         style={{
-          fontSize: 10.5,
+          fontSize: 'var(--text-xs)',
           fontWeight: 500,
           color: 'var(--tx-tertiary)',
           fontFamily: 'var(--font-mono)',
@@ -78,13 +78,13 @@ export function ModelIndicatorRow() {
       </span>
 
       {/* Divider */}
-      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.12)', flexShrink: 0 }}>·</span>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.12)', flexShrink: 0 }}>·</span>
 
       {/* Model name */}
       <span
         style={{
           flex: 1,
-          fontSize: 10.5,
+          fontSize: 'var(--text-xs)',
           fontWeight: 500,
           fontFamily: 'var(--font-mono)',
           color: 'var(--tx-secondary)',
@@ -99,7 +99,7 @@ export function ModelIndicatorRow() {
       {/* Free / Paid pill — only meaningful indicator */}
       <span
         style={{
-          fontSize: 9,
+          fontSize: 'var(--text-2xs)',
           fontWeight: 600,
           letterSpacing: '0.04em',
           padding: '1px 4px',

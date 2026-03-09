@@ -93,8 +93,8 @@ export function CodePane({ files }: CodePaneProps) {
     return (
       <div className="preview-empty">
         <Pxi name="code" size={28} style={{ color: 'var(--tx-dim)', marginBottom: 12 }} />
-        <span style={{ fontSize: 12, color: 'var(--tx-secondary)', fontWeight: 500 }}>No code yet</span>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
+        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', fontWeight: 500 }}>No code yet</span>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', marginTop: 6, textAlign: 'center', lineHeight: 1.5 }}>
           Source files the agent writes<br />will be viewable here.
         </span>
       </div>

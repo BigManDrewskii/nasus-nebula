@@ -140,6 +140,20 @@ pub async fn open_session_connection(
                 let waiters: Arc<Mutex<HashMap<String, oneshot::Sender<serde_json::Value>>>> =
                     Arc::new(Mutex::new(HashMap::new()));
 
+                // Register the session_ready waiter BEFORE spawning the reader task
+                // to eliminate the race where the sidecar sends session_ready before
+                // the waiter is inserted (which would cause it to be discarded).
+                let (ready_tx, rx) = oneshot::channel::<serde_json::Value>();
+                {
+                    let mut w = waiters.lock().await;
+                    w.insert("session_ready".into(), ready_tx);
+                    // Also absorb the initial "connected" message — sidecar sends this
+                    // immediately on connection, before session_ready.
+                    // We create a dummy channel for it so the reader doesn't log a warning.
+                    let (connected_tx, _connected_rx) = oneshot::channel::<serde_json::Value>();
+                    w.insert("connected".into(), connected_tx);
+                }
+
                 let waiters_clone = waiters.clone();
 
                 // Background task: read all incoming messages and dispatch to waiters
@@ -153,7 +167,7 @@ pub async fn open_session_connection(
                                         .unwrap_or("")
                                         .to_string();
 
-                                    // Skip heartbeats / pongs
+                                    // Skip heartbeats / pongs silently
                                     if msg_type == "heartbeat" || msg_type == "pong" { continue; }
 
                                     let mut w = waiters_clone.lock().await;
@@ -171,15 +185,6 @@ pub async fn open_session_connection(
                         }
                     }
                 });
-
-                // Wait for session_ready before returning
-                let (tx, rx) = oneshot::channel::<serde_json::Value>();
-                {
-                    let mut w = waiters.lock().await;
-                    // The sidecar may send "connected" first, then "session_ready"
-                    // We only care about session_ready
-                    w.insert("session_ready".into(), tx);
-                }
                 match timeout(Duration::from_secs(20), rx).await {
                     Ok(Ok(_)) => {
                         return Ok((conn, waiters));

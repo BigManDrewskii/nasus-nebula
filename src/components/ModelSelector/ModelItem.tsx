@@ -56,7 +56,7 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span
             style={{
-              fontSize: 12,
+              fontSize: 'var(--text-sm)',
               fontWeight: 500,
               color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
               overflow: 'hidden',
@@ -68,7 +68,7 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
             {model.name}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, marginTop: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--text-xs)', marginTop: 1 }}>
           <span
             style={{
               fontFamily: 'var(--font-mono)',

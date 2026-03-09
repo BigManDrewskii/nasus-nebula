@@ -31,9 +31,9 @@ export function SidebarButton({
   style,
 }: SidebarButtonProps) {
   const sizes = {
-    sm: { height: '26px', padding: '0 8px', fontSize: '11px', iconSize: 9 },
-    md: { height: '30px', padding: '0 10px', fontSize: '11px', iconSize: 10 },
-    lg: { height: '36px', padding: '0 14px', fontSize: '12px', iconSize: 11 },
+    sm: { height: '26px', padding: '0 8px', fontSize: 'var(--text-xs)', iconSize: 9 },
+    md: { height: '30px', padding: '0 10px', fontSize: 'var(--text-xs)', iconSize: 10 },
+    lg: { height: '36px', padding: '0 14px', fontSize: 'var(--text-sm)', iconSize: 11 },
   }
 
   const s = sizes[size]

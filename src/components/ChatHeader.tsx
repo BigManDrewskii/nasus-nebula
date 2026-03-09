@@ -59,7 +59,7 @@ export function SandboxPill({ status }: { status: 'idle' | 'starting' | 'ready' 
       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
     >
       <Pxi name={cfg.icon} size={12} style={{ color: cfg.color }} />
-      <span style={{ fontSize: 10, color: cfg.color }}>{cfg.label}</span>
+      <span style={{ fontSize: 'var(--text-2xs)', color: cfg.color }}>{cfg.label}</span>
     </div>
   )
 }
@@ -184,6 +184,7 @@ export function ToastOverlay() {
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
             className="font-display font-medium truncate ch-title"
+            title={task?.title || 'New Chat'}
           >
             {task?.title || 'New Chat'}
           </h2>

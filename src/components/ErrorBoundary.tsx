@@ -69,10 +69,10 @@ export class ErrorBoundary extends Component<Props, State> {
         >
           <NasusLogo size={28} fill="rgba(239,68,68,0.6)" />
           <div style={{ textAlign: 'center', maxWidth: 480 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: '#f87171', margin: '0 0 8px' }}>
+            <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: '#f87171', margin: '0 0 8px' }}>
               Something went wrong
             </h2>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.6, margin: 0 }}>
+            <p style={{ fontSize: 'var(--text-base)', color: 'rgba(255,255,255,0.45)', lineHeight: 1.6, margin: 0 }}>
               {this.state.error.message}
             </p>
           </div>
@@ -90,7 +90,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <summary
               style={{
                 padding: '8px 14px',
-                fontSize: 11,
+                fontSize: 'var(--text-xs)',
                 color: 'rgba(255,255,255,0.35)',
                 cursor: 'pointer',
                 userSelect: 'none',
@@ -102,7 +102,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 margin: 0,
                 padding: '10px 14px',
-                fontSize: 10,
+                fontSize: 'var(--text-xs)',
                 color: 'rgba(255,255,255,0.3)',
                 fontFamily: 'var(--font-mono)',
                 overflowX: 'auto',
@@ -121,7 +121,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 padding: '8px 20px',
                 borderRadius: 8,
-                fontSize: 13,
+                fontSize: 'var(--text-base)',
                 fontWeight: 500,
                 background: 'rgba(239,68,68,0.1)',
                 border: '1px solid rgba(239,68,68,0.25)',
@@ -137,7 +137,7 @@ export class ErrorBoundary extends Component<Props, State> {
               style={{
                 padding: '8px 20px',
                 borderRadius: 8,
-                fontSize: 13,
+                fontSize: 'var(--text-base)',
                 fontWeight: 500,
                 background: 'rgba(255,255,255,0.06)',
                 border: '1px solid rgba(255,255,255,0.1)',

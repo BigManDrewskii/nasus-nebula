@@ -173,7 +173,7 @@ export function PanelDivider({
         >
           {collapsed ? (
             // Right arrow when collapsed
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 8 }}>→</div>
+            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 'var(--text-2xs)' }}>→</div>
           ) : (
             <>
               <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />

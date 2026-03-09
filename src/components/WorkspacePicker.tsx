@@ -113,7 +113,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             borderRight: '1px solid rgba(255,255,255,0.07)',
             cursor: !picking ? 'pointer' : 'default',
             color: 'var(--amber)',
-            fontSize: 11,
+            fontSize: 'var(--text-xs)',
             fontWeight: 500,
             transition: 'color 0.12s, background 0.12s',
             opacity: picking ? 0.6 : 1,
@@ -132,7 +132,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
           style={{
             flex: 1,
             padding: '8px 10px',
-            fontSize: 13,
+            fontSize: 'var(--text-base)',
             outline: 'none',
             background: 'transparent',
             border: 'none',
@@ -208,7 +208,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
             overflow: 'hidden',
           }}
         >
-          <div style={{ padding: '6px 10px 4px', fontSize: 9.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-tertiary)' }}>
+          <div style={{ padding: '6px 10px 4px', fontSize: 'var(--text-2xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--tx-tertiary)' }}>
             Recent
           </div>
           {recentWorkspacePaths.map((p) => (
@@ -223,7 +223,7 @@ export function WorkspacePicker({ value, onChange, error }: WorkspacePickerProps
                 gap: 8,
                 padding: '7px 10px',
                 textAlign: 'left',
-                fontSize: 12,
+                fontSize: 'var(--text-sm)',
                 border: 'none',
                 cursor: 'pointer',
                 background: 'transparent',

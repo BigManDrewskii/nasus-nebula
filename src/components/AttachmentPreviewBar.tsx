@@ -90,23 +90,24 @@ function AttachmentChip({ attachment, onRemove }: ChipProps) {
       {/* Name + size / error */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-          <span
-            style={{
-              fontSize: 11,
-              fontWeight: 500,
-              color: isError ? '#fca5a5' : 'var(--tx-primary)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              maxWidth: 90,
-            }}
-          >
-            {name}
-          </span>
+            <span
+              title={name}
+              style={{
+                fontSize: 'var(--text-xs)',
+                fontWeight: 500,
+                color: isError ? '#fca5a5' : 'var(--tx-primary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 90,
+              }}
+            >
+              {name}
+            </span>
           {tag && (
             <span
               style={{
-                fontSize: 9,
+                fontSize: 'var(--text-2xs)',
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--amber-soft)',
                 background: 'rgba(234,179,8,0.1)',
@@ -120,7 +121,7 @@ function AttachmentChip({ attachment, onRemove }: ChipProps) {
             </span>
           )}
         </div>
-        <span style={{ fontSize: 10, color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
+        <span style={{ fontSize: 'var(--text-xs)', color: isError ? '#f87171' : 'var(--tx-tertiary)' }}>
           {isError ? error : formatBytes(size)}
         </span>
       </div>
@@ -197,7 +198,7 @@ export function AttachmentPreviewBar({
               border: '1px dashed rgba(255,255,255,0.12)',
               background: 'transparent',
               color: 'var(--tx-tertiary)',
-              fontSize: 11,
+              fontSize: 'var(--text-xs)',
               cursor: 'pointer',
               transition: 'border-color 0.12s, color 0.12s',
               flexShrink: 0,
@@ -212,7 +213,7 @@ export function AttachmentPreviewBar({
 
       {/* Over-limit warning */}
       {isOverLimit && (
-        <p style={{ fontSize: 10, color: '#f87171', marginTop: 6 }}>
+        <p style={{ fontSize: 'var(--text-xs)', color: '#f87171', marginTop: 6 }}>
           Total size ({formatBytes(totalSize)}) exceeds 50 MB — remove some files before sending.
         </p>
       )}
