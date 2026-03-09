@@ -123,6 +123,42 @@ export async function streamCompletion(
   tools: ToolDefinition[],
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
+  // Retry once on transient network errors (Load failed, Failed to fetch).
+  // Does NOT retry on abort, auth errors, or model errors.
+  const MAX_RETRIES = 1
+  let attempt = 0
+  while (true) {
+    try {
+      return await _streamCompletionAttempt(apiBase, apiKey, provider, model, messages, tools, cb)
+    } catch (err) {
+      const isTransientNetwork =
+        err instanceof Error && (
+          err.message.includes('Load failed') ||
+          err.message.includes('Failed to fetch') ||
+          err.message.includes('network connection was lost')
+        )
+      const signalAborted = cb.signal?.aborted ?? false
+      if (isTransientNetwork && !signalAborted && attempt < MAX_RETRIES) {
+        attempt++
+        log.error(`streamCompletion transient error (attempt ${attempt}/${MAX_RETRIES + 1}), retrying…`, err instanceof Error ? err : new Error(String(err)))
+        // Brief backoff before retry
+        await new Promise(r => setTimeout(r, 500 * attempt))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+async function _streamCompletionAttempt(
+  apiBase: string,
+  apiKey: string,
+  provider: string,
+  model: string,
+  messages: LlmMessage[],
+  tools: ToolDefinition[],
+  cb: StreamCallbacks & { gatewayId?: string },
+): Promise<LlmResponse> {
     const unifiedModel = getUnifiedModel({
     provider: provider as ProviderConfig['provider'],
     apiKey,
@@ -413,8 +449,19 @@ export async function chatJson<T>(
   try {
     const text = await rawChatRequest(apiBase, apiKey, model, [{ role: 'user', content: prompt }], _maxTokens, extraHeaders)
     if (!text) return null
+    // Strip markdown code fences
     const clean = text.replace(/```json\n?|```\n?/g, '').trim()
-    return JSON.parse(clean) as T
+    try {
+      return JSON.parse(clean) as T
+    } catch {
+      // Lenient fallback: fix common model mistakes — unquoted keys and trailing commas.
+      // Unquoted keys:  { foo: "bar" }  →  { "foo": "bar" }
+      // Trailing commas: [1, 2,] or {a:1,}  →  [1, 2] or {a:1}
+      const fixed = clean
+        .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
+        .replace(/,\s*([}\]])/g, '$1')
+      return JSON.parse(fixed) as T
+    }
   } catch (err) {
     log.error('chatJson failed', err instanceof Error ? err : new Error(String(err)))
     return null

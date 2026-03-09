@@ -28,6 +28,8 @@ pub enum GatewayType {
     Direct,
     Ollama,
     Custom,
+    /// Vercel AI Gateway (OpenAI-compatible proxy)
+    Vercel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +232,9 @@ impl GatewayManager {
             }
             GatewayType::Deepseek => {
                 // DeepSeek direct API — no special headers required beyond Authorization
+            }
+            GatewayType::Vercel => {
+                // Vercel AI Gateway — OpenAI-compatible, no extra headers needed
             }
             _ => {}
         }
