@@ -1,5 +1,5 @@
 import { BaseTool } from '../core/BaseTool'
-import { toolSuccess, toolFailure } from '../core/ToolResult'
+import { toolSuccess, toolFailure, browserErrorToFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { browserScreenshot } from '../../browserBridge'
 
@@ -39,9 +39,9 @@ export class BrowserScreenshotTool extends BaseTool {
       }
       
       return toolSuccess(dataUrl)
-    } catch (err) {
-      return toolFailure(err instanceof Error ? err.message : String(err))
-    }
+      } catch (err) {
+        return browserErrorToFailure(err) ?? toolFailure(err instanceof Error ? err.message : String(err))
+      }
   }
 
   private async resizeImage(dataUrl: string, maxDim: number, quality: number): Promise<string> {

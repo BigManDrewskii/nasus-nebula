@@ -177,10 +177,14 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
-      // Determine active tools for the current plan phase (phase-aware masking)
-      const currentPhase = params.plan?.phases.find(p => p.status === 'in_progress')
-      const phaseStepTools = currentPhase?.steps.map(s => s.tools ?? [])
-      const activeTools = currentPhase ? this.getActiveToolsForPhase(currentPhase.title, phaseStepTools) : []
+    // Determine active tools for the current plan phase (phase-aware masking).
+    // Only mask during research phases — implementation/verification phases need
+    // full tool access since the plan's declared tool list is LLM-generated and
+    // often incomplete (e.g. a "Design Setup" phase may omit browser_navigate).
+    const currentPhase = params.plan?.phases.find(p => p.status === 'in_progress')
+    const isResearchPhase = currentPhase ? /research|gather|search/i.test(currentPhase.title) : false
+    const phaseStepTools = (isResearchPhase && currentPhase) ? currentPhase.steps.map(s => s.tools ?? []) : []
+    const activeTools = (isResearchPhase && currentPhase) ? this.getActiveToolsForPhase(currentPhase.title, phaseStepTools) : []
 
       // Use ContextBuilder to produce a cache-optimised messages array.
       // It inserts: stable system prefix → env summary → cache breakpoint → memory → plan → user messages.
@@ -416,8 +420,10 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
-    // Execute with correction hints
-    const result = await this.executeOnce(params)
+    // Strip correctionHints before calling executeOnce to avoid infinite recursion.
+    // doExecute checks correctionHints and would call executeWithSelfCorrection again.
+    const { correctionHints: _, ...paramsWithoutHints } = params
+    const result = await this.executeOnce(paramsWithoutHints as ExecutionConfigParams)
 
     // If still failing and verification enabled, try verification again
     if (params.enableVerification && result.state === AgentState.FINISHED) {
@@ -780,6 +786,9 @@ export class ExecutionAgent extends BaseAgent {
       // verification gate. If it finds truncated files or syntax errors it
       // injects a correction nudge before the next iteration — not after.
       if (!isError && fnName === 'update_plan' && plan) {
+        // update_plan is the canonical signal that a step completed — advance checkbox.
+        this.updateTaskPlanProgress(taskId)
+
         const gateIssues = await this.runPhaseGate(plan, taskId)
         if (gateIssues.length > 0) {
           const issueLines = gateIssues.map(i => `- ${i.message}${i.correction ? ` → ${i.correction}` : ''}`).join('\n')
@@ -790,15 +799,6 @@ export class ExecutionAgent extends BaseAgent {
           )
         }
       }
-
-       // Auto-update task plan progress — only for write_file/edit_file/patch_file,
-       // not every non-trivial tool call. Prevents false-positive advancement when
-       // the model does multiple reads, shell commands, or saves before a real step completes.
-       // The LLM is instructed to use update_plan — this is a safety net for file writes only.
-       const writeTools = new Set(['write_file', 'edit_file', 'patch_file'])
-       if (!isError && writeTools.has(fnName)) {
-         this.updateTaskPlanProgress(taskId)
-       }
 
       if (fnName === 'complete') return 'complete'
     }

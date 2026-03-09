@@ -813,6 +813,22 @@ pub async fn browser_select(
 
 // ─── Install / check commands ─────────────────────────────────────────────────
 
+/// Returns the installed Node.js version string (e.g. "v20.11.0"), or an error if not found.
+#[tauri::command]
+pub async fn check_node_version() -> NasusResult<String> {
+    let output = Command::new("node")
+        .arg("--version")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|e| NasusError::Sidecar(format!("Node.js not found: {}", e)))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(NasusError::Sidecar("Node.js not found or returned an error".into()))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SidecarInstallStatus {
     pub installed: bool,
@@ -827,15 +843,38 @@ pub async fn browser_check_sidecar_installed(
 ) -> NasusResult<SidecarInstallStatus> {
     let sidecar = state.sidecar.0.lock().await;
     let has_node_modules = sidecar.sidecar_dir.join("node_modules").exists();
+
+    // Actually check whether Playwright's Chromium binary exists.
+    // `playwright-core` stores it under node_modules/playwright-core/.local-browsers/chromium-*/chrome-*/chrome
+    // We probe by running `node -e "require('playwright-core').chromium.executablePath()"` — this resolves
+    // the exact path Playwright would use and checks if it exists on disk.
+    let has_chromium = if has_node_modules {
+        let check = Command::new("node")
+            .arg("-e")
+            .arg("try { const pw = require('playwright-core'); pw.chromium.executablePath().then ? pw.chromium.executablePath().then(p => { const fs = require('fs'); process.exit(fs.existsSync(p) ? 0 : 1) }) : (() => { const fs = require('fs'); process.exit(fs.existsSync(pw.chromium.executablePath()) ? 0 : 1) })() } catch(e) { process.exit(1) }")
+            .current_dir(&sidecar.sidecar_dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        matches!(check, Ok(s) if s.success())
+    } else {
+        false
+    };
+
+    let installed = has_node_modules && has_chromium;
+    let message = if installed {
+        "Browser sidecar is ready".into()
+    } else if has_node_modules && !has_chromium {
+        "Chromium not installed — click Install to download it".into()
+    } else {
+        "Dependencies not installed — click Install to set up the browser".into()
+    };
+
     Ok(SidecarInstallStatus {
-        installed: has_node_modules,
+        installed,
         has_node_modules,
-        has_chromium: true,
-        message: if has_node_modules {
-            "Sidecar is ready".into()
-        } else {
-            "Dependencies not installed".into()
-        },
+        has_chromium,
+        message,
     })
 }
 

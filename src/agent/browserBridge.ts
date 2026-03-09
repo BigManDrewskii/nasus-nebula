@@ -27,6 +27,22 @@ async function ensureSidecarRunning(): Promise<void> {
   const isRunning = await tauriInvoke<boolean>('browser_is_sidecar_running')
   if (isRunning) return
 
+  // Pre-flight: check Node.js and Chromium before trying to start
+  const status = await tauriInvoke<{ installed: boolean; has_node_modules: boolean; has_chromium: boolean; message: string }>(
+    'browser_check_sidecar_installed'
+  ).catch(() => null)
+
+  if (status && !status.has_node_modules) {
+    throw new Error(
+      'Browser sidecar dependencies are not installed. Open Settings → Browser and click "Install Browser" to set up the browser automation environment.'
+    )
+  }
+  if (status && status.has_node_modules && !status.has_chromium) {
+    throw new Error(
+      'Chromium browser is not installed. Open Settings → Browser and click "Install Browser" to download it (this runs `npx playwright install chromium`).'
+    )
+  }
+
   log.info('Starting browser sidecar...')
   await tauriInvoke('browser_start_sidecar')
   // Give the Node.js process time to bind the WebSocket port

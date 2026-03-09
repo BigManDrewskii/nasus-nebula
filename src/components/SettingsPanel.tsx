@@ -623,7 +623,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {/* Tab Bar */}
           <div className="flex-v-center gap-1 shrink-0 settings-tabs">
-          {(['general', 'model', 'execution', 'search', 'about'] as const).map((tab) => {
+            {(['general', 'model', 'execution', 'browser', 'search', 'about'] as const).map((tab) => {
             const isActive = settingsTab === tab
             return (
               <button
@@ -1156,8 +1156,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </>
             )}
 
-            {/* ── Search Tab ── */}
-            {settingsTab === 'search' && (
+              {/* ── Browser Tab ── */}
+              {settingsTab === 'browser' && (
+                <BrowserSetupSection />
+              )}
+
+              {/* ── Search Tab ── */}
+              {settingsTab === 'search' && (
             <>
               <SearchSection
                 exaKey={localExaKey}
@@ -1712,6 +1717,196 @@ function Field({
       ) : hint ? (
         <p className="text-tertiary settings-hint">{hint}</p>
       ) : null}
+    </div>
+  )
+}
+
+// ─── Browser Setup Section ────────────────────────────────────────────────────
+
+function BrowserSetupSection() {
+  const { checkSidecarInstalled, installSidecar, sidecarInstalled, sidecarInstallProgress } = useAppStore(
+    useShallow((s) => ({
+      checkSidecarInstalled: s.checkSidecarInstalled,
+      installSidecar: s.installSidecar,
+      sidecarInstalled: s.sidecarInstalled,
+      sidecarInstallProgress: s.sidecarInstallProgress,
+    }))
+  )
+
+  const [checking, setChecking] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [installError, setInstallError] = useState<string | null>(null)
+  const [installDone, setInstallDone] = useState(false)
+  const [nodeVersion, setNodeVersion] = useState<string | null>(null)
+  const [hasChromium, setHasChromium] = useState<boolean | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+
+  async function runCheck() {
+    setChecking(true)
+    setInstallError(null)
+    try {
+      const { tauriInvoke } = await import('../tauri')
+      // Check Node.js version
+      const ver = await tauriInvoke<string>('check_node_version').catch(() => null)
+      setNodeVersion(ver ?? null)
+      // Check sidecar install status
+      const status = await tauriInvoke<{ installed: boolean; has_node_modules: boolean; has_chromium: boolean; message: string }>('browser_check_sidecar_installed')
+      if (status) {
+        setHasChromium(status.has_chromium)
+        setStatusMessage(status.message)
+        useAppStore.getState().setSidecarInstalled(status.installed)
+      }
+    } catch {
+      setStatusMessage('Could not check browser status')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  async function runInstall() {
+    setInstalling(true)
+    setInstallError(null)
+    setInstallDone(false)
+    try {
+      await installSidecar()
+      setInstallDone(true)
+      await runCheck()
+    } catch (err) {
+      setInstallError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  useEffect(() => { runCheck() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isReady = sidecarInstalled && hasChromium === true
+  const statusColor = isReady ? '#22c55e' : checking ? 'var(--amber)' : '#ef4444'
+
+  return (
+    <div className="flex-col settings-section gap-4">
+      {/* Header */}
+      <div className="flex-v-center gap-2">
+        <Pxi name="globe" size={20} className="text-amber" />
+        <span className="settings-section-title">Browser Automation</span>
+      </div>
+      <div className="text-tertiary settings-exec-desc">
+        Nasus uses a local Playwright/Chromium browser for web browsing tasks. Node.js and Chromium must be installed for the agent to browse the web.
+      </div>
+
+      {/* Status rows */}
+      <div className="flex-col gap-2">
+        {/* Node.js */}
+        <div className="flex-v-center justify-between settings-banner">
+          <div className="flex-v-center gap-2">
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: nodeVersion ? '#22c55e' : '#ef4444', flexShrink: 0 }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Node.js</span>
+          </div>
+          <span style={{ fontSize: 'var(--text-xs)', color: nodeVersion ? '#4ade80' : '#f87171' }}>
+            {checking ? 'Checking…' : nodeVersion ? nodeVersion.trim() : 'Not found — install Node.js from nodejs.org'}
+          </span>
+        </div>
+
+        {/* npm packages */}
+        <div className="flex-v-center justify-between settings-banner">
+          <div className="flex-v-center gap-2">
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: sidecarInstalled || hasChromium !== null ? (sidecarInstalled ? '#22c55e' : 'var(--amber)') : '#ef4444', flexShrink: 0 }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>npm packages</span>
+          </div>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-muted)' }}>
+            {checking ? 'Checking…' : sidecarInstalled ? 'Installed' : 'Not installed'}
+          </span>
+        </div>
+
+        {/* Chromium */}
+        <div className="flex-v-center justify-between settings-banner">
+          <div className="flex-v-center gap-2">
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: hasChromium === true ? '#22c55e' : hasChromium === false ? '#ef4444' : 'var(--tx-dim)', flexShrink: 0 }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Chromium browser</span>
+          </div>
+          <span style={{ fontSize: 'var(--text-xs)', color: hasChromium ? '#4ade80' : '#f87171' }}>
+            {checking ? 'Checking…' : hasChromium === true ? 'Installed' : hasChromium === false ? 'Not installed' : 'Unknown'}
+          </span>
+        </div>
+
+        {/* Overall status */}
+        {statusMessage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, background: isReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${isReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+            <span style={{ fontSize: 'var(--text-xs)', color: isReady ? '#4ade80' : '#f87171' }}>{statusMessage}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Install progress */}
+      {sidecarInstallProgress && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
+          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-soft)' }}>{sidecarInstallProgress}</span>
+        </div>
+      )}
+
+      {/* Install error */}
+      {installError && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', lineHeight: 1.5 }}>{installError}</span>
+        </div>
+      )}
+
+      {/* Success */}
+      {installDone && !installError && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
+          <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: '#4ade80' }}>Browser installed successfully. Agent browsing is ready.</span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex-v-center gap-2">
+        <button
+          type="button"
+          onClick={runInstall}
+          disabled={installing || isReady}
+          style={{
+            padding: '7px 16px', borderRadius: 8, border: 'none', cursor: installing || isReady ? 'not-allowed' : 'pointer',
+            background: isReady ? 'rgba(34,197,94,0.12)' : 'var(--amber)', color: isReady ? '#4ade80' : '#000',
+            fontSize: 'var(--text-sm)', fontWeight: 600, opacity: installing ? 0.6 : 1,
+            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+          }}
+        >
+          {installing
+            ? <><Pxi name="spinner-third" size={12} />Installing…</>
+            : isReady
+              ? <><Pxi name="check" size={12} />Ready</>
+              : <><Pxi name="download" size={12} />Install Browser</>
+          }
+        </button>
+
+        <button
+          type="button"
+          onClick={runCheck}
+          disabled={checking}
+          style={{
+            padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
+            cursor: checking ? 'not-allowed' : 'pointer', background: 'transparent',
+            color: 'var(--tx-secondary)', fontSize: 'var(--text-sm)', opacity: checking ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+          }}
+        >
+          <Pxi name={checking ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
+          {checking ? 'Checking…' : 'Re-check'}
+        </button>
+      </div>
+
+      {/* Node.js install hint if missing */}
+      {!checking && !nodeVersion && (
+        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55 }}>
+          Node.js is required. Install it from{' '}
+          <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>nodejs.org</a>
+          {' '}(LTS recommended), then restart Nasus and click Install Browser.
+        </div>
+      )}
     </div>
   )
 }

@@ -10,7 +10,8 @@ import { getGlobalRateLimiter } from './gateway/rateLimiter';
 import { findModelById } from './gateway/modelRegistry';
 import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { sanitizeMessages } from './messageUtils';
-import { createLogger } from '../lib/logger';
+import { createLogger } from '../lib/logger'
+import JSON5 from 'json5';
 
 const log = createLogger('LLM');
 
@@ -123,9 +124,10 @@ export async function streamCompletion(
   tools: ToolDefinition[],
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
-  // Retry once on transient network errors (Load failed, Failed to fetch).
+  // Retry up to 3 times on transient network errors (Load failed, Failed to fetch).
+  // Uses exponential backoff: 2s, 4s, 8s — enough for WKWebView URLSession recovery.
   // Does NOT retry on abort, auth errors, or model errors.
-  const MAX_RETRIES = 1
+  const MAX_RETRIES = 3
   let attempt = 0
   while (true) {
     try {
@@ -135,14 +137,15 @@ export async function streamCompletion(
         err instanceof Error && (
           err.message.includes('Load failed') ||
           err.message.includes('Failed to fetch') ||
-          err.message.includes('network connection was lost')
+          err.message.includes('network connection was lost') ||
+          err.message.includes('The network connection was lost')
         )
       const signalAborted = cb.signal?.aborted ?? false
       if (isTransientNetwork && !signalAborted && attempt < MAX_RETRIES) {
         attempt++
-        log.error(`streamCompletion transient error (attempt ${attempt}/${MAX_RETRIES + 1}), retrying…`, err instanceof Error ? err : new Error(String(err)))
-        // Brief backoff before retry
-        await new Promise(r => setTimeout(r, 500 * attempt))
+        const backoffMs = 2000 * attempt // 2s, 4s, 6s
+        log.error(`streamCompletion transient error (attempt ${attempt}/${MAX_RETRIES}), retrying in ${backoffMs}ms…`, err instanceof Error ? err : new Error(String(err)))
+        await new Promise(r => setTimeout(r, backoffMs))
         continue
       }
       throw err
@@ -390,25 +393,46 @@ async function rawChatRequest(
   maxTokens: number,
   extraHeaders?: Record<string, string>,
 ): Promise<string | null> {
-  await getGlobalRateLimiter().acquire()
   const url = `${(apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
     ...extraHeaders,
   }
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false }),
-  })
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '')
-    log.error('rawChatRequest HTTP error', undefined, { status: resp.status, body: errText })
-    return null
+  const body = JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false })
+
+  const MAX_RETRIES = 2
+  let lastErr: unknown
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+        log.warn(`rawChatRequest transient error, retry ${attempt}/${MAX_RETRIES}`, lastErr instanceof Error ? lastErr : new Error(String(lastErr)))
+        await new Promise(r => setTimeout(r, 2000 * attempt))
+      }
+    try {
+      await getGlobalRateLimiter().acquire()
+      const resp = await fetch(url, { method: 'POST', headers, body })
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '')
+        log.error('rawChatRequest HTTP error', undefined, { status: resp.status, body: errText })
+        return null
+      }
+      const raw = await resp.text()
+      let json: Record<string, unknown>
+      try {
+        json = JSON.parse(raw)
+      } catch {
+        log.error('rawChatRequest bad JSON body', undefined, { preview: raw.slice(0, 200) })
+        return null
+      }
+      return ((json?.choices as Array<{ message?: { content?: string } }>)?.[0]?.message?.content ?? '').trim() || null
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const isTransient = msg.includes('Load failed') || msg.includes('Failed to fetch') || msg.includes('network connection was lost')
+      if (!isTransient) throw err
+      lastErr = err
+    }
   }
-  const json = await resp.json()
-  return (json?.choices?.[0]?.message?.content ?? '').trim() || null
+  throw lastErr
 }
 
 /**
@@ -449,19 +473,10 @@ export async function chatJson<T>(
   try {
     const text = await rawChatRequest(apiBase, apiKey, model, [{ role: 'user', content: prompt }], _maxTokens, extraHeaders)
     if (!text) return null
-    // Strip markdown code fences
-    const clean = text.replace(/```json\n?|```\n?/g, '').trim()
-    try {
-      return JSON.parse(clean) as T
-    } catch {
-      // Lenient fallback: fix common model mistakes — unquoted keys and trailing commas.
-      // Unquoted keys:  { foo: "bar" }  →  { "foo": "bar" }
-      // Trailing commas: [1, 2,] or {a:1,}  →  [1, 2] or {a:1}
-      const fixed = clean
-        .replace(/([{,]\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:/g, '$1"$2":')
-        .replace(/,\s*([}\]])/g, '$1')
-      return JSON.parse(fixed) as T
-    }
+      // Strip markdown code fences then parse with JSON5 (handles unquoted keys,
+      // single-quoted strings, trailing commas — all common model output quirks).
+      const clean = text.replace(/```json\n?|```\n?/g, '').trim()
+      return JSON5.parse(clean) as T
   } catch (err) {
     log.error('chatJson failed', err instanceof Error ? err : new Error(String(err)))
     return null

@@ -192,3 +192,33 @@ export interface WaitForResult extends ToolResult {
     selector: string
   } | null
 }
+
+/**
+ * Convert a browser tool error into a user-actionable toolFailure.
+ * Handles Playwright binary errors, sidecar setup errors, and network errors.
+ */
+export function browserErrorToFailure(err: unknown): ToolResult | null {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (
+    msg.includes("Executable doesn't exist") ||
+    msg.includes('browserType.launch') ||
+    msg.includes('PLAYWRIGHT_BROWSERS_PATH') ||
+    msg.includes('local-chromium') ||
+    (msg.toLowerCase().includes('chromium') && msg.toLowerCase().includes('not found'))
+  ) {
+    return toolFailure(
+      'Chromium is not installed. The user needs to open Settings → Browser and click "Install Browser" to download Chromium before web browsing will work.'
+    )
+  }
+  if (
+    msg.includes('Dependencies not installed') ||
+    msg.includes('Cannot find module') ||
+    msg.includes('Browser sidecar dependencies are not installed') ||
+    msg.includes('Chromium browser is not installed')
+  ) {
+    return toolFailure(msg.includes('Settings') ? msg :
+      'Browser sidecar is not installed. The user needs to open Settings → Browser and click "Install Browser".'
+    )
+  }
+  return null
+}

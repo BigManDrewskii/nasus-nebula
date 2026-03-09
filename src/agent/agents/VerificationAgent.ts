@@ -14,6 +14,7 @@
  *   periodic phase gate inside the execution loop
  */
 
+import JSON5 from 'json5'
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, AgentIssue, ExecutionPlan } from '../core/Agent'
@@ -468,7 +469,7 @@ If no issues found, return an empty issues array.`
       const response = await chatOnceViaGateway(prompt + '\n\nRespond ONLY with JSON: { "issues": [...] }', 1000, verifyModel)
       const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) || response.match(/(\{[\s\S]*\})/)
       const jsonStr = jsonMatch ? jsonMatch[1] : response
-      const parsed = JSON.parse(jsonStr)
+      const parsed = JSON5.parse(jsonStr)
       return parsed.issues || []
     } catch {
       return []
@@ -515,11 +516,23 @@ If no issues found, return an empty issues array.`
         return null
       }
 
-      const json = await resp.json()
-      const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0]
+      const rawText = await resp.text()
+      let json: Record<string, unknown>
+      try {
+        json = JSON.parse(rawText)
+      } catch {
+        log.warn('Verification tool_choice response bad JSON, falling back to free-text')
+        return null
+      }
+      const toolCall = (json?.choices as Array<{ message?: { tool_calls?: Array<{ function?: { arguments?: string } }> } }>)?.[0]?.message?.tool_calls?.[0]
       if (!toolCall?.function?.arguments) return null
 
-      return JSON.parse(toolCall.function.arguments) as { issues: AgentIssue[] }
+      try {
+        return JSON5.parse(toolCall.function.arguments) as { issues: AgentIssue[] }
+      } catch {
+        log.warn('Verification tool_call arguments parse failed, falling back to free-text')
+        return null
+      }
     } catch (err) {
       log.warn('Verification callWithStructuredOutput failed', err instanceof Error ? err : new Error(String(err)))
       return null

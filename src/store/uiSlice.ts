@@ -4,12 +4,12 @@ export interface UISlice {
   /** Config accordion open/closed state — persisted to localStorage via layout save */
   configSections: Record<string, boolean>
   settingsOpen: boolean
-  settingsTab: 'general' | 'model' | 'execution' | 'search' | 'about'
+  settingsTab: 'general' | 'model' | 'execution' | 'browser' | 'search' | 'about'
 
   setConfigSection: (section: string, open: boolean) => void
-  openSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
+  openSettings: (tab?: 'general' | 'model' | 'execution' | 'browser' | 'search' | 'about') => void
   closeSettings: () => void
-  setSettingsTab: (tab: 'general' | 'model' | 'execution' | 'search' | 'about') => void
+  setSettingsTab: (tab: 'general' | 'model' | 'execution' | 'browser' | 'search' | 'about') => void
 }
 
 export const createUISlice: StateCreator<UISlice, [['zustand/immer', never]], [], UISlice> = (set) => ({

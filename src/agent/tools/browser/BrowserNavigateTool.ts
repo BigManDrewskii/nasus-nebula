@@ -1,5 +1,5 @@
 import { BaseTool } from '../core/BaseTool'
-import { toolSuccess, toolFailure } from '../core/ToolResult'
+import { toolSuccess, toolFailure, browserErrorToFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { browserNavigate } from '../../browserBridge'
 
@@ -72,7 +72,7 @@ export class BrowserNavigateTool extends BaseTool {
       if (msg.includes('SSL') || msg.includes('CERT')) {
         return toolFailure(`SSL certificate error for "${url}".`)
       }
-      return toolFailure(msg)
+      return browserErrorToFailure(err) ?? toolFailure(msg)
     }
   }
 }

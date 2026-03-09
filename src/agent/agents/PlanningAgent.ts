@@ -8,6 +8,7 @@
  * 4. Returns the plan for user confirmation before execution begins
  */
 
+import JSON5 from 'json5'
 import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase, PlanFile } from '../core/Agent'
@@ -205,24 +206,36 @@ export class PlanningAgent extends BaseAgent {
         messages: [{ role: 'user', content: prompt }],
       })
 
-      const resp = await fetch(url, { method: 'POST', headers, body })
-      if (!resp.ok) {
-        log.warn(`tool_choice request failed (HTTP ${resp.status}), falling back to chatJson`)
+        const resp = await fetch(url, { method: 'POST', headers, body })
+        if (!resp.ok) {
+          log.warn(`tool_choice request failed (HTTP ${resp.status}), falling back to chatJson`)
+          return null
+        }
+
+        const rawText = await resp.text()
+        let json: Record<string, unknown>
+        try {
+          json = JSON.parse(rawText)
+        } catch {
+          log.warn('tool_choice response bad JSON, falling back to chatJson', undefined)
+          return null
+        }
+        const toolCall = (json?.choices as Array<{ message?: { tool_calls?: Array<{ function?: { arguments?: string } }> } }>)?.[0]?.message?.tool_calls?.[0]
+        if (!toolCall?.function?.arguments) {
+          log.warn('No tool_call in response, falling back to chatJson')
+          return null
+        }
+
+        try {
+          return JSON5.parse(toolCall.function.arguments)
+        } catch {
+          log.warn('tool_call arguments parse failed, falling back to chatJson')
+          return null
+        }
+      } catch (err) {
+        log.warn('callWithStructuredOutput failed, falling back to chatJson', err instanceof Error ? err : new Error(String(err)))
         return null
       }
-
-      const json = await resp.json()
-      const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0]
-      if (!toolCall?.function?.arguments) {
-        log.warn('No tool_call in response, falling back to chatJson')
-        return null
-      }
-
-      return JSON.parse(toolCall.function.arguments)
-    } catch (err) {
-      log.warn('callWithStructuredOutput failed, falling back to chatJson', err instanceof Error ? err : new Error(String(err)))
-      return null
-    }
   }
 
   /**

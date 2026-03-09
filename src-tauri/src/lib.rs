@@ -1241,6 +1241,7 @@ pub fn run() {
         sidecar::browser_read_page,
         sidecar::browser_check_sidecar_installed,
         sidecar::browser_install_sidecar,
+        sidecar::check_node_version,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

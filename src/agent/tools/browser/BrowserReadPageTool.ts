@@ -1,5 +1,5 @@
 import { BaseTool } from '../core/BaseTool'
-import { toolSuccess, toolFailure } from '../core/ToolResult'
+import { toolSuccess, toolFailure, browserErrorToFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { browserReadPage } from '../../browserBridge'
 import { CONTENT_TRUNCATION_LIMIT } from '../../../lib/constants'
@@ -92,10 +92,16 @@ export class BrowserReadPageTool extends BaseTool {
       if (msg.includes('DNS') || msg.includes('NAME_NOT_RESOLVED')) {
         return toolFailure(`Could not reach "${url}" — DNS lookup failed.`)
       }
+      if (msg.includes('CONNECTION_REFUSED') || msg.includes('ECONNREFUSED')) {
+        return toolFailure(`Connection refused at "${url}" — the server may be down.`)
+      }
       if (msg.includes('timed out') || msg.includes('Timeout')) {
         return toolFailure(`Timed out loading "${url}" after ${timeoutMs}ms. Try increasing timeout_ms.`)
       }
-      return toolFailure(msg)
+      if (msg.includes('SSL') || msg.includes('CERT')) {
+        return toolFailure(`SSL certificate error for "${url}".`)
+      }
+      return browserErrorToFailure(err) ?? toolFailure(msg)
     }
   }
 }
