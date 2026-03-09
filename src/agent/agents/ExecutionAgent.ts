@@ -727,27 +727,39 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
-        // Execute the tool
+        // Execute the tool — always push a tool result even if the executor throws,
+        // so the messages array never ends up with an orphaned assistant+tool_calls block.
         const traceSpan = tracer?.startToolCall(fnName, args)
-        const { output: rawOutput, isError } = await executeRegistryTool(
-          fnName,
-          args,
-          {
-            taskId,
-            executionConfig: executionConfig ? {
-              ...executionConfig,
-              onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
-                useAppStore.getState().setSandboxStatus(status, message)
-              },
-            } : undefined,
-            onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
-          }
-        )
-
-        // Truncate tool output
-        const output = typeof rawOutput === 'string'
-          ? this.truncateOutput(rawOutput, fnName)
-          : JSON.stringify(rawOutput)
+        let output: string
+        let isError: boolean
+        try {
+          const result = await executeRegistryTool(
+            fnName,
+            args,
+            {
+              taskId,
+              executionConfig: executionConfig ? {
+                ...executionConfig,
+                onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
+                  useAppStore.getState().setSandboxStatus(status, message)
+                },
+              } : undefined,
+              onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
+            }
+          )
+          const rawOutput = result.output
+          isError = result.isError
+          output = typeof rawOutput === 'string'
+            ? this.truncateOutput(rawOutput, fnName)
+            : JSON.stringify(rawOutput)
+        } catch (toolErr) {
+          // Executor threw — treat as a hard error result so the message pair stays intact.
+          // Without this, the assistant+tool_calls message would be left without a matching
+          // tool result, causing sanitizeMessages to drop the block on the next LLM call.
+          isError = true
+          output = `Tool execution threw: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`
+          log.warn(`executeRegistryTool threw for ${fnName}`, toolErr instanceof Error ? toolErr : new Error(String(toolErr)))
+        }
 
         traceSpan?.end(output, isError)
 

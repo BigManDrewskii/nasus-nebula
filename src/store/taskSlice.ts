@@ -4,6 +4,7 @@ import { clearWorkspace, copyWorkspace } from '../agent/tools'
 import { persistTaskHistory, deletePersistedTaskHistory, getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
 import { MAX_TASKS, MAX_TOOL_RESULT_CHARS, MAX_RAW_HISTORY_LIVE } from '../lib/constants'
+import { sanitizeMessages } from '../agent/messageUtils'
 
 export const WELCOME_MESSAGE: Message = {
   id: 'welcome',
@@ -58,8 +59,11 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
     if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
       getPersistedTaskHistory(id).then(history => {
         if (history && history.length > 0) {
+          // Sanitize on load — any incomplete tool_call blocks persisted from a previous
+          // crash or mid-execution kill are silently dropped before being used as context.
+          const cleaned = sanitizeMessages(history)
           set(state => ({
-            rawHistory: { ...state.rawHistory, [id]: history }
+            rawHistory: { ...state.rawHistory, [id]: cleaned }
           }))
         }
       }).catch(err => {
@@ -277,9 +281,14 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
     set((state) => {
       const current = state.rawHistory[taskId] ?? []
       const appended = [...current, ...msgs]
-      const capped = appended.length > MAX_RAW_HISTORY_LIVE
-        ? appended.slice(-MAX_RAW_HISTORY_LIVE)
-        : appended
+      // Sanitize before capping and persisting — prevents corrupt tool_call blocks
+      // (assistant+tool_calls without matching tool results) from being saved to disk
+      // and reloaded on the next session, which would cause sanitizeMessages warnings
+      // on every subsequent LLM call and silently corrupt the conversation context.
+      const sanitized = sanitizeMessages(appended)
+      const capped = sanitized.length > MAX_RAW_HISTORY_LIVE
+        ? sanitized.slice(-MAX_RAW_HISTORY_LIVE)
+        : sanitized
       queueMicrotask(() => {
         persistTaskHistory(taskId, capped).catch(err => {
           logger.warn('store', `Failed to persist history for task ${taskId}`, err)
