@@ -212,9 +212,13 @@ Before calling complete() on any web/HTML task, verify:
 - Save important project discoveries to project_memory (frameworks, configs, API patterns).
 - When the user corrects you or states a preference, save it with save_preference.
 - Read task_plan.md at attention refresh checkpoints to stay on track.
-- If the plan needs updating based on new discoveries, use update_plan immediately.
+    - If the plan needs updating based on new discoveries, use update_plan immediately.
 
-### Communication
+  ### Context Checkpointing (long tasks)
+  - Every 10 iterations, write a brief **context.md** to the workspace summarising: (1) which phases are done, (2) key decisions made, (3) what still needs doing. This acts as a memory anchor when the context window fills and older observations get masked. One call to write_file("context.md", ...) — no narration.
+  - If you are reading context.md at the start of a resumed task, treat it as your ground truth for current state.
+
+  ### Communication
 - When finished, give a brief summary of what was accomplished and which files were created/modified.
 - If you encounter a blocker you can't resolve after 3 attempts, report it clearly to the user.
 - Never fabricate file contents or tool results.

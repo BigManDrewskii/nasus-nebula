@@ -65,11 +65,14 @@ export class ExecutionAgent extends BaseAgent {
   readonly name = 'Execution Agent'
   readonly description = 'Executes tasks using tools in a ReAct loop'
 
-  private errorTracker = new ErrorTracker()
-  private searchBrowseCount = 0
-  // Track progress for auto-updating task_plan.md
-  private completedCheckboxes = 0
-  private contextWarningIssued = false
+    private errorTracker = new ErrorTracker()
+    private searchBrowseCount = 0
+    // Track progress for auto-updating task_plan.md
+    private completedCheckboxes = 0
+    private contextWarningIssued = false
+    // Accumulate tool outputs for post-execution verification
+    // Capped at 8000 chars to avoid bloating verification context.
+    private executionOutputBuffer = ''
     constructor(name: string = 'Execution Agent', type: 'executor' = 'executor') {
     super(name, type)
   }
@@ -97,10 +100,12 @@ export class ExecutionAgent extends BaseAgent {
     return result
   }
 
-  /**
-   * Execute the agent once (main execution loop).
-   */
-  private async executeOnce(context: AgentContext): Promise<AgentResult> {
+    /**
+     * Execute the agent once (main execution loop).
+     * @param isCorrection - When true, skip resetting errorTracker so strike history
+     *   from the previous run is preserved and blocked tools stay blocked.
+     */
+    private async executeOnce(context: AgentContext, isCorrection = false): Promise<AgentResult> {
     const params = context as ExecutionConfigParams
     const { taskId, messageId, userMessages, signal } = params
 
@@ -112,11 +117,17 @@ export class ExecutionAgent extends BaseAgent {
 
     const maxIter = params.maxIterations ?? DEFAULT_MAX_ITERATIONS
 
-      // Reset per-task counters at the start of each execution
-      this.searchBrowseCount = 0
-      this.completedCheckboxes = 0
-      this.contextWarningIssued = false
-      this.errorTracker = new ErrorTracker()
+        // Reset per-task counters at the start of each execution.
+        // On correction re-runs (isCorrection=true) we preserve errorTracker so that
+        // tools blocked in the prior run stay blocked — preventing the model from
+        // immediately retrying the same failing tools after self-correction.
+        this.searchBrowseCount = 0
+        this.completedCheckboxes = 0
+        this.contextWarningIssued = false
+        if (!isCorrection) {
+          this.errorTracker = new ErrorTracker()
+          this.executionOutputBuffer = ''
+        }
 
       // Observability: create a trace logger for this execution
       const tracer = new TraceLogger(taskId, messageId)
@@ -224,6 +235,14 @@ export class ExecutionAgent extends BaseAgent {
       })
     }
 
+    // Track consecutive LLM call failures for loop-level resilience.
+    // streamCompletion already retries 3× internally — this outer counter handles
+    // the case where the entire 3-retry sequence fails (e.g. DeepSeek Load failed
+    // on WKWebView). We pause and retry the iteration up to 2 more times before
+    // giving up, giving the network time to recover.
+    let consecutiveLlmFailures = 0
+    const MAX_CONSECUTIVE_LLM_FAILURES = 2
+
     // Main execution loop
     for (let iteration = 0; iteration < maxIter; iteration++) {
       if (signal?.aborted) {
@@ -242,26 +261,67 @@ export class ExecutionAgent extends BaseAgent {
         })
       }
 
-      // Attention refresh
-      if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
-        this.pushOrReplaceSystemMessage(messages, '[Attention Refresh', `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`)
-      }
+        // Attention refresh
+        if (iteration > 0 && iteration % 5 === 0 && iteration !== warnIter) {
+          this.pushOrReplaceSystemMessage(messages, '[Attention Refresh', `[Attention Refresh — iteration ${iteration + 1}] Re-read /workspace/task_plan.md now and confirm your current phase before continuing.`)
+        }
+
+        // Context checkpoint nudge every 10 iterations — Manus-style memory anchor.
+        // The agent should write a context.md summary so that if context gets compressed,
+        // the key state is preserved on disk and re-readable.
+        if (iteration > 0 && iteration % 10 === 0) {
+          this.pushOrReplaceSystemMessage(
+            messages,
+            '[Context Checkpoint]',
+            `[Context Checkpoint — iteration ${iteration + 1}] Write a brief context.md to /workspace using write_file. Include: phases completed, key decisions, what remains. This preserves state if context fills. Do it now before the next tool call.`,
+          )
+        }
 
       // Get current model for context compression threshold
       const model = useAppStore.getState().model
       const compressAt = this.compressThreshold(model)
       if (messages.length > compressAt) {
-        await this.compressContext(messages, taskId, messageId)
+        const masked = await this.compressContext(messages, taskId, messageId)
+        // After compression, check if the agent wrote a context.md checkpoint.
+        // If so, nudge it to re-read it so the compressed context doesn't cause drift.
+        if (masked > 0) {
+          const ws = workspaceManager.getWorkspaceSync(taskId)
+          if (ws?.has('context.md')) {
+            this.pushOrReplaceSystemMessage(
+              messages,
+              '[Context Restored]',
+              `[Context Restored] Older observations were compressed. Re-read /workspace/context.md with read_file to restore your current state before continuing.`,
+            )
+          }
+        }
       }
 
-      // LLM call with automatic gateway failover
-      const llmResult = await this.callLLM(messages, taskId, messageId, signal!, toolDefs, resolvedConnection, forcePowerfulModel)
+      // LLM call with automatic gateway failover.
+      // Pass suppressErrorEmit=true while we still have outer retries left, so the UI
+      // doesn't flash "failed" on transient network blips that we're going to recover from.
+      const hasOuterRetriesLeft = consecutiveLlmFailures < MAX_CONSECUTIVE_LLM_FAILURES
+      const llmResult = await this.callLLM(messages, taskId, messageId, signal!, toolDefs, resolvedConnection, forcePowerfulModel, hasOuterRetriesLeft)
       if (!llmResult) {
-        if (signal && !signal.aborted) {
-          return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
+        if (signal?.aborted) {
+          return { state: AgentState.FINISHED, done: true }
         }
-        return { state: AgentState.FINISHED, done: true }
+        // Transient failure — streamCompletion already exhausted its 3 internal retries.
+        // Give the network a longer recovery window before giving up entirely.
+        consecutiveLlmFailures++
+        if (consecutiveLlmFailures <= MAX_CONSECUTIVE_LLM_FAILURES) {
+          const backoffMs = 5000 * consecutiveLlmFailures // 5s, 10s
+          log.warn(`callLLM failed (outer attempt ${consecutiveLlmFailures}/${MAX_CONSECUTIVE_LLM_FAILURES}), waiting ${backoffMs}ms before retry`)
+          await new Promise(r => setTimeout(r, backoffMs))
+          // Don't advance iteration — retry the same iteration
+          iteration--
+          continue
+        }
+        // All retries exhausted — emit error now
+        this.emitError(taskId, messageId, 'LLM call failed after all retries. Check your network connection.')
+        return { state: AgentState.ERROR, done: true, error: 'LLM call failed' }
       }
+      // Reset failure counter on success
+      consecutiveLlmFailures = 0
 
         const { finishReason, content, toolCalls, usage, reasoningContent } = llmResult
 
@@ -395,14 +455,14 @@ export class ExecutionAgent extends BaseAgent {
     // Build correction hints
     const correctionHints = this.buildCorrectionHints(verificationResult, attempt)
 
-    // Retry with correction hints
-    const retryParams: ExecutionConfigParams = {
-      ...params,
-      correctionHints,
-      correctionAttempt: attempt + 1,
-    }
+      // Retry with correction hints — pass isCorrection=true to preserve error history
+      const retryParams: ExecutionConfigParams = {
+        ...params,
+        correctionHints,
+        correctionAttempt: attempt + 1,
+      }
 
-    return this.executeOnce(retryParams)
+      return this.executeOnce(retryParams, true)
   }
 
   /**
@@ -420,10 +480,10 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
-    // Strip correctionHints before calling executeOnce to avoid infinite recursion.
-    // doExecute checks correctionHints and would call executeWithSelfCorrection again.
-    const { correctionHints: _, ...paramsWithoutHints } = params
-    const result = await this.executeOnce(paramsWithoutHints as ExecutionConfigParams)
+      // Strip correctionHints before calling executeOnce to avoid infinite recursion.
+      // doExecute checks correctionHints and would call executeWithSelfCorrection again.
+      const { correctionHints: _, ...paramsWithoutHints } = params
+      const result = await this.executeOnce(paramsWithoutHints as ExecutionConfigParams, true)
 
     // If still failing and verification enabled, try verification again
     if (params.enableVerification && result.state === AgentState.FINISHED) {
@@ -460,16 +520,16 @@ export class ExecutionAgent extends BaseAgent {
       }
     }
 
-    const verificationContext: VerificationContext = {
-      ...params,
-      plan: params.plan || { id: '', title: '', description: '', estimatedSteps: 0, phases: [], dependencies: [], createdAt: new Date() },
-      executionOutput: '',
-      createdFiles,
-      apiKey,
-      model,
-      apiBase,
-      provider,
-    }
+      const verificationContext: VerificationContext = {
+        ...params,
+        plan: params.plan || { id: '', title: '', description: '', estimatedSteps: 0, phases: [], dependencies: [], createdAt: new Date() },
+        executionOutput: this.executionOutputBuffer,
+        createdFiles,
+        apiKey,
+        model,
+        apiBase,
+        provider,
+      }
 
     return verifyExecution(verificationContext)
   }
@@ -510,6 +570,7 @@ export class ExecutionAgent extends BaseAgent {
 
   /**
    * Make an LLM call with automatic gateway failover.
+   * @param suppressErrorEmit - When true, don't emit error/done events (outer loop will retry).
    */
   private async callLLM(
     messages: LlmMessage[],
@@ -519,6 +580,7 @@ export class ExecutionAgent extends BaseAgent {
     toolDefs: ReturnType<typeof getToolDefinitions>,
     resolvedConnection: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
     forcePowerfulModel: boolean,
+    suppressErrorEmit = false,
   ): Promise<LlmResponse | null> {
     const store = useAppStore.getState()
 
@@ -568,7 +630,9 @@ export class ExecutionAgent extends BaseAgent {
           onDelta: (delta) => this.emitChunk(taskId, messageId, delta),
           onToolCalls: () => {},
           onUsage: (p, c, t) => this.emitTokenUsage(taskId, p, c, t),
-          onError: (err) => this.emitError(taskId, messageId, err),
+          // Don't emit individual attempt errors — only surface the final failure
+          // so the UI doesn't flash "failed" on transient retries.
+          onError: suppressErrorEmit ? () => {} : (err) => this.emitError(taskId, messageId, err),
           onReasoning: (reasoning) => this.emitReasoning(taskId, messageId, reasoning),
           signal,
           extraHeaders: resolvedConnection.extraHeaders,
@@ -589,7 +653,7 @@ export class ExecutionAgent extends BaseAgent {
           }
         }
 
-        if (!signal.aborted) {
+        if (!signal.aborted && !suppressErrorEmit) {
           this.emitError(taskId, messageId, err instanceof Error ? err.message : String(err))
         }
         return null
@@ -765,25 +829,43 @@ export class ExecutionAgent extends BaseAgent {
 
       this.emitToolResult(taskId, messageId, callId, output, isError)
 
-       // Error tracking — 3-strike escalation
-       if (isError) {
-         const strikes = this.errorTracker.record(fnName, output)
-         if (strikes >= 3) {
-           const attempts = this.errorTracker.attempts(fnName)
-           this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
-           const altHint = fnName === 'patch_file'
-             ? `Use edit_file with line numbers (read the file first with read_file, then edit_file with {start_line, end_line, new_content}). Or use write_file to rewrite the entire file.`
-             : `Try a completely different tool or approach to achieve the same goal.`
-           this.pushOrReplaceSystemMessage(
-             messages,
-             `[TOOL BLOCKED: ${fnName}]`,
-             `[TOOL BLOCKED: ${fnName}] This tool has failed ${strikes} times and is now DISABLED.\n` +
-             `Errors:\n${attempts.slice(-3).map((a, i) => `${i + 1}. ${a.slice(0, 250)}`).join('\n')}\n\n` +
-             `${altHint}\n\n` +
-             `Do NOT call ${fnName} again. If this step is non-critical, skip it and continue with the next step.`,
-           )
-         }
-       }
+        // Error tracking — 3-strike escalation
+        if (isError) {
+          const strikes = this.errorTracker.record(fnName, output)
+          if (strikes >= 3) {
+            const attempts = this.errorTracker.attempts(fnName)
+            this.emitStrikeEscalation(taskId, messageId, fnName, attempts)
+            const altHint = fnName === 'patch_file'
+              ? `Use edit_file with line numbers (read the file first with read_file, then edit_file with {start_line, end_line, new_content}). Or use write_file to rewrite the entire file.`
+              : `Try a completely different tool or approach to achieve the same goal.`
+            this.pushOrReplaceSystemMessage(
+              messages,
+              `[TOOL BLOCKED: ${fnName}]`,
+              `[TOOL BLOCKED: ${fnName}] This tool has failed ${strikes} times and is now DISABLED.\n` +
+              `Errors:\n${attempts.slice(-3).map((a, i) => `${i + 1}. ${a.slice(0, 250)}`).join('\n')}\n\n` +
+              `${altHint}\n\n` +
+              `Do NOT call ${fnName} again. If this step is non-critical, skip it and continue with the next step.`,
+            )
+          }
+        }
+
+        // bash_execute / bash non-zero exit code — force a verification nudge.
+        // This catches build failures, test failures, and runtime errors that the
+        // agent might otherwise silently ignore and continue past.
+        if (!isError && (fnName === 'bash_execute' || fnName === 'bash')) {
+          const hasNonZeroExit = /exit code [1-9]\d*|exited with \d+|FAILED|ERROR:|error:/i.test(output)
+            || output.includes('npm ERR!')
+            || output.includes('error TS')
+            || output.includes('SyntaxError:')
+            || output.includes('ModuleNotFoundError:')
+          if (hasNonZeroExit) {
+            this.pushOrReplaceSystemMessage(
+              messages,
+              '[Build/Test Failure]',
+              `[Build/Test Failure] The last ${fnName} command returned errors (see above). You MUST fix these errors before continuing. Do NOT proceed to the next phase until the build/tests pass. Read the error output carefully and apply the correct fix.`,
+            )
+          }
+        }
 
       // Add tool result to history
       messages.push({
@@ -797,20 +879,38 @@ export class ExecutionAgent extends BaseAgent {
       // After update_plan marks a phase as complete, run a quick (no-LLM)
       // verification gate. If it finds truncated files or syntax errors it
       // injects a correction nudge before the next iteration — not after.
-      if (!isError && fnName === 'update_plan' && plan) {
-        // update_plan is the canonical signal that a step completed — advance checkbox.
-        this.updateTaskPlanProgress(taskId)
+        if (!isError && fnName === 'update_plan' && plan) {
+          // update_plan is the canonical signal that a step completed — advance checkbox.
+          this.updateTaskPlanProgress(taskId)
 
-        const gateIssues = await this.runPhaseGate(plan, taskId)
-        if (gateIssues.length > 0) {
-          const issueLines = gateIssues.map(i => `- ${i.message}${i.correction ? ` → ${i.correction}` : ''}`).join('\n')
-          this.pushOrReplaceSystemMessage(
-            messages,
-            '[Phase Gate]',
-            `[Phase Gate] Quick verification found issues in the files written so far:\n${issueLines}\n\nAddress these before continuing to the next phase.`,
-          )
+          const gateIssues = await this.runPhaseGate(plan, taskId)
+          if (gateIssues.length > 0) {
+            const issueLines = gateIssues.map(i => `- ${i.message}${i.correction ? ` → ${i.correction}` : ''}`).join('\n')
+            this.pushOrReplaceSystemMessage(
+              messages,
+              '[Phase Gate]',
+              `[Phase Gate] Quick verification found issues in the files written so far:\n${issueLines}\n\nAddress these before continuing to the next phase.`,
+            )
+          }
+
+          // Plan-file reconciliation: if task_plan.md checked-box count diverges from
+          // what the in-memory ExecutionPlan says (>2 steps apart), inject a nudge.
+          // This catches cases where the agent edits task_plan.md directly without using
+          // update_plan, causing the in-memory plan and file to drift.
+          const ws = workspaceManager.getWorkspaceSync(taskId)
+          const planFile = ws.get('task_plan.md') ?? ''
+          const fileChecked = (planFile.match(/\[x\]/gi) ?? []).length
+          const planChecked = this.completedCheckboxes
+          const divergence = Math.abs(fileChecked - planChecked)
+          if (divergence > 2) {
+            this.completedCheckboxes = fileChecked
+            this.pushOrReplaceSystemMessage(
+              messages,
+              '[Plan Reconciliation]',
+              `[Plan Reconciliation] task_plan.md shows ${fileChecked} completed items but the tracker expected ${planChecked}. Tracker has been synced to the file. Re-read task_plan.md to confirm your current position before continuing.`,
+            )
+          }
         }
-      }
 
       if (fnName === 'complete') return 'complete'
     }
@@ -1172,6 +1272,19 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
     const step: AgentStep = { kind: 'tool_result', callId, output, isError }
     useAppStore.getState().updateStep(taskId, messageId, step)
     window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+
+    // Accumulate into the execution output buffer for post-run verification.
+    // Only track errors and the tail of each output — not full content — to stay compact.
+    if (isError) {
+      const snippet = `[ERROR] ${output.slice(0, 500)}\n`
+      const combined = this.executionOutputBuffer + snippet
+      this.executionOutputBuffer = combined.slice(-8000)
+    } else {
+      // Append last 200 chars of successful outputs to give verification signal
+      const snippet = output.slice(-200)
+      const combined = this.executionOutputBuffer + snippet + '\n'
+      this.executionOutputBuffer = combined.slice(-8000)
+    }
   }
 
   private emitStrikeEscalation(taskId: string, messageId: string, tool: string, attempts: string[]): void {

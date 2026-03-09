@@ -146,15 +146,15 @@ export class AgentOrchestrator {
       executionConfig: params.executionConfig,
       signal: params.signal,
       maxIterations: params.maxIterations,
-      enableVerification: this.config.enableVerification,
+        enableVerification: this.config.enableVerification ?? true,
+      }
+
+      await this.executionAgent.execute(executionParams)
     }
 
-    await this.executionAgent.execute(executionParams)
-  }
-
-  /**
-   * Execute with an approved plan.
-   */
+    /**
+     * Execute with an approved plan.
+     */
   private async executeWithPlan(params: OrchestratorTaskParams, plan: ExecutionPlan): Promise<void> {
     this.emitPlanApproved(params.taskId, params.messageId, plan)
 
@@ -197,11 +197,11 @@ export class AgentOrchestrator {
       executionConfig: params.executionConfig,
       signal: params.signal,
       maxIterations: params.maxIterations,
-      plan,
-      enableVerification: this.config.enableVerification,
-    }
+        plan,
+        enableVerification: this.config.enableVerification ?? true,
+      }
 
-    await this.executionAgent.execute(executionParams)
+      await this.executionAgent.execute(executionParams)
   }
 
     /**
