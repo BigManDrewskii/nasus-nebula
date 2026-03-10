@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run build"
+    "beforeBuildCommand": "bash build-sidecar.sh && bun run build"
   },
   "app": {
     "windows": [
@@ -37,10 +37,13 @@
         "https://github.com/BigManDrewskii/nasus/releases/latest/download/update.json"
       ],
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgwRDFGN0NFNDlFRkEzMjQKUldSWDVVeTgxV1R0VzZVSm1CVWp4Q05zUkFUV0I4TjZ4Z25qZ0JkY2daZzZzZ3JkZk5HUEpZSmEK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzQ3NzYVeTgxV1R0VzZVSm1CVWp4Q05zUkFUV0I4TjZ4Z25qZ0JkY2daZ3NnckZkTkdQSllqYUsK"
     }
   },
   "bundle": {
+    "externalBin": [
+      "sidecar/nasus-sidecar"
+    ],
     "active": true,
     "targets": "all",
     "icon": [
