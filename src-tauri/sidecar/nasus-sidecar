@@ -1,0 +1,5 @@
+#!/bin/sh
+# Placeholder sidecar binary for dev builds
+# The actual sidecar runs via 'node index.js' from Rust code
+echo "Sidecar placeholder - this should not be called directly"
+exit 1

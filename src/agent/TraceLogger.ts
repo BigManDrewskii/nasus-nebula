@@ -41,14 +41,15 @@ export class TraceSpan {
     const durationMs = Date.now() - this.startMs
     this.logger._flush({
       id: this.id,
-      taskId: this.logger.taskId,
-      messageId: this.logger.messageId,
-      stepKind: 'tool_result',
-      toolName: this.toolName,
-      inputJson: this.inputJson,
-      outputText: outputText?.slice(0, 4000) ?? null,
-      isError,
-      durationMs,
+      task_id: this.logger.taskId,
+      message_id: this.logger.messageId,
+      step_type: 'tool_result',
+      content: `${this.toolName}${outputText ? ': ' + outputText.slice(0, 1000) : ''}`,
+      tool_name: this.toolName,
+      input_json: this.inputJson,
+      output_text: outputText?.slice(0, 4000) ?? null,
+      is_error: isError,
+      duration_ms: durationMs,
       timestamp: this.startMs,
     })
   }
@@ -67,14 +68,15 @@ export class TraceLogger {
   recordThinking(content: string): void {
     this._flush({
       id: crypto.randomUUID(),
-      taskId: this.taskId,
-      messageId: this.messageId,
-      stepKind: 'thinking',
-      toolName: null,
-      inputJson: null,
-      outputText: content.slice(0, 2000),
-      isError: false,
-      durationMs: null,
+      task_id: this.taskId,
+      message_id: this.messageId,
+      step_type: 'thinking',
+      content: content.slice(0, 2000),
+      tool_name: null,
+      input_json: null,
+      output_text: content.slice(0, 2000),
+      is_error: false,
+      duration_ms: null,
       timestamp: Date.now(),
     })
   }
@@ -87,14 +89,15 @@ export class TraceLogger {
     // Log the call start immediately
     this._flush({
       id: `${id}-call`,
-      taskId: this.taskId,
-      messageId: this.messageId,
-      stepKind: 'tool_call',
-      toolName,
-      inputJson,
-      outputText: null,
-      isError: false,
-      durationMs: null,
+      task_id: this.taskId,
+      message_id: this.messageId,
+      step_type: 'tool_call',
+      content: `Calling ${toolName}`,
+      tool_name: toolName,
+      input_json: inputJson,
+      output_text: null,
+      is_error: false,
+      duration_ms: null,
       timestamp: Date.now(),
     })
 
@@ -104,6 +107,6 @@ export class TraceLogger {
   /** Internal: fire-and-forget write to SQLite. */
   _flush(step: DbTraceStep): void {
     // Non-blocking; swallow errors to never affect the agent loop
-    dbAppendTrace(step).catch(() => {})
+    dbAppendTrace(step as unknown as DbTraceStep).catch(() => {})
   }
 }

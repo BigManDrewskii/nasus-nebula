@@ -3906,6 +3906,190 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.55;
 }
 
+/* ── InitializationScreen classes ─────────────────────────────────────────── */
+
+.initialization-root {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #080808;
+  position: relative;
+}
+
+.initialization-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 40% at 50% -5%, oklch(64% 0.214 40.1 / 0.07) 0%, transparent 100%);
+}
+
+.initialization-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 380px;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+  text-align: center;
+}
+
+.initialization-logo-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.initialization-logo-glow {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, oklch(64% 0.214 40.1 / 0.12) 0%, transparent 70%);
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.initialization-logo-box {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(234,179,8,0.08);
+  border: 1px solid rgba(234,179,8,0.15);
+}
+
+.spin-slow {
+  animation: spin 8s linear infinite;
+}
+
+.initialization-status {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.initialization-title {
+  font-size: var(--text-xl);
+  color: var(--amber-light);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.initialization-subtitle {
+  font-size: var(--text-sm);
+  color: var(--tx-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.initialization-progress-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.initialization-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.initialization-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--amber) 0%, var(--amber-mid) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease-out;
+}
+
+.initialization-progress-text {
+  font-size: var(--text-xs);
+  color: var(--tx-tertiary);
+  text-align: right;
+}
+
+.initialization-phases {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.initialization-phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  transition: all 0.25s ease;
+}
+
+.initialization-phase-dot[data-status='current'] {
+  background: var(--amber);
+  box-shadow: 0 0 8px oklch(64% 0.214 40.1 / 0.4);
+}
+
+.initialization-phase-dot[data-status='done'] {
+  background: rgba(52,211,153,0.7);
+}
+
+.initialization-error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+
+.initialization-retry-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 0;
+  border-radius: 12px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--amber) 0%, var(--amber-mid) 100%);
+  color: #000;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 24px oklch(64% 0.214 40.1 / 0.25);
+  transition: opacity 0.15s ease;
+}
+
+.initialization-error-details {
+  font-size: var(--text-xs);
+  opacity: 0.6;
+}
+
+.initialization-skip-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.initialization-skip-btn:hover {
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.03);
+}
+
 /* ── OutputCards classes ─────────────────────────────────────────────────── */
 
 .oc-renderer {

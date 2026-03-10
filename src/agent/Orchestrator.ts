@@ -16,7 +16,6 @@ import type { ExecutionConfig as SandboxConfig } from './sandboxRuntime'
 import { PlanningAgent, generatePlan } from './agents/PlanningAgent'
 import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAgent'
 import { useAppStore } from '../store'
-import { buildPlanContext } from './context/ContextBuilder'
 import {
   healthCheck,
   runTask,
@@ -116,13 +115,13 @@ export class AgentOrchestrator {
     }
 
     if (this._isSidecarReady) {
-      // ── Sidecar path ────────────────────────────────────────────────────
+      // ── Sidecar path ─────────────────────────────────────────────────────────────────────
       store.setStatus(taskId, 'planning')
       await this.runViaSidecar(params)
       return
     }
 
-    // ── Fallback: direct LLM path ────────────────────────────────────────
+    // ── Fallback: direct LLM path ────────────────────────────────────────────────────────────
     if (this.config.skipPlanning) {
       await this.executeDirectly(params)
       return
@@ -132,19 +131,14 @@ export class AgentOrchestrator {
 
     let plan: ExecutionPlan
     try {
-      plan = await generatePlan({
-        taskId,
-        messageId: params.messageId,
-        userMessages: params.userMessages,
-        userMessage: params.userMessage,
-        apiKey: params.apiKey,
-        model: params.model,
-        apiBase: params.apiBase,
-        provider: params.provider,
-        searchConfig: params.searchConfig,
-        signal,
-        planningAgent: this.planningAgent,
-      })
+      plan = await generatePlan(
+        params.userMessage,
+        params.apiKey,
+        params.model,
+        params.apiBase,
+        params.provider,
+        { autoApproveSimple: this.config.autoApproveSimple },
+      )
     } catch (err) {
       if (signal.aborted) return
       throw err
@@ -295,13 +289,10 @@ export class AgentOrchestrator {
     store.setCurrentPlan(plan)
     store.setStatus(taskId, 'executing')
 
-    const context = buildPlanContext(plan, params.userMessages)
-
     const executionParams: ExecutionConfigParams = {
       taskId,
       messageId,
       plan,
-      context,
       apiKey: params.apiKey,
       model: params.model,
       apiBase: params.apiBase,
@@ -310,6 +301,11 @@ export class AgentOrchestrator {
       executionConfig: params.executionConfig,
       signal,
       maxIterations: params.maxIterations,
+      userMessages: params.userMessages,
+      task: { id: taskId, title: params.taskTitle ?? 'Task', status: 'running', createdAt: new Date() },
+      userInput: params.userMessage,
+      messages: params.userMessages,
+      tools: [],
     }
 
     try {
@@ -332,32 +328,36 @@ export class AgentOrchestrator {
     store.setStatus(taskId, 'executing')
 
     const directPlan: ExecutionPlan = {
+      id: 'direct-plan',
       title: params.taskTitle ?? 'Direct Execution',
+      description: params.userMessage.slice(0, 200),
+      estimatedSteps: 1,
       phases: [
         {
           id: 'phase-1',
           title: 'Execute Task',
+          description: 'Execute the user task directly',
           steps: [
             {
               id: 'step-1',
-              title: params.userMessage.slice(0, 80),
-              description: params.userMessage,
+              description: params.userMessage.slice(0, 200),
+              agent: 'executor',
               tools: [],
             },
           ],
+          status: 'pending',
         },
       ],
+      dependencies: [],
+      createdAt: new Date(),
     }
 
     store.setCurrentPlan(directPlan)
-
-    const context = buildPlanContext(directPlan, params.userMessages)
 
     const executionParams: ExecutionConfigParams = {
       taskId,
       messageId,
       plan: directPlan,
-      context,
       apiKey: params.apiKey,
       model: params.model,
       apiBase: params.apiBase,
@@ -366,6 +366,11 @@ export class AgentOrchestrator {
       executionConfig: params.executionConfig,
       signal,
       maxIterations: params.maxIterations,
+      userMessages: params.userMessages,
+      task: { id: taskId, title: params.taskTitle ?? 'Task', status: 'running', createdAt: new Date() },
+      userInput: params.userMessage,
+      messages: params.userMessages,
+      tools: [],
     }
 
     try {
@@ -377,4 +382,23 @@ export class AgentOrchestrator {
       throw err
     }
   }
+}
+
+// ─── Singleton & named export ───────────────────────────────────────────────────────────────────────────
+
+/** Shared orchestrator instance (use this from components & CallNasusAgentTool). */
+export const orchestrator = new AgentOrchestrator()
+
+/**
+ * Named export alias so callers can do:
+ *   import { processTaskWithOrchestrator } from '../agent/Orchestrator'
+ *
+ * This is a thin wrapper that delegates to the singleton instance.
+ */
+export async function processTaskWithOrchestrator(
+  params: OrchestratorTaskParams,
+  config?: OrchestratorConfig,
+): Promise<void> {
+  if (config) orchestrator.setConfig(config)
+  return orchestrator.processTask(params)
 }

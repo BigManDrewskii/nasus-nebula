@@ -57,16 +57,16 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
   setActiveTaskId: (id) => {
     set({ activeTaskId: id })
     if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
-      getPersistedTaskHistory(id).then(history => {
+      getPersistedTaskHistory(id).then((history: unknown[] | null) => {
         if (history && history.length > 0) {
           // Sanitize on load — any incomplete tool_call blocks persisted from a previous
           // crash or mid-execution kill are silently dropped before being used as context.
-          const cleaned = sanitizeMessages(history)
+          const cleaned = sanitizeMessages(history as LlmMessage[])
           set(state => ({
             rawHistory: { ...state.rawHistory, [id]: cleaned }
           }))
         }
-      }).catch(err => {
+      }).catch((err: unknown) => {
         logger.warn('store', `Failed to load history for task ${id}`, err)
       })
     }
@@ -106,10 +106,10 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
       const rawHistory = { ...state.rawHistory }
       delete messages[id]
       delete rawHistory[id]
-      clearWorkspace(id).catch(err => {
+      clearWorkspace(id).catch((err: unknown) => {
         logger.warn('store', `Failed to cleanup workspace for deleted task ${id}`, err)
       })
-      deletePersistedTaskHistory(id).catch(err => {
+      deletePersistedTaskHistory(id).catch((err: unknown) => {
         logger.warn('store', `Failed to delete history for task ${id}`, err)
       })
       const activeTaskId =
@@ -152,7 +152,7 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
       const rawHistory = { ...state.rawHistory, [newId]: state.rawHistory[id] ?? [] }
       copyWorkspace(id, newId)
       if (rawHistory[newId].length > 0) {
-        persistTaskHistory(newId, rawHistory[newId]).catch(err => {
+        persistTaskHistory(newId, rawHistory[newId]).catch((err: unknown) => {
           logger.warn('store', `Failed to persist history for duplicated task ${newId}`, err)
         })
       }
@@ -290,7 +290,7 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
         ? sanitized.slice(-MAX_RAW_HISTORY_LIVE)
         : sanitized
       queueMicrotask(() => {
-        persistTaskHistory(taskId, capped).catch(err => {
+        persistTaskHistory(taskId, capped).catch((err: unknown) => {
           logger.warn('store', `Failed to persist history for task ${taskId}`, err)
         })
       })

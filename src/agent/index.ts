@@ -114,11 +114,20 @@ export async function runWebAgent(params: RunWebAgentParams): Promise<void> {
       } else {
         // Original behavior: direct execution
         await runExecutionAgent({
+          taskId: params.taskId,
+          messageId: params.messageId,
           task: { id: params.taskId, title: params.taskTitle || (params.userMessages[params.userMessages.length - 1]?.content as string || '').slice(0, 60), status: 'in_progress', createdAt: new Date() },
           userInput: params.userMessages[params.userMessages.length - 1]?.content as string || '',
+          userMessages: params.userMessages,
           messages: params.userMessages,
           tools: [],
-          ...params,
+          apiKey: params.apiKey,
+          model: params.model,
+          apiBase: params.apiBase,
+          provider: params.provider,
+          searchConfig: params.searchConfig,
+          executionConfig: params.executionConfig,
+          maxIterations: params.maxIterations,
           signal: controller.signal,
         })
       }

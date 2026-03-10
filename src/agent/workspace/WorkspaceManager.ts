@@ -168,8 +168,8 @@ export class WorkspaceManager {
       return this.readFile(taskId, filePath)
     }
     if (!this.initialized) await this.init()
-    const workspacePath = await this.getWorkspacePath(taskId)
-    const bytes = await workspaceReadBinary(taskId, filePath, workspacePath!)
+    await this.getWorkspacePath(taskId)
+    const bytes = await workspaceReadBinary(taskId, filePath)
     if (!bytes) return `[Binary file: ${filename} — could not read]`
     try {
       const parsed = await parseFileBuffer(bytes, filename)

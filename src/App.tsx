@@ -3,7 +3,6 @@ import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { useState, useCallback, useMemo, useEffect, useRef, lazy, Suspense } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import type { Task } from './types'
 import { useAppStore } from './store'
 import { Sidebar } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
@@ -13,9 +12,9 @@ import { Pxi } from './components/Pxi'
 import { useWorkspaceFiles } from './hooks/useWorkspaceFiles'
 import { useModelSync } from './hooks/useModelSync'
 import { useAppEventListeners } from './hooks/useAppEventListeners'
+import { useAppInit } from './hooks/useAppInit'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
-import { tauriInvoke, startSidecar } from './tauri'
 import { useSidecarHealthPoll } from './hooks/useSidecarHealthPoll'
 
 const log = createLogger('App')
@@ -23,6 +22,7 @@ const log = createLogger('App')
 // Lazy-load panels not visible on initial render to reduce startup bundle parse time
 const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => ({ default: m.SettingsPanel })))
 const OnboardingScreen = lazy(() => import('./components/OnboardingScreen').then(m => ({ default: m.OnboardingScreen })))
+const InitializationScreen = lazy(() => import('./components/InitializationScreen').then(m => ({ default: m.InitializationScreen })))
 const MemoryBrowser = lazy(() => import('./components/MemoryBrowser').then(m => ({ default: m.MemoryBrowser })))
 
 const LAYOUT_KEY = 'nasus-layout-state'
@@ -58,7 +58,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, routerConfig, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, resetPlanState, textScale } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, textScale } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
@@ -66,50 +66,51 @@ function App() {
         addTask: s.addTask,
         onboardingComplete: s.onboardingComplete,
         workspacePath: s.workspacePath,
-        routerConfig: s.routerConfig,
         settingsOpen: s.settingsOpen,
         closeSettings: s.closeSettings,
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
-        resetPlanState: s.resetPlanState,
         textScale: s.textScale,
       }))
     )
+
+  // App initialization orchestration
+  const { status: initStatus, isReady: isAppReady, retry: retryInit } = useAppInit()
 
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const [leftCollapsed, setLeftCollapsed] = useState(() => loadLayout().leftCollapsed)
   const [rightCollapsed, setRightCollapsed] = useState(() => loadLayout().rightCollapsed)
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(() => loadLayout().rightActiveTab)
-  const [rightPanelWidth, setRightPanelWidth] = useState(() => loadLayout().rightPanelWidth)
-  const [rightPanelVisible, setRightPanelVisible] = useState(() => loadLayout().rightPanelVisible)
-  const [configSections, setConfigSections] = useState(() => loadLayout().configSections)
-  const [sidebarPreference, setSidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(() => loadLayout().sidebarPreference ?? 'auto')
+  const [rightPanelWidth, _setRightPanelWidth] = useState(() => loadLayout().rightPanelWidth)
+  const [rightPanelVisible, _setRightPanelVisible] = useState(() => loadLayout().rightPanelVisible)
+  const [configSections, _setConfigSections] = useState(() => loadLayout().configSections)
+  const [sidebarPreference, _setSidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(() => loadLayout().sidebarPreference ?? 'auto')
+  const [_pruneNotice, setPruneNotice] = useState<string | null>(null) // Setter used by useAppEventListeners
+  const [_memoryBrowserOpen, setMemoryBrowserOpen] = useState(false) // Setter used by useAppEventListeners
+  const [_isOffline, setIsOffline] = useState(false) // Setter used by useAppEventListeners
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
   const [updateVersion, setUpdateVersion] = useState('')
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const layoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useAppEventListeners()
+  useSidecarHealthPoll()
+  useAppEventListeners({
+    setRightCollapsed,
+    setRightActiveTab,
+    setPruneNotice,
+    setMemoryBrowserOpen,
+    setIsOffline,
+  })
   useWorkspaceFiles(workspacePath)
   useModelSync()
 
   // ------------------------------------------------------------------
   // Check for sidecar installation on mount
   // ------------------------------------------------------------------
-  const { isSidecarReady, recheck: recheckSidecar } = useSidecarHealthPoll()
 
   useEffect(() => {
     checkSidecarInstalled()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-start the sidecar binary if it is not yet running
-  useEffect(() => {
-    if (!isSidecarReady) {
-      void startSidecar().catch(() => {
-        // Binary not present in dev mode — silently ignore
-      })
-    }
-  }, [isSidecarReady])
 
   const scheduleLayoutPersist = useCallback(() => {
     if (layoutPersistTimerRef.current) clearTimeout(layoutPersistTimerRef.current)
@@ -139,7 +140,9 @@ function App() {
   // Updater check
   useEffect(() => {
     check().then(event => {
+      // @ts-expect-error - manifest property exists on runtime but not in type definition
       if (event?.manifest) {
+        // @ts-expect-error - manifest.version exists on runtime but not in type definition
         setUpdateVersion(event.manifest.version)
         setIsUpdateAvailable(true)
         setShowUpdateBanner(true)
@@ -149,7 +152,7 @@ function App() {
     })
   }, [])
 
-  const activeTask = useMemo(() => tasks.find(t => t.id === activeTaskId), [tasks, activeTaskId])
+  const activeTask = useMemo(() => tasks.find(t => t.id === activeTaskId) ?? null, [tasks, activeTaskId])
 
   const sidebarPosition = useMemo(() => {
     if (sidebarPreference === 'always-left') return 'left'
@@ -165,21 +168,26 @@ function App() {
   }, [setActiveTaskId, windowWidth])
 
   const handleNewChat = useCallback(() => {
-    addTask()
+    const newTask = {
+      id: crypto.randomUUID(),
+      title: 'New Task',
+      status: 'pending' as const,
+      createdAt: new Date(),
+    }
+    addTask(newTask)
     if (windowWidth < 768) setLeftCollapsed(true)
   }, [addTask, windowWidth])
 
   const handleToggleLeft = useCallback(() => setLeftCollapsed(prev => !prev), [])
   const handleToggleRight = useCallback(() => setRightCollapsed(prev => !prev), [])
   const handleTabChange = useCallback((tab: Tab) => setRightActiveTab(tab), [])
-  const handleSetRightPanelWidth = useCallback((w: number) => setRightPanelWidth(w), [])
-  const handleSetRightPanelVisible = useCallback((v: boolean) => setRightPanelVisible(v), [])
-  const handleSetConfigSections = useCallback((f: Record<string, boolean>) => setConfigSections(f), [])
+  const handleSetRightPanelWidth = useCallback((w: number) => _setRightPanelWidth(w), [])
 
   // Handle updates
   const handleUpdate = useCallback(async () => {
     try {
       const event = await check()
+      // @ts-expect-error - manifest and downloadAndInstall exist on runtime but not in type definition
       if (event?.manifest)
         await event.downloadAndInstall()
       await relaunch()
@@ -188,10 +196,28 @@ function App() {
     }
   }, [])
 
+  // Show initialization screen while services are starting up
+  if (!isAppReady) {
+    return (
+      <Suspense fallback={null}>
+        <InitializationScreen
+          phase={initStatus.phase}
+          error={initStatus.error}
+          progress={initStatus.progress}
+          onRetry={retryInit}
+          onSkip={() => {
+            // Allow skipping non-blocking phases - just mark as ready
+            log.debug('Initialization skipped by user')
+          }}
+        />
+      </Suspense>
+    )
+  }
+
   if (!onboardingComplete) {
     return (
       <Suspense fallback={null}>
-        <OnboardingScreen onComplete={() => {}} />
+        <OnboardingScreen />
       </Suspense>
     )
   }
@@ -232,33 +258,24 @@ warm">Dismiss</button>
           <div className="flex flex-1 overflow-hidden min-w=0">
             <ChatView
               task={activeTask}
-              routerConfig={routerConfig}
-              leftCollapsed={leftCollapsed}
               rightCollapsed={rightCollapsed}
-              onToggleLeft={handleToggleLeft}
               onToggleRight={handleToggleRight}
-              sidebarPosition={sidebarPosition}
-              sidebarMinimal={sidebarMinimal}
             />
             {!rightCollapsed && rightPanelVisible && (
               <PanelDivider
+                width={rightPanelWidth}
                 onWidthChange={handleSetRightPanelWidth}
-                initialWidth={rightPanelWidth}
-                minPx={200}
-                maxPx={900}
+                onCollapse={handleToggleRight}
+                onExpand={() => _setRightPanelVisible(true)}
               />
             )}
            {!rightCollapsed && rightPanelVisible && (
               <OutputPanel
-                task={activeTask}
+                files={[]}
                 activeTab={rightActiveTab}
-                onTabChange={handleTabChange }
-                onToggleCollapse={handleToggleRight}
-                width={rightPanelWidth}
-                onWidthChange={handleSetRightPanelWidth}
-                onVisibleChange={handleSetRightPanelVisible}
-                configSections={configSections}
-                onConfigSectionChange={handleSetConfigSections}
+                onTabChange={handleTabChange}
+                onCollapse={handleToggleRight}
+                onExpand={() => _setRightPanelVisible(true)}
               />
             )}
           </div>
@@ -276,15 +293,11 @@ warm">Dismiss</button>
             />
           )}
         </div>
-        <Pxi />
+        <Pxi name="nasus" />
         <Suspense fallback={null}>
           {settingsOpen && (
             <SettingsPanel
               onClose={closeSettings}
-              configSections={configSections}
-              onConfigSectionChange={handleSetConfigSections}
-              sidebarPreference={sidebarPreference}
-              onSidebarPreferenceChange={setSidebarPreference}
             />
           )}
           <MemoryBrowser />

@@ -20,16 +20,16 @@ import { ChatEmptyState } from './chat/ChatEmptyState'
 
 interface ChatViewProps {
   task: Task | null
-  onNewTask: () => void
-  onOpenSettings: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
-    outputVisible?: boolean
-    onShowOutput?: () => void
-    workspaceFileCount?: number
-    /** Whether the right output panel is currently collapsed */
-    rightCollapsed?: boolean
-    /** Toggle the right output panel */
-    onToggleRight?: () => void
-  }
+  onNewTask?: () => void
+  onOpenSettings?: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
+  outputVisible?: boolean
+  onShowOutput?: () => void
+  workspaceFileCount?: number
+  /** Whether the right output panel is currently collapsed */
+  rightCollapsed?: boolean
+  /** Toggle the right output panel */
+  onToggleRight?: () => void
+}
   
 export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
   const {
@@ -199,7 +199,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
 
   const updateRoutingPreview = useCallback((content: string) => {
     // Only preview in auto mode
-    if (routerConfig.mode !== 'auto') {
+    if (routerConfig!.mode !== 'auto') {
       setRoutingPreview(null)
       return
     }
@@ -231,9 +231,9 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
           reason: string
         }>('preview_routing', {
           message: content,
-          mode: routerConfig.mode,
-          budget: routerConfig.budget,
-          modelOverrides: routerConfig.modelOverrides ?? {},
+          mode: routerConfig!.mode,
+          budget: routerConfig!.budget,
+          modelOverrides: routerConfig!.modelOverrides ?? {},
         })
 
         if (result) {
@@ -249,14 +249,14 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
       }
 
       // Tauri fallback: use local heuristic
-      const local = resolveModelLocally(content, routerConfig, model)
+      const local = resolveModelLocally(content, routerConfig!, model)
       setRoutingPreview({
         modelId: local.modelId,
         displayName: local.displayName,
         reason: local.reason,
       })
     }, 300) // 300ms debounce
-  }, [routerConfig, model, setRoutingPreview])
+  }, [routerConfig!, model, setRoutingPreview])
 
   // Cleanup timeout on unmount
     useEffect(() => {
@@ -304,9 +304,9 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
       pillHideTimerRef.current = setTimeout(() => setShowNewMsgPill(false), 200)
     }
 
-  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig })
+  const configRef = useRef({ apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig: routerConfig! })
   useEffect(() => {
-    configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig }
+    configRef.current = { apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig: routerConfig! }
   }, [apiKey, model, workspacePath, apiBase, provider, exaKey, maxIterations, enableVerification, routerConfig])
 
     const runAgent = useCallback(async (
@@ -464,7 +464,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
           const needsKey = effectiveProvider !== 'ollama' && !effectiveKey.trim()
             if (needsKey) {
               addToast('Add your API key in Settings before sending.', 'red')
-              onOpenSettings('model')
+              onOpenSettings?.('model')
               return
             }
 
@@ -629,7 +629,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === ',') { e.preventDefault(); onOpenSettings() }
+      if (mod && e.key === ',') { e.preventDefault(); onOpenSettings?.() }
       // When the plan modal is open, Escape is handled by the modal itself (Skip).
       // Don't let the ChatView handler also fire stopAgent on the same keypress.
       if (e.key === 'Escape' && isActive && !showMemory && !pendingPlan) { e.preventDefault(); handleStopRef.current?.() }
@@ -692,7 +692,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                 model={model}
                 provider={provider}
                 routingMode={routingMode}
-                routerConfig={routerConfig}
+                routerConfig={routerConfig!}
                 sandboxStatus={sandboxStatus}
                 outputVisible={outputVisible}
                 workspaceFileCount={workspaceFileCount}

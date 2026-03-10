@@ -6,6 +6,7 @@
 import type { AgentState } from './AgentState'
 import type { LlmMessage } from '../llm'
 import type { ExecutionConfig } from '../sandboxRuntime'
+import type { SearchConfig } from '../search'
 
 export type { LlmMessage }
 
@@ -55,7 +56,7 @@ export interface AgentContext {
   /** Execution config for sandbox */
   executionConfig?: ExecutionConfig
   /** Search configuration */
-  searchConfig?: { exaKey: string }
+  searchConfig?: SearchConfig
   /** Optional plan for execution agents */
   plan?: ExecutionPlan
   /** Optional correction hints from verification */

@@ -19,6 +19,7 @@ import { createAgentSlice, type AgentSlice } from './agentSlice'
 import { createSettingsSlice, type SettingsSlice } from './settingsSlice'
 import { createGatewaySlice, type GatewaySlice } from '../agent/gateway'
 import { createToastSlice, type ToastSlice } from './toastSlice'
+import { createAppSlice, type AppSlice } from './appSlice'
 import { updateGlobalRateLimiterConfig } from '../agent/gateway/rateLimiter'
 import { getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
@@ -37,7 +38,7 @@ export type {
   TextScale,
 } from './settingsSlice'
 
-type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice & ToastSlice
+type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice & ToastSlice & AppSlice
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -51,6 +52,7 @@ export const useAppStore = create<AppState>()(
           ...createSettingsSlice(set, get, api),
           ...createGatewaySlice(set, get, api),
           ...createToastSlice(set, get, api),
+          ...createAppSlice(set, get, api),
       }
     }),
     {
@@ -102,13 +104,13 @@ export const useAppStore = create<AppState>()(
 
         // Trigger history load for active task from DB for full context
         if (state.activeTaskId) {
-          getPersistedTaskHistory(state.activeTaskId).then(history => {
+          getPersistedTaskHistory(state.activeTaskId).then((history: unknown[] | null) => {
             if (history && history.length > 0) {
               useAppStore.setState(s => ({
                 rawHistory: { ...s.rawHistory, [state.activeTaskId!]: history }
               }))
             }
-          }).catch(err => {
+          }).catch((err: unknown) => {
             logger.warn('store', `Failed to load history for active task ${state.activeTaskId}`, err)
           })
         }
@@ -117,11 +119,11 @@ export const useAppStore = create<AppState>()(
         import('../agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
           const tasks = state.tasks ?? []
           for (const task of tasks) {
-            workspaceManager.getWorkspace(task.id).catch(err => {
+            workspaceManager.getWorkspace(task.id).catch((err: unknown) => {
               logger.warn('store', `Failed to load workspace for task ${task.id}`, err)
             })
           }
-        }).catch(err => {
+        }).catch((err: unknown) => {
           logger.warn('store', 'Failed to load WorkspaceManager module', err)
         })
       },

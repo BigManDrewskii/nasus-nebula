@@ -20,7 +20,9 @@ const log = createLogger('Search')
 
 export interface SearchConfig {
   /** Exa AI API key */
-  exaKey: string
+  exaKey?: string
+  /** Generic API key (alias for exaKey, used for compatibility) */
+  apiKey?: string
 }
 
 export interface SearchResult {

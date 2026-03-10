@@ -64,11 +64,11 @@ export class SearchWebTool extends BaseTool {
     const taskId = (args.__taskId as string | undefined) ?? 'global'
 
     // Inject Exa API key from Tauri keychain if not pre-configured
-    if (!this.searchConfig?.apiKey) {
+    if (!this.searchConfig?.apiKey && !this.searchConfig?.exaKey) {
       try {
-        const cfg = await tauriInvoke<{ apiKey?: string }>('get_search_config')
-        if (cfg?.apiKey) {
-          this.searchConfig = { ...(this.searchConfig ?? {}), apiKey: cfg.apiKey }
+        const apiKey = await tauriInvoke<string>('get_exa_key')
+        if (apiKey) {
+          this.searchConfig = { ...(this.searchConfig ?? {}), apiKey, exaKey: apiKey }
         }
       } catch {
         // Not in Tauri context or key not set — continue without

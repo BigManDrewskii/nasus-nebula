@@ -11,10 +11,13 @@ interface SidebarProps {
   tasks: Task[]
   activeTaskId: string | null
   onSelectTask: (id: string) => void
-  onNewTask: () => void
-  onOpenSettings: () => void
+  onNewTask?: () => void
+  onNewChat?: () => void
+  onOpenSettings?: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
   collapsed?: boolean
   onToggleCollapse?: () => void
+  position?: 'left' | 'right'
+  minimal?: boolean
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,7 +53,15 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed: _collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onNewChat, onOpenSettings, collapsed: _collapsed, onToggleCollapse, position: _position, minimal: _minimal }: SidebarProps) {
+  const handleNewTask = useCallback(() => {
+    const fn = onNewChat ?? onNewTask
+    if (fn) fn()
+  }, [onNewChat, onNewTask])
+
+  const handleOpenSettings = useCallback(() => {
+    if (onOpenSettings) onOpenSettings()
+  }, [onOpenSettings])
   const [search, setSearch]         = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -96,7 +107,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
         <SidebarBrand onCollapse={onToggleCollapse} />
 
         <div className="sb-new-task-wrap">
-          <NewTaskButton onClick={onNewTask} />
+          <NewTaskButton onClick={() => handleNewTask()} />
         </div>
 
         <div className="sb-search-wrap">
@@ -118,7 +129,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
               icon="sparkles"
               title="No tasks yet"
               subtitle="Create your first task to get started"
-              action={{ label: 'New task', onClick: onNewTask }}
+              action={onNewTask ? { label: 'New task', onClick: onNewTask } : undefined}
             />
           ) : (
             <div className="sb-task-list-inner">
@@ -175,7 +186,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSe
           )}
         </div>
 
-          <SidebarFooter onSettings={onOpenSettings} />
+          <SidebarFooter onSettings={handleOpenSettings} />
       </aside>
     )
 }

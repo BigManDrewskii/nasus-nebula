@@ -404,9 +404,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   checkSidecarInstalled: async () => {
     try {
       const { browserCheckSidecarInstalled } = await import('../tauri')
-      const status = await browserCheckSidecarInstalled()
-      set({ sidecarInstalled: status.installed })
-      return status.installed
+      const installed = await browserCheckSidecarInstalled()
+      set({ sidecarInstalled: installed })
+      return installed
     } catch {
       return false
     }
@@ -415,13 +415,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   installSidecar: async () => {
     try {
       const { browserInstallSidecar, tauriListen } = await import('../tauri')
-      const unlisten = await tauriListen<string>('sidecar:install_progress', (progress) => {
-        set({ sidecarInstallProgress: progress })
+      const unlisten = await tauriListen('sidecar:install_progress', (progress: unknown) => {
+        set({ sidecarInstallProgress: progress as string | null })
       })
-      const result = await browserInstallSidecar()
+      await browserInstallSidecar()
       unlisten()
       set({ sidecarInstalled: true, sidecarInstallProgress: null })
-      return result
+      return 'Installation complete'
     } catch (err) {
       set({ sidecarInstallProgress: null })
       throw err
@@ -463,8 +463,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     set({ nasusInstalling: true, nasusInstallProgress: 'Starting installation…', nasusInstallError: null })
     try {
       const { tauriInvoke, tauriListen } = await import('../tauri')
-      const unlisten = await tauriListen<string>('nasus:install_progress', (progress) => {
-        set({ nasusInstallProgress: progress })
+      const unlisten = await tauriListen('nasus:install_progress', (progress: unknown) => {
+        set({ nasusInstallProgress: progress as string | null })
       })
       const result = await tauriInvoke<string>('nasus_install_sidecar')
       unlisten()

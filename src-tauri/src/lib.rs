@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1308,6 +1308,39 @@ async fn get_fallback_chain(primaryModel: String, budget: BudgetMode) -> NasusRe
     Ok(models::router::build_fallback_chain(&primaryModel, budget))
 }
 
+// --- KV / Memory commands ---
+
+#[tauri::command]
+fn memory_set(
+    state: State<'_, Arc<Mutex<Connection>>>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = tauri::async_runtime::block_on(state.lock());
+    conn.execute(
+        "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn memory_get(
+    state: State<'_, Arc<Mutex<Connection>>>,
+    key: String,
+) -> Result<Option<String>, String> {
+    let conn = tauri::async_runtime::block_on(state.lock());
+    let mut stmt = conn
+        .prepare("SELECT value FROM kv_store WHERE key = ?1")
+        .map_err(|e| e.to_string())?;
+    let result = stmt
+        .query_row(params![key], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1316,13 +1349,115 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            get_config,
+            save_config,
+            validate_path,
+            get_model_registry,
+            refresh_models,
+            save_router_settings,
+            preview_routing,
+            search,
+            save_search_config,
+            get_search_config,
+            get_exa_key,
+            set_exa_key,
+            get_provider_key,
+            set_provider_key,
+            workspace_list,
+            workspace_read,
+            workspace_read_binary,
+            workspace_write,
+            workspace_delete,
+            workspace_delete_all,
+            read_file,
+            write_file,
+            run_agent,
+            stop_agent,
+            http_fetch,
+            save_task_history,
+            load_task_history,
+            delete_task_history,
+            check_docker,
+            is_ollama_running,
+            get_fallback_chain,
+            db_save_memory,
+            db_query_memories,
+            db_delete_memory,
+            db_append_trace,
+            db_get_trace,
+            db_delete_trace,
+            db_upsert_task,
+            db_list_tasks,
+            gateway::get_gateways,
+            gateway::save_gateways,
+            gateway::get_gateway_health,
+            gateway::test_gateway,
+            docker::commands::docker_create_container,
+            docker::commands::docker_execute_python,
+            docker::commands::docker_execute_bash,
+            docker::commands::docker_dispose_container,
+            docker::commands::docker_check_status,
+            docker::commands::docker_dispose_all_containers,
+            sidecar::browser_start_sidecar,
+            sidecar::browser_stop_sidecar,
+            sidecar::browser_is_sidecar_running,
+            sidecar::browser_start_session,
+            sidecar::browser_stop_session,
+            sidecar::browser_navigate,
+            sidecar::browser_screenshot,
+            sidecar::browser_click,
+            sidecar::browser_type,
+            sidecar::browser_scroll,
+            sidecar::browser_wait_for,
+            sidecar::browser_execute,
+            sidecar::browser_extract,
+            sidecar::browser_upload_file,
+            sidecar::browser_cookies,
+            sidecar::browser_set_stealth,
+            sidecar::browser_get_tabs,
+            sidecar::browser_select,
+            sidecar::browser_aria_snapshot,
+            sidecar::browser_read_page,
+            sidecar::browser_check_sidecar_installed,
+            sidecar::browser_install_sidecar,
+            sidecar::check_node_version,
+            python_sidecar::nasus_is_ready,
+            python_sidecar::nasus_health,
+            python_sidecar::nasus_submit_task,
+            python_sidecar::nasus_task_status,
+            python_sidecar::nasus_cancel_task,
+            python_sidecar::nasus_check_installed,
+            python_sidecar::nasus_install_sidecar,
+            python_sidecar::nasus_configure_llm,
+            memory_set,
+            memory_get,
+        ])
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
             let cache_path = app_data_dir.join("search_cache.db");
             let _ = std::fs::create_dir_all(&app_data_dir);
 
             // Open shared SQLite connection (WAL mode, all tables ensured)
-            let db_conn = open_db(&app_data_dir).expect("Failed to open nasus.db");
+            // If DB fails, emit degraded mode event and continue without DB features
+            let db_conn = match open_db(&app_data_dir) {
+                Ok(conn) => Arc::new(Mutex::new(conn)),
+                Err(e) => {
+                    eprintln!("[Nasus] Database failed to open: {}. Running in degraded mode.", e);
+                    // Emit degraded mode event to frontend
+                    let _ = app.emit("app:degraded-mode", serde_json::json!({
+                        "reason": "db_failed",
+                        "message": "Database unavailable. Task history and memory features are disabled."
+                    }));
+                    // Create a fallback in-memory connection for graceful degradation
+                    // This allows DB commands to run without crashing, but data won't persist
+                    Arc::new(Mutex::new(Connection::open_in_memory().unwrap_or_else(|_| {
+                        eprintln!("[Nasus] Fallback to in-memory DB failed, using null connection");
+                        // This should never fail, but if it does we still continue
+                        Connection::open_in_memory().unwrap()
+                    })))
+                }
+            };
 
             // Get the sidecar directory path (writable, persists across launches)
             let mut sidecar_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -1442,129 +1577,11 @@ pub fn run() {
                 sidecar: sidecar::SharedSidecarState(Arc::new(Mutex::new(
                     sidecar::SidecarState::new(sidecar_path),
                 ))),
-                db: Arc::new(Mutex::new(db_conn)),
+                db: db_conn,
             });
 
             Ok(())
         })
-        
-// --- KV / Memory commands ---
-
-#[tauri::command]
-fn memory_set(
-    state: State<'_, Arc<Mutex<Connection>>>,
-    key: String,
-    value: String,
-) -> Result<(), String> {
-    let conn = tauri::async_runtime::block_on(state.lock());
-    conn.execute(
-        "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?1, ?2)",
-        params![key, value],
-    )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn memory_get(
-    state: State<'_, Arc<Mutex<Connection>>>,
-    key: String,
-) -> Result<Option<String>, String> {
-    let conn = tauri::async_runtime::block_on(state.lock());
-    let mut stmt = conn
-        .prepare("SELECT value FROM kv_store WHERE key = ?1")
-        .map_err(|e| e.to_string())?;
-    let result = stmt
-        .query_row(params![key], |row| row.get::<_, String>(0))
-        .optional()
-        .map_err(|e| e.to_string())?;
-    Ok(result)
-}
-
-.invoke_handler(tauri::generate_handler![
-            get_config,
-            save_config,
-            validate_path,
-            get_model_registry,
-            refresh_models,
-            save_router_settings,
-            preview_routing,
-            search,
-            save_search_config,
-            get_search_config,
-            get_exa_key,
-            set_exa_key,
-            get_provider_key,
-            set_provider_key,
-            workspace_list,
-            workspace_read,
-            workspace_read_binary,
-            workspace_write,
-            workspace_delete,
-            workspace_delete_all,
-            read_file,
-            write_file,
-            run_agent,
-            stop_agent,
-            http_fetch,
-            save_task_history,
-            load_task_history,
-            delete_task_history,
-            check_docker,
-            is_ollama_running,
-            get_fallback_chain,
-            db_save_memory,
-            db_query_memories,
-            db_delete_memory,
-            db_append_trace,
-            db_get_trace,
-            db_delete_trace,
-            db_upsert_task,
-            db_list_tasks,
-            gateway::get_gateways,
-            gateway::save_gateways,
-            gateway::get_gateway_health,
-            gateway::test_gateway,
-            docker::commands::docker_create_container,
-            docker::commands::docker_execute_python,
-            docker::commands::docker_execute_bash,
-            docker::commands::docker_dispose_container,
-            docker::commands::docker_check_status,
-            docker::commands::docker_dispose_all_containers,
-            sidecar::browser_start_sidecar,
-            sidecar::browser_stop_sidecar,
-            sidecar::browser_is_sidecar_running,
-            sidecar::browser_start_session,
-            sidecar::browser_stop_session,
-            sidecar::browser_navigate,
-            sidecar::browser_screenshot,
-            sidecar::browser_click,
-            sidecar::browser_type,
-            sidecar::browser_scroll,
-            sidecar::browser_wait_for,
-            sidecar::browser_execute,
-            sidecar::browser_extract,
-            sidecar::browser_upload_file,
-            sidecar::browser_cookies,
-            sidecar::browser_set_stealth,
-            sidecar::browser_get_tabs,
-            sidecar::browser_select,
-            sidecar::browser_aria_snapshot,
-            sidecar::browser_read_page,
-            sidecar::browser_check_sidecar_installed,
-            sidecar::browser_install_sidecar,
-            sidecar::check_node_version,
-            python_sidecar::nasus_is_ready,
-            python_sidecar::nasus_health,
-            python_sidecar::nasus_submit_task,
-            python_sidecar::nasus_task_status,
-            python_sidecar::nasus_cancel_task,
-            python_sidecar::nasus_check_installed,
-            python_sidecar::nasus_install_sidecar,
-            python_sidecar::nasus_configure_llm,
-            memory_set,
-            memory_get,
-        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
