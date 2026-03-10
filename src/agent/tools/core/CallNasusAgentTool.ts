@@ -101,14 +101,26 @@ export async function streamJobLogs(
 
 export async function callNasusAgent(
   req: NasusEnvelopeRequest,
-  options?: { onLog?: (line: string) => void; timeoutMs?: number }
+  options?: { onLog?: (line: string) => void; timeoutMs?: number; signal?: AbortSignal }
 ): Promise<NasusTaskResult> {
   const startMs = Date.now();
   const timeout = options?.timeoutMs ?? POLL_TIMEOUT_MS;
+  const signal = options?.signal;
+
+  if (signal?.aborted) throw new Error('callNasusAgent: already aborted before start');
 
   const { job_id } = await submitTask(req);
 
+  // Cancel the sidecar job if the caller aborts
+  signal?.addEventListener('abort', () => {
+    void cancelTask(job_id);
+  }, { once: true });
+
   while (true) {
+    if (signal?.aborted) {
+      await cancelTask(job_id);
+      throw new Error(`Nasus job ${job_id} cancelled by caller`);
+    }
     if (Date.now() - startMs > timeout) {
       await cancelTask(job_id);
       throw new Error(`Nasus job ${job_id} timed out after ${timeout}ms`);
