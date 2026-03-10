@@ -1,3 +1,4 @@
+import * as path from 'path'
 import { tauriInvoke, workspaceReadBinary } from '../../tauri'
 import { parseFileBuffer, isSupportedBinaryFormat } from '../FileParser'
 import { createLogger } from '../../lib/logger'
@@ -186,6 +187,14 @@ export class WorkspaceManager {
     if (!this.initialized) await this.init()
 
     const workspacePath = await this.getWorkspacePath(taskId)
+
+    // Path traversal guard — reject any path that escapes the workspace root
+    const _resolvedFull = path.resolve(workspacePath, filePath)
+    const _resolvedBase = path.resolve(workspacePath)
+    if (_resolvedBase && !_resolvedFull.startsWith(_resolvedBase + path.sep) && _resolvedFull !== _resolvedBase) {
+      throw new Error(`Path traversal detected: the path escapes the workspace boundary`)
+    }
+
     await tauriInvoke('workspace_write', { taskId, path: filePath, content, workspacePath })
 
     // Update content cache
