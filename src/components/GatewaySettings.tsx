@@ -3,7 +3,7 @@ import { useAppStore } from '../store'
 import { useShallow } from 'zustand/react/shallow'
 import { Pxi } from './Pxi'
 import ConfirmModal from './ConfirmModal'
-import type { GatewayConfig } from '../agent/gateway/gatewayTypes'
+import type { GatewayConfig, GatewayHealth } from '../agent/gateway/gatewayTypes'
 import { tauriInvoke } from '../tauri'
 
 /** Serialize GatewayConfig to what the Rust `save_gateways` command expects.
@@ -98,7 +98,7 @@ export function GatewaySettings() {
   )
 }
 
-function GatewayHealthDashboard({ health }: { health: any[] }) {
+function GatewayHealthDashboard({ health }: { health: GatewayHealth[] }) {
   if (health.length === 0) return null
 
   return (
@@ -166,12 +166,12 @@ function GatewayItem({
   gateway, health, isExpanded, onToggleExpand, onUpdate, onRemove, onTest
 }: {
   gateway: GatewayConfig,
-  health?: any,
+  health?: GatewayHealth,
   isExpanded: boolean,
   onToggleExpand: () => void,
   onUpdate: (updates: Partial<GatewayConfig>) => void,
   onRemove: () => void,
-  onTest: () => Promise<any>
+  onTest: () => Promise<{ ok: boolean; latencyMs?: number; error?: string }>
 }) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean, latencyMs?: number, error?: string } | null>(null)

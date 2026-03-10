@@ -146,7 +146,7 @@ pub async fn nasus_is_ready(
 
 #[tauri::command]
 pub async fn nasus_health() -> Result<serde_json::Value, String> {
-    reqwest::Client::new()
+    crate::HTTP_CLIENT
         .get(format!("{}/health", NASUS_BASE_URL))
         .send()
         .await
@@ -158,7 +158,7 @@ pub async fn nasus_health() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 pub async fn nasus_submit_task(payload: serde_json::Value) -> Result<serde_json::Value, String> {
-    reqwest::Client::new()
+    crate::HTTP_CLIENT
         .post(format!("{}/task", NASUS_BASE_URL))
         .json(&payload)
         .send()
@@ -171,7 +171,7 @@ pub async fn nasus_submit_task(payload: serde_json::Value) -> Result<serde_json:
 
 #[tauri::command]
 pub async fn nasus_task_status(job_id: String) -> Result<serde_json::Value, String> {
-    reqwest::Client::new()
+    crate::HTTP_CLIENT
         .get(format!("{}/task/{}/status", NASUS_BASE_URL, job_id))
         .send()
         .await
@@ -183,7 +183,7 @@ pub async fn nasus_task_status(job_id: String) -> Result<serde_json::Value, Stri
 
 #[tauri::command]
 pub async fn nasus_cancel_task(job_id: String) -> Result<serde_json::Value, String> {
-    reqwest::Client::new()
+    crate::HTTP_CLIENT
         .delete(format!("{}/task/{}", NASUS_BASE_URL, job_id))
         .send()
         .await

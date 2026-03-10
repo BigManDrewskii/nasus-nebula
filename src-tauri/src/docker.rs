@@ -252,10 +252,7 @@ pub async fn dispose_container(container_id: &str) -> Result<(), String> {
 
     // Stop container (graceful, then force kill)
     let _ = docker
-        .stop_container(
-            container_id,
-            Some(StopContainerOptions { t: 5 }),
-        )
+        .stop_container(container_id, Some(StopContainerOptions { t: 5 }))
         .await;
 
     // Remove container
@@ -328,22 +325,18 @@ async fn parse_exec_output(output: StartExecResults) -> (String, String) {
     let mut stdout = String::new();
     let mut stderr = String::new();
 
-    match output {
-        StartExecResults::Attached { mut output, .. } => {
-            while let Some(result) = output.next().await {
-                match result {
-                    Ok(bollard::container::LogOutput::StdOut { message }) => {
-                        stdout.push_str(&String::from_utf8_lossy(&message));
-                    }
-                    Ok(bollard::container::LogOutput::StdErr { message }) => {
-                        stderr.push_str(&String::from_utf8_lossy(&message));
-                    }
-                    Err(_) => continue,
-                    _ => continue,
+    if let StartExecResults::Attached { mut output, .. } = output {
+        while let Some(result) = output.next().await {
+            match result {
+                Ok(bollard::container::LogOutput::StdOut { message }) => {
+                    stdout.push_str(&String::from_utf8_lossy(&message));
                 }
+                Ok(bollard::container::LogOutput::StdErr { message }) => {
+                    stderr.push_str(&String::from_utf8_lossy(&message));
+                }
+                _ => continue,
             }
         }
-        _ => {}
     }
 
     (stdout, stderr)
@@ -369,10 +362,12 @@ pub mod commands {
         let config = if memory.is_some() || image.is_some() {
             SandboxConfig {
                 image: image.unwrap_or_else(|| "python:3.12-slim".to_string()),
-                memory: memory.as_ref()
+                memory: memory
+                    .as_ref()
                     .and_then(|s| parse_memory_limit(s).ok())
                     .unwrap_or(512 * 1024 * 1024),
-                cpu_shares: cpu.as_ref()
+                cpu_shares: cpu
+                    .as_ref()
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(1024),
             }
@@ -382,7 +377,7 @@ pub mod commands {
 
         let response = create_container(&task_id, &workspace_path, &config)
             .await
-            .map_err(|e| NasusError::Command(e))?;
+            .map_err(NasusError::Command)?;
         Ok(ContainerResult {
             container_id: response.container_id,
         })
@@ -397,7 +392,7 @@ pub mod commands {
     ) -> NasusResult<ExecResult> {
         execute_python(&container_id, &code, timeout.unwrap_or(120000))
             .await
-            .map_err(|e| NasusError::Command(e))
+            .map_err(NasusError::Command)
     }
 
     /// Execute a bash command in a container
@@ -409,7 +404,7 @@ pub mod commands {
     ) -> NasusResult<ExecResult> {
         execute_bash(&container_id, &command, timeout.unwrap_or(120000))
             .await
-            .map_err(|e| NasusError::Command(e))
+            .map_err(NasusError::Command)
     }
 
     /// Stop and remove a container
@@ -417,15 +412,13 @@ pub mod commands {
     pub async fn docker_dispose_container(container_id: String) -> NasusResult<()> {
         dispose_container(&container_id)
             .await
-            .map_err(|e| NasusError::Command(e))
+            .map_err(NasusError::Command)
     }
 
     /// Check Docker availability
     #[tauri::command]
     pub async fn docker_check_status() -> NasusResult<bool> {
-        check_docker_status()
-            .await
-            .map_err(|e| NasusError::Command(e))
+        check_docker_status().await.map_err(NasusError::Command)
     }
 
     /// Stop and remove all nasus-sandbox-* containers.

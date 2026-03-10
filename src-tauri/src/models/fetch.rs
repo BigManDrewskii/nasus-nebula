@@ -3,9 +3,7 @@
 //! Fetches available models from https://openrouter.ai/api/v1/models
 //! and converts them to our internal ModelInfo format.
 
-use super::registry::{
-    CostTier, ModelCapabilities, ModelInfo, Provider, ToolCallingSupport,
-};
+use super::registry::{CostTier, ModelCapabilities, ModelInfo, Provider, ToolCallingSupport};
 use serde::Deserialize;
 
 /// OpenRouter models API response
@@ -292,7 +290,9 @@ fn detect_tool_calling(
     params: &Option<Vec<String>>,
 ) -> ToolCallingSupport {
     // Check known models first
-    if let Some((_, _, tc)) = KNOWN_CAPABILITIES.iter().find(|(id, _, _)| model_id.starts_with(id))
+    if let Some((_, _, tc)) = KNOWN_CAPABILITIES
+        .iter()
+        .find(|(id, _, _)| model_id.starts_with(id))
     {
         return *tc;
     }
@@ -318,7 +318,9 @@ fn detect_tool_calling(
 /// Get capabilities for a model
 fn get_capabilities(model_id: &str) -> ModelCapabilities {
     // Check known models first
-    if let Some((_, caps, _)) = KNOWN_CAPABILITIES.iter().find(|(id, _, _)| model_id.starts_with(id))
+    if let Some((_, caps, _)) = KNOWN_CAPABILITIES
+        .iter()
+        .find(|(id, _, _)| model_id.starts_with(id))
     {
         return *caps;
     }
@@ -371,15 +373,11 @@ fn get_capabilities(model_id: &str) -> ModelCapabilities {
 }
 
 /// Fetch models from OpenRouter API
-pub async fn fetch_openrouter_models(
-    api_key: &str,
-) -> Result<Vec<ModelInfo>, String> {
-    let client = reqwest::Client::new();
-
-    let response = client
+pub async fn fetch_openrouter_models(api_key: &str) -> Result<Vec<ModelInfo>, String> {
+    let response = crate::HTTP_CLIENT
         .get("https://openrouter.ai/api/v1/models")
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("HTTP-Referer", "https://nasus.ai")
+        .header("HTTP-Referer", "https://nasus.app")
         .header("X-Title", "Nasus")
         .send()
         .await
@@ -401,7 +399,7 @@ pub async fn fetch_openrouter_models(
     let models = or_response
         .data
         .into_iter()
-        .map(|m| convert_to_model_info(m))
+        .map(convert_to_model_info)
         .collect();
 
     Ok(models)
@@ -432,10 +430,16 @@ mod tests {
 
     #[test]
     fn test_provider_detection() {
-        assert_eq!(detect_provider("anthropic/claude-3.5-sonnet"), Provider::Anthropic);
+        assert_eq!(
+            detect_provider("anthropic/claude-3.5-sonnet"),
+            Provider::Anthropic
+        );
         assert_eq!(detect_provider("openai/gpt-4"), Provider::OpenAI);
         assert_eq!(detect_provider("google/gemini-pro"), Provider::Google);
-        assert_eq!(detect_provider("deepseek/deepseek-chat"), Provider::DeepSeek);
+        assert_eq!(
+            detect_provider("deepseek/deepseek-chat"),
+            Provider::DeepSeek
+        );
         assert_eq!(detect_provider("meta-llama/llama-3"), Provider::Meta);
         assert_eq!(detect_provider("unknown/model"), Provider::Other);
     }

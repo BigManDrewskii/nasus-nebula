@@ -34,7 +34,7 @@ export class SearchFilesTool extends BaseTool {
       let regex: RegExp
       try {
         regex = new RegExp(patternStr, 'i')
-      } catch (e) {
+      } catch (_e) {
         // Fallback to literal search if regex is invalid
         const escaped = patternStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         regex = new RegExp(escaped, 'i')

@@ -1,5 +1,5 @@
+use crate::search::{SearchError, SearchOptions, SearchProvider, SearchResult};
 use async_trait::async_trait;
-use crate::search::{SearchProvider, SearchResult, SearchOptions, SearchError};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
@@ -43,9 +43,17 @@ impl SearchProvider for ExaProvider {
         "exa"
     }
 
-    async fn search(&self, query: &str, options: &SearchOptions) -> Result<Vec<SearchResult>, SearchError> {
-        log::debug!("[Exa] Searching: query='{}', num_results={}, key_length={}",
-                 query, options.num_results, self.api_key.len());
+    async fn search(
+        &self,
+        query: &str,
+        options: &SearchOptions,
+    ) -> Result<Vec<SearchResult>, SearchError> {
+        log::debug!(
+            "[Exa] Searching: query='{}', num_results={}, key_length={}",
+            query,
+            options.num_results,
+            self.api_key.len()
+        );
 
         let req_body = ExaRequest {
             query: query.to_string(),
@@ -53,7 +61,8 @@ impl SearchProvider for ExaProvider {
             r#type: Some("auto".to_string()),
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post("https://api.exa.ai/search")
             .header("x-api-key", &self.api_key)
             .header("Content-Type", "application/json")
@@ -69,15 +78,28 @@ impl SearchProvider for ExaProvider {
         log::debug!("[Exa] Response status: {}", status);
 
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_else(|_| "unable to read body".to_string());
+            let body = resp
+                .text()
+                .await
+                .unwrap_or_else(|_| "unable to read body".to_string());
             log::warn!("[Exa] Error response body: {}", body);
-            return Err(SearchError::Api(format!("Exa API returned status {}: {}", status, body)));
+            return Err(SearchError::Api(format!(
+                "Exa API returned status {}: {}",
+                status, body
+            )));
         }
 
-        let raw_body = resp.text().await.unwrap_or_else(|_| "unable to read body".to_string());
+        let raw_body = resp
+            .text()
+            .await
+            .unwrap_or_else(|_| "unable to read body".to_string());
 
         let json: ExaResponse = serde_json::from_str(&raw_body).map_err(|e| {
-            log::warn!("[Exa] JSON parse error: {} (body length: {})", e, raw_body.len());
+            log::warn!(
+                "[Exa] JSON parse error: {} (body length: {})",
+                e,
+                raw_body.len()
+            );
             SearchError::Api(format!("JSON parse error: {}", e))
         })?;
 

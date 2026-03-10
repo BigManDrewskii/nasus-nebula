@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::search::SearchResult;
+use std::collections::HashMap;
 
 /// Reciprocal Rank Fusion (RRF) implementation
 /// Scores results using the formula: score = sum(1 / (k + rank))
@@ -22,7 +22,11 @@ pub fn merge_and_rank(provider_results: Vec<Vec<SearchResult>>, k: i32) -> Vec<S
         })
         .collect();
 
-    final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    final_results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     final_results
 }
 

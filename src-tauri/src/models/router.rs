@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use super::classifier::{Capability, TaskClassification, TaskComplexity};
 use super::registry::{CostTier, ModelInfo, ToolCallingSupport};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]

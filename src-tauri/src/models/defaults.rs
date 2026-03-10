@@ -1,6 +1,4 @@
-use super::registry::{
-    CostTier, ModelCapabilities, ModelInfo, Provider, ToolCallingSupport,
-};
+use super::registry::{CostTier, ModelCapabilities, ModelInfo, Provider, ToolCallingSupport};
 
 pub fn default_model_registry() -> Vec<ModelInfo> {
     vec![

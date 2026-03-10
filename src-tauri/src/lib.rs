@@ -27,7 +27,7 @@ use crate::search::service::SearchService;
 
 // --- Shared HTTP Client ---
 // Uses once_cell::sync::Lazy for thread-safe lazy initialization with connection pooling
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+pub(crate) static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .pool_idle_timeout(std::time::Duration::from_secs(90))
         .timeout(std::time::Duration::from_secs(30))
@@ -47,18 +47,10 @@ pub struct Config {
     pub provider: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchConfig {
     pub exa_key: String,
-}
-
-impl Default for SearchConfig {
-    fn default() -> Self {
-        Self {
-            exa_key: String::new(),
-        }
-    }
 }
 
 pub struct AppState {
@@ -297,14 +289,14 @@ async fn save_config(
     // so storing the key here is equivalent to localStorage on a desktop app.
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         if !apiKey.is_empty() {
-            let _ = store.set("apiKey", serde_json::Value::String(apiKey));
+            store.set("apiKey", serde_json::Value::String(apiKey));
         }
-        let _ = store.set("model", serde_json::Value::String(model));
+        store.set("model", serde_json::Value::String(model));
         if !workspacePath.is_empty() {
-            let _ = store.set("workspacePath", serde_json::Value::String(workspacePath));
+            store.set("workspacePath", serde_json::Value::String(workspacePath));
         }
-        let _ = store.set("apiBase", serde_json::Value::String(apiBase));
-        let _ = store.set("provider", serde_json::Value::String(provider));
+        store.set("apiBase", serde_json::Value::String(apiBase));
+        store.set("provider", serde_json::Value::String(provider));
         let _ = store.save();
     }
 
@@ -342,7 +334,7 @@ async fn refresh_models(
     // Fetch models from OpenRouter
     let models = models::fetch_openrouter_models(&api_key)
         .await
-        .map_err(|e| NasusError::Command(e))?;
+        .map_err(NasusError::Command)?;
 
     // Update the router config registry
     {
@@ -476,9 +468,9 @@ async fn get_exa_key(app: AppHandle) -> NasusResult<String> {
 async fn set_exa_key(app: AppHandle, state: State<'_, AppState>, key: String) -> NasusResult<()> {
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         if key.is_empty() {
-            let _ = store.delete("exa_api_key");
+            store.delete("exa_api_key");
         } else {
-            let _ = store.set("exa_api_key", serde_json::Value::String(key.clone()));
+            store.set("exa_api_key", serde_json::Value::String(key.clone()));
         }
         let _ = store.save();
     }
@@ -509,9 +501,9 @@ async fn set_provider_key(app: AppHandle, provider: String, key: String) -> Nasu
     let store_key = format!("provider_key_{}", provider);
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         if key.is_empty() {
-            let _ = store.delete(&store_key);
+            store.delete(&store_key);
         } else {
-            let _ = store.set(&store_key, serde_json::Value::String(key));
+            store.set(&store_key, serde_json::Value::String(key));
         }
         let _ = store.save();
     }
@@ -619,7 +611,7 @@ async fn workspace_read(
     let target = Path::new(&path);
 
     // Validate path doesn't escape workspace
-    validate_path_no_traversal(&base, target).map_err(|e| NasusError::Config(e))?;
+    validate_path_no_traversal(&base, target).map_err(NasusError::Config)?;
 
     let full_path = base.join(target);
     std::fs::read_to_string(full_path).map_err(NasusError::Io)
@@ -635,7 +627,7 @@ async fn workspace_read_binary(
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     let base = Path::new(&workspacePath).join(format!("task-{}", taskId));
     let target = Path::new(&path);
-    validate_path_no_traversal(&base, target).map_err(|e| NasusError::Config(e))?;
+    validate_path_no_traversal(&base, target).map_err(NasusError::Config)?;
     let full_path = base.join(target);
     let bytes = std::fs::read(full_path).map_err(NasusError::Io)?;
     Ok(STANDARD.encode(&bytes))
@@ -653,7 +645,7 @@ async fn workspace_write(
     let target = Path::new(&path);
 
     // Validate path doesn't escape workspace
-    validate_path_no_traversal(&base, target).map_err(|e| NasusError::Config(e))?;
+    validate_path_no_traversal(&base, target).map_err(NasusError::Config)?;
 
     let full_path = base.join(target);
     if let Some(parent) = full_path.parent() {
@@ -669,7 +661,7 @@ async fn workspace_delete(taskId: String, path: String, workspacePath: String) -
     let target = Path::new(&path);
 
     // Validate path doesn't escape workspace
-    validate_path_no_traversal(&base, target).map_err(|e| NasusError::Config(e))?;
+    validate_path_no_traversal(&base, target).map_err(NasusError::Config)?;
 
     let full_path = base.join(target);
     std::fs::remove_file(full_path).map_err(NasusError::Io)
@@ -771,7 +763,7 @@ async fn write_file(
 
 // --- Agent Commands ---
 
-#[allow(non_snake_case)]
+#[allow(non_snake_case, clippy::too_many_arguments)]
 #[tauri::command]
 async fn run_agent(
     _app: AppHandle,
@@ -813,7 +805,7 @@ async fn stop_agent(app: AppHandle, state: State<'_, AppState>, taskId: String) 
 /// Validate a URL against SSRF risks.
 /// Rejects non-HTTP/HTTPS schemes, private/loopback/link-local IP ranges,
 /// and hostnames that resolve to those ranges.
-fn validate_url_for_fetch(url: &str) -> Result<(), String> {
+pub(crate) fn validate_url_for_fetch(url: &str) -> Result<(), String> {
     use std::net::{IpAddr, ToSocketAddrs};
 
     let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
@@ -869,8 +861,10 @@ fn validate_ip(ip: std::net::IpAddr) -> Result<(), String> {
             || v4.is_unspecified() // 0.0.0.0
         }
         IpAddr::V6(v6) => {
-            v6.is_loopback()          // ::1
-            || v6.is_unspecified() // ::
+            v6.is_loopback()                              // ::1
+            || v6.is_unspecified()                        // ::
+            || (v6.segments()[0] & 0xffc0) == 0xfe80     // fe80::/10 link-local
+            || (v6.segments()[0] & 0xfe00) == 0xfc00 // fc00::/7  unique-local
         }
     };
 
@@ -897,7 +891,7 @@ async fn http_fetch(
     let client = &*HTTP_CLIENT;
 
     // Validate URL to prevent SSRF attacks (private IPs, non-HTTP schemes, etc.)
-    validate_url_for_fetch(&url).map_err(|e| NasusError::Config(e))?;
+    validate_url_for_fetch(&url).map_err(NasusError::Config)?;
 
     let mut request = client.request(
         method
@@ -1311,12 +1305,8 @@ async fn get_fallback_chain(primaryModel: String, budget: BudgetMode) -> NasusRe
 // --- KV / Memory commands ---
 
 #[tauri::command]
-fn memory_set(
-    state: State<'_, Arc<Mutex<Connection>>>,
-    key: String,
-    value: String,
-) -> Result<(), String> {
-    let conn = tauri::async_runtime::block_on(state.lock());
+async fn memory_set(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
+    let conn = state.db.lock().await;
     conn.execute(
         "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?1, ?2)",
         params![key, value],
@@ -1326,11 +1316,8 @@ fn memory_set(
 }
 
 #[tauri::command]
-fn memory_get(
-    state: State<'_, Arc<Mutex<Connection>>>,
-    key: String,
-) -> Result<Option<String>, String> {
-    let conn = tauri::async_runtime::block_on(state.lock());
+async fn memory_get(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
+    let conn = state.db.lock().await;
     let mut stmt = conn
         .prepare("SELECT value FROM kv_store WHERE key = ?1")
         .map_err(|e| e.to_string())?;
@@ -1344,11 +1331,20 @@ fn memory_get(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
@@ -1443,7 +1439,7 @@ pub fn run() {
             let db_conn = match open_db(&app_data_dir) {
                 Ok(conn) => Arc::new(Mutex::new(conn)),
                 Err(e) => {
-                    eprintln!("[Nasus] Database failed to open: {}. Running in degraded mode.", e);
+                    log::error!("[Nasus] Database failed to open: {}. Running in degraded mode.", e);
                     // Emit degraded mode event to frontend
                     let _ = app.emit("app:degraded-mode", serde_json::json!({
                         "reason": "db_failed",
@@ -1452,9 +1448,9 @@ pub fn run() {
                     // Create a fallback in-memory connection for graceful degradation
                     // This allows DB commands to run without crashing, but data won't persist
                     Arc::new(Mutex::new(Connection::open_in_memory().unwrap_or_else(|_| {
-                        eprintln!("[Nasus] Fallback to in-memory DB failed, using null connection");
+                        log::error!("[Nasus] Fallback to in-memory DB failed, using null connection");
                         // This should never fail, but if it does we still continue
-                        Connection::open_in_memory().unwrap()
+                        Connection::open_in_memory().expect("in-memory SQLite should never fail")
                     })))
                 }
             };
@@ -1553,7 +1549,7 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = python_sidecar::spawn_and_wait_ready(nasus_arc_bg, &nasus_dir).await
                 {
-                    eprintln!("[nasus] sidecar startup failed: {}", e);
+                    log::error!("[nasus] sidecar startup failed: {}", e);
                 }
             });
 

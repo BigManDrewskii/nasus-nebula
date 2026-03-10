@@ -84,14 +84,12 @@ pub fn classify_task(message: &str) -> TaskClassification {
         "module",
     ];
     if code_kw.iter().any(|k| msg.contains(k)) {
-        let complexity = if msg.len() > 500
-            || msg.contains("project")
-            || msg.contains("application")
-        {
-            TaskComplexity::High
-        } else {
-            TaskComplexity::Medium
-        };
+        let complexity =
+            if msg.len() > 500 || msg.contains("project") || msg.contains("application") {
+                TaskComplexity::High
+            } else {
+                TaskComplexity::Medium
+            };
         return TaskClassification {
             task_type: TaskType::Coding,
             complexity,

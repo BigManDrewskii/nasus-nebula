@@ -8,11 +8,11 @@
 //  - Health tracking per gateway
 //  - Tauri commands for gateway management from the frontend
 
+use crate::{NasusError, NasusResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use crate::{NasusError, NasusResult};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -125,9 +125,7 @@ impl GatewayManager {
     /// Update the gateway list (e.g., from settings)
     pub fn update_gateways(&mut self, gateways: Vec<GatewayConfig>) {
         for gw in &gateways {
-            self.health
-                .entry(gw.id.clone())
-                .or_insert_with(HealthState::default);
+            self.health.entry(gw.id.clone()).or_default();
         }
         self.gateways = gateways;
     }
@@ -179,7 +177,11 @@ impl GatewayManager {
 
             if h.consecutive_failures >= CIRCUIT_BREAK_THRESHOLD {
                 let backoff = CIRCUIT_BREAK_COOLDOWN_MS
-                    * 2u64.pow(h.consecutive_failures.saturating_sub(CIRCUIT_BREAK_THRESHOLD).min(4));
+                    * 2u64.pow(
+                        h.consecutive_failures
+                            .saturating_sub(CIRCUIT_BREAK_THRESHOLD)
+                            .min(4),
+                    );
                 let backoff = backoff.min(300_000); // Cap at 5 minutes
                 h.retry_after = Some(Instant::now() + Duration::from_millis(backoff));
             }
@@ -212,9 +214,9 @@ impl GatewayManager {
                     consecutive_failures: h.consecutive_failures,
                     success_rate,
                     avg_latency_ms: h.avg_latency_ms,
-                    retry_after_ms: h.retry_after.map(|t| {
-                        t.saturating_duration_since(Instant::now()).as_millis() as u64
-                    }),
+                    retry_after_ms: h
+                        .retry_after
+                        .map(|t| t.saturating_duration_since(Instant::now()).as_millis() as u64),
                 })
             })
             .collect()
@@ -369,18 +371,17 @@ pub fn get_gateways(
     // Try to load persisted gateway config (including API keys) from tauri-plugin-store
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         if let Some(saved) = store.get("gateways") {
-            if let Ok(saved_gateways) =
-                serde_json::from_value::<Vec<GatewayConfig>>(saved.clone())
+            if let Ok(saved_gateways) = serde_json::from_value::<Vec<GatewayConfig>>(saved.clone())
             {
                 // Update in-memory manager to stay in sync
-                let mut manager = state.manager.lock().unwrap();
+                let mut manager = state.manager.lock().unwrap_or_else(|e| e.into_inner());
                 manager.update_gateways(saved_gateways.clone());
                 return saved_gateways;
             }
         }
     }
 
-    let manager = state.manager.lock().unwrap();
+    let manager = state.manager.lock().unwrap_or_else(|e| e.into_inner());
     manager.gateways.clone()
 }
 
@@ -393,7 +394,7 @@ pub fn save_gateways(
 ) {
     // Update in-memory manager
     {
-        let mut manager = state.manager.lock().unwrap();
+        let mut manager = state.manager.lock().unwrap_or_else(|e| e.into_inner());
         manager.update_gateways(gateways.clone());
     }
 
@@ -402,7 +403,7 @@ pub fn save_gateways(
     // web-accessible, so this is safe for a desktop app.
     if let Ok(store) = tauri_plugin_store::StoreExt::store(&app, "nasus_config.json") {
         let serialized = serde_json::to_value(&gateways).unwrap_or_default();
-        let _ = store.set("gateways", serialized);
+        store.set("gateways", serialized);
         let _ = store.save();
     }
 }
@@ -410,7 +411,7 @@ pub fn save_gateways(
 /// Get health status
 #[tauri::command]
 pub fn get_gateway_health(state: tauri::State<'_, GatewayState>) -> Vec<GatewayHealth> {
-    let manager = state.manager.lock().unwrap();
+    let manager = state.manager.lock().unwrap_or_else(|e| e.into_inner());
     manager.health_report()
 }
 
@@ -418,7 +419,9 @@ pub fn get_gateway_health(state: tauri::State<'_, GatewayState>) -> Vec<GatewayH
 #[tauri::command]
 pub async fn test_gateway(api_base: String, api_key: String) -> NasusResult<serde_json::Value> {
     let url = format!("{}/models", api_base.trim_end_matches('/'));
-    let client = reqwest::Client::new();
+    // Validate URL to prevent SSRF — same rules as http_fetch
+    crate::validate_url_for_fetch(&url).map_err(NasusError::Config)?;
+    let client = &*crate::HTTP_CLIENT;
     let mut req = client
         .get(&url)
         .header("Content-Type", "application/json")
@@ -428,14 +431,18 @@ pub async fn test_gateway(api_base: String, api_key: String) -> NasusResult<serd
         req = req.header("Authorization", format!("Bearer {api_key}"));
     }
 
-    let resp = req.send().await
+    let resp = req
+        .send()
+        .await
         .map_err(|e| NasusError::Command(format!("Connection failed: {e}")))?;
 
     if !resp.status().is_success() {
         return Err(NasusError::Command(format!("HTTP {}", resp.status())));
     }
 
-    let json: serde_json::Value = resp.json().await
+    let json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| NasusError::Command(e.to_string()))?;
     let model_count = json["data"].as_array().map(|a| a.len()).unwrap_or(0);
 

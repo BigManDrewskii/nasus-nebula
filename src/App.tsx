@@ -139,11 +139,9 @@ function App() {
 
   // Updater check
   useEffect(() => {
-    check().then(event => {
-      // @ts-expect-error - manifest property exists on runtime but not in type definition
-      if (event?.manifest) {
-        // @ts-expect-error - manifest.version exists on runtime but not in type definition
-        setUpdateVersion(event.manifest.version)
+    check().then(update => {
+      if (update) {
+        setUpdateVersion(update.version)
         setIsUpdateAvailable(true)
         setShowUpdateBanner(true)
       }
@@ -186,10 +184,9 @@ function App() {
   // Handle updates
   const handleUpdate = useCallback(async () => {
     try {
-      const event = await check()
-      // @ts-expect-error - manifest and downloadAndInstall exist on runtime but not in type definition
-      if (event?.manifest)
-        await event.downloadAndInstall()
+      const update = await check()
+      if (update)
+        await update.downloadAndInstall()
       await relaunch()
     } catch (err) {
       log.error('Update failed:', err)

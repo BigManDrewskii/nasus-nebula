@@ -560,7 +560,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           apiBase: finalApiBase,
           provider: finalProvider,
         })
-      } catch (e) {
+      } catch (_e) {
         setSaving(false)
         setSaveError('Failed to save settings. Please try again.')
         return

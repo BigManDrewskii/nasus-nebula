@@ -147,7 +147,7 @@ export class PlanningAgent extends BaseAgent {
     try {
       // Try structured output (tool_choice) first; fall back to chatJsonViaGateway
       const planData = await this.callWithStructuredOutput(prompt, planModel, conn)
-        ?? await chatJsonViaGateway<any>(prompt, 4000, planModel)
+        ?? await chatJsonViaGateway<Record<string, unknown>>(prompt, 4000, planModel)
 
       if (!planData) {
         throw new Error('Failed to generate structured plan')
@@ -179,7 +179,7 @@ export class PlanningAgent extends BaseAgent {
     prompt: string,
     model: string,
     conn: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
-  ): Promise<any | null> {
+  ): Promise<Record<string, unknown> | null> {
     // Providers known NOT to support tool_choice reliably
     const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek'
     if (noToolChoice) return null
@@ -325,7 +325,7 @@ Respond ONLY with the JSON, no other text.`
   /**
    * Validate and format the LLM response into an ExecutionPlan.
    */
-  private validatePlan(parsed: any, userMessage: string): ExecutionPlan {
+  private validatePlan(parsed: Record<string, unknown>, userMessage: string): ExecutionPlan {
     try {
       // Validate and build the plan
       const phases: PlanPhase[] = (parsed.phases || []).map((p: unknown, idx: number) => {
@@ -358,7 +358,7 @@ Respond ONLY with the JSON, no other text.`
         estimatedSteps: phases.reduce((sum, p) => sum + p.steps.length, 0),
           phases,
           files: Array.isArray(parsed.files)
-            ? (parsed.files as any[]).map((f): PlanFile => ({
+            ? (parsed.files as Array<{ path: unknown; action: unknown }>).map((f): PlanFile => ({
                 path: String(f.path || ''),
                 action: (['create', 'modify', 'delete'].includes(f.action) ? f.action : 'create') as PlanFile['action'],
               }))

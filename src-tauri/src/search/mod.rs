@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub mod providers;
-pub mod pipeline;
 pub mod cache;
+pub mod pipeline;
+pub mod providers;
 pub mod service;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,13 +36,25 @@ pub enum SearchError {
 #[async_trait]
 pub trait SearchProvider: Send + Sync {
     fn name(&self) -> &'static str;
-    async fn search(&self, query: &str, options: &SearchOptions) -> Result<Vec<SearchResult>, SearchError>;
+    async fn search(
+        &self,
+        query: &str,
+        options: &SearchOptions,
+    ) -> Result<Vec<SearchResult>, SearchError>;
 }
 
-pub async fn handle_response(resp: reqwest::Response, provider_name: &str) -> Result<serde_json::Value, SearchError> {
+pub async fn handle_response(
+    resp: reqwest::Response,
+    provider_name: &str,
+) -> Result<serde_json::Value, SearchError> {
     if !resp.status().is_success() {
-        return Err(SearchError::Api(format!("{} API returned status {}", provider_name, resp.status())));
+        return Err(SearchError::Api(format!(
+            "{} API returned status {}",
+            provider_name,
+            resp.status()
+        )));
     }
-    resp.json().await.map_err(|e| SearchError::Api(e.to_string()))
+    resp.json()
+        .await
+        .map_err(|e| SearchError::Api(e.to_string()))
 }
-

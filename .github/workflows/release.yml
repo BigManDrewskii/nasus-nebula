@@ -55,10 +55,17 @@ jobs:
         with:
           targets: ${{ matrix.rust-target }}
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.rust-target }}
+
       - name: Set up bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+          cache: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -106,4 +113,5 @@ jobs:
             **Linux**: Download the `.AppImage` or `.deb` package.
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
           args: ${{ matrix.args }}

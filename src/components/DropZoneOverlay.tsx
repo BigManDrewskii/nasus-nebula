@@ -142,6 +142,7 @@ function getFolderPath(e: React.DragEvent): string | null {
 
 // ── Hook: useDragDrop ─────────────────────────────────────────────────────────
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useDragDrop(
   onFilesDropped: (files: File[]) => void,
   onFolderDropped?: (path: string) => void,

@@ -161,7 +161,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
     }
   }, [])
 
-  const handleWebSocketMessage = useCallback((message: any) => {
+  const handleWebSocketMessage = useCallback((message: Record<string, unknown>) => {
     switch (message.type) {
       case 'connected':
           log.info('Sidecar connected', { sessionId: message.sessionId })

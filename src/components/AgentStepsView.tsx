@@ -1022,4 +1022,5 @@ function detectLang(path: string): string | null {
 function formatToolActionLabel(tool: string, input: Record<string, unknown>): string {
   return formatActionLabel(tool, input).label
 }
+// eslint-disable-next-line react-refresh/only-export-components
 export { formatToolActionLabel }

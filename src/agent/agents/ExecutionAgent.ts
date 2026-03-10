@@ -808,7 +808,7 @@ export class ExecutionAgent extends BaseAgent {
                   useAppStore.getState().setSandboxStatus(status, message)
                 },
               } : undefined,
-              onSearchStatus: (evt: any) => this.emitSearchStatus(taskId, messageId, callId, evt),
+              onSearchStatus: (evt: Parameters<SearchStatusCallback>[0]) => this.emitSearchStatus(taskId, messageId, callId, evt),
             }
           )
           const rawOutput = result.output

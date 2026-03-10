@@ -81,7 +81,7 @@ export class PermissionSystem {
    */
   async checkPermission(
     tool: string,
-    args: Record<string, any>,
+    args: Record<string, unknown>,
     taskId: string,
     signal?: AbortSignal,
   ): Promise<{ approved: boolean; reason?: string }> {
@@ -135,7 +135,7 @@ export class PermissionSystem {
 
   private async requestApproval(
     tool: string,
-    args: Record<string, any>,
+    args: Record<string, unknown>,
     taskId: string,
     reason?: string,
     signal?: AbortSignal,
@@ -148,15 +148,15 @@ export class PermissionSystem {
       window.dispatchEvent(event)
 
       // Listen for approval/rejection
-      const handleApprove = (e: any) => {
-        if (e.detail?.tool === tool) {
+      const handleApprove = (e: Event) => {
+        if ((e as CustomEvent<{ tool: string }>).detail?.tool === tool) {
           cleanup()
           resolve({ approved: true })
         }
       }
 
-      const handleReject = (e: any) => {
-        if (e.detail?.tool === tool) {
+      const handleReject = (e: Event) => {
+        if ((e as CustomEvent<{ tool: string }>).detail?.tool === tool) {
           cleanup()
           resolve({ approved: false })
         }

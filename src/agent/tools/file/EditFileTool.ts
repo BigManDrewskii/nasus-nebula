@@ -47,7 +47,7 @@ export class EditFileTool extends BaseTool {
 
       try {
         const content = await workspaceManager.readFile(taskId, path)
-        let lines = content.split('\n')
+        const lines = content.split('\n')
 
         // Filter and sort edits in descending order by startLine to avoid shifting indices
         const sortedEdits = [...edits].sort((a, b) => b.startLine - a.startLine)

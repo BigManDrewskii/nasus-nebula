@@ -101,7 +101,7 @@ export class WorkspaceManager {
         const content = await this.readFile(taskId, file.path)
         map.set(file.path, content)
         this.getHistory(taskId).set(file.path, [content])
-      } catch {}
+      } catch { /* file not yet in workspace, skip */ }
     }
   }
 
@@ -122,7 +122,7 @@ export class WorkspaceManager {
       this.basePath = basePath
     } else {
       try {
-        const config = await tauriInvoke<any>('get_config')
+        const config = await tauriInvoke<{ workspace_path?: string }>('get_config')
         if (config?.workspace_path) {
           this.basePath = config.workspace_path
         }
