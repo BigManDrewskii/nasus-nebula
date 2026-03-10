@@ -1,0 +1,10 @@
+node_modules
+target
+.env
+.git
+*.log
+dist
+src-tauri/target
+.DS_Store
+*.swp
+*.swo
