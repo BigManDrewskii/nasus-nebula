@@ -189,7 +189,7 @@ function App() {
         await update.downloadAndInstall()
       await relaunch()
     } catch (err) {
-      log.error('Update failed:', err)
+      log.error('Update failed', err instanceof Error ? err : new Error(String(err)))
     }
   }, [])
 
@@ -252,7 +252,7 @@ warm">Dismiss</button>
               onOpenSettings={openSettings}
             />
           )}
-          <div className="flex flex-1 overflow-hidden min-w=0">
+          <div className="flex flex-1 overflow-hidden min-w-0">
             <ChatView
               task={activeTask}
               rightCollapsed={rightCollapsed}

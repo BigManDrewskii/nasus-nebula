@@ -65,7 +65,7 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
                 ext: f.path.includes('.') ? f.path.split('.').pop()!.toLowerCase() : '',
               }
             } catch (err) {
-                log.warn(`Failed to read file ${f.path}`, err)
+                log.warn(`Failed to read file ${f.path}`, err instanceof Error ? err : new Error(String(err)))
               throw err
             }
           })
@@ -79,7 +79,7 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
 
         setFiles(mapped)
       } catch (err) {
-          log.error('Failed to update workspace files', err)
+          log.error('Failed to update workspace files', err instanceof Error ? err : new Error(String(err)))
       }
     }
 

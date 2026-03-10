@@ -386,7 +386,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
         }
       }
     } catch (err) {
-        log.error(`Failed to fetch models for ${provider}`, err)
+        log.error(`Failed to fetch models for ${provider}`, err instanceof Error ? err : new Error(String(err)))
     }
   },
 
@@ -415,8 +415,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   installSidecar: async () => {
     try {
       const { browserInstallSidecar, tauriListen } = await import('../tauri')
-      const unlisten = await tauriListen('sidecar:install_progress', (progress: unknown) => {
-        set({ sidecarInstallProgress: progress as string | null })
+      const unlisten = await tauriListen('sidecar:install_progress', (event: unknown) => {
+        set({ sidecarInstallProgress: (event as { payload?: string })?.payload ?? null })
       })
       await browserInstallSidecar()
       unlisten()
@@ -463,8 +463,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     set({ nasusInstalling: true, nasusInstallProgress: 'Starting installation…', nasusInstallError: null })
     try {
       const { tauriInvoke, tauriListen } = await import('../tauri')
-      const unlisten = await tauriListen('nasus:install_progress', (progress: unknown) => {
-        set({ nasusInstallProgress: progress as string | null })
+      const unlisten = await tauriListen('nasus:install_progress', (event: unknown) => {
+        set({ nasusInstallProgress: (event as { payload?: string })?.payload ?? null })
       })
       const result = await tauriInvoke<string>('nasus_install_sidecar')
       unlisten()

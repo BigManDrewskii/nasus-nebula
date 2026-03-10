@@ -10,9 +10,10 @@
  * Returns initialization status and provides retry capability.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { healthCheck } from '../agent/sidecarClient'
+import { tauriListen } from '../tauri'
 import { createLogger } from '../lib/logger'
 
 const log = createLogger('useAppInit')
@@ -61,7 +62,7 @@ async function warmEmbeddingModel(): Promise<void> {
     warmModel()
     log.debug('Embedding model warmed')
   } catch (err) {
-    log.warn('Embedding model warm-up failed (non-critical):', err)
+    log.warn('Embedding model warm-up failed (non-critical)', err instanceof Error ? err : new Error(String(err)))
   }
 }
 
@@ -108,6 +109,8 @@ export function useAppInit(): UseAppInitResult {
   // Store access
   const initGatewayService = useAppStore((s) => s.initGatewayService)
   const loadGatewayConfig = useAppStore((s) => s.loadGatewayConfig)
+  const addToast = useAppStore((s) => s.addToast)
+  const degradedListenedRef = useRef(false)
 
   // State
   const [status, setStatus] = useState<InitStatus>({
@@ -132,7 +135,7 @@ export function useAppInit(): UseAppInitResult {
         await loadGatewayConfig()
         log.debug('Gateway service initialized')
       } catch (err) {
-        log.error('Gateway initialization failed:', err)
+        log.error('Gateway initialization failed', err instanceof Error ? err : new Error(String(err)))
         setStatus({
           phase: 'error',
           error: {
@@ -157,12 +160,12 @@ export function useAppInit(): UseAppInitResult {
       setStatus({ phase: 'warming_embeddings', error: null, progress: PHASE_PROGRESS.warming_embeddings })
 
       // Don't await - let it warm in background
-      warmEmbeddingModel().catch((err) => log.warn('Embedding warm-up failed:', err))
+      warmEmbeddingModel().catch((err) => log.warn('Embedding warm-up failed', err instanceof Error ? err : new Error(String(err))))
 
       // Complete
       setStatus({ phase: 'complete', error: null, progress: PHASE_PROGRESS.complete })
     } catch (err) {
-      log.error('Initialization failed:', err)
+      log.error('Initialization failed', err instanceof Error ? err : new Error(String(err)))
       setStatus({
         phase: 'error',
         error: {
@@ -174,6 +177,21 @@ export function useAppInit(): UseAppInitResult {
       })
     }
   }, [initGatewayService, loadGatewayConfig])
+
+  // Listen for backend degraded-mode event (e.g. SQLite failed to open)
+  useEffect(() => {
+    if (degradedListenedRef.current) return
+    degradedListenedRef.current = true
+
+    let unlisten: (() => void) | undefined
+    tauriListen('app:degraded-mode', (event) => {
+      const e = event as { payload?: { message?: string } } | null
+      const msg = e?.payload?.message ?? 'Database unavailable — task history and memory are disabled.'
+      addToast(msg, 'amber')
+    }).then((fn) => { unlisten = fn }).catch(() => { /* not in Tauri */ })
+
+    return () => { unlisten?.() }
+  }, [addToast])
 
   // Run initialization on mount
   useEffect(() => {

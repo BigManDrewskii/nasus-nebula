@@ -78,10 +78,12 @@ export class WorkspaceManager {
   async undoFile(taskId: string, filePath: string): Promise<string | null> {
     const taskHistory = this.getHistory(taskId)
     const versions = taskHistory.get(filePath)
-    if (!versions || versions.length === 0) return null
+    // Need at least 2 entries to undo: popping the current leaves a previous state.
+    // With only 1 entry we're already at the oldest known state — nothing to undo.
+    if (!versions || versions.length <= 1) return null
 
     versions.pop() // Remove current version
-    const previous = versions.length > 0 ? versions[versions.length - 1] : ''
+    const previous = versions[versions.length - 1]
 
     await this.writeFile(taskId, filePath, previous, true) // skipHistoryPush=true
     return previous

@@ -56,7 +56,7 @@ export function GatewaySettings() {
       </div>
 
       <div className="flex-col gw-list">
-        {gateways.sort((a, b) => a.priority - b.priority).map((gw) => (
+        {[...gateways].sort((a, b) => a.priority - b.priority).map((gw) => (
             <GatewayItem
               key={gw.id}
               gateway={gw}
@@ -234,7 +234,7 @@ function GatewayItem({
         </div>
 
         <div className="flex-v-center gw-item-controls">
-          {health?.avgLatencyMs > 0 && (
+          {health != null && health.avgLatencyMs > 0 && (
             <span className="text-muted gw-latency">{Math.round(health.avgLatencyMs)}ms</span>
           )}
           <button

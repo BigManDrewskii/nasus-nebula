@@ -63,7 +63,7 @@ async function getTauriSession(): Promise<string> {
       emitBrowserActivity('session_started', { sessionId: tauriSessionId })
       log.info('Browser session created', { sessionId: tauriSessionId })
     } catch (err) {
-      log.error('Failed to create browser session', err)
+      log.error('Failed to create browser session', err instanceof Error ? err : new Error(String(err)))
       throw new Error(`Failed to create browser session: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
@@ -199,7 +199,7 @@ export async function browserScreenshot(
   const sessionId = await getTauriSession()
   const dataUrl = await tauriInvokeOrThrow<string>('browser_screenshot', {
     sessionId,
-    full_page: params.fullPage ?? false,
+    fullPage: params.fullPage ?? false,
   })
   return { success: true, dataUrl }
 }

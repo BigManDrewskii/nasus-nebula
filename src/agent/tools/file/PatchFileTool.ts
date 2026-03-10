@@ -94,7 +94,7 @@ export class PatchFileTool extends BaseTool {
       )
     }
 
-    const patched = content.replace(searchStr, replaceStr)
+    const patched = content.replace(searchStr, () => replaceStr)
     await workspaceManager.writeFile(taskId, path, patched)
 
     const note = matchType !== 'exact' ? ` (matched via ${matchType} normalization)` : ''

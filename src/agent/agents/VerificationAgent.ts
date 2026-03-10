@@ -330,11 +330,9 @@ export class VerificationAgent extends BaseAgent {
   private hasValidIndentation(content: string): boolean {
     const lines = content.split('\n')
     for (const line of lines) {
-      if (line.trim().length > 0 && line.startsWith(' ')) {
-        // Check for consistent indentation (spaces or tabs, not mixed)
-        const hasTabs = line.includes('\t')
-        const hasSpaces = /^\s*\S/.test(line)
-        if (hasTabs && hasSpaces) {
+      if (line.trim().length > 0) {
+        const leading = /^(\s+)/.exec(line)?.[1] ?? ''
+        if (leading.includes('\t') && leading.includes(' ')) {
           return false
         }
       }

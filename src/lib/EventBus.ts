@@ -53,7 +53,7 @@ class EventBus {
         try {
           handler(data);
         } catch (error) {
-            log.error(`Error in event handler for "${event}"`, error);
+            log.error(`Error in event handler for "${event}"`, error instanceof Error ? error : new Error(String(error)));
         }
       });
     }

@@ -221,14 +221,7 @@ export class GatewayService {
             if (isPermanentError(err)) {
               this.recordFailure(gw.id)
               failureRecorded = true
-              this.emitEvent({
-              type: 'failed',
-              gatewayId: gw.id,
-              gatewayLabel: gw.label,
-              message: `${gw.label}: authentication failed`,
-              error: err instanceof Error ? err.message : String(err),
-            })
-            // For auth errors on the primary gateway, still try fallbacks
+              // For auth errors on the primary gateway, still try fallbacks
             break
           }
 
@@ -257,7 +250,7 @@ export class GatewayService {
         type: 'failed',
         gatewayId: gw.id,
         gatewayLabel: gw.label,
-        message: `${gw.label} failed`,
+        message: failureRecorded ? `${gw.label}: authentication failed` : `${gw.label} failed`,
         error: lastError instanceof Error ? lastError.message : String(lastError),
         nextGatewayId: active[i + 1]?.id,
       })

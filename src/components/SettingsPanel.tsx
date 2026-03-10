@@ -834,18 +834,28 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         key={opt.id}
                         type="button"
                           onClick={() => {
-                            setActiveProvider(opt.id)
-                            // Auto-fetch models when switching providers (if key exists)
-                            if (opt.id === 'openrouter' && localOpenRouterKey.trim()) {
-                              handleFetchModels()
-                            } else if (opt.id === 'requesty' && localRequestyKey.trim()) {
-                              // Requesty uses the same API as OpenRouter, so we can fetch models the same way
-                              handleFetchModels()
-                            } else if (opt.id === 'deepseek') {
-                              // DeepSeek direct — pre-select deepseek-chat as default model
+                            const newProvider = opt.id
+                            setActiveProvider(newProvider)
+                            // Auto-fetch models when switching providers.
+                            // Use newProvider (not activeProvider) to avoid stale-closure: React state
+                            // updates are async, so activeProvider still holds the OLD value here.
+                            if (newProvider === 'openrouter' && localOpenRouterKey.trim()) {
+                              setFetchingModels(true)
+                              setFetchModelsError(null)
+                              fetchOpenRouterModels(localOpenRouterKey.trim())
+                                .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
+                                .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
+                                .finally(() => setFetchingModels(false))
+                            } else if (newProvider === 'requesty' && localRequestyKey.trim()) {
+                              setFetchingModels(true)
+                              setFetchModelsError(null)
+                              fetchOpenRouterModels(localRequestyKey.trim())
+                                .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
+                                .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
+                                .finally(() => setFetchingModels(false))
+                            } else if (newProvider === 'deepseek') {
                               setLocalModel('deepseek-chat')
-                            } else if (opt.id === 'ollama') {
-                              // Fetch Ollama models
+                            } else if (newProvider === 'ollama') {
                               fetch('http://localhost:11434/api/tags')
                                 .then(r => r.json())
                                 .then(data => {

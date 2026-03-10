@@ -924,26 +924,36 @@ async fn http_fetch(
 
     // Cap response size at 10MB to prevent OOM on large binary/HTML responses.
     // The ExecutionAgent truncates tool output to 15KB anyway, so reading more is wasteful.
-    const MAX_RESPONSE_BYTES: u64 = 10 * 1024 * 1024;
+    const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
     let content_length = response.content_length().unwrap_or(0);
-    if content_length > MAX_RESPONSE_BYTES {
+    if content_length > MAX_RESPONSE_BYTES as u64 {
         return Ok(format!(
             "{}\n[Response truncated: content-length {} exceeds 10MB limit]",
             status, content_length
         ));
     }
 
-    // Stream bytes up to the limit so we don't allocate the full body for large responses
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| NasusError::Command(e.to_string()))?;
-    let truncated = if bytes.len() as u64 > MAX_RESPONSE_BYTES {
-        &bytes[..MAX_RESPONSE_BYTES as usize]
-    } else {
-        &bytes[..]
-    };
-    let text = String::from_utf8_lossy(truncated).into_owned();
+    // Stream the body chunk-by-chunk, capping at MAX_RESPONSE_BYTES.
+    // response.bytes() allocates the full body before truncation — for chunked /
+    // streaming responses with no Content-Length this can OOM the process.
+    use futures_util::StreamExt as _;
+    let mut stream = response.bytes_stream();
+    let mut buf = Vec::with_capacity(MAX_RESPONSE_BYTES.min(64 * 1024));
+    let mut exceeded = false;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| NasusError::Command(e.to_string()))?;
+        if buf.len() + chunk.len() > MAX_RESPONSE_BYTES {
+            let remaining = MAX_RESPONSE_BYTES.saturating_sub(buf.len());
+            buf.extend_from_slice(&chunk[..remaining]);
+            exceeded = true;
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let mut text = String::from_utf8_lossy(&buf).into_owned();
+    if exceeded {
+        text.push_str("\n[Response truncated at 10MB limit]");
+    }
 
     // Include status code in response for frontend handling
     Ok(format!("{}\n{}", status, text))

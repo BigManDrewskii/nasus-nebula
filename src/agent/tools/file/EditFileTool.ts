@@ -64,9 +64,10 @@ export class EditFileTool extends BaseTool {
         for (const edit of sortedEdits) {
           const { startLine, endLine, newContent } = edit
           
-          // Validation: Ensure valid range (1-based inclusive)
-          // Allow appending by checking against lines.length + 1
-          if (startLine < 1 || startLine > lines.length + 1 || endLine < startLine - 1 || (endLine > lines.length && endLine !== startLine - 1)) {
+          // Validation: Ensure valid range (1-based inclusive).
+          // Append case: startLine === endLine === lines.length + 1 is valid (add after last line).
+          const isAppendToEnd = startLine === lines.length + 1 && endLine === lines.length + 1
+          if (startLine < 1 || startLine > lines.length + 1 || endLine < startLine - 1 || (!isAppendToEnd && endLine > lines.length && endLine !== startLine - 1)) {
             return toolFailure(`Invalid line range: ${startLine}-${endLine} (file has ${lines.length} lines)`)
           }
 

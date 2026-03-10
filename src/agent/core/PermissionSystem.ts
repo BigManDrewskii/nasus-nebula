@@ -90,7 +90,7 @@ export class PermissionSystem {
     if (level === 'allow') {
       // Even if allowed, check for dangerous patterns in bash
       if (tool === 'bash' || tool === 'bash_execute') {
-        const command = args.command || args.script || ''
+        const command = String(args.command || args.script || '')
         if (this.isDangerous(command)) {
           return this.requestApproval(tool, args, taskId, 'Dangerous command detected', signal)
         }
@@ -171,7 +171,7 @@ export class PermissionSystem {
       const timeoutId = setTimeout(() => {
         cleanup()
         // Auto-deny dangerous commands; auto-approve safe ones on timeout
-        const command = args.command || args.script || ''
+        const command = String(args.command || args.script || '')
         resolve({ approved: this.isSafe(command) && !this.isDangerous(command) })
       }, PermissionSystem.APPROVAL_TIMEOUT_MS)
 

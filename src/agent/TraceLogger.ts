@@ -107,6 +107,6 @@ export class TraceLogger {
   /** Internal: fire-and-forget write to SQLite. */
   _flush(step: DbTraceStep): void {
     // Non-blocking; swallow errors to never affect the agent loop
-    dbAppendTrace(step as unknown as DbTraceStep).catch(() => {})
+    dbAppendTrace(step).catch(() => {})
   }
 }

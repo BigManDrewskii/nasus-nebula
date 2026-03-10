@@ -8,6 +8,7 @@
 import type { JSONSchema7 } from 'json-schema'
 import { ToolRegistry } from './core/ToolRegistry'
 import type { ExecutionConfig } from '../sandboxRuntime'
+import type { SearchStatusCallback } from '../search'
 
 // Nasus agent delegation
 import { callNasusAgent } from './core/CallNasusAgentTool'
@@ -204,7 +205,7 @@ export async function executeTool(
   context?: {
     taskId?: string
     executionConfig?: ExecutionConfig
-    onSearchStatus?: (evt: unknown) => void
+    onSearchStatus?: SearchStatusCallback
   }
 ): Promise<{ output: string; isError: boolean }> {
   // Inject context into args for tools that need it
@@ -223,7 +224,7 @@ export async function executeTool(
 
   // Set search config/status on tools that need it (e.g. SearchWebTool)
   if (tool && 'withConfig' in tool && typeof (tool as { withConfig?: unknown }).withConfig === 'function') {
-    (tool as { withConfig: (cfg: undefined, cb?: (evt: unknown) => void) => void }).withConfig(undefined, context?.onSearchStatus)
+    (tool as { withConfig: (cfg: undefined, cb?: SearchStatusCallback) => void }).withConfig(undefined, context?.onSearchStatus)
   }
 
   const result = await toolRegistry.execute(name, augmentedArgs)

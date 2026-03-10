@@ -60,7 +60,7 @@ export function sanitizeMessages(messages: LlmMessage[]): LlmMessage[] {
     if (m.role !== 'tool') return true
     const tid = m.tool_call_id
     if (!tid || !declaredIds.has(tid)) {
-        log.warn('Dropping orphaned tool result', { toolCallId: tid })
+        log.warn('Dropping orphaned tool result', undefined, { toolCallId: tid })
       return false
     }
     return true

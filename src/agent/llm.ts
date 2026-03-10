@@ -125,7 +125,7 @@ export async function streamCompletion(
   cb: StreamCallbacks & { gatewayId?: string },
 ): Promise<LlmResponse> {
   // Retry up to 3 times on transient network errors (Load failed, Failed to fetch).
-  // Uses exponential backoff: 2s, 4s, 8s — enough for WKWebView URLSession recovery.
+  // Linear backoff: 2s, 4s, 6s — enough for WKWebView URLSession recovery.
   // Does NOT retry on abort, auth errors, or model errors.
   const MAX_RETRIES = 3
   let attempt = 0

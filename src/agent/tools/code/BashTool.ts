@@ -5,19 +5,19 @@ import { workspaceManager } from '../../workspace/WorkspaceManager'
 
 /**
  * Tool for simple shell commands in browser mode.
- * Only cat, ls, echo, mkdir, cp, mv, rm, pwd work.
+ * Only cat, ls, echo, mkdir, pwd work.
  */
 export class BashTool extends BaseTool {
   readonly name = 'bash'
   readonly description =
-    'Run a simple shell command. ONLY these commands work: cat, ls, echo, mkdir, cp, mv, rm, pwd. THESE ALWAYS FAIL AND MUST NEVER BE USED: npm, node, npx, pip, python, python3, curl, wget, git, apt, apt-get, brew, yarn, pnpm, bun. For web/code tasks, use write_file instead of npm/npx. For network, use http_fetch. For Python, use python_execute.'
+    'Run a simple shell command. ONLY these commands work: cat, ls, echo, mkdir, pwd. THESE ALWAYS FAIL AND MUST NEVER BE USED: npm, node, npx, pip, python, python3, curl, wget, git, apt, apt-get, brew, yarn, pnpm, bun, cp, mv, rm. For web/code tasks, use write_file instead of npm/npx. For network, use http_fetch. For Python, use python_execute. For file copy/move/delete, use write_file + read_file.'
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
     properties: {
       command: {
         type: 'string',
-        description: "Simple shell command (cat/ls/echo/mkdir only — NO npm/node/npx/pip/python/curl).",
+        description: "Simple shell command (cat/ls/echo/mkdir/pwd only — NO npm/node/npx/pip/python/curl/cp/mv/rm).",
       },
       timeout_secs: { type: 'integer', description: 'Max seconds (default 30).', default: 30 },
     },
@@ -65,6 +65,11 @@ export class BashTool extends BaseTool {
       return toolSuccess('(directory created)')
     }
 
+    // pwd command - always /workspace
+    if (cmd.trim() === 'pwd') {
+      return toolSuccess('/workspace')
+    }
+
       // echo command — only strip outer wrapping quotes, not all quotes.
       // Stripping all quotes mangles JSON-in-echo patterns like echo '{"key":"value"}'.
       const echoMatch = cmd.match(/^echo\s+(.+)$/)
@@ -110,6 +115,13 @@ export class BashTool extends BaseTool {
       return toolFailure(
         'Error: git is not available in browser mode. ' +
         'Write files directly with write_file instead.'
+      )
+    }
+
+    if (/\bcp\b|\bmv\b|\brm\b/.test(cmd)) {
+      return toolFailure(
+        'Error: cp / mv / rm are not available in browser mode. ' +
+        'Use read_file + write_file to copy/move files. Files are managed via the workspace tools.'
       )
     }
 

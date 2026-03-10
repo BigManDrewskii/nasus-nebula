@@ -187,7 +187,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
         log.info('Config saved', { routingMode, gatewayCount: gateways.length })
     } catch (err) {
-      log.error('Failed to save config', err)
+      log.error('Failed to save config', err instanceof Error ? err : new Error(String(err)))
     }
   },
 
@@ -341,7 +341,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         } catch {
           // ignore
         }
-          log.error('Failed to load config', err)
+          log.error('Failed to load config', err instanceof Error ? err : new Error(String(err)))
         // Mark ready even on error so the UI doesn't stay stuck waiting
         set({ gatewayConfigReady: true })
       }

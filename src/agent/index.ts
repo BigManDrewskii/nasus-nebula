@@ -144,7 +144,7 @@ export function stopWebAgent(taskId: string) {
   }
   // Best-effort sandbox cleanup on stop — only dispose this task's container
   disposeSandbox(taskId).catch(err => {
-      log.warn('Failed to dispose sandbox on stop', err)
+      log.warn('Failed to dispose sandbox on stop', err instanceof Error ? err : new Error(String(err)))
   })
 }
 

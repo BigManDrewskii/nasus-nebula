@@ -328,7 +328,7 @@ Respond ONLY with the JSON, no other text.`
   private validatePlan(parsed: Record<string, unknown>, userMessage: string): ExecutionPlan {
     try {
       // Validate and build the plan
-      const phases: PlanPhase[] = (parsed.phases || []).map((p: unknown, idx: number) => {
+      const phases: PlanPhase[] = ((parsed.phases as unknown[]) || []).map((p: unknown, idx: number) => {
         const phase = p as Record<string, unknown>
         return {
           id: (phase.id as string) || `phase-${idx + 1}`,
@@ -339,7 +339,7 @@ Respond ONLY with the JSON, no other text.`
             return {
               id: (step.id as string) || `step-${idx + 1}-${stepIdx + 1}`,
               description: (step.description as string) || '',
-              agent: (step.agent as string) || 'executor',
+              agent: ((step.agent as string) || 'executor') as 'planner' | 'executor' | 'verifier' | 'specialist',
               tools: (step.tools as string[]) || [],
               estimatedDuration: (step.estimatedDuration as number) || 30,
               status: 'pending' as const,
@@ -351,14 +351,14 @@ Respond ONLY with the JSON, no other text.`
 
       return {
         id: crypto.randomUUID(),
-        title: parsed.title || 'Task Execution Plan',
-        description: parsed.description || userMessage.slice(0, 200),
-        rationale: parsed.rationale,
+        title: (parsed.title as string) || 'Task Execution Plan',
+        description: (parsed.description as string) || userMessage.slice(0, 200),
+        rationale: parsed.rationale as string | undefined,
         complexity: (parsed.complexity as 'low' | 'medium' | 'high') || 'medium',
         estimatedSteps: phases.reduce((sum, p) => sum + p.steps.length, 0),
           phases,
           files: Array.isArray(parsed.files)
-            ? (parsed.files as Array<{ path: unknown; action: unknown }>).map((f): PlanFile => ({
+            ? (parsed.files as Array<{ path: unknown; action: string }>).map((f): PlanFile => ({
                 path: String(f.path || ''),
                 action: (['create', 'modify', 'delete'].includes(f.action) ? f.action : 'create') as PlanFile['action'],
               }))

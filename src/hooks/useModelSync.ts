@@ -33,7 +33,7 @@ export function useModelSync() {
         }
       })
       .catch((err: unknown) => {
-        log.warn('Failed to sync backend model registry', err)
+        log.warn('Failed to sync backend model registry', err instanceof Error ? err : new Error(String(err)))
         // Non-blocking: stale registry or static fallback remains usable
       })
 
@@ -52,7 +52,7 @@ export function useModelSync() {
               if (models.length > 0) setOpenRouterModels(models)
           })
           .catch((err: unknown) => {
-            log.warn('Failed to fetch OpenRouter models', err)
+            log.warn('Failed to fetch OpenRouter models', err instanceof Error ? err : new Error(String(err)))
           })
       }
     }

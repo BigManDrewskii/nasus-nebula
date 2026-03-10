@@ -21,17 +21,8 @@ import { createLogger } from '../../lib/logger'
 
 const log = createLogger('TransformersEmbedding')
 
-// ─── Configure ORT WASM paths BEFORE any pipeline call ───────────────────────
-// Prevents Transformers.js from loading worker scripts from cdn.jsdelivr.net,
-// which violates Tauri's script-src 'self' CSP.
-env.backends.onnx!.wasm!.numThreads = 1
-// Use an absolute URL so the browser fetches the WASM files directly from
-// the static server without going through Vite's transform middleware (which
-// rejects /public .mjs files imported from source code).
-env.backends.onnx!.wasm!.wasmPaths = `${location.origin}/ort/`
 env.allowRemoteModels = true
 env.allowLocalModels = false
-// ─────────────────────────────────────────────────────────────────────────────
 
 // Model ID — q8 quantised for balance of speed and quality
 const MODEL_ID = 'Xenova/all-MiniLM-L6-v2'
@@ -67,6 +58,13 @@ async function getPipeline(): Promise<Pipeline> {
   if (_initPromise) return _initPromise
 
   _status = 'loading'
+
+  // Configure ORT WASM paths before any pipeline call to prevent Transformers.js
+  // from loading worker scripts from cdn.jsdelivr.net (violates Tauri CSP).
+  // Done here (not at module level) so it doesn't run in Node/Bun test environments.
+  env.backends.onnx!.wasm!.numThreads = 1
+  env.backends.onnx!.wasm!.wasmPaths = `${location.origin}/ort/`
+
   const loadPromise = (async () => {
     try {
       const pipe = await pipeline('feature-extraction', MODEL_ID, {

@@ -49,6 +49,9 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const wsRef = useRef<WebSocket | null>(null)
   const screenshotIntervalRef = useRef<number | null>(null)
   const highlightTimeoutRef = useRef<number | null>(null)
+  // Set to true when goBack/goForward triggers navigate so navigate_result skips
+  // appending a new history entry (back/forward reuses the existing entry at that index).
+  const historyNavRef = useRef(false)
 
   // Normalize URL - add https:// if missing
   const normalizeUrl = useCallback((url: string): string => {
@@ -84,7 +87,7 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         const message = JSON.parse(event.data)
         handleWebSocketMessage(message)
       } catch (err) {
-          log.error('Failed to parse WebSocket message', err)
+          log.error('Failed to parse WebSocket message', err instanceof Error ? err : new Error(String(err)))
       }
     }
 
@@ -171,35 +174,43 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
         setIsLoading(false)
         break
       case 'screenshot_result':
-        setScreenshot(message.dataUrl)
+        setScreenshot(message.dataUrl as string | null)
         break
-      case 'navigate_result':
-        setCurrentUrl(message.url)
-        setUrlInputValue(message.url)
-        setCurrentTitle(message.title)
+      case 'navigate_result': {
+        const navUrl = message.url as string
+        const navTitle = message.title as string
+        setCurrentUrl(navUrl)
+        setUrlInputValue(navUrl)
+        setCurrentTitle(navTitle)
         setIsLoading(false)
-        setHistory((prev) => {
-          const newEntry: HistoryEntry = {
-            url: message.url,
-            title: message.title || message.url,
-            timestamp: Date.now(),
-          }
-          if (prev.length > 0 && prev[prev.length - 1].url === message.url) {
-            return prev
-          }
-          return [...prev, newEntry]
-        })
-        setHistoryIndex((prev) => prev + 1)
+        // goBack/goForward set this flag — they manage historyIndex themselves,
+        // so we must not append an entry or increment the index here.
+        if (!historyNavRef.current) {
+          setHistory((prev) => {
+            const newEntry: HistoryEntry = {
+              url: navUrl,
+              title: navTitle || navUrl,
+              timestamp: Date.now(),
+            }
+            if (prev.length > 0 && prev[prev.length - 1].url === navUrl) {
+              return prev
+            }
+            return [...prev, newEntry]
+          })
+          setHistoryIndex((prev) => prev + 1)
+        }
+        historyNavRef.current = false
         break
+      }
       case 'click_result':
         if (message.selector) {
-          setHighlightedElement({ selector: message.selector, until: Date.now() + 2000 })
+          setHighlightedElement({ selector: message.selector as string, until: Date.now() + 2000 })
           if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current)
           highlightTimeoutRef.current = window.setTimeout(() => setHighlightedElement(null), 2000)
         }
         break
       case 'error':
-        setError(message.message)
+        setError(message.message as string)
         setIsLoading(false)
         break
       case 'heartbeat':
@@ -234,11 +245,19 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   }, [urlInputValue, navigate])
 
   const goBack = useCallback(() => {
-    if (historyIndex > 0) { navigate(history[historyIndex - 1].url); setHistoryIndex(historyIndex - 1) }
+    if (historyIndex > 0) {
+      historyNavRef.current = true
+      navigate(history[historyIndex - 1].url)
+      setHistoryIndex(historyIndex - 1)
+    }
   }, [history, historyIndex, navigate])
 
   const goForward = useCallback(() => {
-    if (historyIndex < history.length - 1) { navigate(history[historyIndex + 1].url); setHistoryIndex(historyIndex + 1) }
+    if (historyIndex < history.length - 1) {
+      historyNavRef.current = true
+      navigate(history[historyIndex + 1].url)
+      setHistoryIndex(historyIndex + 1)
+    }
   }, [history, historyIndex, navigate])
 
   const toggleStealth = useCallback(async () => {
