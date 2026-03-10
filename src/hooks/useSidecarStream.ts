@@ -76,9 +76,18 @@ export function useSidecarStream(
   const [error, setError] = useState<string | null>(null)
   const esRef = useRef<EventSource | null>(null)
   const closedRef = useRef(false)
+  const retryCountRef = useRef(0)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const MAX_RETRIES = 5
+  const BASE_DELAY_MS = 500
 
   const cancel = useCallback(() => {
     if (!closedRef.current) {
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
       esRef.current?.close()
       esRef.current = null
       closedRef.current = true
@@ -93,40 +102,59 @@ export function useSidecarStream(
     setDone(false)
     setError(null)
     closedRef.current = false
+    retryCountRef.current = 0
 
-    const es = new EventSource(`${SIDECAR_BASE}/task/${jobId}/stream`)
-    esRef.current = es
+    function connect() {
+      if (closedRef.current) return
 
-    es.onmessage = (event) => {
-      try {
-        const raw = JSON.parse(event.data) as SidecarStep
-        if (typeof raw.step === 'number') {
-          const mapped = mapSidecarStep(raw)
-          setSteps((prev) => [...prev, mapped])
+      const es = new EventSource(`${SIDECAR_BASE}/task/${jobId}/stream`)
+      esRef.current = es
+
+      es.onmessage = (event) => {
+        try {
+          const raw = JSON.parse(event.data) as SidecarStep
+          if (typeof raw.step === 'number') {
+            const mapped = mapSidecarStep(raw)
+            setSteps((prev) => [...prev, mapped])
+          }
+        } catch {
+          // Ignore malformed frames
         }
-      } catch {
-        // Ignore malformed frames
       }
-    }
 
-    es.addEventListener('done', () => {
-      setDone(true)
-      es.close()
-      closedRef.current = true
-    })
-
-    es.onerror = () => {
-      if (!closedRef.current) {
-        setError('Stream connection lost')
+      es.addEventListener('done', () => {
+        retryCountRef.current = 0
         setDone(true)
         es.close()
         closedRef.current = true
+      })
+
+      es.onerror = () => {
+        if (closedRef.current) return
+        es.close()
+        esRef.current = null
+
+        if (retryCountRef.current < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * Math.pow(2, retryCountRef.current)
+          retryCountRef.current += 1
+          retryTimerRef.current = setTimeout(connect, delay)
+        } else {
+          setError('Stream connection lost after retries')
+          setDone(true)
+          closedRef.current = true
+        }
       }
     }
 
+    connect()
+
     return () => {
+      if (retryTimerRef.current !== null) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
       if (!closedRef.current) {
-        es.close()
+        esRef.current?.close()
         closedRef.current = true
       }
     }
