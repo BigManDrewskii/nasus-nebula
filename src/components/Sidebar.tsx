@@ -50,7 +50,7 @@ function groupTasks(tasks: Task[]): Array<{ label: string; date: string | null; 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onOpenSettings, collapsed: _collapsed, onToggleCollapse }: SidebarProps) {
   const [search, setSearch]         = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())

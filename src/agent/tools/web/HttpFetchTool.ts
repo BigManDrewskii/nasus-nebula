@@ -70,6 +70,8 @@ export class HttpFetchTool extends BaseTool {
         body: method === 'POST' ? body : undefined,
       })
 
+      if (response === undefined) return toolFailure('http_fetch returned no response')
+
       // Rust returns "<status_code>\n<body>"
       const newlineIdx = response.indexOf('\n')
       const statusCode = newlineIdx >= 0 ? response.slice(0, newlineIdx).trim() : response

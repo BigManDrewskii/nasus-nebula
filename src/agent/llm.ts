@@ -56,7 +56,7 @@ export interface StreamCallbacks {
   /** Enable JSON output mode */
   jsonMode?: boolean
   /** Hard tool constraint — forces the model to call a specific tool or any tool */
-  toolChoice?: { type: 'function'; function: { name: string } } | 'auto' | 'required'
+  toolChoice?: { type: 'tool'; toolName: string } | 'auto' | 'required'
 }
 
 export interface LlmResponse {

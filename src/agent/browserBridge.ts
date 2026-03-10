@@ -61,7 +61,7 @@ async function getTauriSession(): Promise<string> {
       if (!result?.session_id) throw new Error('No session ID returned from browser_start_session')
       tauriSessionId = result.session_id
       emitBrowserActivity('session_started', { sessionId: tauriSessionId })
-      log.info('Browser session created:', tauriSessionId)
+      log.info('Browser session created', { sessionId: tauriSessionId })
     } catch (err) {
       log.error('Failed to create browser session', err)
       throw new Error(`Failed to create browser session: ${err instanceof Error ? err.message : String(err)}`)

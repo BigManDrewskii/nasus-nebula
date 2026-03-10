@@ -147,7 +147,7 @@ export class PlanningAgent extends BaseAgent {
     try {
       // Try structured output (tool_choice) first; fall back to chatJsonViaGateway
       const planData = await this.callWithStructuredOutput(prompt, planModel, conn)
-        ?? await chatJsonViaGateway<any>(prompt, 1500, planModel)
+        ?? await chatJsonViaGateway<any>(prompt, 4000, planModel)
 
       if (!planData) {
         throw new Error('Failed to generate structured plan')
@@ -199,7 +199,7 @@ export class PlanningAgent extends BaseAgent {
 
       const body = JSON.stringify({
         model,
-        max_tokens: 2000,
+        max_tokens: 4000,
         stream: false,
         tools: [CREATE_PLAN_TOOL],
         tool_choice: { type: 'function', function: { name: 'create_plan' } },

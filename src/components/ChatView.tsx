@@ -13,7 +13,7 @@ import { useAttachments } from '../hooks/useAttachments'
 import { DropZoneOverlay, useDragDrop } from './DropZoneOverlay'
 import { ChatHeader, ToastOverlay } from './ChatHeader'
 import { workspaceManager } from '../agent/workspace/WorkspaceManager'
-import { PlanView, PlanConfirmationModal, PlanTrackingModal } from './PlanConfirmationModal'
+import { PlanConfirmationModal, PlanTrackingModal } from './PlanConfirmationModal'
 import { resolveModelLocally } from '../lib/routing'
 import { useAgentStatus } from './chat/hooks/useAgentStatus'
 import { ChatEmptyState } from './chat/ChatEmptyState'
@@ -31,7 +31,7 @@ interface ChatViewProps {
     onToggleRight?: () => void
   }
   
-export function ChatView({ task, onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
+export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVisible, onShowOutput, workspaceFileCount = 0, rightCollapsed: _rightCollapsed = false, onToggleRight: _onToggleRight }: ChatViewProps) {
   const {
       messages: allMessages,
       getMessages,

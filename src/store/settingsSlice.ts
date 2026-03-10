@@ -5,6 +5,26 @@ import { createLogger } from '../lib/logger'
 
 const log = createLogger('Settings')
 
+/**
+ * Push LLM credentials to the Python sidecar.
+ * Fire-and-forget — silently swallows errors because the sidecar may not be
+ * running yet (the NasusAgentTool readiness guard handles that case).
+ */
+async function _pushLlmConfigToSidecar(apiKey: string, apiBase: string, model: string): Promise<void> {
+  try {
+    const { tauriInvoke } = await import('../tauri')
+    await tauriInvoke('nasus_configure_llm', {
+      config: {
+        api_key: apiKey,
+        api_base: apiBase || 'https://openrouter.ai/api/v1',
+        model: model || 'openai/gpt-4o-mini',
+      },
+    })
+  } catch {
+    // Sidecar not running — will be configured on next checkNasusInstalled() call
+  }
+}
+
 // ── Router config types ────────────────────────────────────────────────────
 
 export type ToolCallingSupport = 'Strong' | 'Moderate' | 'Weak' | 'Unknown'
@@ -100,6 +120,12 @@ export interface SettingsSlice {
   sidecarPromptShown: boolean
   /** Browser activity state for agent-driven browsing */
   browserActivityActive: boolean
+  /** Python (Nasus stack) sidecar state */
+  nasusReady: boolean
+  nasusChecking: boolean
+  nasusInstalling: boolean
+  nasusInstallProgress: string | null
+  nasusInstallError: string | null
   /** Rate limiting settings (to avoid 429 errors) */
   rateLimitEnabled: boolean
   maxRequestsPerMinute: number
@@ -134,6 +160,9 @@ export interface SettingsSlice {
   checkSidecarInstalled: () => Promise<boolean>
   installSidecar: () => Promise<string>
   setBrowserActivityActive: (active: boolean) => void
+  /** Python (Nasus stack) sidecar actions */
+  checkNasusInstalled: () => Promise<boolean>
+  installNasusSidecar: () => Promise<string>
   setRouterConfig: (config: Partial<RouterConfig>) => void
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
@@ -182,6 +211,11 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   sidecarInstallProgress: null,
   sidecarPromptShown: false,
   browserActivityActive: false,
+  nasusReady: false,
+  nasusChecking: false,
+  nasusInstalling: false,
+  nasusInstallProgress: null,
+  nasusInstallError: null,
   rateLimitEnabled: true,
   maxRequestsPerMinute: 60,
   routerConfig: {
@@ -199,6 +233,12 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     const gw = s.gateways.find((g) => g.id === s.provider || g.type === s.provider)
     if (gw && gw.apiKey !== key) {
       s.updateGateway(gw.id, { apiKey: key })
+    }
+    // Also push credentials to the Python sidecar so modules have LLM access
+    // without requiring a restart when the user updates their API key.
+    if (key) {
+      const { apiBase, model } = get()
+      _pushLlmConfigToSidecar(key, apiBase, model).catch(() => {})
     }
   },
 
@@ -389,6 +429,62 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   },
 
   setBrowserActivityActive: (active) => set({ browserActivityActive: active }),
+
+  // ── Python (Nasus stack) sidecar ─────────────────────────────────────────
+
+  checkNasusInstalled: async () => {
+    set({ nasusChecking: true, nasusInstallError: null })
+    try {
+      const { tauriInvoke } = await import('../tauri')
+      const status = await tauriInvoke<{ installed: boolean; has_venv: boolean; message: string }>('nasus_check_installed')
+      const ready = status?.installed ?? false
+      set({ nasusReady: ready, nasusChecking: false })
+
+      // If the sidecar is installed and an API key is already in the store,
+      // push credentials to the sidecar immediately (covers cold-start where
+      // the key was persisted from a previous session).
+      if (ready) {
+        const { apiKey, apiBase, model } = get()
+        if (apiKey) {
+          tauriInvoke('nasus_configure_llm', {
+            config: { api_key: apiKey, api_base: apiBase || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
+          }).catch(() => { /* sidecar may not be running yet — NasusAgentTool will retry */ })
+        }
+      }
+
+      return ready
+    } catch {
+      set({ nasusChecking: false, nasusReady: false })
+      return false
+    }
+  },
+
+  installNasusSidecar: async () => {
+    set({ nasusInstalling: true, nasusInstallProgress: 'Starting installation…', nasusInstallError: null })
+    try {
+      const { tauriInvoke, tauriListen } = await import('../tauri')
+      const unlisten = await tauriListen<string>('nasus:install_progress', (progress) => {
+        set({ nasusInstallProgress: progress })
+      })
+      const result = await tauriInvoke<string>('nasus_install_sidecar')
+      unlisten()
+      set({ nasusInstalling: false, nasusInstallProgress: null, nasusReady: true, nasusInstallError: null })
+
+      // Push LLM credentials to the freshly-installed sidecar if available.
+      const { apiKey, apiBase, model } = get()
+      if (apiKey) {
+        tauriInvoke('nasus_configure_llm', {
+          config: { api_key: apiKey, api_base: apiBase || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
+        }).catch(() => { /* best-effort — sidecar may still be starting */ })
+      }
+
+      return result ?? 'Installation complete'
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      set({ nasusInstalling: false, nasusInstallProgress: null, nasusInstallError: msg })
+      throw err
+    }
+  },
 
   setRouterConfig: (config) =>
     set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),

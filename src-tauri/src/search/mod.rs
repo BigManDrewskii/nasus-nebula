@@ -6,7 +6,6 @@ pub mod providers;
 pub mod pipeline;
 pub mod cache;
 pub mod service;
-pub mod keys;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {

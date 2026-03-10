@@ -209,6 +209,59 @@ export async function browserInstallSidecar(): Promise<string> {
   return result
 }
 
+// ── Python (Nasus stack) Sidecar Commands ────────────────────────────────────
+
+export interface NasusInstallStatus {
+  installed: boolean
+  has_venv: boolean
+  message: string
+}
+
+/**
+ * Check whether the Python venv and sidecar dependencies are installed.
+ */
+export async function nasusCheckInstalled(): Promise<NasusInstallStatus> {
+  return await tauriInvoke<NasusInstallStatus>('nasus_check_installed') ?? {
+    installed: false,
+    has_venv: false,
+    message: 'Unable to check — Tauri not available',
+  }
+}
+
+/**
+ * Create the Python venv and install sidecar requirements.
+ * Emits `nasus:install_progress` events during installation.
+ */
+export async function nasusInstallSidecar(): Promise<string> {
+  return await tauriInvokeOrThrow<string>('nasus_install_sidecar')
+}
+
+/**
+ * Check whether the Python sidecar HTTP server is accepting requests.
+ */
+export async function nasusIsReady(): Promise<boolean> {
+  return (await tauriInvoke<boolean>('nasus_is_ready')) ?? false
+}
+
+/**
+ * Fetch the Python sidecar health payload.
+ */
+export async function nasusHealth(): Promise<Record<string, unknown> | undefined> {
+  return await tauriInvoke<Record<string, unknown>>('nasus_health')
+}
+
+/**
+ * Configure the Python sidecar with LLM credentials.
+ * Called once on startup after API key is available so modules can make LLM calls.
+ */
+export async function nasusConfigureLlm(config: {
+  api_key: string
+  api_base: string
+  model: string
+}): Promise<void> {
+  await tauriInvoke('nasus_configure_llm', { config })
+}
+
 export interface AriaSnapshotResult {
   url: string
   title: string

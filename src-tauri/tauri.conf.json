@@ -52,7 +52,8 @@
     ],
     "resources": {
       "sidecar/package.json": "sidecar/package.json",
-      "sidecar/index.js": "sidecar/index.js"
+      "sidecar/index.js": "sidecar/index.js",
+      "../nasus_stack/**/*": "sidecar-python/"
     },
     "macOS": {
       "minimumSystemVersion": "10.15"

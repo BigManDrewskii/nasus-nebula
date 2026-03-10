@@ -8,7 +8,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Pxi } from './Pxi'
 import { tauriInvoke } from '../tauri'
-import { useAppStore } from '../store'
 import { createLogger } from '../lib/logger'
 
 const log = createLogger('BrowserPreview')
@@ -31,7 +30,6 @@ interface HistoryEntry {
 type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error'
 
 export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
-  const { checkSidecarInstalled } = useAppStore()
   const [sidecarStatus, setSidecarStatus] = useState<SidecarStatus>('stopped')
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [screenshot, setScreenshot] = useState<string | null>(null)
@@ -119,22 +117,6 @@ export function BrowserPreview({ className = '' }: BrowserPreviewProps) {
   const startSessionRef = useRef(startSession)
   useEffect(() => { startSessionRef.current = startSession }, [startSession])
 
-  const startSidecar = useCallback(async () => {
-    // Ensure node_modules are present (sidecar auto-installs npm deps if missing)
-    await checkSidecarInstalled()
-
-    setSidecarStatus('starting')
-    setError(null)
-
-    try {
-      await tauriInvoke('browser_start_sidecar')
-      setSidecarStatus('running')
-      setTimeout(() => { startSessionRef.current() }, 1000)
-    } catch (err) {
-      setError(err as string)
-      setSidecarStatus('error')
-    }
-  }, [checkSidecarInstalled])
 
   // Check initial sidecar status — and if already running, auto-connect a session
   useEffect(() => {

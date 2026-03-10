@@ -9,6 +9,13 @@ import type { JSONSchema7 } from 'json-schema'
 import { ToolRegistry } from './core/ToolRegistry'
 import type { ExecutionConfig } from '../sandboxRuntime'
 
+// Nasus agent delegation
+import { callNasusAgent } from './core/CallNasusAgentTool'
+import type { NasusModuleId } from './core/nasus_types'
+import { BaseTool } from './core/BaseTool'
+import { toolSuccess, toolFailure } from './core/ToolResult'
+import type { ToolResult } from './core/ToolResult'
+
 // Core tools
 import { SaveMemoryTool } from './core/SaveMemoryTool'
 import { UpdatePlanTool } from './core/UpdatePlanTool'
@@ -90,6 +97,83 @@ toolRegistry.registerConstructor('browser_scroll', BrowserScrollTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
 toolRegistry.registerConstructor('browser_read_page', BrowserReadPageTool)
+
+// Nasus Python agent stack — delegates to local FastAPI sidecar on port 4751
+class NasusAgentTool extends BaseTool {
+  readonly name = 'call_nasus_agent'
+  readonly description = [
+    'Call the Nasus AI agent stack via the local Python sidecar on port 4751.',
+    'Use to delegate complex tasks to Nasus modules:',
+    '  M10 -- Task Planner: break a goal into a DAG of subtasks',
+    '  M11 -- Quality Reviewer: score and approve/reject output',
+    '  M09 -- Memory Manager: read/write persistent project memory',
+    '  M00 -- Orchestrator: run a full multi-module pipeline',
+    'Returns the completed job result including the output payload.',
+  ].join('\n')
+  readonly parameters = {
+    type: 'object' as const,
+    required: ['module_id'] as const,
+    properties: {
+      module_id: {
+        type: 'string' as const,
+        enum: ['M00', 'M09', 'M10', 'M11'],
+        description: 'Which Nasus module to invoke',
+      },
+      payload: {
+        type: 'object' as const,
+        description: 'Module-specific input payload',
+      },
+    },
+  }
+  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+    const module_id = args.module_id as NasusModuleId
+    const payload = (args.payload ?? {}) as Record<string, unknown>
+
+    // ── Readiness guard ──────────────────────────────────────────────────
+    // The Python sidecar can take up to 15s to boot. Poll nasus_is_ready
+    // via Tauri IPC before attempting the HTTP fetch so we get a clean error
+    // instead of a connection-refused that burns a strike in ExecutionAgent.
+    const READY_POLL_INTERVAL_MS = 500
+    const READY_TIMEOUT_MS = 20_000
+    const readyStart = Date.now()
+
+    while (true) {
+      // Attempt a lightweight health probe directly — avoids IPC round-trip
+      // when the sidecar is already up (the common case after first use).
+      try {
+        const probe = await fetch('http://127.0.0.1:4751/health', {
+          signal: AbortSignal.timeout(1500),
+        })
+        if (probe.ok) break // sidecar is alive — proceed
+      } catch {
+        // not up yet — fall through to timeout check
+      }
+
+      if (Date.now() - readyStart >= READY_TIMEOUT_MS) {
+        return toolFailure(
+          'Nasus Python sidecar is not running or did not start within 20 seconds. ' +
+          'Check Settings → Execution → Nasus Stack to install or restart the sidecar.',
+        )
+      }
+
+      await new Promise((r) => setTimeout(r, READY_POLL_INTERVAL_MS))
+    }
+    // ────────────────────────────────────────────────────────────────────
+
+    try {
+      const result = await callNasusAgent({ module_id, payload })
+      if (result.status === 'FAILED') {
+        return toolFailure(`Nasus job failed: ${result.errors.join('; ') || 'unknown error'}`)
+      }
+      return toolSuccess(JSON.stringify(result.payload, null, 2))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return toolFailure(`Nasus sidecar call failed: ${msg}`)
+    }
+  }
+}
+
+toolRegistry.registerConstructor('call_nasus_agent', NasusAgentTool)
 
 /**
  * Get tool function definitions for OpenAI function calling.

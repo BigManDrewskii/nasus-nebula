@@ -1153,6 +1153,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </span>
                 </div>
               </div>
+                <NasusStackSection />
             </>
             )}
 
@@ -1318,7 +1319,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
       )
   }
-  
+
   // ─── OllamaStatusBanner ───────────────────────────────────────────────────────
 
 function OllamaStatusBanner() {
@@ -1724,9 +1725,8 @@ function Field({
 // ─── Browser Setup Section ────────────────────────────────────────────────────
 
 function BrowserSetupSection() {
-  const { checkSidecarInstalled, installSidecar, sidecarInstalled, sidecarInstallProgress } = useAppStore(
+  const { installSidecar, sidecarInstalled, sidecarInstallProgress } = useAppStore(
     useShallow((s) => ({
-      checkSidecarInstalled: s.checkSidecarInstalled,
       installSidecar: s.installSidecar,
       sidecarInstalled: s.sidecarInstalled,
       sidecarInstallProgress: s.sidecarInstallProgress,
@@ -1905,6 +1905,227 @@ function BrowserSetupSection() {
           Node.js is required. Install it from{' '}
           <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>nodejs.org</a>
           {' '}(LTS recommended), then restart Nasus and click Install Browser.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Nasus Stack Section ──────────────────────────────────────────────────────
+
+function NasusStackSection() {
+  const {
+    nasusReady,
+    nasusChecking,
+    nasusInstalling,
+    nasusInstallProgress,
+    nasusInstallError,
+    checkNasusInstalled,
+    installNasusSidecar,
+  } = useAppStore(
+    useShallow((s) => ({
+      nasusReady: s.nasusReady,
+      nasusChecking: s.nasusChecking,
+      nasusInstalling: s.nasusInstalling,
+      nasusInstallProgress: s.nasusInstallProgress,
+      nasusInstallError: s.nasusInstallError,
+      checkNasusInstalled: s.checkNasusInstalled,
+      installNasusSidecar: s.installNasusSidecar,
+    }))
+  )
+
+  const [installDone, setInstallDone] = useState(false)
+  const [activeJobs, setActiveJobs] = useState<number | null>(null)
+
+  async function runCheck() {
+    await checkNasusInstalled()
+    // Also probe the live health endpoint so we can show active-job count
+    try {
+      const resp = await fetch('http://127.0.0.1:4751/health', {
+        signal: AbortSignal.timeout(2000),
+      })
+      if (resp.ok) {
+        const data = await resp.json() as { active_jobs?: number }
+        setActiveJobs(data.active_jobs ?? 0)
+      } else {
+        setActiveJobs(null)
+      }
+    } catch {
+      setActiveJobs(null)
+    }
+  }
+
+  async function runInstall() {
+    setInstallDone(false)
+    try {
+      await installNasusSidecar()
+      setInstallDone(true)
+      await runCheck()
+    } catch {
+      // error is already surfaced via nasusInstallError in the store
+    }
+  }
+
+  useEffect(() => { runCheck() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const statusColor = nasusReady
+    ? '#22c55e'
+    : nasusChecking
+      ? 'var(--amber)'
+      : '#ef4444'
+
+  return (
+    <div className="flex-col settings-section gap-4">
+      {/* Header */}
+      <div className="flex-v-center gap-2">
+        <Pxi name="code-branch" size={20} className="text-amber" />
+        <span className="settings-section-title">Nasus Agent Stack</span>
+      </div>
+      <div className="text-tertiary settings-exec-desc">
+        The Nasus Python stack runs as a local FastAPI sidecar on port 4751. It provides specialist AI modules (Planner, Reviewer, Orchestrator, Memory) that the main agent can delegate complex sub-tasks to.
+      </div>
+
+      {/* Status rows */}
+      <div className="flex-col gap-2">
+        {/* Python venv */}
+        <div className="flex-v-center justify-between settings-banner">
+          <div className="flex-v-center gap-2">
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: nasusReady ? '#22c55e' : nasusChecking ? 'var(--amber)' : '#ef4444',
+              flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Python venv</span>
+          </div>
+          <span style={{ fontSize: 'var(--text-xs)', color: nasusReady ? '#4ade80' : 'var(--tx-muted)' }}>
+            {nasusChecking ? 'Checking…' : nasusReady ? 'Installed' : 'Not installed'}
+          </span>
+        </div>
+
+        {/* Sidecar server */}
+        <div className="flex-v-center justify-between settings-banner">
+          <div className="flex-v-center gap-2">
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: activeJobs !== null ? '#22c55e' : '#ef4444',
+              flexShrink: 0,
+            }} />
+            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Sidecar server (port 4751)</span>
+          </div>
+          <span style={{ fontSize: 'var(--text-xs)', color: activeJobs !== null ? '#4ade80' : 'var(--tx-muted)' }}>
+            {nasusChecking
+              ? 'Checking…'
+              : activeJobs !== null
+                ? `Running · ${activeJobs} active job${activeJobs !== 1 ? 's' : ''}`
+                : 'Not running'}
+          </span>
+        </div>
+      </div>
+
+      {/* Overall status banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '7px 10px', borderRadius: 8,
+        background: nasusReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)',
+        border: `1px solid ${nasusReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
+      }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
+        <span style={{ fontSize: 'var(--text-xs)', color: nasusReady ? '#4ade80' : '#f87171' }}>
+          {nasusChecking
+            ? 'Checking status…'
+            : nasusReady
+              ? 'Nasus stack is installed and ready'
+              : 'Python dependencies not found — click Install Stack to set up'}
+        </span>
+      </div>
+
+      {/* Install progress */}
+      {nasusInstallProgress && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)',
+        }}>
+          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-soft)' }}>{nasusInstallProgress}</span>
+        </div>
+      )}
+
+      {/* Install error */}
+      {nasusInstallError && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 8,
+          padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
+        }}>
+          <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', lineHeight: 1.5 }}>{nasusInstallError}</span>
+        </div>
+      )}
+
+      {/* Success */}
+      {installDone && !nasusInstallError && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)',
+        }}>
+          <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: '#4ade80' }}>
+            Nasus stack installed successfully. Agent modules are ready.
+          </span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex-v-center gap-2">
+        <button
+          type="button"
+          onClick={runInstall}
+          disabled={nasusInstalling || nasusReady}
+          style={{
+            padding: '7px 16px', borderRadius: 8, border: 'none',
+            cursor: nasusInstalling || nasusReady ? 'not-allowed' : 'pointer',
+            background: nasusReady ? 'rgba(34,197,94,0.12)' : 'var(--amber)',
+            color: nasusReady ? '#4ade80' : '#000',
+            fontSize: 'var(--text-sm)', fontWeight: 600, opacity: nasusInstalling ? 0.6 : 1,
+            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+          }}
+        >
+          {nasusInstalling
+            ? <><Pxi name="spinner-third" size={12} />Installing…</>
+            : nasusReady
+              ? <><Pxi name="check" size={12} />Ready</>
+              : <><Pxi name="download" size={12} />Install Stack</>}
+        </button>
+
+        <button
+          type="button"
+          onClick={runCheck}
+          disabled={nasusChecking}
+          style={{
+            padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
+            cursor: nasusChecking ? 'not-allowed' : 'pointer', background: 'transparent',
+            color: 'var(--tx-secondary)', fontSize: 'var(--text-sm)',
+            opacity: nasusChecking ? 0.5 : 1,
+            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+          }}
+        >
+          <Pxi name={nasusChecking ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
+          {nasusChecking ? 'Checking…' : 'Re-check'}
+        </button>
+      </div>
+
+      {/* Python install hint if missing */}
+      {!nasusChecking && !nasusReady && (
+        <div style={{
+          padding: '8px 10px', borderRadius: 8,
+          background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
+          fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55,
+        }}>
+          Python 3 is required to run the Nasus stack. Install it from{' '}
+          <a href="https://python.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>python.org</a>
+          {' '}(3.10+ recommended), then click <strong>Install Stack</strong> to set up the virtual environment and dependencies.
         </div>
       )}
     </div>
