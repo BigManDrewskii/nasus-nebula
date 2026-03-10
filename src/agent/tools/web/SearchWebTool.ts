@@ -10,6 +10,7 @@ import { toolSuccess, toolFailure } from '../core/ToolResult'
 import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { runSearch } from '../../search'
 import type { SearchConfig, SearchStatusCallback } from '../../search'
+import { tauriInvoke } from '../../../tauri'
 
 /**
  * Tool for searching the web for current information.
@@ -61,6 +62,18 @@ export class SearchWebTool extends BaseTool {
     const query = args.query as string | undefined
     const numResults = Math.min(Math.max((args.num_results as number) || 5, 1), 10)
     const taskId = (args.__taskId as string | undefined) ?? 'global'
+
+    // Inject Exa API key from Tauri keychain if not pre-configured
+    if (!this.searchConfig?.apiKey) {
+      try {
+        const cfg = await tauriInvoke<{ apiKey?: string }>('get_search_config')
+        if (cfg?.apiKey) {
+          this.searchConfig = { ...(this.searchConfig ?? {}), apiKey: cfg.apiKey }
+        }
+      } catch {
+        // Not in Tauri context or key not set — continue without
+      }
+    }
 
     if (!query?.trim()) {
       return toolFailure('query is required and must be non-empty')
