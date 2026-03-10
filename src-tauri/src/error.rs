@@ -19,6 +19,12 @@ pub enum NasusError {
 
     #[error("Database Error: {0}")]
     Database(String),
+
+    #[error("Search Error: {0}")]
+    Search(String),
+
+    #[error("Internal Error: {0}")]
+    Internal(String),
 }
 
 /// Manual Serialize impl so NasusError can be returned from #[tauri::command] functions.
