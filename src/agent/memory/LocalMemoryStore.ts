@@ -10,6 +10,7 @@ import {
 } from './MemoryStore'
 import { createSemanticEmbedding } from './transformersEmbedding'
 import { createLogger } from '../../lib/logger'
+import { tauriInvoke } from '../../tauri'
 import type {
   MemoryStore,
   MemoryItem,
@@ -137,6 +138,9 @@ export class LocalMemoryStore implements MemoryStore {
     this.memories.set(id, memory)
     await this.vectorStore.storeVector(id, embedding)
     await this.persist()
+
+    // Fire-and-forget: mirror to SQLite via Tauri for cross-session durability
+    void tauriInvoke('memory_set', { key: `memory:${id}`, value: JSON.stringify({ id, content, embedding, metadata: memory.metadata }) })
 
     return id
   }
