@@ -72,8 +72,20 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
 
         return undefined
       } catch (err) {
+        // Only swallow errors that indicate we're running outside Tauri (browser/dev mode).
+        // Real backend errors (wrong args, command panics, etc.) must propagate so callers
+        // can handle them rather than silently receiving undefined.
+        const msg = err instanceof Error ? err.message : String(err)
+        const isNotInTauri =
+          msg.includes('invoke is not a function') ||
+          msg.includes('__TAURI__') ||
+          msg.includes('not a function') ||
+          msg.includes('Cannot read properties of undefined')
+        if (isNotInTauri) {
+          return undefined
+        }
         log.error(`Tauri invoke failed for ${cmd}:`, err)
-        return undefined
+        throw err
       }
 }
 
