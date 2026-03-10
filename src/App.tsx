@@ -15,7 +15,8 @@ import { useModelSync } from './hooks/useModelSync'
 import { useAppEventListeners } from './hooks/useAppEventListeners'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
-import { tauriInvoke } from './tauri'
+import { tauriInvoke, startSidecar } from './tauri'
+import { useSidecarHealthPoll } from './hooks/useSidecarHealthPoll'
 
 const log = createLogger('App')
 
@@ -72,304 +73,223 @@ function App() {
         checkSidecarInstalled: s.checkSidecarInstalled,
         resetPlanState: s.resetPlanState,
         textScale: s.textScale,
-      })),
+      }))
     )
 
-  const [pruneNotice, setPruneNotice] = useState<string | null>(null)
-  const [memoryBrowserOpen, setMemoryBrowserOpen] = useState(false)
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const [leftCollapsed, setLeftCollapsed] = useState(() => loadLayout().leftCollapsed)
+  const [rightCollapsed, setRightCollapsed] = useState(() => loadLayout().rightCollapsed)
+  const [rightActiveTab, setRightActiveTab] = useState<Tab>(() => loadLayout().rightActiveTab)
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => loadLayout().rightPanelWidth)
+  const [rightPanelVisible, setRightPanelVisible] = useState(() => loadLayout().rightPanelVisible)
+  const [configSections, setConfigSections] = useState(() => loadLayout().configSections)
+  const [sidebarPreference, setSidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(() => loadLayout().sidebarPreference ?? 'auto')
+  const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false)
+  const layoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Layout state — loaded from localStorage BEFORE any effects that reference it
-  const [savedLayout] = useState<LayoutState>(loadLayout)
-  const [leftCollapsed, setLeftCollapsed] = useState(savedLayout.leftCollapsed)
-  const [rightCollapsed, setRightCollapsed] = useState(savedLayout.rightCollapsed)
-  const [rightActiveTab, setRightActiveTab] = useState<Tab>(savedLayout.rightActiveTab)
-  const [sidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(
-    savedLayout.sidebarPreference ?? 'auto'
-  )
-  const [rightPanelWidth, setRightPanelWidth] = useState(savedLayout.rightPanelWidth ?? 0.4)
-
-  // Ref for the right sidebar element, used by PanelDivider to toggle resize class
-  const sidebarRef = useRef<HTMLDivElement>(null)
-
-  // Sync global workspace path to manager
-  useEffect(() => {
-    if (workspacePath) {
-      import('./agent/workspace/WorkspaceManager').then((mod) => {
-        const manager = mod.workspaceManager || mod.default
-        if (manager) {
-          manager.init(workspacePath)
-        }
-        }).catch(err => log.error('WorkspaceManager init failed', err))
-    }
-  }, [workspacePath])
-
-    // Initialize gateway service on startup
-    useEffect(() => {
-      const store = useAppStore.getState()
-      store.initGatewayService()
-      store.loadGatewayConfig().catch(err => log.error('loadGatewayConfig failed', err))
-
-      // Load Exa API key from OS keyring — never stored in localStorage
-      tauriInvoke<string>('get_exa_key')
-        .then((key) => { if (key) store.setExaKey(key) })
-        .catch(err => log.error('get_exa_key failed', err))
-
-    // Initialize config sections from saved layout (use the action, not direct mutation)
-    if (savedLayout.configSections) {
-      Object.entries(savedLayout.configSections).forEach(([key, value]) => {
-        store.setConfigSection(key, value as boolean)
-      })
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Check sidecar installation status on startup
-  useEffect(() => {
-    checkSidecarInstalled()
-  }, [checkSidecarInstalled])
-
-  // Apply text scale as a data attribute on <html> — CSS vars key off this
-  useEffect(() => {
-    document.documentElement.dataset.scale = textScale ?? 'default'
-  }, [textScale])
-
-  // Check for updates on startup (production only — no update.json exists in dev)
-  useEffect(() => {
-    if (import.meta.env.DEV) return
-    const doUpdateCheck = async () => {
-      try {
-        const update = await check()
-        if (update) {
-          await update.install()
-          await relaunch()
-        }
-      } catch {
-        // No update available or network unreachable — silent in production too
-      }
-    }
-    doUpdateCheck()
-  }, [])
-
-  const [isOffline, setIsOffline] = useState(!navigator.onLine)
-
-  useAppEventListeners({
-    setRightCollapsed,
-    setRightActiveTab,
-    setPruneNotice,
-    setMemoryBrowserOpen,
-    setIsOffline,
-  })
-
-  // Silently keep the OpenRouter model list fresh in the background
+  useAppEventListeners()
+  useWorkspaceFiles(workspacePath)
   useModelSync()
 
-  const activeTask = useMemo(
-    () => tasks.find((t) => t.id === activeTaskId) ?? null,
-    [tasks, activeTaskId],
-  )
+  // ------------------------------------------------------------------
+  // Check for sidecar installation on mount
+  // ------------------------------------------------------------------
+  const { isSidecarReady, recheck: recheckSidecar } = useSidecarHealthPoll()
 
-  // Workspace files for the active task (reactive — updates on agent writes)
-  const workspaceFiles = useWorkspaceFiles(activeTaskId)
-
-  // Persist layout state whenever it changes
   useEffect(() => {
-    saveLayout({ leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible: !rightCollapsed, configSections: useAppStore.getState().configSections, sidebarPreference })
-  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, sidebarPreference])
+    checkSidecarInstalled()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Auto-show + expand right panel when the agent creates its first file,
-    // or when switching to a task that already has files.
-    useEffect(() => {
-      if (workspaceFiles.length > 0) {
-        if (rightCollapsed) setRightCollapsed(false)
+  // Auto-start the sidecar binary if it is not yet running
+  useEffect(() => {
+    if (!isSidecarReady) {
+      void startSidecar().catch(() => {
+        // Binary not present in dev mode — silently ignore
+      })
+    }
+  }, [isSidecarReady])
+
+  const scheduleLayoutPersist = useCallback(() => {
+    if (layoutPersistTimerRef.current) clearTimeout(layoutPersistTimerRef.current)
+    layoutPersistTimerRef.current = setTimeout(() => {
+      saveLayout({
+        leftCollapsed,
+        rightCollapsed,
+        rightActiveTab,
+        rightPanelWidth,
+        rightPanelVisible,
+        configSections,
+        sidebarPreference,
+      })
+    }, 300)
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, configSections, sidebarPreference])
+
+  useEffect(() => {
+    scheduleLayoutPersist()
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, configSections, sidebarPreference, scheduleLayoutPersist])
+
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Updater check
+  useEffect(() => {
+    check().then(event => {
+      if (event?.manifest) {
+        setUpdateVersion(event.manifest.version)
+        setIsUpdateAvailable(true)
+        setShowUpdateBanner(true)
       }
-    }, [workspaceFiles.length, activeTaskId]) // eslint-disable-line react-hooks/exhaustive-deps
+    }).catch(err => {
+      log.debug('Update check failed (ok in dev):', err)
+    })
+  }, [])
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      const mod = e.metaKey || e.ctrlKey
-        if (!mod) return
-          // New task: ⌘ N
-          if (e.key === 'n') { e.preventDefault(); handleNewTask() }
-          // Toggle left sidebar: ⌘ B
-        if (e.key === 'b') { e.preventDefault(); setLeftCollapsed((v) => !v) }
-        // Toggle right panel: ⌘ . or ⌘ Shift \
-        if (e.key === '.') { e.preventDefault(); setRightCollapsed((v) => !v) }
-        // Toggle right panel collapse: ⌘ Shift \
-        if (e.key === '\\' && e.shiftKey) { e.preventDefault(); setRightCollapsed((v) => !v) }
-          // Open model selector: ⌘ M
-          if (e.key === 'm') { e.preventDefault(); window.dispatchEvent(new CustomEvent('nasus:open-model-selector')) }
-          // Open settings: ⌘ ,
-          if (e.key === ',') { e.preventDefault(); openSettings() }
+  const activeTask = useMemo(() => tasks.find(t => t.id === activeTaskId), [tasks, activeTaskId])
+
+  const sidebarPosition = useMemo(() => {
+    if (sidebarPreference === 'always-left') return 'left'
+    if (sidebarPreference === 'always-right') return 'right'
+    return windowWidth >= 1024 ? 'left' : 'right'
+  }, [sidebarPreference, windowWidth])
+
+  const sidebarMinimal = sidebarPreference === 'minimal'
+
+  const handleSelectTask = useCallback((taskId: string) => {
+    setActiveTaskId(taskId)
+    if (windowWidth < 768) setLeftCollapsed(true)
+  }, [setActiveTaskId, windowWidth])
+
+  const handleNewChat = useCallback(() => {
+    addTask()
+    if (windowWidth < 768) setLeftCollapsed(true)
+  }, [addTask, windowWidth])
+
+  const handleToggleLeft = useCallback(() => setLeftCollapsed(prev => !prev), [])
+  const handleToggleRight = useCallback(() => setRightCollapsed(prev => !prev), [])
+  const handleTabChange = useCallback((tab: Tab) => setRightActiveTab(tab), [])
+  const handleSetRightPanelWidth = useCallback((w: number) => setRightPanelWidth(w), [])
+  const handleSetRightPanelVisible = useCallback((v: boolean) => setRightPanelVisible(v), [])
+  const handleSetConfigSections = useCallback((f: Record<string, boolean>) => setConfigSections(f), [])
+
+  // Handle updates
+  const handleUpdate = useCallback(async () => {
+    try {
+      const event = await check()
+      if (event?.manifest)
+        await event.downloadAndInstall()
+      await relaunch()
+    } catch (err) {
+      log.error('Update failed:', err)
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [openSettings])
+  }, [])
 
-  const toggleLeft   = useCallback(() => setLeftCollapsed((v) => !v),   [])
-  const toggleRight   = useCallback(() => setRightCollapsed((v) => !v),   [])
-
-  const handleNewTask = useCallback(() => {
-    const task: Task = {
-      id: crypto.randomUUID(),
-      title: 'New task',
-      status: 'pending',
-      createdAt: new Date(),
-      budgetMode: routerConfig.budget === 'free' ? 'free' : 'paid',
-    }
-    addTask(task)
-    resetPlanState()
-    setActiveTaskId(task.id)
-  }, [addTask, setActiveTaskId, resetPlanState, routerConfig.budget])
-
-  const handleSelectTask = useCallback((id: string) => {
-    resetPlanState()
-    setActiveTaskId(id)
-  }, [resetPlanState, setActiveTaskId])
-
-    if (!onboardingComplete) {
-      return (
-        <ErrorBoundary>
-          <Suspense fallback={<div className="app-loading" />}>
-            <OnboardingScreen />
-          </Suspense>
-        </ErrorBoundary>
-      )
-    }
-
+  if (!onboardingComplete) {
     return (
-      <ErrorBoundary>
-        {/* Skip link for keyboard users */}
-        <a href="#main-content" className="skip-link">
-          Skip to main content
-        </a>
-        <div className="app-root">
-          {/* Tauri title bar drag region */}
-          {!settingsOpen && (
-            <div data-tauri-drag-region style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 28, zIndex: 9999, WebkitAppRegion: 'drag' } as React.CSSProperties} />
-          )}
-          <div style={{ position: 'fixed', top: 28, left: 0, right: 0, height: 1, background: 'rgba(255,255,255,0.06)', zIndex: 9998, pointerEvents: 'none' }} />
+      <Suspense fallback={null}>
+        <OnboardingScreen onComplete={() => {}} />
+      </Suspense>
+    )
+  }
 
-          {/* ── Left Sidebar ── */}
-          <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+  const showLeftSidebar = sidebarPosition === 'left'
+  const showRightSidebar = sidebarPosition === 'right'
+
+  return (
+    <ErrorBoundary>
+      <div
+        className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground"
+        style={{ fontSize: `${textScale}rem` }}
+      >
+        {showUpdateBanner && isUpdateAvailable && (
+          <div className="flex items-center justify-between px-3 py-1.5 bg-amber-50/warm border-b border-amber--200/warm">
+            <span className="text-xs text-amber-800/warm">Update available: v {updateVersion}</span>
+            <div className="flex gap-2">
+              <button onClick={handleUpdate} className="text-xs px-2 py-0.5 rounded bg-amber-600/warm text-white hover:bg-amber-700/warm">Install & Restart</button>
+              <button onClick={() => setShowUpdateBanner(false)} className="text-xs text-amber-600/warm hover:text-amber-800
+warm">Dismiss</button>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-1 overflow-hidden">
+          {showLeftSidebar && (
             <Sidebar
+              position="left"
               tasks={tasks}
               activeTaskId={activeTaskId}
               onSelectTask={handleSelectTask}
-              onNewTask={handleNewTask}
-              onOpenSettings={() => openSettings()}
+              onNewChat={handleNewChat}
               collapsed={leftCollapsed}
-              onToggleCollapse={toggleLeft}
+              onToggleCollapse={handleToggleLeft}
+              minimal={sidebarMinimal}
+              onOpenSettings={openSettings}
             />
-        </div>
-
-
-
-        {/* ── Chat ── */}
-        <main id="main-content" className="app-chat">
-          <ChatView
+          )}
+          <div className="flex flex-1 overflow-hidden min-w=0">
+            <ChatView
               task={activeTask}
-              onNewTask={handleNewTask}
-              onOpenSettings={(tab) => openSettings(tab)}
-              outputVisible={!rightCollapsed}
-              onShowOutput={() => setRightCollapsed(false)}
-              workspaceFileCount={workspaceFiles.length}
+              routerConfig={routerConfig}
+              leftCollapsed={leftCollapsed}
               rightCollapsed={rightCollapsed}
-              onToggleRight={toggleRight}
+              onToggleLeft={handleToggleLeft}
+              onToggleRight={handleToggleRight}
+              sidebarPosition={sidebarPosition}
+              sidebarMinimal={sidebarMinimal}
             />
-        </main>
-
-          {/* ── Right Output Panel ── */}
-          {!rightCollapsed && (
-            <PanelDivider
-              width={rightPanelWidth}
-              onWidthChange={setRightPanelWidth}
-              onCollapse={() => setRightCollapsed(true)}
-              onExpand={() => setRightCollapsed(false)}
-              previousWidth={0.4}
-              collapsed={false}
-              sidebarRef={sidebarRef}
+            {!rightCollapsed && rightPanelVisible && (
+              <PanelDivider
+                onWidthChange={handleSetRightPanelWidth}
+                initialWidth={rightPanelWidth}
+                minPx={200}
+                maxPx={900}
+              />
+            )}
+           {!rightCollapsed && rightPanelVisible && (
+              <OutputPanel
+                task={activeTask}
+                activeTab={rightActiveTab}
+                onTabChange={handleTabChange }
+                onToggleCollapse={handleToggleRight}
+                width={rightPanelWidth}
+                onWidthChange={handleSetRightPanelWidth}
+                onVisibleChange={handleSetRightPanelVisible}
+                configSections={configSections}
+                onConfigSectionChange={handleSetConfigSections}
+              />
+            )}
+          </div>
+          {showRightSidebar && (
+            <Sidebar
+              position="right"
+              tasks={tasks}
+              activeTaskId={activeTaskId}
+              onSelectTask={handleSelectTask}
+              onNewChat={handleNewChat}
+              collapsed={rightCollapsed}
+              onToggleCollapse={handleToggleRight}
+              minimal={sidebarMinimal}
+              onOpenSettings={openSettings}
             />
           )}
-
-        <div
-          ref={sidebarRef}
-          className={`app-sidebar-right${rightCollapsed ? ' app-sidebar--collapsed' : ''}`}
-          style={rightCollapsed ? undefined : { width: `${rightPanelWidth * 100}%` }}
-        >
-          <OutputPanel
-            key={activeTaskId ?? 'none'}
-            files={workspaceFiles}
-            collapsed={rightCollapsed}
-            activeTab={rightActiveTab}
-            onTabChange={setRightActiveTab}
-            onCollapse={toggleRight}
-            onExpand={(tab) => {
-              if (tab) setRightActiveTab(tab)
-              setRightCollapsed(false)
-            }}
-          />
         </div>
-
+        <Pxi />
+        <Suspense fallback={null}>
           {settingsOpen && (
-              <Suspense fallback={null}>
-                <SettingsPanel onClose={closeSettings} />
-              </Suspense>
-            )}
-
-            {memoryBrowserOpen && (
-              <Suspense fallback={null}>
-                <MemoryBrowser onClose={() => setMemoryBrowserOpen(false)} />
-              </Suspense>
-            )}
-
-
-
-        {/* Offline banner */}
-          {isOffline && (
-            <div className="app-offline-banner">
-              <Pxi name="wifi" size={11} style={{ color: '#f87171' }} />
-              <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', fontWeight: 500 }}>
-                No internet connection — agent cannot run until connectivity is restored
-              </span>
-            </div>
+            <SettingsPanel
+              onClose={closeSettings}
+              configSections={configSections}
+              onConfigSectionChange={handleSetConfigSections}
+              sidebarPreference={sidebarPreference}
+              onSidebarPreferenceChange={setSidebarPreference}
+            />
           )}
-
-          {/* Task prune notice */}
-          {pruneNotice && (
-            <div className="app-prune-notice">
-              <Pxi name="info-circle" size={11} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
-            </div>
-          )}
+          <MemoryBrowser />
+        </Suspense>
       </div>
-
-      {/* ── Reopen tabs — outside app-root so position:fixed is viewport-anchored ── */}
-      {leftCollapsed && (
-        <button onClick={toggleLeft} title="Open sidebar (⌘B)" className="sidebar-reopen-tab">
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span className="tab-label">Tasks</span>
-        </button>
-      )}
-      {rightCollapsed && (
-        <button
-          onClick={() => {
-            setRightCollapsed(false)
-            if (workspaceFiles.length > 0) {
-              const hasHtml = workspaceFiles.some(f => f.ext === 'html')
-              setRightActiveTab(hasHtml ? 'preview' : 'files')
-            }
-          }}
-          title="Open workspace panel (⌘⇧\\)"
-          className="workspace-reopen-tab"
-        >
-          <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-            <path d="M7.5 2L3.5 6L7.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span className="tab-label">Workspace</span>
-        </button>
-      )}
     </ErrorBoundary>
   )
 }
