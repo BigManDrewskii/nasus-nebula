@@ -314,6 +314,7 @@ export class AgentOrchestrator {
 
     try {
       await this.executionAgent.execute(executionParams)
+      store.setStatus(taskId, 'completed')
     } catch (err) {
       if (signal.aborted) return
       store.setStatus(taskId, 'error')
@@ -369,6 +370,7 @@ export class AgentOrchestrator {
 
     try {
       await this.executionAgent.execute(executionParams)
+      store.setStatus(taskId, 'completed')
     } catch (err) {
       if (signal.aborted) return
       store.setStatus(taskId, 'error')
