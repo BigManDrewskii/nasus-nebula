@@ -97,6 +97,11 @@ fn open_db(app_data_dir: &Path) -> Result<Connection, String> {
         [],
     )
     .map_err(|e| e.to_string())?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS kv_store (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(conn)
 }
 
@@ -1442,7 +1447,41 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        
+// --- KV / Memory commands ---
+
+#[tauri::command]
+fn memory_set(
+    state: State<'_, Arc<Mutex<Connection>>>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = tauri::async_runtime::block_on(state.lock());
+    conn.execute(
+        "INSERT OR REPLACE INTO kv_store (key, value) VALUES (?1, ?2)",
+        params![key, value],
+    )
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn memory_get(
+    state: State<'_, Arc<Mutex<Connection>>>,
+    key: String,
+) -> Result<Option<String>, String> {
+    let conn = tauri::async_runtime::block_on(state.lock());
+    let mut stmt = conn
+        .prepare("SELECT value FROM kv_store WHERE key = ?1")
+        .map_err(|e| e.to_string())?;
+    let result = stmt
+        .query_row(params![key], |row| row.get::<_, String>(0))
+        .optional()
+        .map_err(|e| e.to_string())?;
+    Ok(result)
+}
+
+.invoke_handler(tauri::generate_handler![
             get_config,
             save_config,
             validate_path,
@@ -1523,6 +1562,8 @@ pub fn run() {
             python_sidecar::nasus_check_installed,
             python_sidecar::nasus_install_sidecar,
             python_sidecar::nasus_configure_llm,
+            memory_set,
+            memory_get,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
