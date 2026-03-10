@@ -2,10 +2,11 @@
  * Agent Orchestrator — Coordinates multiple agents in a workflow.
  *
  * The Orchestrator:
- * 1. Invokes the Planning Agent to generate a plan
- * 2. Presents the plan for user approval
- * 3. Invokes the Execution Agent to run the approved plan
- * 4. Tracks overall progress and handles errors
+ * 1. Checks if the Python sidecar is available
+ * 2. If sidecar is ready: routes tasks through the sidecar (FastAPI :4751)
+ * 3. If sidecar is unavailable: falls back to direct LLM execution
+ * 4. Presents plans for user approval
+ * 5. Tracks overall progress and handles errors
  */
 
 import type { ExecutionPlan } from './core/Agent'
@@ -16,6 +17,12 @@ import { PlanningAgent, generatePlan } from './agents/PlanningAgent'
 import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAgent'
 import { useAppStore } from '../store'
 import { buildPlanContext } from './context/ContextBuilder'
+import {
+  healthCheck,
+  runTask,
+  type SidecarStep,
+  type StatusResponse,
+} from './sidecarClient'
 
 /**
  * Orchestrator configuration.
@@ -29,6 +36,8 @@ export interface OrchestratorConfig {
   approvalTimeout?: number
   /** Enable verification after execution */
   enableVerification?: boolean
+  /** Force sidecar routing even if health check is slow */
+  forceSidecar?: boolean
 }
 
 /**
@@ -39,7 +48,7 @@ export interface OrchestratorTaskParams {
   taskTitle?: string
   messageId: string
   userMessages: LlmMessage[]
-  userMessage: string // First user message for planning
+  userMessage: string
   apiKey: string
   model: string
   apiBase: string
@@ -68,256 +77,302 @@ export class AgentOrchestrator {
   private planningAgent: PlanningAgent = new PlanningAgent('planning', 'planner')
   private executionAgent: ExecutionAgent = new ExecutionAgent('execution', 'executor')
   private config: OrchestratorConfig = {}
+  private _isSidecarReady = false
+
+  /** True if the last health check confirmed the sidecar is up */
+  get isSidecarReady(): boolean {
+    return this._isSidecarReady
+  }
 
   setConfig(config: OrchestratorConfig): void {
-    // Full replace (not merge) so stale config from previous tasks doesn't leak
     this.config = { ...config }
-    // Propagate autoApproveSimple into the planning agent's own config
     if (typeof config.autoApproveSimple === 'boolean') {
       this.planningAgent.setConfig({ autoApproveSimple: config.autoApproveSimple })
     }
   }
 
   /**
+   * Probe the sidecar health endpoint and cache the result.
+   * Call this once on app startup (App.tsx) and again whenever
+   * the sidecar is restarted.
+   */
+  async checkSidecar(): Promise<boolean> {
+    this._isSidecarReady = await healthCheck()
+    return this._isSidecarReady
+  }
+
+  /**
    * Process a task through the full agent pipeline.
+   * Routes through the Python sidecar if available, otherwise
+   * falls back to direct LLM execution.
    */
   async processTask(params: OrchestratorTaskParams): Promise<void> {
-    const { taskId, messageId, signal } = params
+    const { taskId, signal } = params
+    const store = useAppStore.getState()
 
-    // Skip planning if configured
+    // Refresh sidecar health on each task (cheap ping, ~5ms)
+    if (!this.config.forceSidecar) {
+      await this.checkSidecar()
+    }
+
+    if (this._isSidecarReady) {
+      // ── Sidecar path ────────────────────────────────────────────────────
+      store.setStatus(taskId, 'planning')
+      await this.runViaSidecar(params)
+      return
+    }
+
+    // ── Fallback: direct LLM path ────────────────────────────────────────
     if (this.config.skipPlanning) {
       await this.executeDirectly(params)
       return
     }
 
-    // Step 1: Generate plan
-    const plan = await this.generatePlan(params)
+    store.setStatus(taskId, 'planning')
 
-    // Step 2: Check for auto-approval
-    if (this.planningAgent.isSimplePlan(plan)) {
-      // Auto-approve simple plans
-      await this.executeWithPlan(params, plan)
+    let plan: ExecutionPlan
+    try {
+      plan = await generatePlan({
+        taskId,
+        messageId: params.messageId,
+        userMessages: params.userMessages,
+        userMessage: params.userMessage,
+        apiKey: params.apiKey,
+        model: params.model,
+        apiBase: params.apiBase,
+        provider: params.provider,
+        searchConfig: params.searchConfig,
+        signal,
+        planningAgent: this.planningAgent,
+      })
+    } catch (err) {
+      if (signal.aborted) return
+      throw err
+    }
+
+    if (signal.aborted) return
+
+    const approvalResult = await this.waitForApproval(taskId, plan, signal)
+
+    if (!approvalResult.approved) {
+      if (approvalResult.reason === 'cancelled') return
+      store.setStatus(taskId, approvalResult.reason === 'rejected' ? 'stopped' : 'error')
       return
     }
 
-    // Step 3: Present plan for user approval
-    this.emitPlanPending(taskId, messageId, plan)
-
-    // Step 4: Wait for user approval
-    const approval = await this.waitForApproval(taskId, messageId, plan, signal)
-
-    if (approval.approved === false) {
-      this.emitPlanRejected(taskId, messageId, approval.reason)
-      return
-    }
-
-    // Step 5: Execute with approved plan
-    await this.executeWithPlan(params, approval.plan)
+    await this.executePlan(params, approvalResult.plan)
   }
 
   /**
-   * Generate a plan using the Planning Agent.
+   * Route a task through the Python sidecar (FastAPI :4751).
+   * Streams step events back into the agent store in real time.
    */
-  private async generatePlan(params: OrchestratorTaskParams): Promise<ExecutionPlan> {
-    const { userMessage, apiKey, model, apiBase, provider } = params
+  private async runViaSidecar(params: OrchestratorTaskParams): Promise<void> {
+    const { taskId, messageId, signal } = params
+    const store = useAppStore.getState()
 
-    return generatePlan(userMessage, apiKey, model, apiBase, provider, {
-      autoApproveSimple: this.config.autoApproveSimple,
-    })
-  }
-
-  /**
-   * Execute directly without planning (original behavior).
-   */
-  private async executeDirectly(params: OrchestratorTaskParams): Promise<void> {
-    const executionParams: ExecutionConfigParams = {
-      task: { id: params.taskId, title: params.taskTitle || params.userMessage.slice(0, 60), status: 'in_progress', createdAt: new Date() },
-      userInput: params.userMessage,
+    const payload: Record<string, unknown> = {
+      task_id: taskId,
+      message_id: messageId,
+      user_message: params.userMessage,
       messages: params.userMessages,
-      tools: [],
-      taskId: params.taskId,
-      messageId: params.messageId,
-      userMessages: params.userMessages,
-      apiKey: params.apiKey,
       model: params.model,
-      apiBase: params.apiBase,
+      api_base: params.apiBase,
       provider: params.provider,
-      searchConfig: params.searchConfig,
-      executionConfig: params.executionConfig,
-      signal: params.signal,
-      maxIterations: params.maxIterations,
-        enableVerification: this.config.enableVerification ?? true,
-      }
-
-      await this.executionAgent.execute(executionParams)
+      max_iterations: params.maxIterations ?? 10,
     }
 
-    /**
-     * Execute with an approved plan.
-     */
-  private async executeWithPlan(params: OrchestratorTaskParams, plan: ExecutionPlan): Promise<void> {
-    this.emitPlanApproved(params.taskId, params.messageId, plan)
+    try {
+      for await (const event of runTask('orchestrator', payload)) {
+        if (signal.aborted) break
 
-    // Inject plan context into the final user message (not as a system role,
-    // which breaks Anthropic providers that reject mid-conversation system messages).
-    // Find the LAST user-role message specifically — the last element of userMessages
-    // may be a tool result on task resume, which would corrupt it.
-      // buildPlanContext gives the base plan block; append execution instruction here
-      const planContext = buildPlanContext(plan) + '\n\nMark phases as complete by updating task_plan.md with checkboxes.'
-    const lastUserIdx = (() => {
-      for (let i = params.userMessages.length - 1; i >= 0; i--) {
-        if (params.userMessages[i].role === 'user') return i
+        switch (event.type) {
+          case 'step': {
+            const step = event.data as SidecarStep
+            // Map sidecar step types onto the existing agent store step format
+            store.addAgentStep(taskId, {
+              id: `sidecar-step-${step.step}`,
+              type: step.type === 'tool_call' ? 'tool' : step.type === 'observation' ? 'result' : 'thought',
+              content: step.content,
+              tool: step.tool,
+              toolInput: step.tool_input as Record<string, unknown> | undefined,
+              toolOutput: step.tool_output as string | undefined,
+              timestamp: step.timestamp,
+            })
+            break
+          }
+          case 'status': {
+            const s = (event.data as StatusResponse).status
+            if (s === 'running') store.setStatus(taskId, 'executing')
+            break
+          }
+          case 'done': {
+            const final = event.data as StatusResponse
+            if (final.status === 'completed') {
+              store.setStatus(taskId, 'completed')
+            } else if (final.status === 'error') {
+              store.setStatus(taskId, 'error')
+            }
+            break
+          }
+          case 'error': {
+            store.setStatus(taskId, 'error')
+            break
+          }
+        }
       }
-      return params.userMessages.length - 1
-    })()
-    const targetMsg = params.userMessages[lastUserIdx]
-    const augmentedLastMsg: LlmMessage = {
-      role: 'user',
-      content: (typeof targetMsg?.content === 'string' ? targetMsg.content : '') + '\n\n' + planContext,
+    } catch (err) {
+      if (signal.aborted) return
+      // Sidecar died mid-stream — mark error, don't fall back silently
+      store.setStatus(taskId, 'error')
+      throw err
     }
-    const messagesWithPlan: LlmMessage[] = [
-      ...params.userMessages.slice(0, lastUserIdx),
-      augmentedLastMsg,
-      ...params.userMessages.slice(lastUserIdx + 1),
-    ]
-
-    const executionParams: ExecutionConfigParams = {
-      task: { id: params.taskId, title: params.taskTitle || params.userMessage.slice(0, 60), status: 'in_progress', createdAt: new Date() },
-      userInput: params.userMessage,
-      messages: messagesWithPlan,
-      tools: [],
-      taskId: params.taskId,
-      messageId: params.messageId,
-      userMessages: messagesWithPlan,
-      apiKey: params.apiKey,
-      model: params.model,
-      apiBase: params.apiBase,
-      provider: params.provider,
-      searchConfig: params.searchConfig,
-      executionConfig: params.executionConfig,
-      signal: params.signal,
-      maxIterations: params.maxIterations,
-        plan,
-        enableVerification: this.config.enableVerification ?? true,
-      }
-
-      await this.executionAgent.execute(executionParams)
   }
 
-    /**
-     * Wait for user approval of the plan.
-     */
-  private async waitForApproval(
+  /**
+   * Wait for user approval of the plan.
+   */
+  private waitForApproval(
     taskId: string,
-    _messageId: string,
     plan: ExecutionPlan,
     signal: AbortSignal,
   ): Promise<PlanApprovalResult> {
-    return new Promise((resolve) => {
-      const timeout = this.config.approvalTimeout || 300_000 // 5 minutes default
+    const store = useAppStore.getState()
 
-      // Check signal
-      if (signal.aborted) {
-        resolve({ approved: false, plan, reason: 'cancelled' })
-        return
+    store.setPendingPlan(plan)
+    store.setPlanApprovalStatus('pending')
+    store.setStatus(taskId, 'awaiting_approval')
+
+    return new Promise((resolve) => {
+      const cleanup = () => {
+        window.removeEventListener(`nasus:plan-approve-${taskId}`, onApprove)
+        window.removeEventListener(`nasus:plan-reject-${taskId}`, onReject)
+        signal.removeEventListener('abort', onAbort)
+        if (timeoutId !== undefined) clearTimeout(timeoutId)
       }
 
-        // Listen for approval events
-        const handleApprove = (e: Event) => {
-          cleanup()
-          // The event may carry an updated plan (from edit mode)
-          const detail = (e as CustomEvent<{ plan?: ExecutionPlan }>).detail
-          const approvedPlan = detail?.plan ?? plan
-          resolve({ approved: true, plan: approvedPlan })
-        }
+      const onApprove = (e: Event) => {
+        cleanup()
+        const detail = (e as CustomEvent).detail as { plan?: ExecutionPlan } | undefined
+        const finalPlan = detail?.plan ?? plan
+        resolve({ approved: true, plan: finalPlan })
+      }
 
-      const handleReject = () => {
+      const onReject = () => {
         cleanup()
         resolve({ approved: false, plan, reason: 'rejected' })
       }
 
-      const handleAbort = () => {
+      const onAbort = () => {
         cleanup()
         resolve({ approved: false, plan, reason: 'cancelled' })
       }
 
-      // Timeout handler
-      const timeoutId = setTimeout(() => {
-        cleanup()
-        resolve({ approved: false, plan, reason: 'timeout' })
-      }, timeout)
-
-      // Cleanup
-      const cleanup = () => {
-        clearTimeout(timeoutId)
-        window.removeEventListener(`nasus:plan-approve-${taskId}`, handleApprove)
-        window.removeEventListener(`nasus:plan-reject-${taskId}`, handleReject)
-        signal.removeEventListener('abort', handleAbort)
+      let timeoutId: ReturnType<typeof setTimeout> | undefined
+      if (this.config.approvalTimeout) {
+        timeoutId = setTimeout(() => {
+          cleanup()
+          resolve({ approved: false, plan, reason: 'timeout' })
+        }, this.config.approvalTimeout)
       }
 
-      // Set up listeners
-      window.addEventListener(`nasus:plan-approve-${taskId}`, handleApprove)
-      window.addEventListener(`nasus:plan-reject-${taskId}`, handleReject)
-      signal.addEventListener('abort', handleAbort)
+      window.addEventListener(`nasus:plan-approve-${taskId}`, onApprove)
+      window.addEventListener(`nasus:plan-reject-${taskId}`, onReject)
+      signal.addEventListener('abort', onAbort)
     })
   }
 
-  // ── Event Emitters ───────────────────────────────────────────────────────────────
+  /**
+   * Execute a plan using the ExecutionAgent (fallback path).
+   */
+  private async executePlan(
+    params: OrchestratorTaskParams,
+    plan: ExecutionPlan,
+  ): Promise<void> {
+    const { taskId, messageId, signal } = params
+    const store = useAppStore.getState()
 
-  private emitPlanPending(taskId: string, messageId: string, plan: ExecutionPlan): void {
-    // Update store for UI to show plan
-    useAppStore.getState().setPendingPlan(plan)
-    useAppStore.getState().setPlanApprovalStatus('pending')
+    store.setCurrentPlan(plan)
+    store.setStatus(taskId, 'executing')
 
-    window.dispatchEvent(
-      new CustomEvent('nasus:plan-pending', {
-        detail: { taskId, messageId, plan },
-      }),
-    )
+    const context = buildPlanContext(plan, params.userMessages)
+
+    const executionParams: ExecutionConfigParams = {
+      taskId,
+      messageId,
+      plan,
+      context,
+      apiKey: params.apiKey,
+      model: params.model,
+      apiBase: params.apiBase,
+      provider: params.provider,
+      searchConfig: params.searchConfig,
+      executionConfig: params.executionConfig,
+      signal,
+      maxIterations: params.maxIterations,
+    }
+
+    try {
+      await this.executionAgent.execute(executionParams)
+    } catch (err) {
+      if (signal.aborted) return
+      store.setStatus(taskId, 'error')
+      throw err
+    }
   }
 
-  private emitPlanApproved(taskId: string, messageId: string, plan: ExecutionPlan): void {
-    // Update store
-    useAppStore.getState().setPendingPlan(null)
-    useAppStore.getState().setPlanApprovalStatus('approved')
+  /**
+   * Execute directly without planning (skipPlanning mode, fallback path).
+   */
+  private async executeDirectly(params: OrchestratorTaskParams): Promise<void> {
+    const { taskId, messageId, signal } = params
+    const store = useAppStore.getState()
 
-    window.dispatchEvent(
-      new CustomEvent('nasus:plan-approved', {
-        detail: { taskId, messageId, plan },
-      }),
-    )
+    store.setStatus(taskId, 'executing')
+
+    const directPlan: ExecutionPlan = {
+      title: params.taskTitle ?? 'Direct Execution',
+      phases: [
+        {
+          id: 'phase-1',
+          title: 'Execute Task',
+          steps: [
+            {
+              id: 'step-1',
+              title: params.userMessage.slice(0, 80),
+              description: params.userMessage,
+              tools: [],
+            },
+          ],
+        },
+      ],
+    }
+
+    store.setCurrentPlan(directPlan)
+
+    const context = buildPlanContext(directPlan, params.userMessages)
+
+    const executionParams: ExecutionConfigParams = {
+      taskId,
+      messageId,
+      plan: directPlan,
+      context,
+      apiKey: params.apiKey,
+      model: params.model,
+      apiBase: params.apiBase,
+      provider: params.provider,
+      searchConfig: params.searchConfig,
+      executionConfig: params.executionConfig,
+      signal,
+      maxIterations: params.maxIterations,
+    }
+
+    try {
+      await this.executionAgent.execute(executionParams)
+    } catch (err) {
+      if (signal.aborted) return
+      store.setStatus(taskId, 'error')
+      throw err
+    }
   }
-
-  private emitPlanRejected(taskId: string, messageId: string, reason: string): void {
-    // Update store
-    useAppStore.getState().setPendingPlan(null)
-    useAppStore.getState().setPlanApprovalStatus('rejected')
-
-    window.dispatchEvent(
-      new CustomEvent('nasus:plan-rejected', {
-        detail: { taskId, messageId, reason },
-      }),
-    )
-
-    // User chose to skip — mark stopped, not failed
-    useAppStore.getState().updateTaskStatus(taskId, 'stopped')
-  }
-}
-
-/**
- * Global orchestrator instance.
- */
-export const orchestrator = new AgentOrchestrator()
-
-/**
- * Convenience function to process a task through the orchestrator.
- */
-export async function processTaskWithOrchestrator(
-  params: OrchestratorTaskParams,
-  config?: OrchestratorConfig,
-): Promise<void> {
-  if (config) {
-    orchestrator.setConfig(config)
-  }
-  await orchestrator.processTask(params)
 }
