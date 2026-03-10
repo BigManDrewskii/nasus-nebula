@@ -44,7 +44,11 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   setCurrentStep: (step) => set({ currentStep: step }),
 
   approvePlan: (taskId: string, updatedPlan?: ExecutionPlan) => {
-    set({ planApprovalStatus: 'approved', pendingPlan: null, currentPlan: null })
+    // Clear pendingPlan but do NOT null currentPlan here — the Orchestrator's
+    // waitForApproval reads plan from the event detail then calls setCurrentPlan().
+    // Nulling it here races with that assignment and causes a blank plan execution.
+    set({ planApprovalStatus: 'approved', pendingPlan: null })
+    // Dispatch AFTER state update so subscribers see approved status first
     window.dispatchEvent(new CustomEvent(`nasus:plan-approve-${taskId}`, {
       detail: updatedPlan ? { plan: updatedPlan } : undefined,
     }))
