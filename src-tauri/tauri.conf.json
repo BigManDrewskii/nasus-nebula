@@ -28,16 +28,16 @@
       }
     ],
       "security": {
-        "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self' ipc: http: https:;"
+        "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https:; connect-src 'self' ipc: http://localhost:* http://127.0.0.1:* https:;"
       }
   },
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/BigManDrewskii/nasus/releases/latest/download/update.json"
+        "https://github.com/nasus-app/nasus/releases/latest/download/update.json"
       ],
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzQ3NzYVeTgxV1R0VzZVSm1CVWp4Q05zUkFUV0I4TjZ4Z25qZ0JkY2daZ3NnckZkTkdQSllqYUsK"
+      "pubkey": "$TAURI_SIGNING_PUBLIC_KEY"
     }
   },
   "bundle": {

@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            rust-target: aarch64-apple-darwin
+            python-arch: arm64
+          - platform: macos-13
+            args: '--target x86_64-apple-darwin'
+            rust-target: x86_64-apple-darwin
+            python-arch: x86_64
+          - platform: ubuntu-22.04
+            args: ''
+            rust-target: x86_64-unknown-linux-gnu
+            python-arch: x86_64
+          - platform: windows-latest
+            args: ''
+            rust-target: x86_64-pc-windows-msvc
+            python-arch: x86_64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev \
+            libssl-dev \
+            pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller and sidecar Python dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r nasus_stack/nasus_sidecar/requirements.txt
+
+      - name: Build nasus-sidecar binary
+        shell: bash
+        run: bash build-sidecar.sh
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build and release Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Update signing — generate with: cargo tauri signer generate
+          # Store private key in TAURI_SIGNING_PRIVATE_KEY secret,
+          # public key in TAURI_SIGNING_PUBLIC_KEY secret and tauri.conf.json
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          # macOS code signing + notarization
+          # Import cert: base64-encode your .p12 → APPLE_CERTIFICATE secret
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Nasus ${{ github.ref_name }}'
+          releaseBody: |
+            See the assets below to download and install Nasus ${{ github.ref_name }}.
+
+            **macOS**: Download the `.dmg` for your architecture (Apple Silicon = `aarch64`, Intel = `x86_64`).
+            **Windows**: Download the `.exe` or `.msi` installer.
+            **Linux**: Download the `.AppImage` or `.deb` package.
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

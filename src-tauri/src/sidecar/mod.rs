@@ -175,12 +175,12 @@ pub async fn open_session_connection(
                                         let _ = tx.send(val);
                                     } else {
                                         // Unmatched message — log and discard
-                                        eprintln!("[Sidecar] Unmatched message type '{}' — no waiter registered", msg_type);
+                                        log::warn!("[Sidecar] Unmatched message type '{}' — no waiter registered", msg_type);
                                     }
                                 }
                             }
                             Ok(Message::Close(_)) => break,
-                            Err(e) => { eprintln!("[Sidecar] WS read error: {}", e); break; }
+                            Err(e) => { log::error!("[Sidecar] WS read error: {}", e); break; }
                             _ => {}
                         }
                     }
@@ -280,7 +280,7 @@ impl SidecarState {
         match node_check {
             Ok(output) if output.status.success() => {
                 let version = String::from_utf8_lossy(&output.stdout);
-                println!("[Sidecar] Node.js version: {}", version.trim());
+                log::info!("[Sidecar] Node.js version: {}", version.trim());
             }
             Ok(_) => return Err(SidecarError::ProcessError("Node.js returned error".into())),
             Err(e) => return Err(SidecarError::ProcessError(format!("Node.js not found: {}", e))),
@@ -295,7 +295,7 @@ impl SidecarState {
 
         let node_modules = self.sidecar_dir.join("node_modules");
         if !node_modules.exists() {
-            println!("[Sidecar] node_modules not found, running npm install...");
+            log::info!("[Sidecar] node_modules not found, running npm install...");
             let install_output = Command::new("npm")
                 .arg("install")
                 .current_dir(&self.sidecar_dir)
@@ -305,7 +305,7 @@ impl SidecarState {
 
             match install_output {
                 Ok(output) if output.status.success() => {
-                    println!("[Sidecar] npm install completed successfully");
+                    log::info!("[Sidecar] npm install completed successfully");
                 }
                 Ok(output) => {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -324,7 +324,7 @@ impl SidecarState {
             ));
         }
 
-        println!("[Sidecar] Starting Node.js sidecar at {}", index_js.display());
+        log::info!("[Sidecar] Starting Node.js sidecar at {}", index_js.display());
 
         let mut child = tokio::process::Command::new("node")
             .arg(&index_js)
@@ -360,7 +360,7 @@ impl SidecarState {
                         Ok(0) => break,
                         Ok(n) => {
                             if let Ok(s) = std::str::from_utf8(&buf[..n]) {
-                                eprintln!("[Sidecar stderr] {}", s.trim());
+                                log::debug!("[Sidecar stderr] {}", s.trim());
                             }
                         }
                         Err(_) => break,
@@ -374,13 +374,13 @@ impl SidecarState {
 
     pub async fn stop(&mut self) -> SidecarResult<()> {
         if let Some(mut child) = self.process.take() {
-            println!("[Sidecar] Stopping sidecar process...");
+            log::info!("[Sidecar] Stopping sidecar process...");
             match child.kill().await {
                 Ok(_) => {
                     let _ = timeout(Duration::from_secs(5), child.wait()).await;
-                    println!("[Sidecar] Sidecar process stopped");
+                    log::info!("[Sidecar] Sidecar process stopped");
                 }
-                Err(e) => eprintln!("[Sidecar] Error killing sidecar: {}", e),
+                Err(e) => log::error!("[Sidecar] Error killing sidecar: {}", e),
             }
             self.sessions.clear();
         }
@@ -516,7 +516,7 @@ pub async fn browser_navigate(
     url: String,
     timeout_ms: Option<u64>,
 ) -> NasusResult<serde_json::Value> {
-    println!("[Browser] Navigate {} → {}", session_id, url);
+    log::info!("[Browser] Navigate {} → {}", session_id, url);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::json!({ "url": url });
     if let Some(t) = timeout_ms {
@@ -533,7 +533,7 @@ pub async fn browser_screenshot(
     session_id: String,
     full_page: bool,
 ) -> NasusResult<String> {
-    println!("[Browser] Screenshot {} (full={})", session_id, full_page);
+    log::info!("[Browser] Screenshot {} (full={})", session_id, full_page);
     let session = get_session(&state, &session_id).await?;
     let params = serde_json::json!({ "fullPage": full_page });
     let response = send_session_command(&session, "screenshot", Some(params))
@@ -554,7 +554,7 @@ pub async fn browser_click(
     x: Option<f64>,
     y: Option<f64>,
 ) -> NasusResult<serde_json::Value> {
-    println!("[Browser] Click {} selector={:?} coords={:?},{:?}", session_id, selector, x, y);
+    log::info!("[Browser] Click {} selector={:?} coords={:?},{:?}", session_id, selector, x, y);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::Map::new();
     if let Some(s) = selector { params.insert("selector".into(), serde_json::json!(s)); }
@@ -573,7 +573,7 @@ pub async fn browser_type(
     text: String,
     clear_first: Option<bool>,
 ) -> NasusResult<usize> {
-    println!("[Browser] Type {}", session_id);
+    log::info!("[Browser] Type {}", session_id);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::Map::new();
     if let Some(s) = selector { params.insert("selector".into(), serde_json::json!(s)); }
@@ -593,7 +593,7 @@ pub async fn browser_scroll(
     direction: Option<String>,
     amount: Option<u32>,
 ) -> NasusResult<i32> {
-    println!("[Browser] Scroll {}", session_id);
+    log::info!("[Browser] Scroll {}", session_id);
     let session = get_session(&state, &session_id).await?;
     let params = serde_json::json!({
         "direction": direction.unwrap_or_else(|| "down".into()),
@@ -614,7 +614,7 @@ pub async fn browser_wait_for(
     url_pattern: Option<String>,
     timeout_ms: Option<u64>,
 ) -> NasusResult<String> {
-    println!("[Browser] WaitFor {} selector={:?}", session_id, selector);
+    log::info!("[Browser] WaitFor {} selector={:?}", session_id, selector);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::Map::new();
     if let Some(s) = selector { params.insert("selector".into(), serde_json::json!(s)); }
@@ -634,7 +634,7 @@ pub async fn browser_execute(
     expression: String,
     await_promise: Option<bool>,
 ) -> NasusResult<serde_json::Value> {
-    println!("[Browser] Execute {}", session_id);
+    log::info!("[Browser] Execute {}", session_id);
     let session = get_session(&state, &session_id).await?;
     let params = serde_json::json!({
         "expression": expression,
@@ -661,7 +661,7 @@ pub async fn browser_extract(
     session_id: String,
     selector: Option<String>,
 ) -> NasusResult<ExtractResult> {
-    println!("[Browser] Extract {} selector={:?}", session_id, selector);
+    log::info!("[Browser] Extract {} selector={:?}", session_id, selector);
     let session = get_session(&state, &session_id).await?;
     let params = if let Some(sel) = selector {
         serde_json::json!({ "selector": sel })
@@ -688,7 +688,7 @@ pub async fn browser_read_page(
     timeout_ms: Option<u64>,
     selector: Option<String>,
 ) -> NasusResult<ExtractResult> {
-    println!("[Browser] ReadPage {} → {}", session_id, url);
+    log::info!("[Browser] ReadPage {} → {}", session_id, url);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::json!({ "url": url });
     if let Some(t) = timeout_ms { params["timeoutMs"] = serde_json::json!(t); }
@@ -717,7 +717,7 @@ pub async fn browser_aria_snapshot(
     session_id: String,
     selector: Option<String>,
 ) -> NasusResult<AriaSnapshotResult> {
-    println!("[Browser] AriaSnapshot {} selector={:?}", session_id, selector);
+    log::info!("[Browser] AriaSnapshot {} selector={:?}", session_id, selector);
     let session = get_session(&state, &session_id).await?;
     let mut params = serde_json::Map::new();
     if let Some(sel) = selector { params.insert("selector".into(), serde_json::json!(sel)); }

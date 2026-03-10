@@ -88,7 +88,7 @@ pub async fn spawn_sidecar(
         )
     })?;
 
-    println!("[nasus] spawned sidecar from {}", sidecar_dir);
+    log::info!("[nasus] spawned sidecar from {}", sidecar_dir);
     guard.sidecar_dir = sidecar_dir.to_string();
     guard.process = Some(child);
     Ok(())
@@ -106,7 +106,7 @@ pub async fn wait_until_ready(state: Arc<Mutex<PythonSidecarState>>) -> Result<(
         if let Ok(r) = client.get(&url).send().await {
             if r.status().is_success() {
                 state.lock().await.is_ready = true;
-                println!("[nasus] ready after {}ms", (attempt + 1) * 200);
+                log::info!("[nasus] ready after {}ms", (attempt + 1) * 200);
                 return Ok(());
             }
         }
