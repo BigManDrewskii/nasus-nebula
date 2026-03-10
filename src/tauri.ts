@@ -65,315 +65,226 @@ export async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>
           }
 
           // Fallback for different v2 build configurations
-          const altInvoke = core.invoke ?? core.default?.invoke
-          if (typeof altInvoke === 'function') {
-            return await altInvoke(cmd, args) as T
+          if (core.default && typeof core.default.invoke === 'function') {
+            return await core.default.invoke(cmd, args) as T
           }
         }
 
-        log.warn(`No invoke method found for ${cmd}`)
         return undefined
-      } catch (e) {
-        // Suppress expected non-errors:
-        // - "No such file / os error 2" = workspace file not found (expected)
-        // - "Cannot read properties of undefined (reading 'invoke')" = running in browser without Tauri
-          const errorMsg = String(e)
-          if (
-            !errorMsg.includes('No such file') &&
-            !errorMsg.includes('os error 2') &&
-            !errorMsg.includes('File not found') &&
-            !errorMsg.includes("reading 'invoke'") &&
-            !errorMsg.includes('invoke')
-          ) {
-            log.error(`Error calling ${cmd}`, e)
-          }
+      } catch (err) {
+        log.error(`Tauri invoke failed for ${cmd}:`, err)
+        return undefined
       }
-
-  return undefined
 }
 
-/**
- * Invoke a Tauri backend command and expect a non-undefined result.
- * Throws if the command returns undefined or fails.
- */
-export async function tauriInvokeOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const result = await tauriInvoke<T>(cmd, args)
-  if (result === undefined) {
-    throw new Error(`Tauri command ${cmd} returned undefined`)
-  }
-  return result
+// ------------------------------------------------------------------------------
+// Types
+// ------------------------------------------------------------------------------
+
+export interface DockerContainer {
+  Id: string
+  Names: string[]
+  Image: string
+  Status: string
+  State: string
+  Created: number
+  Ports: Array<{
+    IP?: string
+    PrivatePort: number
+    PublicPort?: number
+    Type: string
+  }>
 }
 
-// ── Persistence Helpers ───────────────────────────────────────────────────────
-
-/**
- * Persist a task's full message history to the SQLite database.
- * This is called by the store to avoid bloating localStorage.
- */
-export async function persistTaskHistory(taskId: string, rawHistory: LlmMessage[]): Promise<void> {
-  const rawHistoryStr = JSON.stringify(rawHistory)
-  await tauriInvoke('save_task_history', { taskId, rawHistory: rawHistoryStr })
+export interface DockerImage {
+  Id: string
+  RepoTags: string[]
+  RepoDigests: string[]
+  Size: number
+  VirtualSize: number
+  Created: number
 }
 
-/**
- * Load a task's full message history from the SQLite database.
- */
-export async function getPersistedTaskHistory(taskId: string): Promise<LlmMessage[] | undefined> {
-  const historyStr = await tauriInvoke<string | null>('load_task_history', { taskId })
-  if (historyStr) {
-    try {
-      return JSON.parse(historyStr) as LlmMessage[]
-    } catch (e) {
-      log.error(`Failed to parse history for task ${taskId}`, e)
-    }
-  }
-  return undefined
+export interface DockerStats {
+  is_running: boolean
+  version?: string
+  container_count?: number
+  image_count?: number
+  error?: string
 }
 
-/**
- * Delete a task's message history from the SQLite database.
- */
-export async function deletePersistedTaskHistory(taskId: string): Promise<void> {
-  await tauriInvoke('delete_task_history', { taskId })
+export interface ContainerLogs {
+  stdout: string
+  stderr: string
 }
 
-/**
- * Read a workspace file as raw bytes (returned as a base64 string).
- * Use this for binary files like PDF, DOCX, XLSX.
- */
-export async function workspaceReadBinary(taskId: string, path: string, workspacePath: string): Promise<Uint8Array | undefined> {
-  const b64 = await tauriInvoke<string>('workspace_read_binary', { taskId, path, workspacePath })
-  if (!b64) return undefined
-  const binary = atob(b64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  return bytes
+// ------------------------------------------------------------------------------
+// Docker API
+// ------------------------------------------------------------------------------
+
+export async function checkDocker(): Promise<DockerStats> {
+  const result = await tauriInvoke<DockerStats>('docker_stats')
+  return result ?? { is_running: false, error: 'Not available' }
 }
 
-/**
- * Check if a local Ollama instance is running at http://localhost:11434.
- */
-export async function checkOllama(): Promise<boolean> {
-  return (await tauriInvoke<boolean>('is_ollama_running')) ?? false
+export async function listContainers(): Promise<DockerContainer[]> {
+  const result = await tauriInvoke<DockerContainer[]>('docker_list_containers')
+  return result ?? []
 }
 
-/**
- * Get the current search config from Rust state (for debugging).
- */
-export async function getSearchConfig(): Promise<{ exaKey: string } | undefined> {
-  return await tauriInvoke<{ exaKey: string }>('get_search_config')
+export async function listImages(): Promise<DockerImage[]> {
+  const result = await tauriInvoke<DockerImage[]>('docker_list_images')
+  return result ?? []
 }
 
-/**
- * Get the fallback model chain for OpenRouter server-side fallback.
- * @param primaryModel - The primary model ID to use first
- * @param budget - 'free' or 'paid' budget mode
- * @returns Array of model IDs for fallback chain
- */
-export async function getFallbackChain(
-  primaryModel: string,
-  budget: 'free' | 'paid',
-): Promise<string[] | undefined> {
-  return await tauriInvoke<string[]>('get_fallback_chain', {
-    primaryModel,
-    budget,
+export async function startContainer(containerId: string): Promise<void> {
+  await tauriInvoke('docker_start_container', { container_id: containerId })
+}
+
+export async function stopContainer(containerId: string): Promise<void> {
+  await tauriInvoke('docker_stop_container', { container_id: containerId })
+}
+
+export async function removeContainer(containerId: string): Promise<void> {
+  await tauriInvoke('docker_remove_container', { container_id: containerId })
+}
+
+export async function pullImage(imageName: string): Promise<void> {
+  await tauriInvoke('docker_pull_image', { image_name: imageName })
+}
+
+export async function getContainerLogs(containerId: string, tail?: number): Promise<ContainerLogs> {
+  const result = await tauriInvoke<ContainerLogs>('docker_get_container_logs', {
+    container_id: containerId,
+    tail: tail ?? 100,
+  })
+  return result ?? { stdout: '', stderr: '' }
+}
+
+export async function runContainer(options: {
+  image: string
+  name?: string
+  env?: Record<string, string>
+  ports?: Record<string, string>
+  volumes?: Record<string, string>
+  command?: string[]
+  detach?: boolean
+}): Promise<string> {
+  const result = await tauriInvoke<string>('docker_run_container', {
+    image: options.image,
+    name: options.name ?? null,
+    env: options.env ?? {},
+    ports: options.ports ?? {},
+    volumes: options.volumes ?? {},
+    command: options.command ?? [],
+    detach: options.detach ?? true,
+  })
+  return result ?? ''
+}
+
+export async function execInContainer(containerId: string, command: string[]): Promise<string> {
+  const result = await tauriInvoke<string>('docker_exec_in_container', {
+    container_id: containerId,
+    command: command,
+  })
+  return result ?? ''
+}
+
+export async function buildImage(options: { dockerfile_path: string; tag: string; context_path: string }): Promise<void> {
+  await tauriInvoke('docker_build_image', {
+    dockerfile_path: options.dockerfile_path,
+    tag: options.tag,
+    context_path: options.context_path,
   })
 }
 
-// ── Browser Sidecar Commands ────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------
+// System API
+// ------------------------------------------------------------------------------
 
-export interface SidecarInstallStatus {
-  installed: boolean
-  has_node_modules: boolean
-  has_chromium: boolean
-  message: string
+export async function openUrl(url: string): Promise<void> {
+  await tauriInvoke('open_url', { url })
 }
 
-/**
- * Check if browser sidecar dependencies are installed
- */
-export async function browserCheckSidecarInstalled(): Promise<SidecarInstallStatus> {
-  return await tauriInvoke<SidecarInstallStatus>('browser_check_sidecar_installed') ?? {
-    installed: false,
-    has_node_modules: false,
-    has_chromium: false,
-    message: 'Unable to check',
-  }
+export async function getAppVersion(): Promise<string> {
+  const result = await tauriInvoke<string>('get_app_version')
+  return result ?? '0.0.0'
 }
 
-/**
- * Install browser sidecar dependencies (npm packages and Chromium)
- */
-export async function browserInstallSidecar(): Promise<string> {
-  const result = await tauriInvokeOrThrow<string>('browser_install_sidecar')
-  return result
+export async function resolvePath(path: string): Promise<string> {
+  const result = await tauriInvoke<string>('resolve_path', { path })
+  return result ?? path
 }
 
-// ── Python (Nasus stack) Sidecar Commands ────────────────────────────────────
-
-export interface NasusInstallStatus {
-  installed: boolean
-  has_venv: boolean
-  message: string
+export async function getAppDataDir(): Promise<string> {
+  const result = await tauriInvoke<string>('get_app_data_dir')
+  return result ?? ''
 }
 
-/**
- * Check whether the Python venv and sidecar dependencies are installed.
- */
-export async function nasusCheckInstalled(): Promise<NasusInstallStatus> {
-  return await tauriInvoke<NasusInstallStatus>('nasus_check_installed') ?? {
-    installed: false,
-    has_venv: false,
-    message: 'Unable to check — Tauri not available',
-  }
-}
+// ------------------------------------------------------------------------------
+// Model API
+// ------------------------------------------------------------------------------
 
-/**
- * Create the Python venv and install sidecar requirements.
- * Emits `nasus:install_progress` events during installation.
- */
-export async function nasusInstallSidecar(): Promise<string> {
-  return await tauriInvokeOrThrow<string>('nasus_install_sidecar')
-}
-
-/**
- * Check whether the Python sidecar HTTP server is accepting requests.
- */
-export async function nasusIsReady(): Promise<boolean> {
-  return (await tauriInvoke<boolean>('nasus_is_ready')) ?? false
-}
-
-/**
- * Fetch the Python sidecar health payload.
- */
-export async function nasusHealth(): Promise<Record<string, unknown> | undefined> {
-  return await tauriInvoke<Record<string, unknown>>('nasus_health')
-}
-
-/**
- * Configure the Python sidecar with LLM credentials.
- * Called once on startup after API key is available so modules can make LLM calls.
- */
-export async function nasusConfigureLlm(config: {
-  api_key: string
-  api_base: string
-  model: string
-}): Promise<void> {
-  await tauriInvoke('nasus_configure_llm', { config })
-}
-
-export interface AriaSnapshotResult {
-  url: string
-  title: string
-  /** YAML accessibility tree returned by locator.ariaSnapshot() (Playwright v1.49+) */
-  snapshot: string
-}
-
-/**
- * Capture an ARIA accessibility snapshot of the current page via the sidecar.
- * Returns a YAML string optimised for LLM consumption.
- * This is the replacement for the removed page.accessibility.snapshot() API (removed in Playwright v1.57).
- */
-export async function browserAriaSnapshot(
-  sessionId: string,
-  selector?: string,
-): Promise<AriaSnapshotResult | undefined> {
-  return await tauriInvoke<AriaSnapshotResult>('browser_aria_snapshot', {
-    session_id: sessionId,
-    selector,
-  })
-}
-
-// ── Extended DB commands ──────────────────────────────────────────────────────
-
-export interface DbMemory {
-  id: string
-  taskId: string
+export interface ModelResponse {
   content: string
-  contentType?: string | null
-  tags?: string[] | null
-  timestamp: number
-}
-
-export interface DbTraceStep {
-  id: string
-  taskId: string
-  messageId: string
-  stepKind: string
-  toolName?: string | null
-  inputJson?: string | null
-  outputText?: string | null
-  isError: boolean
-  durationMs?: number | null
-  timestamp: number
-}
-
-export interface DbAgentTask {
-  id: string
-  title: string
-  status: string
-  createdAt: number
-  updatedAt: number
-  modelId?: string | null
-  totalTokens: number
-  estimatedCostUsd: number
-}
-
-export async function dbSaveMemory(memory: DbMemory): Promise<void> {
-  await tauriInvoke('db_save_memory', { memory })
-}
-
-export async function dbQueryMemories(taskId?: string, limit?: number): Promise<DbMemory[]> {
-  return (await tauriInvoke<DbMemory[]>('db_query_memories', { taskId, limit })) ?? []
-}
-
-export async function dbDeleteMemory(memoryId: string): Promise<void> {
-  await tauriInvoke('db_delete_memory', { memoryId })
-}
-
-export async function dbAppendTrace(step: DbTraceStep): Promise<void> {
-  await tauriInvoke('db_append_trace', { step })
-}
-
-export async function dbGetTrace(taskId: string): Promise<DbTraceStep[]> {
-  return (await tauriInvoke<DbTraceStep[]>('db_get_trace', { taskId })) ?? []
-}
-
-export async function dbDeleteTrace(taskId: string): Promise<void> {
-  await tauriInvoke('db_delete_trace', { taskId })
-}
-
-export async function dbUpsertTask(task: DbAgentTask): Promise<void> {
-  await tauriInvoke('db_upsert_task', { task })
-}
-
-export async function dbListTasks(limit?: number): Promise<DbAgentTask[]> {
-  return (await tauriInvoke<DbAgentTask[]>('db_list_tasks', { limit })) ?? []
-}
-
-export async function tauriListen<T>(
-  event: string,
-  handler: (payload: T) => void,
-): Promise<() => void> {
-  // Guard: only attempt to subscribe when running inside Tauri.
-  // Accessing @tauri-apps/api/event outside Tauri throws
-  // "Cannot read properties of undefined (reading 'transformCallback')"
-  // because the internals object is not initialised in a plain browser.
-  const win = window as typeof globalThis & {
-    __TAURI_INTERNALS__?: unknown
-    __TAURI__?: unknown
+  model: string
+  usage?: {
+    input_tokens: number
+    output_tokens: number
   }
-  if (!win.__TAURI_INTERNALS__ && !win.__TAURI__) {
-    // Not running in Tauri — silently return a no-op unsubscriber
-    return () => {}
-  }
+}
 
-  try {
-    const { listen } = await import('@tauri-apps/api/event')
-    const unlisten = await listen<T>(event, (e) => handler(e.payload))
-    return unlisten
-  } catch (err) {
-    log.error(`Failed to subscribe to ${event}`, err)
-    return () => {}
-  }
+export async function runModel(model: string, messages: LlmMessage[], options?: {
+  temperature?: number
+  max_tokens?: number
+  system?: string
+}): Promise<ModelResponse> {
+  const result = await tauriInvoke<ModelResponse>('run_model', {
+    model,
+    messages,
+    options: options ?? {},
+  })
+  return result ?? { content: '', model }
+}
+
+// ─── Sidecar lifecycle wrappers ──────────────────────────────────────────────────────
+// These call the Rust commands already implemented in python_sidecar.rs.
+// The sidecar binary must exist at src-tauri/sidecar/nasus-sidecar-<triple>
+// (built by build-sidecar.sh) for start_sidecar to succeed.
+
+export interface SidecarStatus {
+  is_ready: boolean
+  running: boolean
+  sidecar_dir: string | null
+}
+
+/**
+ * Spawn the Python sidecar process.
+ * @param sidecarDir - Absolute path to the directory containing the sidecar binary.
+ *                     Tauri resolves this relative to the app resource dir at runtime.
+ */
+export async function startSidecar(sidecarDir?: string): Promise<void> {
+  await tauriInvoke('start_sidecar', { sidecar_dir: sidecarDir ?? null })
+}
+
+/**
+ * Kill the running Python sidecar process (if any).
+ */
+export async function stopSidecar(): Promise<void> {
+  await tauriInvoke('stop_sidecar')
+}
+
+/**
+ * Get the current sidecar process status.
+ */
+export async function getSidecarStatus(): Promise<SidecarStatus> {
+  return tauriInvoke<SidecarStatus>('sidecar_status')
+}
+
+/**
+ * Restart the sidecar (kill + respawn).
+ * @param sidecarDir - Same path as startSidecar.
+ */
+export async function restartSidecar(sidecarDir?: string): Promise<void> {
+  await tauriInvoke('restart_sidecar', { sidecar_dir: sidecarDir ?? null })
 }
