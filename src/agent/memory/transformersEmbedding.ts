@@ -9,20 +9,19 @@
  * The pipeline is initialised lazily on first call and cached globally so
  * subsequent calls are just an inference pass (~5–20 ms on Apple Silicon WASM).
  *
- * CSP note: We use a static import so env.backends.onnx.wasm.wasmPaths is set
- * synchronously at module evaluation time — before Transformers.js can fall back
- * to loading ort-wasm-*.mjs from cdn.jsdelivr.net (blocked by Tauri's CSP).
- * The WASM/worker files are copied to public/ort/ by the build setup.
+ * CSP note: env.backends.onnx.wasm.wasmPaths is set inside getPipeline() before
+ * the pipeline() call to prevent Transformers.js from loading ort-wasm-*.mjs from
+ * cdn.jsdelivr.net (blocked by Tauri's CSP). The WASM/worker files are copied to
+ * public/ort/ by the build setup.
+ *
+ * @huggingface/transformers is loaded via a dynamic import so it stays out of the
+ * initial JS bundle and is only fetched on first embedding call.
  */
 
-import { pipeline, env } from '@huggingface/transformers'
 import { createSimpleEmbedding } from './MemoryStore'
 import { createLogger } from '../../lib/logger'
 
 const log = createLogger('TransformersEmbedding')
-
-env.allowRemoteModels = true
-env.allowLocalModels = false
 
 // Model ID — q8 quantised for balance of speed and quality
 const MODEL_ID = 'Xenova/all-MiniLM-L6-v2'
@@ -59,14 +58,18 @@ async function getPipeline(): Promise<Pipeline> {
 
   _status = 'loading'
 
-  // Configure ORT WASM paths before any pipeline call to prevent Transformers.js
-  // from loading worker scripts from cdn.jsdelivr.net (violates Tauri CSP).
-  // Done here (not at module level) so it doesn't run in Node/Bun test environments.
-  env.backends.onnx!.wasm!.numThreads = 1
-  env.backends.onnx!.wasm!.wasmPaths = `${location.origin}/ort/`
-
   const loadPromise = (async () => {
     try {
+      const { pipeline, env } = await import('@huggingface/transformers')
+
+      env.allowRemoteModels = true
+      env.allowLocalModels = false
+
+      // Configure ORT WASM paths to prevent Transformers.js from loading
+      // worker scripts from cdn.jsdelivr.net (violates Tauri CSP).
+      env.backends.onnx!.wasm!.numThreads = 1
+      env.backends.onnx!.wasm!.wasmPaths = `${location.origin}/ort/`
+
       const pipe = await pipeline('feature-extraction', MODEL_ID, {
         dtype: 'q8',
         device: 'wasm',

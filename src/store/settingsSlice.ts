@@ -99,6 +99,12 @@ export interface SettingsSlice {
   provider: string
   /** Exa AI API key for web search */
   exaKey: string
+  /** Brave Search API key */
+  braveKey: string
+  /** Serper (Google) API key */
+  serperKey: string
+  /** Tavily API key */
+  tavilyKey: string
   maxIterations: number
   /** Set to true after the user completes onboarding */
   onboardingComplete: boolean
@@ -148,6 +154,9 @@ export interface SettingsSlice {
   getProviderKey: (provider: string) => string
   fetchModelsForProvider: (provider: string) => Promise<void>
   setExaKey: (key: string) => void
+  setBraveKey: (key: string) => void
+  setSerperKey: (key: string) => void
+  setTavilyKey: (key: string) => void
   setMaxIterations: (n: number) => void
   setOnboardingComplete: () => void
   setEnableVerification: (enabled: boolean) => void
@@ -198,6 +207,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   apiBase: 'https://openrouter.ai/api/v1',
   provider: 'openrouter',
   exaKey: '',
+  braveKey: '',
+  serperKey: '',
+  tavilyKey: '',
   maxIterations: DEFAULT_MAX_ITERATIONS,
   onboardingComplete: false,
   executionMode: 'docker',
@@ -391,6 +403,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   },
 
   setExaKey: (key) => set({ exaKey: key }),
+  setBraveKey: (key) => set({ braveKey: key }),
+  setSerperKey: (key) => set({ serperKey: key }),
+  setTavilyKey: (key) => set({ tavilyKey: key }),
   setMaxIterations: (n) => set({ maxIterations: n }),
   setOnboardingComplete: () => set({ onboardingComplete: true }),
   setEnableVerification: (enabled) => set({ enableVerification: enabled }),

@@ -129,7 +129,7 @@ export function Sidebar({ tasks, activeTaskId, onSelectTask, onNewTask, onNewCha
               icon="sparkles"
               title="No tasks yet"
               subtitle="Create your first task to get started"
-              action={onNewTask ? { label: 'New task', onClick: onNewTask } : undefined}
+              action={{ label: 'New task', onClick: () => (onNewChat ?? onNewTask)?.() }}
             />
           ) : (
             <div className="sb-task-list-inner">

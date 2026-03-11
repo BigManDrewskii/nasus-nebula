@@ -24,6 +24,7 @@ const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => 
 const OnboardingScreen = lazy(() => import('./components/OnboardingScreen').then(m => ({ default: m.OnboardingScreen })))
 const InitializationScreen = lazy(() => import('./components/InitializationScreen').then(m => ({ default: m.InitializationScreen })))
 const MemoryBrowser = lazy(() => import('./components/MemoryBrowser').then(m => ({ default: m.MemoryBrowser })))
+const SidecarPrompt = lazy(() => import('./components/SidecarPrompt').then(m => ({ default: m.SidecarPrompt })))
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -58,19 +59,20 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, workspacePath, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, textScale } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, textScale, sidecarInstalled, sidecarPromptShown } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
         setActiveTaskId: s.setActiveTaskId,
         addTask: s.addTask,
         onboardingComplete: s.onboardingComplete,
-        workspacePath: s.workspacePath,
         settingsOpen: s.settingsOpen,
         closeSettings: s.closeSettings,
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
         textScale: s.textScale,
+        sidecarInstalled: s.sidecarInstalled,
+        sidecarPromptShown: s.sidecarPromptShown,
       }))
     )
 
@@ -85,13 +87,15 @@ function App() {
   const [rightPanelVisible, _setRightPanelVisible] = useState(() => loadLayout().rightPanelVisible)
   const [configSections, _setConfigSections] = useState(() => loadLayout().configSections)
   const [sidebarPreference, _setSidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(() => loadLayout().sidebarPreference ?? 'auto')
-  const [_pruneNotice, setPruneNotice] = useState<string | null>(null) // Setter used by useAppEventListeners
-  const [_memoryBrowserOpen, setMemoryBrowserOpen] = useState(false) // Setter used by useAppEventListeners
-  const [_isOffline, setIsOffline] = useState(false) // Setter used by useAppEventListeners
+  const [pruneNotice, setPruneNotice] = useState<string | null>(null)
+  const [memoryBrowserOpen, setMemoryBrowserOpen] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+  const [showSidecarPrompt, setShowSidecarPrompt] = useState(false)
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
   const [updateVersion, setUpdateVersion] = useState('')
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const layoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const outputPanelRef = useRef<HTMLDivElement>(null)
 
   useSidecarHealthPoll()
   useAppEventListeners({
@@ -100,8 +104,13 @@ function App() {
     setPruneNotice,
     setMemoryBrowserOpen,
     setIsOffline,
+    onBrowserActivity: useCallback(() => {
+      if (!sidecarInstalled && !sidecarPromptShown) {
+        setShowSidecarPrompt(true)
+      }
+    }, [sidecarInstalled, sidecarPromptShown]),
   })
-  useWorkspaceFiles(workspacePath)
+  const workspaceFiles = useWorkspaceFiles(activeTaskId)
   useModelSync()
 
   // ------------------------------------------------------------------
@@ -173,8 +182,9 @@ function App() {
       createdAt: new Date(),
     }
     addTask(newTask)
+    setActiveTaskId(newTask.id)
     if (windowWidth < 768) setLeftCollapsed(true)
-  }, [addTask, windowWidth])
+  }, [addTask, setActiveTaskId, windowWidth])
 
   const handleToggleLeft = useCallback(() => setLeftCollapsed(prev => !prev), [])
   const handleToggleRight = useCallback(() => setRightCollapsed(prev => !prev), [])
@@ -193,6 +203,21 @@ function App() {
     }
   }, [])
 
+  // Sync text scale to html[data-scale] so CSS compact overrides activate
+  useEffect(() => {
+    document.documentElement.dataset.scale = textScale === 'compact' ? 'compact' : ''
+  }, [textScale])
+
+  // Auto-select the most recently created task if none is active on startup
+  useEffect(() => {
+    if (isAppReady && onboardingComplete && tasks.length > 0 && !activeTaskId) {
+      const latest = [...tasks].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0]
+      setActiveTaskId(latest.id)
+    }
+  }, [isAppReady, onboardingComplete]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Show initialization screen while services are starting up
   if (!isAppReady) {
     return (
@@ -203,7 +228,6 @@ function App() {
           progress={initStatus.progress}
           onRetry={retryInit}
           onSkip={() => {
-            // Allow skipping non-blocking phases - just mark as ready
             log.debug('Initialization skipped by user')
           }}
         />
@@ -225,36 +249,102 @@ function App() {
   return (
     <ErrorBoundary>
       <div
-        className="flex flex-col w-full h-screen overflow-hidden bg-background text-foreground"
-        style={{ fontSize: `${textScale}rem` }}
+        className="flex flex-col w-full h-screen overflow-hidden"
+        style={{ background: 'var(--bg-base)', color: 'var(--tx-primary)' }}
       >
+        {/* Dedicated titlebar drag region — covers traffic lights zone, uniform height across all panels */}
+        <div className="app-titlebar" data-tauri-drag-region />
         {showUpdateBanner && isUpdateAvailable && (
-          <div className="flex items-center justify-between px-3 py-1.5 bg-amber-50/warm border-b border-amber--200/warm">
-            <span className="text-xs text-amber-800/warm">Update available: v {updateVersion}</span>
+          <div
+            className="flex items-center justify-between px-3 py-1.5 flex-shrink-0"
+            style={{ background: 'rgba(120,60,0,0.18)', borderBottom: '1px solid rgba(234,179,8,0.18)' }}
+          >
+            <span className="text-xs" style={{ color: 'var(--amber-soft)' }}>
+              Update available: v{updateVersion}
+            </span>
             <div className="flex gap-2">
-              <button onClick={handleUpdate} className="text-xs px-2 py-0.5 rounded bg-amber-600/warm text-white hover:bg-amber-700/warm">Install & Restart</button>
-              <button onClick={() => setShowUpdateBanner(false)} className="text-xs text-amber-600/warm hover:text-amber-800
-warm">Dismiss</button>
+              <button
+                onClick={handleUpdate}
+                className="text-xs px-2 py-0.5 rounded font-medium"
+                style={{ background: 'var(--amber)', color: '#000' }}
+              >
+                Install & Restart
+              </button>
+              <button
+                onClick={() => setShowUpdateBanner(false)}
+                className="text-xs"
+                style={{ color: 'var(--tx-tertiary)' }}
+              >
+                Dismiss
+              </button>
             </div>
+          </div>
+        )}
+        {isOffline && (
+          <div
+            className="flex items-center justify-center gap-2 px-3 py-1 flex-shrink-0"
+            style={{ background: 'rgba(239,68,68,0.1)', borderBottom: '1px solid rgba(239,68,68,0.2)' }}
+          >
+            <Pxi name="wifi-slash" size={11} style={{ color: '#f87171' }} />
+            <span className="text-xs" style={{ color: '#fca5a5' }}>You're offline — agent features unavailable</span>
+          </div>
+        )}
+        {pruneNotice && (
+          <div
+            className="flex items-center justify-between px-3 py-1 flex-shrink-0"
+            style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+          >
+            <span className="text-xs" style={{ color: 'var(--tx-secondary)' }}>{pruneNotice}</span>
+            <button
+              onClick={() => setPruneNotice(null)}
+              className="text-xs"
+              style={{ color: 'var(--tx-muted)', marginLeft: 8 }}
+            >✕</button>
           </div>
         )}
         <div className="flex flex-1 overflow-hidden">
           {showLeftSidebar && (
-            <Sidebar
-              position="left"
-              tasks={tasks}
-              activeTaskId={activeTaskId}
-              onSelectTask={handleSelectTask}
-              onNewChat={handleNewChat}
-              collapsed={leftCollapsed}
-              onToggleCollapse={handleToggleLeft}
-              minimal={sidebarMinimal}
-              onOpenSettings={openSettings}
-            />
+            <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
+              <Sidebar
+                position="left"
+                tasks={tasks}
+                activeTaskId={activeTaskId}
+                onSelectTask={handleSelectTask}
+                onNewChat={handleNewChat}
+                collapsed={leftCollapsed}
+                onToggleCollapse={handleToggleLeft}
+                minimal={sidebarMinimal}
+                onOpenSettings={openSettings}
+              />
+            </div>
+          )}
+          {showLeftSidebar && leftCollapsed && (
+            <button
+              className="sidebar-reopen-tab"
+              onClick={handleToggleLeft}
+              title="Open sidebar (⌘B)"
+              aria-label="Open sidebar"
+            >
+              <Pxi name="chevron-right" size={11} />
+              <span className="tab-label">Tasks</span>
+            </button>
+          )}
+          {rightCollapsed && rightPanelVisible && showLeftSidebar && (
+            <button
+              className="workspace-reopen-tab"
+              onClick={handleToggleRight}
+              title="Open workspace panel (⌘⇧\)"
+              aria-label="Open workspace panel"
+            >
+              <Pxi name="chevron-left" size={11} />
+              <span className="tab-label">Workspace</span>
+            </button>
           )}
           <div className="flex flex-1 overflow-hidden min-w-0">
             <ChatView
               task={activeTask}
+              onOpenSettings={openSettings}
+              workspaceFileCount={workspaceFiles.length}
               rightCollapsed={rightCollapsed}
               onToggleRight={handleToggleRight}
             />
@@ -264,17 +354,23 @@ warm">Dismiss</button>
                 onWidthChange={handleSetRightPanelWidth}
                 onCollapse={handleToggleRight}
                 onExpand={() => _setRightPanelVisible(true)}
+                collapsed={rightCollapsed}
+                sidebarRef={outputPanelRef}
               />
             )}
-           {!rightCollapsed && rightPanelVisible && (
+            <div
+              ref={outputPanelRef}
+              className={`app-sidebar-right${(rightCollapsed || !rightPanelVisible) ? ' app-sidebar--collapsed' : ''}`}
+              style={{ width: `${rightPanelWidth * 100}%` }}
+            >
               <OutputPanel
-                files={[]}
+                files={workspaceFiles}
                 activeTab={rightActiveTab}
                 onTabChange={handleTabChange}
                 onCollapse={handleToggleRight}
                 onExpand={() => _setRightPanelVisible(true)}
               />
-            )}
+            </div>
           </div>
           {showRightSidebar && (
             <Sidebar
@@ -297,7 +393,19 @@ warm">Dismiss</button>
               onClose={closeSettings}
             />
           )}
-          <MemoryBrowser />
+          {memoryBrowserOpen && (
+            <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 360, zIndex: 200, display: 'flex', flexDirection: 'column', background: '#0d0d0d', borderLeft: '1px solid var(--glass-border)' }}>
+              <MemoryBrowser onClose={() => setMemoryBrowserOpen(false)} />
+            </div>
+          )}
+          {showSidecarPrompt && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <SidecarPrompt
+                onInstallComplete={() => setShowSidecarPrompt(false)}
+                onSkip={() => setShowSidecarPrompt(false)}
+              />
+            </div>
+          )}
         </Suspense>
       </div>
     </ErrorBoundary>

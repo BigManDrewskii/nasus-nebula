@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react'
-import JSZip from 'jszip'
 import type { WorkspaceFile } from '../hooks/useWorkspaceFiles'
 import { Pxi } from './Pxi'
 
@@ -76,6 +75,7 @@ export function FilesPane({ files }: FilesPaneProps) {
     if (targets.length === 0) return
     setZipping(true)
     try {
+      const JSZip = (await import('jszip')).default
       const zip = new JSZip()
       for (const f of targets) {
         zip.file(f.name, f.content)

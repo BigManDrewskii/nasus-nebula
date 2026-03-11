@@ -57,6 +57,9 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
         pendingPlan,
         approvePlan,
         rejectPlan,
+        pendingToolApproval,
+        approveTool,
+        rejectTool,
         setSandboxStatus,
       sandboxStatus: globalSandboxStatus,
       extensionConnected,
@@ -94,6 +97,9 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
         pendingPlan: s.pendingPlan,
         approvePlan: s.approvePlan,
         rejectPlan: s.rejectPlan,
+        pendingToolApproval: s.pendingToolApproval,
+        approveTool: s.approveTool,
+        rejectTool: s.rejectTool,
         setSandboxStatus: s.setSandboxStatus,
         sandboxStatus: s.sandboxStatus,
         extensionConnected: s.extensionConnected,
@@ -621,10 +627,10 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
   }
 
     useEffect(() => {
-      if (pendingPlan) {
+      if (pendingPlan || pendingToolApproval) {
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
       }
-    }, [pendingPlan])
+    }, [pendingPlan, pendingToolApproval])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -632,11 +638,11 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
       if (mod && e.key === ',') { e.preventDefault(); onOpenSettings?.() }
       // When the plan modal is open, Escape is handled by the modal itself (Skip).
       // Don't let the ChatView handler also fire stopAgent on the same keypress.
-      if (e.key === 'Escape' && isActive && !showMemory && !pendingPlan) { e.preventDefault(); handleStopRef.current?.() }
+      if (e.key === 'Escape' && isActive && !showMemory && !pendingPlan && !pendingToolApproval) { e.preventDefault(); handleStopRef.current?.() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isActive, showMemory, onOpenSettings, pendingPlan])
+  }, [isActive, showMemory, onOpenSettings, pendingPlan, pendingToolApproval])
 
   // Slice from index 1 to skip the persisted welcome message (shown only in empty state)
   const visibleMessages = messages.slice(1)
@@ -801,6 +807,54 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                   onReject={rejectPlan}
                   inputAreaHeight={inputAreaHeight}
                 />
+              )}
+
+              {/* Tool approval panel — shown when agent needs permission to run a sensitive tool */}
+              {pendingToolApproval && task && (
+                <div
+                  className="cv-tool-approval"
+                  style={{ marginBottom: 8, maxWidth: 780, marginLeft: 'auto', marginRight: 'auto', padding: '0 20px' }}
+                >
+                  <div
+                    style={{
+                      background: 'rgba(18,18,18,0.97)',
+                      border: '1px solid rgba(234,179,8,0.3)',
+                      borderRadius: 10,
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <Pxi name="shield-exclamation" size={13} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--tx-primary)' }}>
+                          Permission required: <code style={{ fontFamily: 'monospace', background: 'rgba(255,255,255,0.07)', padding: '0 4px', borderRadius: 4 }}>{pendingToolApproval.tool}</code>
+                        </span>
+                        {pendingToolApproval.reason && (
+                          <p style={{ margin: '4px 0 0', fontSize: 'var(--text-2xs)', color: 'var(--tx-secondary)', lineHeight: 1.4 }}>
+                            {pendingToolApproval.reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => rejectTool(task.id, pendingToolApproval.tool)}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'var(--tx-secondary)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
+                      >
+                        Deny
+                      </button>
+                      <button
+                        onClick={() => approveTool(task.id, pendingToolApproval.tool)}
+                        style={{ padding: '4px 12px', borderRadius: 6, border: 'none', background: 'var(--amber)', color: '#000', fontSize: 'var(--text-xs)', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Input */}

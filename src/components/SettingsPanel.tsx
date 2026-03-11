@@ -60,6 +60,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     openRouterModels, setOpenRouterModels,
     ollamaModels, setOllamaModels,
     exaKey, setExaKey,
+    braveKey, setBraveKey,
+    serperKey, setSerperKey,
+    tavilyKey, setTavilyKey,
     maxIterations, setMaxIterations,
     enableVerification, setEnableVerification,
     addRecentWorkspacePath,
@@ -85,6 +88,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setOllamaModels: s.setOllamaModels,
     exaKey: s.exaKey,
     setExaKey: s.setExaKey,
+    braveKey: s.braveKey,
+    setBraveKey: s.setBraveKey,
+    serperKey: s.serperKey,
+    setSerperKey: s.setSerperKey,
+    tavilyKey: s.tavilyKey,
+    setTavilyKey: s.setTavilyKey,
     maxIterations: s.maxIterations,
     setMaxIterations: s.setMaxIterations,
     enableVerification: s.enableVerification,
@@ -110,6 +119,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
   const [localExaKey, setLocalExaKey] = useState(exaKey || '')
+  const [localBraveKey, setLocalBraveKey] = useState(braveKey || '')
+  const [localSerperKey, setLocalSerperKey] = useState(serperKey || '')
+  const [localTavilyKey, setLocalTavilyKey] = useState(tavilyKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
   // Preserve custom API base (e.g. proxy URL) — only reset to OR_BASE when switching back to openrouter
   const OR_BASE = 'https://openrouter.ai/api/v1'
@@ -412,6 +424,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
     setLocalExaKey('')
+    setLocalBraveKey('')
+    setLocalSerperKey('')
+    setLocalTavilyKey('')
     setLocalMaxIterations('50')
     setLocalEnableVerification(true)
     setLocalRateLimitEnabled(true)
@@ -504,7 +519,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setApiBase(finalApiBase)
       setProvider(finalProvider)
         const trimmedExaKey = localExaKey.trim()
+        const trimmedBraveKey = localBraveKey.trim()
+        const trimmedSerperKey = localSerperKey.trim()
+        const trimmedTavilyKey = localTavilyKey.trim()
         setExaKey(trimmedExaKey)
+        setBraveKey(trimmedBraveKey)
+        setSerperKey(trimmedSerperKey)
+        setTavilyKey(trimmedTavilyKey)
 
         // Persist Exa key to OS keyring (not localStorage)
         try {
@@ -516,6 +537,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
         const searchConfig = {
           exaKey: trimmedExaKey,
+          braveKey: trimmedBraveKey,
+          serperKey: trimmedSerperKey,
+          tavilyKey: trimmedTavilyKey,
         }
 
         try {
@@ -1178,6 +1202,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               <SearchSection
                 exaKey={localExaKey}
                 onExaKeyChange={setLocalExaKey}
+                braveKey={localBraveKey}
+                onBraveKeyChange={setLocalBraveKey}
+                serperKey={localSerperKey}
+                onSerperKeyChange={setLocalSerperKey}
+                tavilyKey={localTavilyKey}
+                onTavilyKeyChange={setLocalTavilyKey}
               />
             </>
             )}
@@ -1380,21 +1410,51 @@ function OllamaStatusBanner() {
 
 function SearchSection({
   exaKey, onExaKeyChange,
+  braveKey, onBraveKeyChange,
+  serperKey, onSerperKeyChange,
+  tavilyKey, onTavilyKeyChange,
 }: {
   exaKey: string
   onExaKeyChange: (v: string) => void
+  braveKey: string
+  onBraveKeyChange: (v: string) => void
+  serperKey: string
+  onSerperKeyChange: (v: string) => void
+  tavilyKey: string
+  onTavilyKeyChange: (v: string) => void
 }) {
   return (
     <div className="flex-col gap-3">
       <Field label="Exa API Key" icon="key"
-        hint={<>1,000 free searches/month, no credit card required. Get your key at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
+        hint={<>1,000 free searches/month, no credit card needed. Get yours at <a href="https://dashboard.exa.ai" target="_blank" rel="noreferrer" className="settings-link">dashboard.exa.ai</a></>}
       >
-            <input key="exa-key-input" type="password" name="exa-api-key" autoComplete="off" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
-              placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
-          />
+        <input key="exa-key-input" type="password" name="exa-api-key" autoComplete="off" value={exaKey} onChange={(e) => onExaKeyChange(e.target.value)}
+          placeholder="exa_…" className="settings-input placeholder-[var(--tx-muted)]"
+        />
+      </Field>
+      <Field label="Brave Search API Key" icon="key"
+        hint={<>2,000 free queries/month. Get yours at <a href="https://api.search.brave.com" target="_blank" rel="noreferrer" className="settings-link">api.search.brave.com</a></>}
+      >
+        <input key="brave-key-input" type="password" name="brave-api-key" autoComplete="off" value={braveKey} onChange={(e) => onBraveKeyChange(e.target.value)}
+          placeholder="BSA…" className="settings-input placeholder-[var(--tx-muted)]"
+        />
+      </Field>
+      <Field label="Serper API Key" icon="key"
+        hint={<>2,500 free queries. Google results via Serper. Get yours at <a href="https://serper.dev" target="_blank" rel="noreferrer" className="settings-link">serper.dev</a></>}
+      >
+        <input key="serper-key-input" type="password" name="serper-api-key" autoComplete="off" value={serperKey} onChange={(e) => onSerperKeyChange(e.target.value)}
+          placeholder="…" className="settings-input placeholder-[var(--tx-muted)]"
+        />
+      </Field>
+      <Field label="Tavily API Key" icon="key"
+        hint={<>1,000 free API credits. Get yours at <a href="https://app.tavily.com" target="_blank" rel="noreferrer" className="settings-link">app.tavily.com</a></>}
+      >
+        <input key="tavily-key-input" type="password" name="tavily-api-key" autoComplete="off" value={tavilyKey} onChange={(e) => onTavilyKeyChange(e.target.value)}
+          placeholder="tvly-…" className="settings-input placeholder-[var(--tx-muted)]"
+        />
       </Field>
     </div>
-    )
+  )
 }
 
 // ─── ModelRouterSection ───────────────────────────────────────────────────────

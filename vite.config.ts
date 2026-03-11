@@ -20,6 +20,17 @@ export default defineConfig({
   clearScreen: false,
   build: {
     sourcemap: 'hidden',
+    target: 'esnext',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-ai': ['ai', '@ai-sdk/openai', '@openrouter/ai-sdk-provider'],
+          'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          'vendor-diff': ['@git-diff-view/react'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

@@ -179,7 +179,7 @@ export function ToastOverlay() {
       const healthColor = healthColors[healthStatus]
 
     return (
-      <header className="flex-shrink-0 flex items-center justify-between ch-header">
+      <header data-tauri-drag-region className="flex-shrink-0 flex items-center justify-between ch-header">
         {/* Left cluster — task title */}
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2

@@ -1,5 +1,6 @@
 import { ActionChips } from '../ActionChips'
 import { UserInputArea, type UserInputAreaHandle } from '../UserInputArea'
+import { NasusLogo } from '../NasusLogo'
 import type { Attachment } from '../../types'
 
 interface ChatEmptyStateProps {
@@ -31,19 +32,33 @@ export function ChatEmptyState({
 }: ChatEmptyStateProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <div style={{ width: '100%', maxWidth: 540, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24 }}>
+      <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28 }}>
 
-        {/* Headline block */}
-        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <h3
-            className="font-display font-semibold"
-            style={{ fontSize: 'var(--text-2xl)', color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.025em', lineHeight: 1.2 }}
-          >
-            What would you like to build?
-          </h3>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
-            Describe your task and Nasus will get to work
-          </p>
+        {/* Logo + headline block */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{
+              position: 'absolute',
+              width: 72, height: 72,
+              borderRadius: '50%',
+              background: 'var(--amber)',
+              filter: 'blur(28px)',
+              opacity: 0.14,
+              pointerEvents: 'none',
+            }} />
+            <NasusLogo size={34} />
+          </div>
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <h3
+              className="font-display font-semibold"
+              style={{ fontSize: 'var(--text-2xl)', color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.03em', lineHeight: 1.15 }}
+            >
+              What would you like to build?
+            </h3>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-tertiary)', margin: 0, lineHeight: 1.5 }}>
+              Describe your task and Nasus will get to work
+            </p>
+          </div>
         </div>
 
         {/* 4 action chips */}
@@ -80,19 +95,19 @@ export function ChatEmptyState({
         </div>
 
         {/* Keyboard shortcuts */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.35 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'center', opacity: 0.45 }}>
           {[
             { key: '⌘N', label: 'New task' },
             { key: '⌘,', label: 'Settings' },
             { key: 'Esc', label: 'Stop' },
           ].map(({ key, label }) => (
-            <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <kbd style={{
                 fontSize: 'var(--text-2xs)', fontFamily: 'var(--font-mono)',
                 color: 'var(--tx-secondary)',
                 background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 4, padding: '1px 5px',
+                border: '1px solid rgba(255,255,255,0.09)',
+                borderRadius: 4, padding: '2px 6px',
               }}>{key}</kbd>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)' }}>{label}</span>
             </span>

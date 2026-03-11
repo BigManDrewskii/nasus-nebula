@@ -23,6 +23,12 @@ export interface SearchConfig {
   exaKey?: string
   /** Generic API key (alias for exaKey, used for compatibility) */
   apiKey?: string
+  /** Brave Search API key */
+  braveKey?: string
+  /** Serper (Google) API key */
+  serperKey?: string
+  /** Tavily API key */
+  tavilyKey?: string
 }
 
 export interface SearchResult {
@@ -121,22 +127,26 @@ export async function searchRaw(
   numResults = 5,
 ): Promise<SearchResult[]> {
   const store = useAppStore.getState()
-  const exaKey = store.exaKey
-  
-  // Try Exa first if key is present
-  if (exaKey && exaKey.trim()) {
+  const exaKey = store.exaKey?.trim() ?? ''
+  const braveKey = store.braveKey?.trim() ?? ''
+  const serperKey = store.serperKey?.trim() ?? ''
+  const tavilyKey = store.tavilyKey?.trim() ?? ''
+
+  const hasAnyKey = exaKey || braveKey || serperKey || tavilyKey
+
+  if (hasAnyKey) {
     try {
       const results = await tauriInvoke<SearchResult[]>('search', {
         query,
         numResults,
-        searchConfig: { exaKey },
+        searchConfig: { exaKey, braveKey, serperKey, tavilyKey },
       })
       if (results && results.length > 0) return results
     } catch (e) {
-        log.warn('Exa search failed, trying fallback', e instanceof Error ? e : new Error(String(e)))
+      log.warn('Search failed, trying DuckDuckGo fallback', e instanceof Error ? e : new Error(String(e)))
     }
   }
-  
+
   // Fallback to DuckDuckGo
   return await duckduckgoSearch(query, numResults)
 }

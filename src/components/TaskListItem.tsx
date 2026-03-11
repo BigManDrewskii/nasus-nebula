@@ -57,12 +57,13 @@ interface TaskListItemProps {
 // ── Task list item ────────────────────────────────────────────────────────────
 
 export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick }: TaskListItemProps) {
-  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask } = useAppStore(
+  const { deleteTask, updateTaskTitle, toggleTaskPin, duplicateTask, agentTaskStatus } = useAppStore(
     useShallow((s) => ({
       deleteTask: s.deleteTask,
       updateTaskTitle: s.updateTaskTitle,
       toggleTaskPin: s.toggleTaskPin,
       duplicateTask: s.duplicateTask,
+      agentTaskStatus: s.agentTasks[task.id]?.status ?? null,
     }))
   )
   const [hovered, setHovered] = useState(false)
@@ -218,7 +219,19 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
             {task.title}
           </span>
 
-          {!hovered && <StatusDot status={task.status} />}
+          {!hovered && (
+            agentTaskStatus === 'planning' ? (
+              <span title="Planning…" style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <Pxi name="spinner-third" size={10} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
+              </span>
+            ) : agentTaskStatus === 'awaiting_approval' ? (
+              <span title="Awaiting approval" style={{ flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+                <Pxi name="clock" size={10} style={{ color: 'var(--amber)' }} />
+              </span>
+            ) : (
+              <StatusDot status={task.status} />
+            )
+          )}
 
             {hovered && (
               <button

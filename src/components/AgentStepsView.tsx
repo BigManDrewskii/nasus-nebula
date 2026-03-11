@@ -904,6 +904,7 @@ function formatActionLabel(tool: string, input: Record<string, unknown>): { labe
       return { label: `Reading ${fileName}`, sublabel: path !== fileName ? path : null }
 
     case 'patch_file':
+    case 'edit_file':
       return { label: `Editing ${fileName}`, sublabel: path !== fileName ? path : null }
 
     case 'list_files':
@@ -966,7 +967,8 @@ function toolIcon(tool: string): string {
     case 'bash_execute':       return 'bolt'
     case 'read_file':          return 'eye'
     case 'write_file':         return 'pencil'
-    case 'patch_file':         return 'edit'
+    case 'patch_file':
+    case 'edit_file':          return 'edit'
     case 'http_fetch':         return 'globe'
     case 'list_files':         return 'folder-open'
     case 'search_web':         return 'search'
@@ -984,7 +986,8 @@ function toolIcon(tool: string): string {
 function toolIconColor(tool: string): string {
   switch (tool) {
     case 'write_file':
-    case 'patch_file':         return 'oklch(73% 0.17 55)'
+    case 'patch_file':
+    case 'edit_file':          return 'oklch(73% 0.17 55)'
     case 'read_file':          return 'oklch(72% 0.12 220)'
     case 'search_web':         return 'oklch(75% 0.14 145)'
     case 'http_fetch':         return 'oklch(72% 0.12 260)'

@@ -8,6 +8,8 @@ interface AppEventHandlers {
   setPruneNotice: (msg: string | null) => void
   setMemoryBrowserOpen: (open: boolean) => void
   setIsOffline: (offline: boolean) => void
+  /** Called when browser automation activity fires — use to gate SidecarPrompt */
+  onBrowserActivity?: () => void
 }
 
 /**
@@ -20,19 +22,22 @@ export function useAppEventListeners({
   setPruneNotice,
   setMemoryBrowserOpen,
   setIsOffline,
+  onBrowserActivity,
 }: AppEventHandlers) {
   const setBrowserActivityActive = useAppStore((s) => s.setBrowserActivityActive)
+  const addToast = useAppStore((s) => s.addToast)
 
-  // Browser activity → auto-open browser panel
+  // Browser activity → auto-open browser panel + notify caller
   useEffect(() => {
     const handler = () => {
       setBrowserActivityActive(true)
       setRightCollapsed(false)
       setRightActiveTab('browser')
+      onBrowserActivity?.()
     }
     window.addEventListener('nasus:browser-activity', handler)
     return () => window.removeEventListener('nasus:browser-activity', handler)
-  }, [setBrowserActivityActive, setRightCollapsed, setRightActiveTab])
+  }, [setBrowserActivityActive, setRightCollapsed, setRightActiveTab, onBrowserActivity])
 
   // Tasks pruned → show temporary notice
   useEffect(() => {
@@ -62,6 +67,19 @@ export function useAppEventListeners({
     window.addEventListener('nasus:open-memory-browser', handler)
     return () => window.removeEventListener('nasus:open-memory-browser', handler)
   }, [setMemoryBrowserOpen])
+
+  // Free limit warning → amber toast
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const remaining = (e as CustomEvent).detail?.remaining
+      const msg = typeof remaining === 'number'
+        ? `${remaining} free request${remaining !== 1 ? 's' : ''} remaining on this model.`
+        : 'Approaching free tier request limit.'
+      addToast(msg, 'amber')
+    }
+    window.addEventListener('nasus:free-limit-warning', handler)
+    return () => window.removeEventListener('nasus:free-limit-warning', handler)
+  }, [addToast])
 
   // Offline / online
   useEffect(() => {

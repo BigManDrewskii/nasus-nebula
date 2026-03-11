@@ -47,47 +47,48 @@ interface ActionChipsProps {
 export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%' }}>
-        {chips.map((chip) => (
-          <button
-            key={chip.label}
-            onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
-            className="chip-interactive"
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 10,
-              padding: '9px 12px',
-              borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.07)',
-              background: 'rgba(255,255,255,0.025)',
-              cursor: 'pointer',
-              color: 'var(--tx-secondary)',
-              textAlign: 'left',
-              transition: 'background 0.12s, border-color 0.12s, color 0.12s',
-            }}
-          >
+      {chips.map((chip) => (
+        <button
+          key={chip.label}
+          onClick={() => chip.autoSend ? onSend(chip.prompt) : onPrefill(chip.prompt)}
+          className="chip-interactive"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+            padding: '10px 12px',
+            borderRadius: 10,
+            border: '1px solid rgba(255,255,255,0.07)',
+            background: 'rgba(255,255,255,0.02)',
+            cursor: 'pointer',
+            color: 'var(--tx-secondary)',
+            textAlign: 'left',
+            transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+          }}
+        >
           {/* Icon */}
-          <div style={{
-            width: 24,
-            height: 24,
-            borderRadius: 6,
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.09)',
+          <div className="chip-icon-wrap" style={{
+            width: 26,
+            height: 26,
+            borderRadius: 7,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             flexShrink: 0,
             marginTop: 1,
+            transition: 'background 0.15s, border-color 0.15s',
           }}>
-            <Pxi name={chip.icon} size={12} style={{ color: 'var(--tx-secondary)' }} />
+            <Pxi name={chip.icon} size={12} className="chip-icon-glyph" style={{ color: 'var(--tx-tertiary)', transition: 'color 0.15s' }} />
           </div>
 
           {/* Label + description */}
           <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={chip.label}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={chip.label}>
               {chip.label}
             </div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)', marginTop: 1 }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)', marginTop: 2 }}>
               {chip.description}
             </div>
           </div>

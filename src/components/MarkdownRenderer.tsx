@@ -8,7 +8,7 @@
  * and passed to ShikiHighlighter via the `highlighter` prop so no WASM or CDN is needed.
  */
 
-import { useEffect, useState, memo } from 'react'
+import { useEffect, useState, memo, useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { HighlighterCore } from 'shiki/core'
@@ -68,7 +68,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
     highlighterPromise.then(setHighlighter)
   }, [])
 
-  const components: Components = {
+  const components = useMemo<Components>(() => ({
     // ── Code: inline vs block ─────────────────────────────────────────────────
     code({ className, children, node, ...props }) {
       const lang = className?.match(/language-(\w+)/)?.[1] ?? ''
@@ -185,7 +185,7 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
     td({ children }) {
       return <td className="md-td">{children}</td>
     },
-  }
+  }), [highlighter])
 
   return (
     <div>

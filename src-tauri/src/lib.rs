@@ -51,6 +51,12 @@ pub struct Config {
 #[serde(rename_all = "camelCase")]
 pub struct SearchConfig {
     pub exa_key: String,
+    #[serde(default)]
+    pub brave_key: String,
+    #[serde(default)]
+    pub serper_key: String,
+    #[serde(default)]
+    pub tavily_key: String,
 }
 
 pub struct AppState {
@@ -405,15 +411,40 @@ async fn search(
         cfg
     };
 
-    // Use Exa as the sole search provider
+    // Add providers in priority order based on configured keys
     if !config.exa_key.is_empty() {
         log::debug!("[Search] Adding Exa provider");
         providers.push(Box::new(search::providers::exa::ExaProvider {
             api_key: config.exa_key,
             client: client.clone(),
         }));
-    } else {
-        log::warn!("[Search] exa_key is empty, no providers added!");
+    }
+    if !config.brave_key.is_empty() {
+        log::debug!("[Search] Adding Brave provider");
+        providers.push(Box::new(search::providers::brave::BraveProvider {
+            api_key: config.brave_key,
+            client: client.clone(),
+        }));
+    }
+    if !config.serper_key.is_empty() {
+        log::debug!("[Search] Adding Serper provider");
+        providers.push(Box::new(search::providers::serper::SerperProvider {
+            api_key: config.serper_key,
+            client: client.clone(),
+        }));
+    }
+    if !config.tavily_key.is_empty() {
+        log::debug!("[Search] Adding Tavily provider");
+        providers.push(Box::new(search::providers::tavily::TavilyProvider {
+            api_key: config.tavily_key,
+            client: client.clone(),
+        }));
+    }
+    if providers.is_empty() {
+        log::debug!("[Search] No API keys configured, falling back to DuckDuckGo");
+        providers.push(Box::new(search::providers::ddg::DuckDuckGoProvider {
+            client: client.clone(),
+        }));
     }
 
     log::debug!("[Search] Total providers: {}", providers.len());
