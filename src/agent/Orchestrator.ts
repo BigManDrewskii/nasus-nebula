@@ -306,6 +306,7 @@ export class AgentOrchestrator {
       userInput: params.userMessage,
       messages: params.userMessages,
       tools: [],
+      enableVerification: this.config.enableVerification,
     }
 
     try {
@@ -371,6 +372,7 @@ export class AgentOrchestrator {
       userInput: params.userMessage,
       messages: params.userMessages,
       tools: [],
+      enableVerification: this.config.enableVerification,
     }
 
     try {

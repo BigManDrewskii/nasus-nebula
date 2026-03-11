@@ -898,7 +898,7 @@ export class ExecutionAgent extends BaseAgent {
           // This catches cases where the agent edits task_plan.md directly without using
           // update_plan, causing the in-memory plan and file to drift.
           const ws = workspaceManager.getWorkspaceSync(taskId)
-          const planFile = ws.get('task_plan.md') ?? ''
+          const planFile = ws?.get('task_plan.md') ?? ''
           const fileChecked = (planFile.match(/\[x\]/gi) ?? []).length
           const planChecked = this.completedCheckboxes
           const divergence = Math.abs(fileChecked - planChecked)
