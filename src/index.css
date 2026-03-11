@@ -1054,7 +1054,6 @@ html, body, #root {
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
-  max-width: calc(100% - 384px); /* 380px chat min + 4px divider — prevents right-edge clip */
   background: rgba(11, 11, 11, 0.4);
   backdrop-filter: var(--glass-blur);
   transition: width var(--sidebar-transition);

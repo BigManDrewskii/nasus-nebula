@@ -85,11 +85,13 @@ export function PanelDivider({
       const newWidthPx = currentWidthPx + deltaX
       const newWidth = newWidthPx / viewportWidth
 
-      // Check min width (300px) and max width capped to preserve 380px chat minimum
+      // Use the actual inner container width (not full viewport) so the panel
+      // can never exceed what's available after the left sidebar is accounted for
+      const containerWidth = dividerRef.current?.parentElement?.clientWidth ?? viewportWidth
       const minWidthPx = 300
       const minWidth = minWidthPx / viewportWidth
       const chatMinPx = 380
-      const maxWidthPx = viewportWidth - chatMinPx - 4 // 4 = divider width
+      const maxWidthPx = containerWidth - chatMinPx - 4 // 4 = divider width
       const maxWidth = Math.min(0.6, maxWidthPx / viewportWidth)
 
       // Snap-close: if dragged below 200px, collapse

@@ -35,6 +35,13 @@ function defaultPanelWidth(): number {
   return 0.38
 }
 
+// These values must match the --sidebar-width CSS custom property tiers
+function getSidebarWidthPx(windowWidth: number): number {
+  if (windowWidth < 1100) return 200
+  if (windowWidth < 1440) return 230
+  return 260
+}
+
 interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
@@ -203,6 +210,18 @@ function App() {
   }, [handleNewChat, handleToggleLeft])
   const handleTabChange = useCallback((tab: Tab) => setRightActiveTab(tab), [])
   const handleSetRightPanelWidth = useCallback((w: number) => _setRightPanelWidth(w), [])
+
+  // Compute the right panel's pixel width, clamped to the actual inner row space.
+  // rightPanelWidth is a fraction of windowWidth (full viewport), but the panel
+  // lives in an inner row that's (windowWidth - left_sidebar) wide. Without this
+  // clamp the panel overflows its container and overflow:hidden clips the right edge.
+  const rightPanelPx = useMemo(() => {
+    const rawPx = Math.round(rightPanelWidth * windowWidth)
+    if (sidebarPosition !== 'left' || leftCollapsed) return rawPx
+    const innerRowPx = windowWidth - getSidebarWidthPx(windowWidth)
+    const maxPx = Math.max(300, innerRowPx - 380 - 4) // 380 chat min + 4 divider
+    return Math.min(rawPx, maxPx)
+  }, [rightPanelWidth, windowWidth, sidebarPosition, leftCollapsed])
 
   // Handle updates
   const handleUpdate = useCallback(async () => {
@@ -383,7 +402,7 @@ function App() {
             <div
               ref={outputPanelRef}
               className={`app-sidebar-right${(rightCollapsed || !rightPanelVisible) ? ' app-sidebar--collapsed' : ''}`}
-              style={{ width: `${Math.round(rightPanelWidth * windowWidth)}px` }}
+              style={{ width: `${rightPanelPx}px` }}
             >
               <OutputPanel
                 files={workspaceFiles}
