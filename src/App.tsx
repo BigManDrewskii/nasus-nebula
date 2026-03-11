@@ -28,13 +28,19 @@ const SidecarPrompt = lazy(() => import('./components/SidecarPrompt').then(m => 
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
+function defaultPanelWidth(): number {
+  const w = window.innerWidth
+  if (w < 1100) return 0.28
+  if (w < 1440) return 0.33
+  return 0.38
+}
+
 interface LayoutState {
   leftCollapsed: boolean
   rightCollapsed: boolean
   rightActiveTab: Tab
   rightPanelWidth: number
   rightPanelVisible: boolean
-  configSections: Record<string, boolean>
   sidebarPreference?: 'auto' | 'always-left' | 'always-right' | 'minimal'
 }
 
@@ -47,9 +53,8 @@ function loadLayout(): LayoutState {
     leftCollapsed: false,
     rightCollapsed: false,
     rightActiveTab: 'preview',
-    rightPanelWidth: 0.4,
+    rightPanelWidth: defaultPanelWidth(),
     rightPanelVisible: true,
-    configSections: { model: true, parameters: false, systemPrompt: false, stats: false },
     sidebarPreference: 'auto'
   }
 }
@@ -85,7 +90,6 @@ function App() {
   const [rightActiveTab, setRightActiveTab] = useState<Tab>(() => loadLayout().rightActiveTab)
   const [rightPanelWidth, _setRightPanelWidth] = useState(() => loadLayout().rightPanelWidth)
   const [rightPanelVisible, _setRightPanelVisible] = useState(() => loadLayout().rightPanelVisible)
-  const [configSections, _setConfigSections] = useState(() => loadLayout().configSections)
   const [sidebarPreference, _setSidebarPreference] = useState<'auto' | 'always-left' | 'always-right' | 'minimal'>(() => loadLayout().sidebarPreference ?? 'auto')
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
   const [memoryBrowserOpen, setMemoryBrowserOpen] = useState(false)
@@ -130,15 +134,14 @@ function App() {
         rightActiveTab,
         rightPanelWidth,
         rightPanelVisible,
-        configSections,
         sidebarPreference,
       })
     }, 300)
-  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, configSections, sidebarPreference])
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, sidebarPreference])
 
   useEffect(() => {
     scheduleLayoutPersist()
-  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, configSections, sidebarPreference, scheduleLayoutPersist])
+  }, [leftCollapsed, rightCollapsed, rightActiveTab, rightPanelWidth, rightPanelVisible, sidebarPreference, scheduleLayoutPersist])
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth)
@@ -188,6 +191,16 @@ function App() {
 
   const handleToggleLeft = useCallback(() => setLeftCollapsed(prev => !prev), [])
   const handleToggleRight = useCallback(() => setRightCollapsed(prev => !prev), [])
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 'n') { e.preventDefault(); handleNewChat() }
+      if (mod && e.key === 'b') { e.preventDefault(); handleToggleLeft() }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleNewChat, handleToggleLeft])
   const handleTabChange = useCallback((tab: Tab) => setRightActiveTab(tab), [])
   const handleSetRightPanelWidth = useCallback((w: number) => _setRightPanelWidth(w), [])
 
@@ -202,6 +215,13 @@ function App() {
       log.error('Update failed', err instanceof Error ? err : new Error(String(err)))
     }
   }, [])
+
+  // Sync window size tier to html[data-size] so CSS tier overrides activate
+  useEffect(() => {
+    document.documentElement.dataset.size =
+      windowWidth < 1100 ? 'compact' :
+      windowWidth < 1440 ? 'regular' : 'wide'
+  }, [windowWidth])
 
   // Sync text scale to html[data-scale] so CSS compact overrides activate
   useEffect(() => {
@@ -302,7 +322,7 @@ function App() {
             >✕</button>
           </div>
         )}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden relative">
           {showLeftSidebar && (
             <div className={`app-sidebar-left${leftCollapsed ? ' app-sidebar--collapsed' : ''}`}>
               <Sidebar
@@ -329,7 +349,7 @@ function App() {
               <span className="tab-label">Tasks</span>
             </button>
           )}
-          {rightCollapsed && rightPanelVisible && showLeftSidebar && (
+          {rightCollapsed && rightPanelVisible && (
             <button
               className="workspace-reopen-tab"
               onClick={handleToggleRight}
@@ -341,13 +361,15 @@ function App() {
             </button>
           )}
           <div className="flex flex-1 overflow-hidden min-w-0">
-            <ChatView
-              task={activeTask}
-              onOpenSettings={openSettings}
-              workspaceFileCount={workspaceFiles.length}
-              rightCollapsed={rightCollapsed}
-              onToggleRight={handleToggleRight}
-            />
+            <div className="flex-1 overflow-hidden flex flex-col" style={{ minWidth: 380 }}>
+              <ChatView
+                task={activeTask}
+                onOpenSettings={openSettings}
+                workspaceFileCount={workspaceFiles.length}
+                rightCollapsed={rightCollapsed}
+                onToggleRight={handleToggleRight}
+              />
+            </div>
             {!rightCollapsed && rightPanelVisible && (
               <PanelDivider
                 width={rightPanelWidth}
@@ -361,7 +383,7 @@ function App() {
             <div
               ref={outputPanelRef}
               className={`app-sidebar-right${(rightCollapsed || !rightPanelVisible) ? ' app-sidebar--collapsed' : ''}`}
-              style={{ width: `${rightPanelWidth * 100}%` }}
+              style={{ width: `${Math.round(rightPanelWidth * windowWidth)}px` }}
             >
               <OutputPanel
                 files={workspaceFiles}

@@ -157,6 +157,9 @@
   --sidebar-active-bg: rgba(255, 255, 255, 0.08);
   --sidebar-rail-width: 44px;
   --sidebar-transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --sidebar-width: 230px;  /* regular tier default — overridden by data-size */
+  --panel-header-height: 44px; /* canonical height for all 3-column panel headers */
+  --sidebar-padding-x: 10px;   /* uniform horizontal padding throughout sidebar */
 }
 
 * {
@@ -178,6 +181,10 @@ html[data-scale="compact"] {
   --text-xl:   16px;
   --text-2xl:  20px;
 }
+
+/* ── Window size tiers — compact / regular / wide ── */
+html[data-size="compact"] { --sidebar-width: 200px; }
+html[data-size="wide"]    { --sidebar-width: 260px; }
 
 html, body, #root {
   height: 100%;
@@ -449,7 +456,7 @@ html, body, #root {
   background: rgba(12,12,12,0.92);
   backdrop-filter: blur(10px);
   flex-shrink: 0;
-  height: 40px;
+  height: var(--panel-header-height);
   /* Opt out of titlebar drag region so all tab buttons receive click events */
   -webkit-app-region: no-drag;
   app-region: no-drag;
@@ -1018,11 +1025,11 @@ html, body, #root {
   background: transparent;
 }
 
-/* Left sidebar — fluid width, collapses fully with smooth transition */
+/* Left sidebar — tier-fixed width, collapses fully with smooth transition */
 .app-sidebar-left {
-  width: clamp(200px, 18vw, 260px);
-  min-width: clamp(200px, 18vw, 260px);
-  max-width: clamp(200px, 18vw, 260px);
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
   height: 100%;
   flex-shrink: 0;
   overflow: hidden;
@@ -1031,14 +1038,6 @@ html, body, #root {
   transition: width 0.25s cubic-bezier(0.4,0,0.2,1),
               min-width 0.25s cubic-bezier(0.4,0,0.2,1),
               max-width 0.25s cubic-bezier(0.4,0,0.2,1);
-}
-
-@media (max-width: 1100px) {
-  .app-sidebar-left {
-    width: clamp(180px, 20vw, 220px);
-    min-width: clamp(180px, 20vw, 220px);
-    max-width: clamp(180px, 20vw, 220px);
-  }
 }
 
 .app-sidebar-left.app-sidebar--collapsed {
@@ -1075,7 +1074,7 @@ html, body, #root {
 
 /* ── Workspace collapsed re-open tab ─────────────────────────────────────── */
 .workspace-reopen-tab {
-  position: fixed;
+  position: absolute;
   right: 0;
   top: 50%;
   transform: translateY(-50%);
@@ -1159,7 +1158,7 @@ html, body, #root {
 
 /* ── Sidebar re-open tab (left edge, mirrors workspace-reopen-tab) ─────────── */
 .sidebar-reopen-tab {
-  position: fixed;
+  position: absolute;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
@@ -4966,7 +4965,8 @@ input[type="range"]::-moz-range-thumb {
 }
 .sb-brand {
   display: flex; align-items: center; gap: var(--space-2-5);
-  padding: var(--space-2-5) var(--space-3-5);
+  height: var(--panel-header-height);
+  padding: 0 var(--sidebar-padding-x);
   user-select: none;
   background: linear-gradient(to bottom, rgba(255,255,255,0.04) 0%, transparent 100%);
 }
@@ -4982,15 +4982,15 @@ input[type="range"]::-moz-range-thumb {
   color: var(--amber-light); line-height: 1;
   text-shadow: 0 0 12px oklch(64% 0.214 40.1 / 0.3);
 }
-.sb-new-task-wrap { padding: 0 var(--space-2-5) var(--space-2); }
-.sb-search-wrap { padding: 0 var(--space-2-5) var(--space-2-5); }
-.sb-divider { height: 1px; background: var(--sidebar-border); margin: 0 var(--space-2-5) var(--space-1); }
+.sb-new-task-wrap { padding: 0 var(--sidebar-padding-x) var(--space-2); }
+.sb-search-wrap { padding: 0 var(--sidebar-padding-x) var(--space-2-5); }
+.sb-divider { height: 1px; background: var(--sidebar-border); margin: 0 var(--sidebar-padding-x) var(--space-1); }
 .sb-task-list {
   flex: 1; overflow-y: auto; overflow-x: hidden;
   padding-bottom: var(--space-2); scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.08) transparent;
 }
-.sb-task-list-inner { padding: var(--space-1) var(--space-2-5) 0; }
+.sb-task-list-inner { padding: var(--space-1) var(--sidebar-padding-x) 0; }
 .sb-no-results {
   font-size: var(--text-xs); color: var(--tx-tertiary);
   text-align: center; margin-top: 28px; line-height: 1.5; padding: 0 12px;
@@ -5064,7 +5064,7 @@ input[type="range"]::-moz-range-thumb {
 .sb-section-body { display: flex; flex-direction: column; gap: 2px; }
 .sb-footer {
   border-top: 1px solid var(--sidebar-border);
-  padding: 6px 8px 8px;
+  padding: 6px var(--sidebar-padding-x) 8px;
 }
 .sb-footer-btn {
   width: 100%;
@@ -5159,7 +5159,7 @@ input[type="range"]::-moz-range-thumb {
 /* ── ChatHeader classes ──────────────────────────────────────────────────── */
 .ch-header {
   border-bottom: 1px solid rgba(255,255,255,0.06);
-  background: #0d0d0d; min-height: 44px; padding: 0 12px;
+  background: #0d0d0d; height: var(--panel-header-height); min-height: var(--panel-header-height); padding: 0 12px;
   -webkit-app-region: drag;
   app-region: drag;
 }

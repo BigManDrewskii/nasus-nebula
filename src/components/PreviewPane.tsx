@@ -92,6 +92,7 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
   const srcDoc = useMemo(() => {
     if (!htmlFile) return null
+    void refreshKey // intentional: forces recompute when user triggers a refresh
     return inlineAssets(htmlFile.content, files)
   }, [htmlFile, files, refreshKey])
 

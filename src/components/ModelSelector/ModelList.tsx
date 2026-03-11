@@ -94,7 +94,7 @@ export function ModelList({
       outputCost: m.outputCostPer1M,
       isAvailable: true,
     }))
-  }, [gatewayType, openRouterModels])
+  }, [gatewayType, openRouterModels, ollamaModels])
 
   // Filter by search query
   const filteredModels = useMemo(() => {

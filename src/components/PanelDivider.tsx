@@ -85,10 +85,12 @@ export function PanelDivider({
       const newWidthPx = currentWidthPx + deltaX
       const newWidth = newWidthPx / viewportWidth
 
-      // Check min width (300px) and max width (60%)
+      // Check min width (300px) and max width capped to preserve 380px chat minimum
       const minWidthPx = 300
       const minWidth = minWidthPx / viewportWidth
-      const maxWidth = 0.6
+      const chatMinPx = 380
+      const maxWidthPx = viewportWidth - chatMinPx - 4 // 4 = divider width
+      const maxWidth = Math.min(0.6, maxWidthPx / viewportWidth)
 
       // Snap-close: if dragged below 200px, collapse
       const snapClosePx = 200
@@ -137,7 +139,7 @@ export function PanelDivider({
       ref={dividerRef}
       className={`panel-divider${isDragging ? ' dragging' : ''}`}
       style={{
-        width: 6,
+        width: 4,
         flexShrink: 0,
         position: 'relative',
         background: isDragging
@@ -160,30 +162,7 @@ export function PanelDivider({
       onDoubleClick={handleDoubleClick}
       title={collapsed ? 'Double-click or drag right to expand' : 'Drag to resize • Double-click to restore'}
     >
-      {/* Grip indicator dots - shows on hover/drag */}
-      {(isHovered || isDragging) && (
-        <div
-          className="panel-divider-grip"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 4,
-            pointerEvents: 'none',
-          }}
-        >
-          {collapsed ? (
-            // Right arrow when collapsed
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 'var(--text-2xs)' }}>→</div>
-          ) : (
-            <>
-              <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
-              <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
-              <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
-            </>
-          )}
-        </div>
-      )}
-      {/* Always visible subtle line */}
+      {/* Subtle centre line — glows amber on hover/drag */}
       <div
         style={{
           position: 'absolute',

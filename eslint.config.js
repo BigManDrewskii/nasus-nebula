@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // Third-party and generated files — never lint these
-  globalIgnores(['dist', 'public/ort/', 'docker/']),
+  globalIgnores(['dist', 'public/ort/', 'docker/', 'src-tauri/target/']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

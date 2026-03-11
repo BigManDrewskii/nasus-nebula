@@ -262,7 +262,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
         reason: local.reason,
       })
     }, 300) // 300ms debounce
-  }, [routerConfig!, model, setRoutingPreview])
+  }, [routerConfig, model, setRoutingPreview])
 
   // Cleanup timeout on unmount
     useEffect(() => {
@@ -431,7 +431,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
           handleSendRef.current?.(queued)
         }
       }
-  }, [setError]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setError])
 
         async function handleSend(content: string) {
           if (!task) return

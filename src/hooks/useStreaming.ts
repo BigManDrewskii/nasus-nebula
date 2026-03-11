@@ -39,7 +39,7 @@ export function useDebouncedStreaming<T>(value: T, isStreaming: boolean, _deboun
       rafRef.current = undefined
       setDisplayValue(latestRef.current)
     })
-  }, [value, isStreaming]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, isStreaming])
 
   // Cleanup on unmount
   useEffect(() => {

@@ -1848,7 +1848,7 @@ function BrowserSetupSection() {
     }
   }
 
-  useEffect(() => { runCheck() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { runCheck() }, [])
 
   const isReady = sidecarInstalled && hasChromium === true
   const statusColor = isReady ? '#22c55e' : checking ? 'var(--amber)' : '#ef4444'

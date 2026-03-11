@@ -13,7 +13,7 @@ interface SidebarProps {
   onSelectTask: (id: string) => void
   onNewTask?: () => void
   onNewChat?: () => void
-  onOpenSettings?: (tab?: 'general' | 'model' | 'execution' | 'search' | 'about') => void
+  onOpenSettings?: (tab?: 'general' | 'model' | 'execution' | 'browser' | 'search' | 'about') => void
   collapsed?: boolean
   onToggleCollapse?: () => void
   position?: 'left' | 'right'

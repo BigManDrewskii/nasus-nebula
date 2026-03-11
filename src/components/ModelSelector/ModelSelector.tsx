@@ -14,7 +14,7 @@
  * - Backdrop for click-outside handling
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useAppStore } from '../../store'
 import { ModelList } from './ModelList'
@@ -48,7 +48,7 @@ export function ModelSelector({
     : 'manual'
 
   // Calculate position based on anchor element (fixed positioning = viewport relative)
-  const updatePosition = () => {
+  const updatePosition = useCallback(() => {
     const anchorEl = anchor.current
     if (!anchorEl) return
 
@@ -97,7 +97,7 @@ export function ModelSelector({
       opacity: 1,
       transform: 'translateY(0)',
     })
-  }
+  }, [anchor, position])
 
   // Handle click outside
   useEffect(() => {
@@ -153,12 +153,12 @@ export function ModelSelector({
       window.removeEventListener('scroll', handleUpdate, true)
       window.removeEventListener('resize', handleUpdate)
     }
-  }, [])
+  }, [updatePosition])
 
   // Update position when anchor changes
   useEffect(() => {
     updatePosition()
-  }, [anchor, position])
+  }, [updatePosition])
 
   if (!isMounted) return null
 

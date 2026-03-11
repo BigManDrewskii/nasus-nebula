@@ -7,7 +7,7 @@ import { Pxi } from '../Pxi'
 
 /* ── Sidebar Button ───────────────────────────────────────────────────────────── */
 
-export interface SidebarButtonProps {
+interface SidebarButtonProps {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'sm' | 'md' | 'lg'
   icon?: string
@@ -19,7 +19,7 @@ export interface SidebarButtonProps {
   style?: React.CSSProperties
 }
 
-export function SidebarButton({
+function SidebarButton({
   variant = 'ghost',
   size = 'md',
   icon,
@@ -92,43 +92,6 @@ export function SidebarButton({
       {icon && <Pxi name={icon} size={s.iconSize} />}
       {children}
     </button>
-  )
-}
-
-/* ── Sidebar Section Header ──────────────────────────────────────────────────── */
-
-export interface SidebarSectionProps {
-  label: string
-  badge?: number | string
-  date?: string
-  accent?: boolean
-  style?: React.CSSProperties
-}
-
-export function SidebarSection({ label, badge, date, accent, style }: SidebarSectionProps) {
-  return (
-    <div
-      className="sidebar-section"
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: 'var(--space-1-5) 0',
-        fontSize: 'var(--text-xs)',
-        fontWeight: 500,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: accent ? 'var(--amber)' : 'var(--tx-tertiary)',
-        ...style,
-      }}
-    >
-      <span>{label}</span>
-      {(badge || date) && (
-        <span style={{ fontSize: 'var(--text-2xs)', opacity: 0.8 }}>
-          {badge ?? date}
-        </span>
-      )}
-    </div>
   )
 }
 

@@ -198,7 +198,7 @@ export function useDragDrop(
     // Regular files
     const files = Array.from(e.dataTransfer.files)
     if (files.length > 0) onFilesDropped(files)
-  }, [onFilesDropped, onFolderDropped]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onFilesDropped, onFolderDropped])
 
   return { isDragOver, dragMode, handlers: { onDragEnter, onDragLeave, onDragOver, onDrop } }
 }
