@@ -127,12 +127,52 @@ export async function cancelTask(jobId: string): Promise<void> {
   await sidecarFetch<void>(`/task/${jobId}`, { method: 'DELETE' })
 }
 
+export interface HealthStatus {
+  status: string
+  llm_configured: boolean
+  version?: string
+  active_jobs?: number
+}
+
 /**
  * Health check — returns true if the sidecar is up and responding.
  */
 export async function healthCheck(): Promise<boolean> {
   try {
     const res = await fetch(`${SIDECAR_BASE}/health`, { method: 'GET' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Full health status including llm_configured flag.
+ */
+export async function healthStatus(): Promise<HealthStatus | null> {
+  try {
+    const res = await fetch(`${SIDECAR_BASE}/health`, { method: 'GET' })
+    if (!res.ok) return null
+    return res.json() as Promise<HealthStatus>
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Configure the sidecar LLM credentials directly (bypasses Tauri IPC).
+ */
+export async function configureSidecar(config: {
+  api_key: string
+  api_base: string
+  model: string
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${SIDECAR_BASE}/configure`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    })
     return res.ok
   } catch {
     return false

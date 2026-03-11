@@ -47,9 +47,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         <CopyBtn text={code} />
       </div>
       <div className="md-code-body">
-        <ShikiHighlighter language={language || 'text'} theme="one-dark-pro" addDefaultStyles={false}>
-          {code}
-        </ShikiHighlighter>
+        <pre className="md-pre"><code>{code}</code></pre>
       </div>
     </div>
   )

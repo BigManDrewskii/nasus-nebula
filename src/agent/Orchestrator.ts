@@ -18,10 +18,13 @@ import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAg
 import { useAppStore } from '../store'
 import {
   healthCheck,
+  healthStatus,
+  configureSidecar,
   runTask,
   type SidecarStep,
   type StatusResponse,
 } from './sidecarClient'
+import { extractAndWriteCodeFiles } from './codeExtractor'
 
 /**
  * Orchestrator configuration.
@@ -159,21 +162,60 @@ export class AgentOrchestrator {
 
   /**
    * Route a task through the Python sidecar (FastAPI :4751).
-   * Streams step events back into the agent store in real time.
+   * Streams step events back into the agent store and chat UI in real time.
    */
   private async runViaSidecar(params: OrchestratorTaskParams): Promise<void> {
     const { taskId, messageId, signal } = params
     const store = useAppStore.getState()
 
+    // Ensure the sidecar has LLM credentials — reconfigure if it lost them (e.g. after a restart)
+    const health = await healthStatus()
+    if (health && !health.llm_configured && params.apiKey) {
+      await configureSidecar({
+        api_key: params.apiKey,
+        api_base: params.apiBase || 'https://openrouter.ai/api/v1',
+        model: params.model || 'openai/gpt-4o-mini',
+      })
+    }
+
+    // Notify UI that the agent has started (drives useAgentStatus → 'processing')
+    window.dispatchEvent(new CustomEvent('nasus:agent-started', { detail: { taskId, messageId } }))
+
+    // Normalize messages to a simple {role, content} format the Python LLM client expects
+    const normalizedMessages = params.userMessages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string'
+        ? m.content
+        : Array.isArray(m.content)
+          ? m.content.map((p: { text?: string }) => p.text ?? '').join(' ')
+          : String(m.content),
+    }))
+
     const payload: Record<string, unknown> = {
       task_id: taskId,
       message_id: messageId,
       user_message: params.userMessage,
-      messages: params.userMessages,
+      goal: params.userMessage,
+      messages: normalizedMessages,
       model: params.model,
       api_base: params.apiBase,
       provider: params.provider,
       max_iterations: params.maxIterations ?? 10,
+    }
+
+    const finishOk = () => {
+      store.setStreaming(taskId, messageId, false)
+      store.updateTaskStatus(taskId, 'completed')
+      store.setStatus(taskId, 'completed')
+      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
+      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+    }
+
+    const finishErr = (msg: string) => {
+      store.setError(taskId, messageId, msg)
+      store.setStatus(taskId, 'error')
+      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
+      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
     }
 
     try {
@@ -183,7 +225,8 @@ export class AgentOrchestrator {
         switch (event.type) {
           case 'step': {
             const step = event.data as SidecarStep
-            // Map sidecar step types onto the existing agent store step format
+
+            // Map sidecar step types onto the agent store step format
             store.addAgentStep(taskId, {
               id: `sidecar-step-${step.step}`,
               type: step.type === 'tool_call' ? 'tool' : step.type === 'observation' ? 'result' : 'thought',
@@ -193,6 +236,28 @@ export class AgentOrchestrator {
               toolOutput: step.tool_output as string | undefined,
               timestamp: step.timestamp,
             })
+
+            // Emit 'final' step content as the chat message text, then extract
+            // any code blocks and write them to the workspace as real files.
+            if (step.type === 'final' && step.content) {
+              store.appendChunk(taskId, messageId, step.content)
+              window.dispatchEvent(new CustomEvent('nasus:stream-chunk', {
+                detail: { taskId, messageId, delta: step.content },
+              }))
+
+              void extractAndWriteCodeFiles(
+                step.content,
+                taskId,
+                (s) => store.addAgentStep(taskId, s),
+              )
+            }
+
+            // Emit tool-call so the UI tool indicator shows the active tool
+            if (step.type === 'tool_call' && step.tool) {
+              window.dispatchEvent(new CustomEvent('nasus:tool-call', {
+                detail: { taskId, messageId, tool: step.tool },
+              }))
+            }
             break
           }
           case 'status': {
@@ -201,24 +266,32 @@ export class AgentOrchestrator {
             break
           }
           case 'done': {
-            const final = event.data as StatusResponse
+            const final = event.data as StatusResponse & { errors?: string[] }
             if (final.status === 'completed') {
-              store.setStatus(taskId, 'completed')
+              finishOk()
             } else if (final.status === 'error') {
-              store.setStatus(taskId, 'error')
+              finishErr(final.error ?? final.errors?.[0] ?? 'Sidecar execution failed')
             }
             break
           }
           case 'error': {
-            store.setStatus(taskId, 'error')
+            finishErr((event as { error?: string }).error ?? 'Sidecar stream error')
             break
           }
         }
       }
+
+      // If the stream ended without a 'done' event (e.g. sidecar closed cleanly),
+      // ensure the message is closed so it doesn't spin forever.
+      if (!signal.aborted) {
+        const msgs = store.getMessages(taskId)
+        if (msgs.some(m => m.id === messageId && m.streaming)) {
+          finishOk()
+        }
+      }
     } catch (err) {
       if (signal.aborted) return
-      // Sidecar died mid-stream — mark error, don't fall back silently
-      store.setStatus(taskId, 'error')
+      finishErr(err instanceof Error ? err.message : 'Sidecar stream failed')
       throw err
     }
   }

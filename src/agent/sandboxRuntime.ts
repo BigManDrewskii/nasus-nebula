@@ -31,6 +31,9 @@ export interface SandboxResult {
 
 export type SandboxStatusCallback = DockerStatusCallback
 
+let _dockerCache: { available: boolean; ts: number } | null = null
+const DOCKER_CACHE_TTL_MS = 5_000
+
 /** Resolve which backend to use for the given config and capability. */
 async function resolveBackend(
   cfg: ExecutionConfig,
@@ -38,11 +41,17 @@ async function resolveBackend(
 ): Promise<'docker' | 'disabled'> {
   if (cfg.executionMode === 'disabled') return 'disabled'
 
-  // Check if Docker is available
+  const now = Date.now()
+  if (_dockerCache && now - _dockerCache.ts < DOCKER_CACHE_TTL_MS) {
+    return _dockerCache.available ? 'docker' : 'disabled'
+  }
+
   try {
     const isAvailable = await tauriInvoke<boolean>('docker_check_status')
+    _dockerCache = { available: !!isAvailable, ts: now }
     return isAvailable ? 'docker' : 'disabled'
   } catch {
+    _dockerCache = { available: false, ts: now }
     return 'disabled'
   }
 }

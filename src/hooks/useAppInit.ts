@@ -171,6 +171,9 @@ export function useAppInit(): UseAppInitResult {
         }
       }
 
+      // Phase 3.5: Initialize memory store early so it's ready before the first task
+      import('../agent/memory').then(({ initMemoryStore }) => initMemoryStore()).catch(() => {})
+
       // Phase 4: Warm embedding model (background, non-blocking)
       setStatus({ phase: 'warming_embeddings', error: null, progress: PHASE_PROGRESS.warming_embeddings })
 

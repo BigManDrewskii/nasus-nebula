@@ -2,6 +2,7 @@ import { tauriInvoke } from '../tauri'
 import { useAppStore } from '../store'
 import { cheapestModel, chatOnceViaGateway } from './llm'
 import { workspaceManager } from './workspace/WorkspaceManager'
+import { memoryStore } from './memory'
 
 /**
  * Project Memory — manages persistent project-level context across tasks.
@@ -9,7 +10,20 @@ import { workspaceManager } from './workspace/WorkspaceManager'
 
 export async function readProjectMemory(): Promise<string> {
   const workspacePath = useAppStore.getState().workspacePath
-  if (!workspacePath) return ''
+
+  // No workspace path — read project facts from the vector memory store
+  if (!workspacePath) {
+    try {
+      const results = await memoryStore.search('project fact framework convention api', 20)
+      const facts = results
+        .filter(r => r.metadata.contentType === 'project_fact')
+        .map(r => `- ${r.content}`)
+        .join('\n')
+      return facts ? `# Project Memory\n\n${facts}\n` : ''
+    } catch {
+      return ''
+    }
+  }
 
   const memoryPath = '.nasus/project_memory.md'
   try {
@@ -26,30 +40,26 @@ export async function readProjectMemory(): Promise<string> {
 
 export async function updateProjectMemory(taskId: string): Promise<void> {
   const workspacePath = useAppStore.getState().workspacePath
-  if (!workspacePath) return
-
-  const memoryPath = '.nasus/project_memory.md'
-
-  // Read existing memory
-  let existing = ''
-  try {
-    const content = await tauriInvoke<string>('read_file', {
-      taskId: '__system__',
-      path: memoryPath,
-      workspacePath
-    })
-    existing = content || ''
-  } catch {
-    // file doesn't exist yet
-    existing = ''
-  }
 
   // Read this task's findings
   const workspace = workspaceManager.getWorkspaceSync(taskId)
-  const findings = workspace.get('findings.md') ?? ''
-  const plan = workspace.get('task_plan.md') ?? ''
+  const findings = workspace?.get('findings.md') ?? ''
+  const plan = workspace?.get('task_plan.md') ?? ''
 
   if (!findings && !plan) return
+
+  // Read existing memory for deduplication (workspace path only — vector store deduplicates naturally)
+  let existing = ''
+  if (workspacePath) {
+    try {
+      const content = await tauriInvoke<string>('read_file', {
+        taskId: '__system__',
+        path: '.nasus/project_memory.md',
+        workspacePath
+      })
+      existing = content || ''
+    } catch { /* file doesn't exist yet */ }
+  }
 
   // Use a cheap model to extract project-level facts
   const extractPrompt = `Given these task findings and plan, extract ONLY project-level facts that would be useful for future tasks on the same codebase. Do NOT include task-specific details.
@@ -74,7 +84,6 @@ Return ONLY new bullet points to ADD, or "NONE" if nothing new. Each bullet must
 
   const store = useAppStore.getState()
   const { openRouterModels } = store
-  // Resolve cheap model against the active gateway — OR slugs are invalid on non-OR gateways
   const conn = store.resolveConnection()
   let cheapModel: string
   if (conn.provider === 'deepseek') {
@@ -88,17 +97,28 @@ Return ONLY new bullet points to ADD, or "NONE" if nothing new. Each bullet must
   }
 
   const newFacts = await chatOnceViaGateway(extractPrompt, 500, cheapModel)
+  if (!newFacts || newFacts.trim() === 'NONE' || !newFacts.includes('- ')) return
 
-  if (newFacts && newFacts.trim() !== 'NONE' && newFacts.includes('- ')) {
-    const updated = existing
-      ? `${existing.trimEnd()}\n${newFacts.trim()}\n`
-      : `# Project Memory\n\nFacts discovered about this project:\n\n${newFacts.trim()}\n`
-
-    await tauriInvoke('write_file', {
-      taskId: '__system__',
-      path: memoryPath,
-      content: updated,
-      workspacePath
-    })
+  // No workspace path — persist new facts to the vector memory store
+  if (!workspacePath) {
+    const lines = newFacts.split('\n').filter(l => l.trim().startsWith('- '))
+    for (const line of lines) {
+      const fact = line.replace(/^-\s*/, '').trim()
+      if (fact) {
+        await memoryStore.store(fact, { contentType: 'project_fact', taskId, timestamp: Date.now() })
+      }
+    }
+    return
   }
+
+  const updated = existing
+    ? `${existing.trimEnd()}\n${newFacts.trim()}\n`
+    : `# Project Memory\n\nFacts discovered about this project:\n\n${newFacts.trim()}\n`
+
+  await tauriInvoke('write_file', {
+    taskId: '__system__',
+    path: '.nasus/project_memory.md',
+    content: updated,
+    workspacePath
+  })
 }

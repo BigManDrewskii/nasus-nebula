@@ -17,7 +17,7 @@ export interface MemoryMetadata {
   taskId: string
   timestamp: number
   tags?: string[]
-  contentType?: 'code' | 'research' | 'plan' | 'output' | 'conversation'
+  contentType?: 'code' | 'research' | 'plan' | 'output' | 'conversation' | 'project_fact'
   language?: string
   framework?: string
 }

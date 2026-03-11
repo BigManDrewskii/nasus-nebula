@@ -52,7 +52,11 @@ export function useWorkspaceFiles(taskId: string | null): WorkspaceFile[] {
           return
         }
 
-        const rawFiles = await manager.listFiles(id)
+        const allFiles = await manager.listFiles(id)
+        const rawFiles = allFiles.filter((f) => {
+          const basename = f.path.split('/').pop() ?? f.path
+          return basename !== '.DS_Store' && basename !== 'Thumbs.db' && !basename.startsWith('._')
+        })
         if (!isMounted) return
 
         const results = await Promise.allSettled(

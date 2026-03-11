@@ -627,13 +627,50 @@ class NasusOrchestrator:
                 }
 
             elif module_id == ModuleID.M00:
-                # Full orchestration — when a goal is provided use LLM to build
-                # a multi-module execution plan; otherwise return session status.
-                goal = payload.get("goal", "")
-                if goal and self.llm:
-                    result_dict = self._llm_orchestrate(goal, payload)
+                # Smart router — uses LLM to detect the best specialist module and
+                # dispatches to it. Falls back to direct LLM chat for general queries
+                # and to session record when LLM is not configured.
+                user_message = payload.get("user_message", "") or payload.get("goal", "")
+                if user_message and self.llm:
+                    result_dict = self._llm_route_and_dispatch(user_message, payload)
                 else:
                     result_dict = self.to_session_record()
+
+            # ── Specialist modules (M01–M08) ──────────────────────────────────
+            # Each module owns its own envelope lifecycle (mark_running/done/failed).
+            # We delegate and return directly, skipping the outer mark_done call.
+
+            elif module_id == ModuleID.M01:
+                import nasus_research_analyst as _m01
+                return _m01.route_envelope(envelope)
+
+            elif module_id == ModuleID.M02:
+                import nasus_api_integrator as _m02
+                return _m02.route_envelope(envelope)
+
+            elif module_id == ModuleID.M03:
+                import nasus_web_browser as _m03
+                return _m03.route_envelope(envelope)
+
+            elif module_id == ModuleID.M04:
+                import nasus_data_analyst as _m04
+                return _m04.route_envelope(envelope)
+
+            elif module_id == ModuleID.M05:
+                import nasus_code_engineer as _m05
+                return _m05.route_envelope(envelope)
+
+            elif module_id == ModuleID.M06:
+                import nasus_content_creator as _m06
+                return _m06.route_envelope(envelope)
+
+            elif module_id == ModuleID.M07:
+                import nasus_product_strategist as _m07
+                return _m07.route_envelope(envelope)
+
+            elif module_id == ModuleID.M08:
+                import nasus_landing_page as _m08
+                return _m08.route_envelope(envelope)
 
             else:
                 result_dict = {
@@ -651,6 +688,188 @@ class NasusOrchestrator:
         return envelope
 
     # ── LLM-driven module handlers ────────────────────────────────────────────
+
+    def _llm_route_and_dispatch(self, user_message: str, payload: Dict) -> Dict:
+        """
+        Smart router: uses the LLM to classify the user's request and dispatch
+        to the most appropriate specialist module (M01-M05). Falls back to direct
+        LLM chat for general queries or when routing confidence is low.
+
+        Returns a dict with a 'response' key for the TypeScript UI.
+        """
+        routing_prompt = (
+            "You are the Nasus Orchestrator. Classify the user's request and select "
+            "the best specialist module.\n\n"
+            "Available modules:\n"
+            "- M01: Research Analyst — web research, market analysis, competitive intel, trends\n"
+            "- M02: API Integrator — HTTP API calls, fetching data from URLs\n"
+            "- M03: Web Browser — scraping web pages, extracting content from URLs\n"
+            "- M04: Data Analyst — analyzing datasets, statistics, CSV/JSON data processing\n"
+            "- M05: Code Engineer — writing, debugging, refactoring, explaining code\n"
+            "- DIRECT: general questions, greetings, creative writing, strategy advice, "
+            "product questions, anything conversational\n\n"
+            "Respond ONLY with a valid JSON object:\n"
+            '{"module":"M01|M02|M03|M04|M05|DIRECT","confidence":"high|medium|low","reason":"one sentence","payload":{}}\n\n'
+            "Payload schemas:\n"
+            '- M01: {"query":"<research question>","depth":"standard","source_types":["web","news"],"max_sources":10}\n'
+            '- M02: {"url":"<full url>","method":"GET","headers":{}}\n'
+            '- M03: {"url":"<full url>","mode":"scrape","js_required":false}\n'
+            '- M04: {"data":[],"format":"dict_list","analysis_types":["summary"],"custom_instruction":"<instruction>","output_format":"markdown"}\n'
+            '- M05: {"spec":{"task":"generate|debug|refactor|explain|review","language":"python|javascript|typescript|bash|sql|html_css","description":"<full description>","requirements":[],"style":"clean","include_tests":false,"include_docs":true}}\n'
+            '- DIRECT: null'
+        )
+
+        try:
+            routing = self.llm.chat_json(
+                [{"role": "user", "content": user_message}],
+                schema_hint=routing_prompt,
+            )
+        except Exception as exc:
+            self._log(f"_llm_route_and_dispatch: routing LLM call failed: {exc}, falling back to direct")
+            return self._llm_chat_direct(user_message, payload)
+
+        module = routing.get("module", "DIRECT")
+        specialist_payload = routing.get("payload") or {}
+        self._log(f"_llm_route_and_dispatch: routed to {module} (confidence={routing.get('confidence')}) — {routing.get('reason')}")
+
+        if module == "DIRECT" or module not in ("M01", "M02", "M03", "M04", "M05"):
+            return self._llm_chat_direct(user_message, payload)
+
+        # Build a sub-envelope and call the specialist module
+        try:
+            specialist_env = NasusEnvelope(
+                module_id=ModuleID[module],
+                payload=specialist_payload,
+            )
+            # Import and call the right module
+            mod_map = {
+                "M01": "nasus_research_analyst",
+                "M02": "nasus_api_integrator",
+                "M03": "nasus_web_browser",
+                "M04": "nasus_data_analyst",
+                "M05": "nasus_code_engineer",
+            }
+            import importlib
+            mod = importlib.import_module(mod_map[module])
+            result_env = mod.route_envelope(specialist_env)
+
+        except Exception as exc:
+            self._log(f"_llm_route_and_dispatch: specialist {module} failed: {exc}, falling back to direct")
+            return self._llm_chat_direct(user_message, payload)
+
+        if result_env.status.value == "FAILED":
+            err = result_env.errors[0] if result_env.errors else "unknown error"
+            self._log(f"_llm_route_and_dispatch: {module} returned FAILED: {err}")
+            return self._llm_chat_direct(user_message, payload)
+
+        # Extract the best text content from the specialist result.
+        # Some modules (M04, M05) wrap their output in {"result": {...}};
+        # unwrap one level before key-scanning.
+        result_data = result_env.payload or {}
+
+        def _as_str(v: object) -> Optional[str]:
+            """Return v only if it resolves to a non-empty string; joins list-of-strings."""
+            if isinstance(v, str) and v.strip():
+                return v
+            if isinstance(v, list):
+                parts = [str(i) for i in v if isinstance(i, str) and str(i).strip()]
+                if parts:
+                    return "\n".join(parts)
+            return None
+
+        if isinstance(result_data, dict):
+            inner = result_data
+            if "result" in result_data and isinstance(result_data["result"], dict):
+                inner = result_data["result"]
+
+            content = (
+                _as_str(inner.get("narrative"))
+                or _as_str(inner.get("summary"))
+                or _as_str(inner.get("response"))
+                or _as_str(inner.get("content"))
+                or _as_str(inner.get("code"))
+                or _as_str(inner.get("report"))
+                or _as_str(inner.get("analysis"))
+                or _as_str(inner.get("insights"))
+                or _as_str(inner.get("message"))
+                or _as_str(inner.get("explanation"))
+                or _as_str(result_data.get("narrative"))
+                or _as_str(result_data.get("summary"))
+                or _as_str(result_data.get("response"))
+                or _as_str(result_data.get("content"))
+            )
+
+            if content is None:
+                import json as _json
+                content = f"**{module} Result:**\n```json\n{_json.dumps(result_data, indent=2)[:2000]}\n```"
+
+            # If the specialist returned a stub (no real LLM output yet), fall back
+            # to direct LLM chat so the user gets an actual answer.
+            _STUB_MARKERS = ("TODO: implement", "requires LLM backend", "placeholder for")
+            if any(m in str(content) for m in _STUB_MARKERS):
+                self._log(f"_llm_route_and_dispatch: {module} returned stub — falling back to direct LLM")
+                return self._llm_chat_direct(user_message, payload)
+        elif isinstance(result_data, str):
+            content = result_data
+        else:
+            content = str(result_data)[:1000]
+
+        return {
+            "response": str(content),
+            "module_used": module,
+            "session_id": self.session_id,
+        }
+
+    def _llm_chat_direct(self, user_message: str, payload: Dict) -> Dict:
+        """
+        Respond directly to the user's message using the LLM.
+        Uses conversation history when provided so the LLM has full context.
+        Returns a dict with a 'response' key containing the assistant's reply.
+        """
+        messages_raw = payload.get("messages", [])
+        llm_messages: List[Dict[str, str]] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Nasus, an intelligent AI assistant and autonomous agent. "
+                    "You help users accomplish tasks by thinking through problems "
+                    "and providing clear, actionable responses.\n\n"
+                    "When generating code or files, follow these rules strictly:\n"
+                    "1. Output each file in its own fenced code block with the correct language tag "
+                    "(e.g. ```html, ```css, ```javascript, ```python).\n"
+                    "2. Begin every code block with a comment on the first line that names the file, "
+                    "for example: <!-- index.html --> or // script.js or # main.py or /* styles.css */\n"
+                    "3. When building a website, always produce separate files: "
+                    "index.html, styles.css, and script.js — do not embed CSS/JS inline unless asked.\n"
+                    "4. Make the code complete, functional, and production-quality. "
+                    "Do not use placeholders or TODO comments.\n"
+                    "5. After the code blocks, briefly describe what each file does."
+                ),
+            }
+        ]
+        # Append conversation history (filter to valid roles only)
+        for msg in messages_raw:
+            if isinstance(msg, dict) and msg.get("role") in ("user", "assistant"):
+                content = msg.get("content", "")
+                if isinstance(content, list):
+                    # Extract text from content array (multi-modal format)
+                    content = " ".join(
+                        p.get("text", "") for p in content if isinstance(p, dict)
+                    )
+                llm_messages.append({"role": msg["role"], "content": str(content)})
+
+        # Ensure the latest user message is at the end
+        if not llm_messages or llm_messages[-1].get("role") != "user":
+            llm_messages.append({"role": "user", "content": user_message})
+
+        try:
+            response_text = self.llm.chat(llm_messages)
+        except Exception as exc:
+            self._log(f"_llm_chat_direct: LLM call failed: {exc}")
+            response_text = f"I encountered an error processing your request: {exc}"
+
+        self._log(f"_llm_chat_direct: response generated ({len(response_text)} chars)")
+        return {"response": response_text, "session_id": self.session_id}
 
     def _llm_plan(self, goal: str, payload: Dict) -> Dict:
         """
@@ -743,7 +962,7 @@ class NasusOrchestrator:
                     for o in s.get("outputs", [])
                 ],
                 depends_on=s.get("depends_on", []),
-                deadline=Deadline.MEDIUM,
+                deadline=Deadline.NON_BLOCKING,
                 stage=int(s.get("stage", 1)),
                 constraints=s.get("constraints", []),
             )

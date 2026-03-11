@@ -222,7 +222,12 @@ async def _run_envelope(env: NasusEnvelope) -> None:
     job_id = env.job_id
     await _push_log(
         job_id,
-        f"[{datetime.now(timezone.utc).isoformat()}] job {job_id} started module={env.module_id.value}",
+        json.dumps({
+            "step": 0,
+            "type": "log",
+            "content": f"job {job_id} started module={env.module_id.value}",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }),
     )
 
     loop = asyncio.get_event_loop()
@@ -237,9 +242,34 @@ async def _run_envelope(env: NasusEnvelope) -> None:
             )
 
         _jobs[job_id] = result_env
+
+        # Emit the LLM response (or any textual result) as a structured SidecarStep
+        # so the TypeScript client can display it in the chat UI.
+        payload_data = result_env.payload if result_env.payload else {}
+        if isinstance(payload_data, dict):
+            response_text = (
+                payload_data.get("response")
+                or payload_data.get("content")
+                or payload_data.get("next_recommended_action")
+                or ""
+            )
+            if response_text:
+                step_event = json.dumps({
+                    "step": 1,
+                    "type": "final",
+                    "content": str(response_text),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+                await _push_log(job_id, step_event)
+
         await _push_log(
             job_id,
-            f"[{datetime.now(timezone.utc).isoformat()}] job {job_id} completed status={result_env.status.value if hasattr(result_env.status, 'value') else result_env.status}",
+            json.dumps({
+                "step": 0,
+                "type": "log",
+                "content": f"job {job_id} completed status={result_env.status.value if hasattr(result_env.status, 'value') else result_env.status}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }),
         )
 
     except Exception as exc:
@@ -247,7 +277,12 @@ async def _run_envelope(env: NasusEnvelope) -> None:
         _jobs[job_id] = env
         await _push_log(
             job_id,
-            f"[{datetime.now(timezone.utc).isoformat()}] job {job_id} FAILED: {exc}",
+            json.dumps({
+                "step": 0,
+                "type": "error",
+                "content": f"job {job_id} FAILED: {exc}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }),
         )
 
     finally:
@@ -357,11 +392,26 @@ async def task_stream(job_id: str) -> StreamingResponse:
 
     queue = _log_queues.get(job_id)
     if queue is None:
-        # Job already completed -- return final status as a single SSE event
+        # Job already completed — queue was consumed. Emit response + done so the
+        # TypeScript client can still display the result if it missed the live stream.
         env = _jobs[job_id]
 
         async def single_event() -> AsyncGenerator[str, None]:
-            yield f"data: {json.dumps(_envelope_to_dict(env))}\n\n"
+            payload_data = env.payload if env.payload else {}
+            if isinstance(payload_data, dict):
+                response_text = (
+                    payload_data.get("response")
+                    or payload_data.get("content")
+                    or payload_data.get("next_recommended_action")
+                    or ""
+                )
+                if response_text:
+                    yield (
+                        f"data: {json.dumps({'step': 1, 'type': 'final', 'content': str(response_text), 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+                    )
+            yield (
+                f"data: {json.dumps({'done': True, 'status': env.status.value if hasattr(env.status, 'value') else str(env.status), 'job_id': job_id})}\n\n"
+            )
 
         return StreamingResponse(single_event(), media_type="text/event-stream")
 
@@ -375,6 +425,16 @@ async def task_stream(job_id: str) -> StreamingResponse:
                         f"data: {json.dumps({'done': True, 'status': env.status.value if hasattr(env.status, 'value') else env.status, 'job_id': job_id})}\n\n"
                     )
                 break
+            # Try to emit as a structured SidecarStep JSON object directly.
+            # Falls back to the legacy {log: ..., job_id: ...} wrapper for
+            # plain-string log lines (e.g. from older code paths).
+            try:
+                parsed = json.loads(line)
+                if isinstance(parsed, dict) and "step" in parsed:
+                    yield f"data: {line}\n\n"
+                    continue
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
             yield f"data: {json.dumps({'log': line, 'job_id': job_id})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
