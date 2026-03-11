@@ -198,8 +198,8 @@ export type { UnlistenFn } from '@tauri-apps/api/event'
 // ─── Browser Sidecar Installation ───────────────────────────────────────────────────
 
 export async function browserCheckSidecarInstalled(): Promise<boolean> {
-  const result = await tauriInvoke<boolean>('browser_check_sidecar_installed')
-  return result ?? false
+  const result = await tauriInvoke<{ installed: boolean; has_node_modules: boolean; has_chromium: boolean; message: string }>('browser_check_sidecar_installed')
+  return result?.installed ?? false
 }
 
 export async function browserInstallSidecar(_options?: { progress?: (p: number) => void }): Promise<void> {

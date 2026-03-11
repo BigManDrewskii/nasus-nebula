@@ -1117,48 +1117,67 @@ pub async fn browser_install_sidecar(
         }
     }
 
-    // ── Step 2: npm install ────────────────────────────────────────────────────
+    // ── Step 2: npm install (spawn_blocking — avoids starving the async runtime) ─
     emit_progress("Installing npm dependencies...".into());
 
-    let npm_output = std::process::Command::new("npm")
-        .args(["install", "--no-save"])
+    let sidecar_dir_npm = sidecar_dir.clone();
+    let npm_result = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("npm")
+            .args(["install", "--no-save"])
+            .current_dir(&sidecar_dir_npm)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+    })
+    .await
+    .map_err(|e| NasusError::Sidecar(format!("npm spawn_blocking error: {}", e)))?
+    .map_err(|e| NasusError::Sidecar(format!("npm install error: {}", e)))?;
+
+    if !npm_result.status.success() {
+        return Err(NasusError::Sidecar(format!(
+            "npm install failed: {}",
+            String::from_utf8_lossy(&npm_result.stderr)
+        )));
+    }
+
+    // ── Step 3: playwright install chromium (async process + streaming progress) ─
+    // Playwright prints download progress to stderr. We stream each line to the
+    // frontend so the user gets real-time feedback during the ~150 MB download.
+    emit_progress("Downloading Chromium (~150 MB, this may take a few minutes)...".into());
+
+    let mut pw_child = tokio::process::Command::new("npx")
+        .args(["playwright", "install", "chromium"])
         .current_dir(&sidecar_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output();
+        .spawn()
+        .map_err(|e| NasusError::Sidecar(format!("playwright spawn error: {}", e)))?;
 
-    match npm_output {
-        Ok(output) if output.status.success() => {
-            // ── Step 3: install Playwright Chromium ────────────────────────────
-            emit_progress("Installing Chromium browser...".into());
-            let pw_output = std::process::Command::new("npx")
-                .args(["playwright", "install", "chromium"])
-                .current_dir(&sidecar_dir)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .output();
-            match pw_output {
-                Ok(o) if o.status.success() => {
-                    emit_progress("Installation complete!".into());
-                    Ok("Sidecar installed successfully".into())
+    if let Some(stderr) = pw_child.stderr.take() {
+        let app_clone = app.clone();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, BufReader};
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let trimmed = line.trim().to_string();
+                if !trimmed.is_empty() {
+                    let _ = app_clone.emit("sidecar:install_progress", trimmed);
                 }
-                Ok(o) => Err(NasusError::Sidecar(format!(
-                    "Chromium installation failed: {}",
-                    String::from_utf8_lossy(&o.stderr)
-                ))),
-                Err(e) => Err(NasusError::Sidecar(format!(
-                    "playwright install error: {}",
-                    e
-                ))),
             }
-        }
-        Ok(output) => Err(NasusError::Sidecar(format!(
-            "npm install failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))),
-        Err(e) => Err(NasusError::Sidecar(format!(
-            "Failed to run npm install: {}",
-            e
-        ))),
+        });
     }
+
+    let pw_status = pw_child
+        .wait()
+        .await
+        .map_err(|e| NasusError::Sidecar(format!("playwright wait error: {}", e)))?;
+
+    if !pw_status.success() {
+        return Err(NasusError::Sidecar(
+            "Chromium installation failed. Check that Node.js and npx are available.".into(),
+        ));
+    }
+
+    emit_progress("Installation complete!".into());
+    Ok("Sidecar installed successfully".into())
 }
