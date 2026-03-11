@@ -94,6 +94,8 @@ import { TextColums }      from 'pixelarticons/react/TextColums'
 import { Wifi }            from 'pixelarticons/react/Wifi'
 import { Zap }             from 'pixelarticons/react/Zap'
 import { SpeedMedium }     from 'pixelarticons/react/SpeedMedium'
+import { GitBranch }       from 'pixelarticons/react/GitBranch'
+import { Sparkle }         from 'pixelarticons/react/Sparkle'
 
 // ── Type alias ────────────────────────────────────────────────────────────────
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>
@@ -137,6 +139,7 @@ const iconMap: Record<string, IconComponent> = {
   lock:               Lock,
   'more-horizontal':  MoreHorizontal,
   'more-vertical':    MoreVertical,
+  nasus:              Sparkle,
   'pen-square':       PenSquare,
   play:               Play,
   plus:               Plus,
@@ -185,6 +188,7 @@ const iconMap: Record<string, IconComponent> = {
   'brackets-curly':   Braces,
   code:               BracketsAngle,
   'code-block':       BracesContent,
+  'code-branch':      GitBranch,
 
   // Browser
   browser:            Globe,

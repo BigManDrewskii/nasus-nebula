@@ -62,6 +62,21 @@ export type SidecarEvent =
   | { type: 'done'; data: StatusResponse }
   | { type: 'error'; error: string }
 
+// ─── Status normalization ────────────────────────────────────────────────────
+
+// Python NasusStatus uses DONE/FAILED/PENDING/RUNNING (uppercase).
+// Normalize to the lowercase values used throughout this TypeScript client.
+function normalizeJobStatus(raw: string): JobStatus {
+  switch (raw.toUpperCase()) {
+    case 'DONE':      return 'completed'
+    case 'FAILED':    return 'error'
+    case 'PENDING':   return 'pending'
+    case 'RUNNING':   return 'running'
+    case 'CANCELLED': return 'cancelled'
+    default:          return raw.toLowerCase() as JobStatus
+  }
+}
+
 // ─── Core helpers ────────────────────────────────────────────────────────────
 
 async function sidecarFetch<T>(
@@ -101,7 +116,8 @@ export async function postTask(
  * Poll the status of a running job.
  */
 export async function pollStatus(jobId: string): Promise<StatusResponse> {
-  return sidecarFetch<StatusResponse>(`/task/${jobId}/status`)
+  const raw = await sidecarFetch<StatusResponse>(`/task/${jobId}/status`)
+  return { ...raw, status: normalizeJobStatus(raw.status) }
 }
 
 /**
@@ -159,41 +175,43 @@ export function streamLogs(
   const es = new EventSource(`${SIDECAR_BASE}/task/${jobId}/stream`)
   let closed = false
 
+  const finish = async () => {
+    if (closed) return
+    closed = true
+    es.close()
+    try {
+      const status = await pollStatus(jobId)
+      onDone(status)
+    } catch {
+      onDone(null)
+    }
+  }
+
   es.onmessage = (event) => {
     try {
-      const data = JSON.parse(event.data) as SidecarStep | StatusResponse
-      // Discriminate: SidecarStep has a `step` number field
-      if ('step' in data) {
-        onLine(data as SidecarStep)
+      const data = JSON.parse(event.data as string) as Record<string, unknown>
+      // Sidecar sends {"done": true, "status": ..., "job_id": ...} as completion sentinel
+      if (data.done === true) {
+        void finish()
+        return
+      }
+      // SidecarStep format has a numeric `step` field
+      if (typeof data.step === 'number') {
+        onLine(data as unknown as SidecarStep)
       }
     } catch {
       // ignore parse errors
     }
   }
 
-  es.addEventListener('done', (event: MessageEvent) => {
-    try {
-      const final = JSON.parse((event as MessageEvent).data) as StatusResponse
-      onDone(final)
-    } catch {
-      onDone(null)
-    }
-    es.close()
-    closed = true
-  })
-
   es.onerror = () => {
-    if (!closed) {
-      onDone(null)
-      es.close()
-      closed = true
-    }
+    void finish()
   }
 
   return () => {
     if (!closed) {
-      es.close()
       closed = true
+      es.close()
     }
   }
 }

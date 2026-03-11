@@ -127,16 +127,16 @@ export async function setSearchConfig(config: SearchConfigPayload): Promise<void
 // ─── Task History Persistence ─────────────────────────────────────────────────────
 
 export async function persistTaskHistory(taskId: string, history: unknown[]): Promise<void> {
-  await tauriInvoke('save_task_history', { task_id: taskId, history })
+  await tauriInvoke('save_task_history', { taskId, rawHistory: JSON.stringify(history) })
 }
 
 export async function deletePersistedTaskHistory(taskId: string): Promise<void> {
-  await tauriInvoke('delete_task_history', { task_id: taskId })
+  await tauriInvoke('delete_task_history', { taskId })
 }
 
 export async function getPersistedTaskHistory(taskId: string): Promise<unknown[] | null> {
-  const result = await tauriInvoke<unknown[]>('load_task_history', { task_id: taskId })
-  return result ?? null
+  const result = await tauriInvoke<string | null>('load_task_history', { taskId })
+  return result ? (JSON.parse(result) as unknown[]) : null
 }
 
 // ─── Trace Logging ─────────────────────────────────────────────────────────────────

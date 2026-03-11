@@ -177,7 +177,7 @@ export class AgentOrchestrator {
     }
 
     try {
-      for await (const event of runTask('orchestrator', payload)) {
+      for await (const event of runTask('M00', payload)) {
         if (signal.aborted) break
 
         switch (event.type) {

@@ -154,6 +154,21 @@ export function useAppInit(): UseAppInitResult {
       const sidecarOk = await checkSidecarHealth()
       if (!sidecarOk) {
         log.warn('Sidecar health check failed - continuing anyway')
+      } else {
+        // Sidecar is up — push LLM credentials from persisted store so modules
+        // can make LLM calls without the user having to re-enter their API key.
+        const { apiKey, apiBase, model } = useAppStore.getState()
+        if (apiKey) {
+          import('../tauri').then(({ tauriInvoke }) =>
+            tauriInvoke('nasus_configure_llm', {
+              config: {
+                api_key: apiKey,
+                api_base: apiBase || 'https://openrouter.ai/api/v1',
+                model: model || 'openai/gpt-4o-mini',
+              },
+            })
+          ).catch(() => {})
+        }
       }
 
       // Phase 4: Warm embedding model (background, non-blocking)
