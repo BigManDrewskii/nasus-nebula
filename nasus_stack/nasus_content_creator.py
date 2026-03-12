@@ -643,12 +643,24 @@ def route_envelope(envelope):
                     topic, content_format, tone, audience, word_count, extra_context
                 )
                 content = client.chat([{"role": "user", "content": prompt}])
-                return envelope.mark_done({
+                result_payload = {
                     "content": content,
                     "format": content_format,
                     "topic": topic,
                     "tone": tone,
-                })
+                }
+                try:
+                    from nasus_sidecar.workspace_io import get_workspace_io
+                    _session_id = payload.get("session_id")
+                    if _session_id:
+                        get_workspace_io().save(
+                            _session_id,
+                            f"{envelope.job_id}_content.md",
+                            content,
+                        )
+                except Exception:
+                    pass
+                return envelope.mark_done(result_payload)
         except Exception:
             pass
 

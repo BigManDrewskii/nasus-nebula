@@ -502,7 +502,22 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
         result = handler(spec)
         if isinstance(result, CodeError):
             return envelope.mark_failed(result.message)
-        return envelope.mark_done(result.to_dict())
+        result_dict = result.to_dict()
+        try:
+            from nasus_sidecar.workspace_io import get_workspace_io
+            _session_id = (payload or {}).get("session_id")
+            if _session_id:
+                ext = spec.language.value if hasattr(spec.language, "value") else "txt"
+                code_content = result_dict.get("code") or result_dict.get("content") or ""
+                if code_content:
+                    get_workspace_io().save(
+                        _session_id,
+                        f"{envelope.job_id}_code.{ext}",
+                        code_content,
+                    )
+        except Exception:
+            pass
+        return envelope.mark_done(result_dict)
     except Exception as exc:
         return envelope.mark_failed(str(exc))
 

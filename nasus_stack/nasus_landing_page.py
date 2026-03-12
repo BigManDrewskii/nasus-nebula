@@ -556,11 +556,23 @@ def route_envelope(envelope):
                     product_name, value_prop, target_audience, cta_goal, voice, sections
                 )
                 content = client.chat([{"role": "user", "content": prompt}])
-                return envelope.mark_done({
+                result_payload = {
                     "landing_page": content,
                     "product": product_name,
                     "format": "markdown",
-                })
+                }
+                try:
+                    from nasus_sidecar.workspace_io import get_workspace_io
+                    _session_id = payload.get("session_id")
+                    if _session_id:
+                        get_workspace_io().save(
+                            _session_id,
+                            f"{envelope.job_id}_page.html",
+                            content,
+                        )
+                except Exception:
+                    pass
+                return envelope.mark_done(result_payload)
         except Exception:
             pass
 

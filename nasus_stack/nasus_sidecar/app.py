@@ -94,6 +94,8 @@ async def lifespan(app: FastAPI):
     _db_dir.mkdir(parents=True, exist_ok=True)
     _memory = MemoryStore(db_path=str(_db_dir / "memory.db"))
     _orchestrator = NasusOrchestrator()
+    from nasus_sidecar.workspace_io import init_workspace_io
+    init_workspace_io(base=str(_db_dir / "workspaces"))
     yield
     # Cleanup: nothing needed for stateless sidecar
 
@@ -120,6 +122,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from nasus_sidecar.logger import get_logger as _get_logger
+_access_log = _get_logger("http")
+
+
+@app.middleware("http")
+async def _request_log_middleware(request: Request, call_next):
+    response = await call_next(request)
+    _access_log.info(
+        f"{request.method} {request.url.path}",
+        extra={
+            "status": response.status_code,
+            "client": request.client.host if request.client else "",
+        },
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -402,6 +420,14 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
     if _orchestrator is not None:
         _orchestrator.llm = llm_client.get_client(model=req.model, token_budget=req.token_budget)
 
+    # Batch-embed existing memory entries now that the LLM is available.
+    embedded_count = 0
+    if _memory is not None:
+        try:
+            embedded_count = _memory.embed_all()
+        except Exception:
+            pass
+
     return {
         "status": "configured",
         "api_base": req.api_base,
@@ -409,6 +435,7 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
         "llm_ready": llm_client.is_configured(),
         "search_configured": bool(req.exa_key or req.brave_key or req.serper_key),
         "token_budget": req.token_budget,
+        "embedded_count": embedded_count,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -528,6 +555,86 @@ async def cancel_task(job_id: str) -> Dict[str, Any]:
         await q.put(None)
 
     return {"job_id": job_id, "status": "cancelled"}
+
+
+# ---------------------------------------------------------------------------
+# Workspace endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.get("/workspace/{session_id}")
+async def list_workspace(session_id: str) -> Dict[str, Any]:
+    """List all artifact files for a session workspace."""
+    from nasus_sidecar.workspace_io import get_workspace_io
+    files = get_workspace_io().list(session_id)
+    return {"session_id": session_id, "files": files, "count": len(files)}
+
+
+@app.get("/workspace/{session_id}/{filename}")
+async def get_artifact(session_id: str, filename: str) -> Any:
+    """Return the content of a specific artifact file."""
+    from nasus_sidecar.workspace_io import get_workspace_io
+    try:
+        content = get_workspace_io().load(session_id, filename)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Artifact {filename!r} not found in session {session_id!r}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    # Return JSON if the content parses cleanly, else plain text
+    try:
+        return JSONResponse(content=json.loads(content))
+    except (json.JSONDecodeError, ValueError):
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(content)
+
+
+@app.delete("/workspace/{session_id}")
+async def delete_workspace(session_id: str) -> Dict[str, Any]:
+    """Delete all artifact files for a session workspace."""
+    from nasus_sidecar.workspace_io import get_workspace_io
+    count = get_workspace_io().delete_session(session_id)
+    return {"session_id": session_id, "deleted_count": count}
+
+
+# ---------------------------------------------------------------------------
+# Human-in-the-loop checkpoint endpoints
+# ---------------------------------------------------------------------------
+
+
+class _ApprovalRequest(BaseModel):
+    subtask_id: str
+
+
+@app.post("/task/{job_id}/approve")
+async def approve_subtask(job_id: str, req: _ApprovalRequest) -> Dict[str, Any]:
+    """
+    Approve a subtask that was paused at a HITL checkpoint.
+    Call execute_plan again (via a new M10 envelope) to resume execution.
+    """
+    if _orchestrator is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialised")
+    _orchestrator.approve(req.subtask_id)
+    return {
+        "job_id": job_id,
+        "subtask_id": req.subtask_id,
+        "decision": "approved",
+    }
+
+
+@app.post("/task/{job_id}/reject")
+async def reject_subtask(job_id: str, req: _ApprovalRequest) -> Dict[str, Any]:
+    """
+    Reject a subtask that was paused at a HITL checkpoint.
+    The subtask will be marked FAILED when execute_plan is next called.
+    """
+    if _orchestrator is None:
+        raise HTTPException(status_code=503, detail="Orchestrator not initialised")
+    _orchestrator.reject(req.subtask_id)
+    return {
+        "job_id": job_id,
+        "subtask_id": req.subtask_id,
+        "decision": "rejected",
+    }
 
 
 # ---------------------------------------------------------------------------

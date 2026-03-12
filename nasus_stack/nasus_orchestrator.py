@@ -221,6 +221,30 @@ class NasusOrchestrator:
         self._emitter: Optional[Callable[[Dict], None]] = None
         self._step_counter: int = 0
 
+        # Human-in-the-loop approval registry: subtask_id -> "approved" | "rejected"
+        self._approvals: Dict[str, str] = {}
+
+        # Structured logger — lazy import to avoid hard dep when testing
+        try:
+            from nasus_sidecar.logger import get_logger
+            self._logger = get_logger("orchestrator", session_id=self.session_id)
+        except Exception:
+            self._logger = None  # type: ignore[assignment]
+
+    # Modules that perform side-effectful / irreversible actions and require
+    # human approval when interrupt_on_irreversible=True is passed to execute_plan.
+    _IRREVERSIBLE_MODULES = frozenset({"M02", "M03", "M05"})
+
+    def approve(self, subtask_id: str) -> None:
+        """Grant approval for a subtask that was paused at a checkpoint."""
+        self._approvals[subtask_id] = "approved"
+        self._log(f"Approval granted: {subtask_id}")
+
+    def reject(self, subtask_id: str) -> None:
+        """Reject a subtask that was paused at a checkpoint."""
+        self._approvals[subtask_id] = "rejected"
+        self._log(f"Approval rejected: {subtask_id}")
+
     def _next_step(self) -> int:
         self._step_counter += 1
         return self._step_counter
@@ -236,10 +260,12 @@ class NasusOrchestrator:
                 **extra,
             })
 
-    def _log(self, msg: str):
+    def _log(self, msg: str, level: str = "info") -> None:
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
         entry = f"[{ts}] {msg}"
         self.log.append(entry)
+        if self._logger is not None:
+            getattr(self._logger, level, self._logger.info)(msg)
 
     # ── Step 1: Classify goal ──────────────────────────────────────────────────
 
@@ -499,10 +525,16 @@ class NasusOrchestrator:
 
     # ── Step 7: Auto-execute DAG ──────────────────────────────────────────────
 
-    def execute_plan(self) -> Dict:
+    def execute_plan(self, interrupt_on_irreversible: bool = False) -> Dict:
         """
         Walk the DAG stage by stage, executing all subtasks.
-        Returns a SynthesisReport dict.
+
+        When interrupt_on_irreversible=True, any subtask whose module is in
+        _IRREVERSIBLE_MODULES is paused for human approval before dispatch.
+        Paused tasks get status AWAITING_APPROVAL.  Call approve(subtask_id) or
+        reject(subtask_id) then re-invoke execute_plan() to resume.
+
+        Returns a SynthesisReport dict (or a CHECKPOINT dict when tasks are paused).
         """
         if not self.stages:
             return self.escalate_out_of_scope(
@@ -520,6 +552,29 @@ class NasusOrchestrator:
                 if st is None or st.status == SubtaskStatus.COMPLETED:
                     continue
 
+                # --- Human-in-the-loop checkpoint ---
+                if interrupt_on_irreversible and st.module in self._IRREVERSIBLE_MODULES:
+                    decision = self._approvals.get(subtask_id)
+                    if decision is None:
+                        st.status = SubtaskStatus.AWAITING_APPROVAL
+                        self._log(
+                            f"Checkpoint: {subtask_id} ({st.module}) awaiting approval"
+                        )
+                        self._emit(
+                            "checkpoint",
+                            f"{subtask_id} requires approval before {st.module} executes",
+                            subtask_id=subtask_id,
+                            module=st.module,
+                            instruction=st.instruction,
+                        )
+                        continue  # Skip until approved
+                    elif decision == "rejected":
+                        st.status = SubtaskStatus.FAILED
+                        self._log(
+                            f"Checkpoint rejected: {subtask_id} ({st.module})"
+                        )
+                        continue
+
                 for attempt in range(3):
                     self._emit(
                         "plan",
@@ -527,7 +582,10 @@ class NasusOrchestrator:
                     )
                     self.dispatch(subtask_id)
 
-                    sub_payload: Dict[str, Any] = {"instruction": st.instruction}
+                    sub_payload: Dict[str, Any] = {
+                        "instruction": st.instruction,
+                        "session_id": self.session_id,
+                    }
                     for inp in st.inputs:
                         if inp.value is not None:
                             sub_payload[inp.name] = inp.value
@@ -563,6 +621,17 @@ class NasusOrchestrator:
                                     artifact=result_env.payload,
                                 )
                             )
+                            # Persist deliverable to workspace filesystem
+                            try:
+                                from nasus_sidecar.workspace_io import get_workspace_io
+                                _ws = get_workspace_io()
+                                _ws.save(
+                                    self.session_id,
+                                    f"{subtask_id}.json",
+                                    result_env.payload,
+                                )
+                            except Exception:
+                                pass  # Never let artifact persistence abort execution
                             self._emit("plan", f"{subtask_id} completed")
                             break
                         else:
@@ -577,7 +646,116 @@ class NasusOrchestrator:
                         if st.status == SubtaskStatus.FAILED:
                             break
 
-        return self.synthesize()
+        # If any subtasks are still awaiting approval, return a checkpoint report
+        # instead of the final synthesis so the caller knows to wait.
+        pending_checkpoints = [
+            {
+                "subtask_id": sid,
+                "module": st.module,
+                "instruction": st.instruction,
+            }
+            for sid, st in self.subtasks.items()
+            if st.status == SubtaskStatus.AWAITING_APPROVAL
+        ]
+        if pending_checkpoints:
+            self._log(
+                f"execute_plan paused: {len(pending_checkpoints)} checkpoint(s) pending approval"
+            )
+            return {
+                "output_type": "CHECKPOINT",
+                "session_id": self.session_id,
+                "plan_id": self.plan_id,
+                "goal": self.goal,
+                "pending_approvals": pending_checkpoints,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+        report = self.synthesize()
+        report["reflection"] = self._reflect(self.deliverables, self.goal)
+        return report
+
+    # ── Step 8: Self-reflection ────────────────────────────────────────────────
+
+    def _reflect(self, deliverables: List["Deliverable"], goal: str) -> Dict:
+        """
+        Evaluate whether the deliverables satisfy the original goal.
+
+        When an LLM is available, sends a structured prompt asking for a
+        pass/fail assessment with issues and suggestions.  Falls back to a
+        heuristic check (all subtasks completed → pass) when no LLM is
+        configured.
+
+        Returns
+        -------
+        dict with keys: passed (bool), score (0-1), issues (list[str]),
+                        suggestions (list[str]), method ("llm" | "heuristic")
+        """
+        null_outputs = [
+            sid for sid, st in self.subtasks.items()
+            if st.status != SubtaskStatus.COMPLETED
+        ]
+        completed_count = len(deliverables)
+        total_count = len(self.subtasks)
+
+        # --- LLM path ---
+        if self.llm is not None:
+            try:
+                deliverable_summary = "\n".join(
+                    f"- [{d.source_module}] {d.label}: "
+                    + (
+                        str(d.artifact)[:200]
+                        if not isinstance(d.artifact, dict)
+                        else ", ".join(f"{k}={str(v)[:60]}" for k, v in list(d.artifact.items())[:4])
+                    )
+                    for d in deliverables
+                ) or "(no deliverables)"
+
+                prompt = (
+                    f"You are a quality reviewer for an AI agent system.\n\n"
+                    f"GOAL: {goal}\n\n"
+                    f"DELIVERABLES ({completed_count}/{total_count} tasks completed):\n"
+                    f"{deliverable_summary}\n\n"
+                    f"FAILED TASKS: {null_outputs or 'none'}\n\n"
+                    "Review whether the deliverables collectively achieve the goal. "
+                    "Respond ONLY with a JSON object:\n"
+                    '{"passed": true/false, "score": 0.0-1.0, '
+                    '"issues": ["..."], "suggestions": ["..."]}'
+                )
+                raw = self.llm.chat_json(
+                    [{"role": "user", "content": prompt}],
+                    schema_hint='{"passed": bool, "score": float, "issues": list, "suggestions": list}',
+                )
+                result = {
+                    "passed": bool(raw.get("passed", False)),
+                    "score": float(raw.get("score", 0.0)),
+                    "issues": list(raw.get("issues", [])),
+                    "suggestions": list(raw.get("suggestions", [])),
+                    "method": "llm",
+                }
+                self._log(
+                    f"Reflection (LLM): passed={result['passed']} score={result['score']:.2f}"
+                )
+                return result
+            except Exception as exc:
+                self._log(f"Reflection LLM failed, using heuristic: {exc}", level="warning")
+
+        # --- Heuristic fallback ---
+        passed = len(null_outputs) == 0
+        score = completed_count / max(total_count, 1)
+        issues = [f"Task {sid} did not complete" for sid in null_outputs]
+        suggestions: List[str] = []
+        if not passed:
+            suggestions.append("Retry failed tasks with a more specific instruction.")
+        self._log(
+            f"Reflection (heuristic): passed={passed} score={score:.2f} issues={len(issues)}"
+        )
+        return {
+            "passed": passed,
+            "score": round(score, 3),
+            "issues": issues,
+            "suggestions": suggestions,
+            "method": "heuristic",
+        }
 
     # ── Escalation helpers ────────────────────────────────────────────────────
 
@@ -818,7 +996,14 @@ class NasusOrchestrator:
             envelope.mark_done(result_dict)
 
         except Exception as exc:
+            self._log(f"route_envelope FAILED: {module_id} — {exc}", level="error")
             envelope.mark_failed(str(exc))
+
+        if envelope.status.value == "FAILED":
+            self._log(
+                f"Envelope FAILED: {module_id} errors={envelope.errors}",
+                level="warning",
+            )
 
         return envelope
 

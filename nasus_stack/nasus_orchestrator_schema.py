@@ -50,6 +50,7 @@ class SubtaskStatus(str, Enum):
     CANCELLED = "CANCELLED"
     BLOCKED = "BLOCKED"
     RETRYING = "RETRYING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
 
 
 class Deadline(str, Enum):

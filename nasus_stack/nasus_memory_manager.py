@@ -74,6 +74,9 @@ class MemoryStore:
             "working":    {},          # key -> WorkingEntry
         }
         self._op_log: list[dict] = []  # lightweight audit trail
+        # Embedding cache: (layer, key) -> List[float]
+        # Populated on-demand when llm_client.embed() is available.
+        self._embeddings: dict[tuple, list] = {}
         self._db: Optional[sqlite3.Connection] = None
         self._db_path: Optional[str] = None
         if db_path:
@@ -123,6 +126,42 @@ class MemoryStore:
         expired = [k for k, v in self._store["working"].items() if self._is_expired(v)]
         for k in expired:
             del self._store["working"][k]
+
+    def _try_embed(self, layer: str, key: str, text: str) -> None:
+        """Attempt to embed *text* and cache the vector. Silently no-ops on failure."""
+        cache_key = (layer, key)
+        if cache_key in self._embeddings:
+            return
+        try:
+            from nasus_sidecar import llm_client as _llm
+            if not _llm.is_configured():
+                return
+            vec = _llm.embed(text)
+            self._embeddings[cache_key] = vec
+        except Exception:
+            pass  # Always fall back to keyword search
+
+    def embed_all(self) -> int:
+        """
+        Batch-embed all existing entries. Call once after POST /configure.
+        Returns the count of successfully embedded entries.
+        """
+        count = 0
+        for key, fact in self._store["semantic"].items():
+            text = f"{key} {json.dumps(fact.value, default=str)}"
+            self._try_embed("semantic", key, text)
+            if ("semantic", key) in self._embeddings:
+                count += 1
+        for pid, pat in self._store["procedural"].items():
+            text = f"{pat.description} {pat.trigger}"
+            self._try_embed("procedural", pid, text)
+            if ("procedural", pid) in self._embeddings:
+                count += 1
+        for record in self._store["episodic"]:
+            self._try_embed("episodic", record.session_id, record.summary)
+            if ("episodic", record.session_id) in self._embeddings:
+                count += 1
+        return count
 
     # ------------------------------------------------------------------
     # SQLite helpers
@@ -358,10 +397,8 @@ class MemoryStore:
 
     def query(self, natural_language_query: str) -> dict:
         """
-        Simple keyword-based cross-layer search (stand-in for vector search).
-
-        Scores each entry by counting how many query tokens appear in its
-        serialised representation.  Returns top-5 matches per layer.
+        Cross-layer search. Uses cosine similarity when embedding vectors are
+        cached; falls back to keyword scoring otherwise.
 
         Returns
         -------
@@ -369,6 +406,16 @@ class MemoryStore:
         """
         self._evict_expired_working()
         import re as _re
+
+        # --- Try to embed the query for semantic scoring ---
+        query_vec: list = []
+        try:
+            from nasus_sidecar import llm_client as _llm
+            if _llm.is_configured() and self._embeddings:
+                query_vec = _llm.embed(natural_language_query)
+        except Exception:
+            pass
+
         tokens = set(_re.sub(r'[^a-z0-9]', ' ', natural_language_query.lower()).split())
         # Remove common English stop words that add noise
         stop = {'what', 'do', 'we', 'know', 'about', 'the', 'a', 'an', 'is', 'are', 'in', 'of', 'to', 'and', 'for'}
@@ -376,6 +423,18 @@ class MemoryStore:
         if not tokens:
             tokens = set(natural_language_query.lower().split())
         results = []
+
+        def _cosine_score(layer: str, key: str) -> Optional[float]:
+            if not query_vec:
+                return None
+            entry_vec = self._embeddings.get((layer, key))
+            if not entry_vec:
+                return None
+            try:
+                from nasus_sidecar.llm_client import cosine_similarity
+                return cosine_similarity(query_vec, entry_vec)
+            except Exception:
+                return None
 
         def _score(text: str) -> float:
             text_lower = text.lower()
@@ -387,7 +446,9 @@ class MemoryStore:
         # --- episodic ---
         for record in self._store["episodic"]:
             blob = json.dumps(asdict(record), default=str)
-            sc = _score(blob)
+            sc = _cosine_score("episodic", record.session_id)
+            if sc is None:
+                sc = _score(blob)
             if sc > 0:
                 results.append({
                     "layer": "episodic",
@@ -400,7 +461,9 @@ class MemoryStore:
         # --- semantic ---
         for key, fact in self._store["semantic"].items():
             blob = json.dumps(asdict(fact), default=str)
-            sc = _score(blob)
+            sc = _cosine_score("semantic", key)
+            if sc is None:
+                sc = _score(blob)
             if sc > 0:
                 results.append({
                     "layer": "semantic",
@@ -413,7 +476,9 @@ class MemoryStore:
         # --- procedural ---
         for pid, pattern in self._store["procedural"].items():
             blob = json.dumps(asdict(pattern), default=str)
-            sc = _score(blob)
+            sc = _cosine_score("procedural", pid)
+            if sc is None:
+                sc = _score(blob)
             if sc > 0:
                 results.append({
                     "layer": "procedural",
@@ -426,7 +491,9 @@ class MemoryStore:
         # --- working ---
         for key, entry in self._store["working"].items():
             blob = json.dumps(asdict(entry), default=str)
-            sc = _score(blob)
+            sc = _cosine_score("working", key)
+            if sc is None:
+                sc = _score(blob)
             if sc > 0:
                 results.append({
                     "layer": "working",

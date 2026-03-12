@@ -517,6 +517,41 @@ class NasusLLMClient:
 # ---------------------------------------------------------------------------
 
 
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    """
+    Compute cosine similarity between two float vectors.
+    Pure Python — no numpy dependency. Returns 0.0 for zero-magnitude vectors.
+    """
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    mag_a = sum(x * x for x in a) ** 0.5
+    mag_b = sum(y * y for y in b) ** 0.5
+    if mag_a == 0.0 or mag_b == 0.0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+def embed(text: str, model: str = "text-embedding-3-small") -> List[float]:
+    """
+    Request an embedding vector from the configured OpenAI-compatible endpoint.
+    Returns a list of floats, or raises RuntimeError if not configured / request fails.
+    """
+    if not is_configured():
+        raise RuntimeError("embed(): LLM not configured — call /configure first")
+    cfg = get_config()
+    url = f"{cfg.api_base}/embeddings"
+    body: Dict[str, Any] = {"model": model, "input": text}
+    with httpx.Client(timeout=cfg.timeout_s) as client:
+        resp = client.post(url, json=body, headers=_build_headers(cfg.api_key, cfg.api_base))
+        resp.raise_for_status()
+        data = resp.json()
+    embedding = data.get("data", [{}])[0].get("embedding")
+    if not embedding:
+        raise ValueError(f"embed(): unexpected response shape: {data}")
+    return embedding
+
+
 def get_client(model: Optional[str] = None, token_budget: Optional[int] = None) -> NasusLLMClient:
     """
     Return a NasusLLMClient snapshot using the current global config.
