@@ -46,7 +46,7 @@ interface ActionChipsProps {
 
 export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, width: '100%' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8, width: '100%' }}>
       {chips.map((chip) => (
         <button
           key={chip.label}

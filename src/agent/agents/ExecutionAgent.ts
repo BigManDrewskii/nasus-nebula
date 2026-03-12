@@ -296,6 +296,13 @@ export class ExecutionAgent extends BaseAgent {
         }
       }
 
+      // Snapshot message content before this LLM call so we can restore it if
+      // the model outputs narration text alongside a tool call — the text streams
+      // into message.content live (good UX) but we then move it into a thinking
+      // step and restore the pre-call content so it doesn't double-display.
+      const preIterationContent =
+        useAppStore.getState().messages[taskId]?.find(m => m.id === messageId)?.content ?? ''
+
       // LLM call with automatic gateway failover.
       // Pass suppressErrorEmit=true while we still have outer retries left, so the UI
       // doesn't flash "failed" on transient network blips that we're going to recover from.
@@ -410,6 +417,7 @@ export class ExecutionAgent extends BaseAgent {
           toolDefs,
           env,
           params.plan,
+          preIterationContent,
         )
 
     if (toolResult === 'aborted' || toolResult === 'complete') {
@@ -678,16 +686,23 @@ export class ExecutionAgent extends BaseAgent {
     toolDefs: ReturnType<typeof getToolDefinitions>,
     env: 'sandbox' | 'browser-only',
     plan?: ExecutionConfigParams['plan'],
+    preIterationContent?: string,
   ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
-    // Surface LLM pre-tool narration as a thinking step so the user sees what the
-    // agent is about to do (Manus-style). This text arrives in the `content` field
-    // alongside tool_calls — it was previously stored in rawHistory but never shown.
+    // Surface LLM pre-tool narration as a thinking step (Manus-style).
+    // The narration text was already streamed into message.content via onDelta
+    // for the live typing effect. Now that we know there are tool calls, we:
+    //   1. Emit it as a thinking step (contextually placed before the tool call)
+    //   2. Restore message.content to its pre-iteration snapshot so the narration
+    //      doesn't accumulate in the message body alongside the final summary.
     if (content?.trim()) {
       const thinkStep: AgentStep = { kind: 'thinking', content: content.trim() }
       useAppStore.getState().addStep(taskId, messageId, thinkStep)
+      if (preIterationContent !== undefined) {
+        useAppStore.getState().setMessageContent(taskId, messageId, preIterationContent)
+      }
     }
 
       // DeepSeek R1: must include reasoning_content in assistant message during tool call loops.

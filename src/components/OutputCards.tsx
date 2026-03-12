@@ -68,6 +68,30 @@ function fileMeta(filename: string): FileMeta {
   }
 }
 
+// ─── Asset inliner ────────────────────────────────────────────────────────────
+// Inlines CSS <link> and <script src> references using the bundle's own files,
+// so the iframe renders with correct styles even inside a blob URL sandbox.
+
+function inlineAssetsForBundle(html: string, files: OutputCardFile[]): string {
+  const byName = new Map(files.map(f => [f.filename, f]))
+  function resolve(ref: string): OutputCardFile | undefined {
+    return byName.get(ref.replace(/^\.\//, ''))
+  }
+  let result = html.replace(
+    /<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*\/?>/gi,
+    (_m, href) => { const f = resolve(href); return f ? `<style>${f.content}</style>` : _m },
+  )
+  result = result.replace(
+    /<script([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi,
+    (_m, pre, src, post) => {
+      const f = resolve(src)
+      if (!f) return _m
+      return `<script${(pre + post).replace(/type=["']module["']/gi, '')}>${f.content}</script>`
+    },
+  )
+  return result
+}
+
 // ─── Download helpers ─────────────────────────────────────────────────────────
 
 function downloadFile(filename: string, content: string) {
@@ -385,9 +409,10 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
 
   const blobUrl = useMemo(() => {
     if (!htmlFile) return null
-    const blob = new Blob([htmlFile.content], { type: 'text/html' })
+    const inlined = inlineAssetsForBundle(htmlFile.content, files)
+    const blob = new Blob([inlined], { type: 'text/html' })
     return URL.createObjectURL(blob)
-  }, [htmlFile])
+  }, [htmlFile, files])
 
   return (
     <CardShell accent>

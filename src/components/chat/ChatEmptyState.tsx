@@ -32,10 +32,10 @@ export function ChatEmptyState({
 }: ChatEmptyStateProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6">
-      <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28 }}>
+      <div style={{ width: '100%', maxWidth: 520, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32 }}>
 
         {/* Logo + headline block */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{
               position: 'absolute',
@@ -48,7 +48,7 @@ export function ChatEmptyState({
             }} />
             <NasusLogo size={34} />
           </div>
-          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <h3
               className="font-display font-semibold"
               style={{ fontSize: 'var(--text-2xl)', color: 'var(--tx-primary)', margin: 0, letterSpacing: '-0.03em', lineHeight: 1.15 }}

@@ -10,10 +10,10 @@ import { NasusLogo } from './NasusLogo'
 import { Pxi } from './Pxi'
 
 const PHASE_LABELS: Record<InitPhase, string> = {
-  hydrating_store: 'Preparing workspace...',
-  init_gateway: 'Connecting to AI gateway...',
-  checking_sidecar: 'Starting services...',
-  warming_embeddings: 'Warming up models...',
+  hydrating_store: 'Preparing workspace',
+  init_gateway: 'Connecting to gateway',
+  checking_sidecar: 'Starting services',
+  warming_embeddings: 'Warming up models',
   complete: 'Ready',
   error: 'Initialization failed',
 }
@@ -34,22 +34,19 @@ export function InitializationScreen({ phase, error, progress, onRetry, onSkip }
 
   return (
     <div className="initialization-root">
-      {/* Ambient top glow */}
       <div className="initialization-glow" />
 
       <div className="initialization-card">
-        {/* Logo with glow */}
+        {/* Logo */}
         <div className="initialization-logo-container">
           <div className="initialization-logo-glow" />
-          <div className="initialization-logo-box">
-            <NasusLogo size={36} fill="var(--amber)" className={hasError ? '' : 'spin-slow'} />
-          </div>
+          <NasusLogo size={32} fill="var(--amber)" className={hasError ? '' : 'spin-slow'} />
         </div>
 
-        {/* Status message */}
+        {/* Status */}
         <div className="initialization-status">
           <h2 className="initialization-title">
-            {hasError ? 'Initialization Failed' : 'Nasus is starting...'}
+            {hasError ? 'Something went wrong' : 'Nasus'}
           </h2>
           <p className="initialization-subtitle">
             {hasError ? error?.message : PHASE_LABELS[phase]}
@@ -58,37 +55,11 @@ export function InitializationScreen({ phase, error, progress, onRetry, onSkip }
 
         {/* Progress bar */}
         {!hasError && (
-          <div className="initialization-progress-container">
-            <div className="initialization-progress-bar">
-              <div
-                className="initialization-progress-fill"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="initialization-progress-text">{progress}%</span>
-          </div>
-        )}
-
-        {/* Phase indicators */}
-        {!hasError && (
-          <div className="initialization-phases">
-            {(['hydrating_store', 'init_gateway', 'checking_sidecar', 'warming_embeddings'] as InitPhase[]).map(
-              (p, i) => {
-                const phaseIndex = ['hydrating_store', 'init_gateway', 'checking_sidecar', 'warming_embeddings'].indexOf(
-                  phase
-                )
-                const isDone = i < phaseIndex
-                const isCurrent = i === phaseIndex
-
-                return (
-                  <div
-                    key={p}
-                    className="initialization-phase-dot"
-                    data-status={isDone ? 'done' : isCurrent ? 'current' : 'pending'}
-                  />
-                )
-              }
-            )}
+          <div className="initialization-progress-bar">
+            <div
+              className="initialization-progress-fill"
+              style={{ width: `${progress}%` }}
+            />
           </div>
         )}
 
@@ -110,7 +81,7 @@ export function InitializationScreen({ phase, error, progress, onRetry, onSkip }
           </div>
         )}
 
-        {/* Skip button for non-blocking phases */}
+        {/* Skip */}
         {canSkip && !hasError && (
           <button
             onClick={onSkip}

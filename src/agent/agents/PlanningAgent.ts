@@ -428,6 +428,24 @@ Respond ONLY with the JSON, no other text.`
  */
 const _sharedPlanningAgent = new PlanningAgent('planning', 'planner')
 
+/**
+ * Standalone simple-plan check — does not require an agent instance.
+ * Returns true when a plan has ≤2 phases, ≤3 total steps, and uses only
+ * non-complex tools (no bash/python/browser/serve).
+ */
+export function isSimplePlan(plan: ExecutionPlan): boolean {
+  const stepCount = plan.phases.reduce((sum, p) => sum + p.steps.length, 0)
+  if (plan.phases.length > 2 || stepCount > 3) return false
+
+  const complexTools = ['bash_execute', 'python_execute', 'browser_navigate', 'serve_preview']
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      if (step.tools.some(t => complexTools.includes(t))) return false
+    }
+  }
+  return true
+}
+
 export async function generatePlan(
   userInput: string,
   apiKey: string,

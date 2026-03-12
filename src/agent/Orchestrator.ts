@@ -13,7 +13,7 @@ import type { ExecutionPlan } from './core/Agent'
 import type { LlmMessage } from './llm'
 import type { SearchConfig } from './tools'
 import type { ExecutionConfig as SandboxConfig } from './sandboxRuntime'
-import { PlanningAgent, generatePlan } from './agents/PlanningAgent'
+import { generatePlan, isSimplePlan } from './agents/PlanningAgent'
 import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAgent'
 import { useAppStore } from '../store'
 import {
@@ -76,7 +76,6 @@ export class AgentOrchestrator {
   readonly name = 'Agent Orchestrator'
   readonly description = 'Coordinates planning and execution agents'
 
-  private planningAgent: PlanningAgent = new PlanningAgent('planning', 'planner')
   private executionAgent: ExecutionAgent = new ExecutionAgent('execution', 'executor')
   private config: OrchestratorConfig = {}
   private _isSidecarReady = false
@@ -88,9 +87,6 @@ export class AgentOrchestrator {
 
   setConfig(config: OrchestratorConfig): void {
     this.config = { ...config }
-    if (typeof config.autoApproveSimple === 'boolean') {
-      this.planningAgent.setConfig({ autoApproveSimple: config.autoApproveSimple })
-    }
   }
 
   /**
@@ -148,6 +144,12 @@ export class AgentOrchestrator {
     }
 
     if (signal.aborted) return
+
+    // Auto-approve simple plans without blocking on the modal.
+    if (this.config.autoApproveSimple && isSimplePlan(plan)) {
+      await this.executePlan(params, plan)
+      return
+    }
 
     const approvalResult = await this.waitForApproval(taskId, plan, signal)
 

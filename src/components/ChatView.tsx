@@ -755,7 +755,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
               className="flex-1 overflow-y-auto custom-scrollbar"
               id="message-list"
             >
-              <div className="max-w-[780px] mx-auto px-5 py-8 flex flex-col gap-5">
+              <div className="max-w-[780px] mx-auto px-6 py-8 flex flex-col gap-6">
                     {visibleMessages.map((msg, i) => (
                       <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                         <ChatMessage
@@ -858,7 +858,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
               )}
 
               {/* Input */}
-              <div ref={inputWrapRef} className="flex-shrink-0 px-5 pb-5 pt-1">
+              <div ref={inputWrapRef} className="flex-shrink-0 px-6 pb-6 pt-2">
                 <div className="max-w-[780px] mx-auto">
               {/* Meta strip — routing preview + cost, consolidated */}
               {(activeModelBadge || routingPreview || taskCostBadge) && (

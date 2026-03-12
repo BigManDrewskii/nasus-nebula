@@ -39,6 +39,7 @@ export interface TaskSlice {
   getRawHistory: (taskId: string) => LlmMessage[]
   addMessage: (taskId: string, message: Message) => void
   appendChunk: (taskId: string, messageId: string, delta: string) => void
+  setMessageContent: (taskId: string, messageId: string, content: string) => void
   setStreaming: (taskId: string, messageId: string, streaming: boolean) => void
   setError: (taskId: string, messageId: string, error: string) => void
   addStep: (taskId: string, messageId: string, step: AgentStep) => void
@@ -177,6 +178,16 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
         const msg = msgs.find((m) => m.id === messageId)
         if (msg) {
           msg.content += delta
+        }
+      }),
+
+    setMessageContent: (taskId, messageId, content) =>
+      set((state) => {
+        const msgs = state.messages[taskId]
+        if (!msgs) return
+        const msg = msgs.find((m) => m.id === messageId)
+        if (msg) {
+          msg.content = content
         }
       }),
 

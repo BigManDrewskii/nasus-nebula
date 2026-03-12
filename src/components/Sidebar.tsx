@@ -201,7 +201,7 @@ function SidebarBrand({ onCollapse }: { onCollapse?: () => void }) {
           <NasusLogo size={22} fill="var(--amber)" />
         </div>
         <div className="sb-brand-text-wrap">
-          <span className="font-display sb-brand-name">NASUS</span>
+          <span className="font-display sb-brand-name">Nasus</span>
         </div>
         {onCollapse && (
           <button

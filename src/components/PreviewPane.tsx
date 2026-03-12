@@ -6,6 +6,20 @@ interface PreviewPaneProps {
   files: WorkspaceFile[]
 }
 
+type ViewportMode = 'desktop' | 'tablet' | 'mobile'
+
+const VIEWPORT_WIDTHS: Record<ViewportMode, string> = {
+  desktop: '100%',
+  tablet: '768px',
+  mobile: '390px',
+}
+
+const VIEWPORT_ICONS: Record<ViewportMode, string> = {
+  desktop: 'desktop',
+  mobile:  'mobile',
+  tablet:  'mobile',
+}
+
 /** Pick the best entry-point HTML file from the workspace */
 function pickHtmlEntry(files: WorkspaceFile[]): WorkspaceFile | null {
   const priority = ['index.html', 'output.html', 'main.html']
@@ -23,13 +37,11 @@ function pickHtmlEntry(files: WorkspaceFile[]): WorkspaceFile | null {
 function inlineAssets(html: string, files: WorkspaceFile[]): string {
   const byName = new Map(files.map((f) => [f.name, f]))
 
-  // Resolve a src/href reference to a WorkspaceFile
   function resolve(ref: string): WorkspaceFile | undefined {
     const clean = ref.replace(/^\.\//, '').replace(/^\/workspace\//, '')
     return byName.get(clean)
   }
 
-    // Inline <link rel="stylesheet" href="...">
   let result = html.replace(
     /<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*\/?>/gi,
     (_match, href) => {
@@ -39,13 +51,11 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
     },
   )
 
-  // Inline <script src="...">
   result = result.replace(
     /<script([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi,
     (_match, pre, src, post) => {
       const f = resolve(src)
       if (!f) return _match
-      // Strip type="module" so it runs in the sandboxed iframe context
       const attrs = (pre + post).replace(/type=["']module["']/gi, '')
       return `<script${attrs}>${f.content}</script>`
     },
@@ -56,9 +66,8 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
 
 export function PreviewPane({ files }: PreviewPaneProps) {
   const htmlFile = pickHtmlEntry(files)
-
-  // Auto-refresh preview when files are modified by agent tools
   const [refreshKey, setRefreshKey] = useState(0)
+  const [viewportMode, setViewportMode] = useState<ViewportMode>('desktop')
 
   useEffect(() => {
     const handleToolComplete = (e: Event) => {
@@ -74,7 +83,6 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       const { tool, input } = detail
       const path = String(input.path ?? '')
 
-      // Refresh preview when HTML or related assets are written/patched
       if (tool === 'write_file' || tool === 'patch_file') {
         const isHtmlFile = path.endsWith('.html')
         const isCssFile = path.endsWith('.css')
@@ -92,7 +100,7 @@ export function PreviewPane({ files }: PreviewPaneProps) {
 
   const srcDoc = useMemo(() => {
     if (!htmlFile) return null
-    void refreshKey // intentional: forces recompute when user triggers a refresh
+    void refreshKey
     return inlineAssets(htmlFile.content, files)
   }, [htmlFile, files, refreshKey])
 
@@ -108,20 +116,57 @@ export function PreviewPane({ files }: PreviewPaneProps) {
     )
   }
 
+  function openInTab() {
+    const tab = window.open()
+    if (tab) {
+      tab.document.open()
+      tab.document.write(srcDoc!)
+      tab.document.close()
+    }
+  }
+
   return (
     <div className="output-preview-layout">
+      {/* Meta bar: file path + viewport controls + open-in-tab */}
       <div className="output-pane-meta">
         <Pxi name="globe" size={10} style={{ color: 'var(--tx-tertiary)' }} />
         <span className="output-pane-meta-path">{htmlFile.name}</span>
+
+        <div className="preview-vp-bar">
+          {(['desktop', 'tablet', 'mobile'] as ViewportMode[]).map(v => (
+            <button
+              key={v}
+              onClick={() => setViewportMode(v)}
+              className={`preview-vp-btn${viewportMode === v ? ' preview-vp-btn--active' : ''}`}
+              title={v.charAt(0).toUpperCase() + v.slice(1)}
+            >
+              <Pxi name={VIEWPORT_ICONS[v]} size={10} />
+              <span className="preview-vp-label">{v}</span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={openInTab}
+          className="preview-open-btn"
+          title="Open in new tab"
+        >
+          <Pxi name="external-link" size={10} />
+          Open
+        </button>
       </div>
 
-      <iframe
-        key={srcDoc}
-        srcDoc={srcDoc}
-        sandbox="allow-scripts allow-forms allow-modals"
-        className="output-preview-iframe"
-        title="Preview"
-      />
+      {/* Viewport-constrained iframe wrapper */}
+      <div className="preview-viewport-wrap">
+        <iframe
+          key={srcDoc}
+          srcDoc={srcDoc}
+          sandbox="allow-scripts allow-forms allow-modals"
+          className="output-preview-iframe"
+          style={{ width: VIEWPORT_WIDTHS[viewportMode], maxWidth: '100%' }}
+          title="Preview"
+        />
+      </div>
     </div>
   )
 }
