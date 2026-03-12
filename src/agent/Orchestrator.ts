@@ -168,14 +168,20 @@ export class AgentOrchestrator {
     const { taskId, messageId, signal } = params
     const store = useAppStore.getState()
 
-    // Ensure the sidecar has LLM credentials — reconfigure if it lost them (e.g. after a restart)
-    const health = await healthStatus()
-    if (health && !health.llm_configured && params.apiKey) {
+    // Always sync the sidecar's LLM credentials before each task so that model/key
+    // changes made in Settings take effect immediately without requiring a restart.
+    if (params.apiKey) {
       await configureSidecar({
         api_key: params.apiKey,
         api_base: params.apiBase || 'https://openrouter.ai/api/v1',
         model: params.model || 'openai/gpt-4o-mini',
       })
+    } else {
+      // No key in params — still check if sidecar needs any credentials at all
+      const health = await healthStatus()
+      if (health && !health.llm_configured) {
+        return // can't run without credentials
+      }
     }
 
     // Notify UI that the agent has started (drives useAgentStatus → 'processing')
@@ -218,6 +224,13 @@ export class AgentOrchestrator {
       window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
     }
 
+    // Accumulate all 'final' chunks so code extraction runs on the complete response.
+    // (The sidecar streams final content as many small chunks; running extraction per-chunk
+    //  means the regex never sees a complete closing ``` fence.)
+    let accumulatedFinal = ''
+    // Track the callId of the most recent tool_call for pairing with observations.
+    let lastToolCallId: string | null = null
+
     try {
       for await (const event of runTask('M00', payload)) {
         if (signal.aborted) break
@@ -225,37 +238,38 @@ export class AgentOrchestrator {
         switch (event.type) {
           case 'step': {
             const step = event.data as SidecarStep
+            const callId = `sc-${step.step}`
 
-            // Map sidecar step types onto the agent store step format
-            store.addAgentStep(taskId, {
-              id: `sidecar-step-${step.step}`,
-              type: step.type === 'tool_call' ? 'tool' : step.type === 'observation' ? 'result' : 'thought',
-              content: step.content,
-              tool: step.tool,
-              toolInput: step.tool_input as Record<string, unknown> | undefined,
-              toolOutput: step.tool_output as string | undefined,
-              timestamp: step.timestamp,
-            })
-
-            // Emit 'final' step content as the chat message text, then extract
-            // any code blocks and write them to the workspace as real files.
-            if (step.type === 'final' && step.content) {
-              store.appendChunk(taskId, messageId, step.content)
-              window.dispatchEvent(new CustomEvent('nasus:stream-chunk', {
-                detail: { taskId, messageId, delta: step.content },
-              }))
-
-              void extractAndWriteCodeFiles(
-                step.content,
-                taskId,
-                (s) => store.addAgentStep(taskId, s),
-              )
-            }
-
-            // Emit tool-call so the UI tool indicator shows the active tool
-            if (step.type === 'tool_call' && step.tool) {
+            // Map sidecar step types → typed AgentStep on message.steps (drives AgentStepsView).
+            if (step.type === 'plan' && step.content) {
+              store.addStep(taskId, messageId, { kind: 'thinking', content: step.content })
+            } else if (step.type === 'tool_call' && step.tool) {
+              lastToolCallId = callId
+              store.addStep(taskId, messageId, {
+                kind: 'tool_call',
+                tool: step.tool,
+                input: (step.tool_input as Record<string, unknown>) ?? {},
+                callId,
+              })
               window.dispatchEvent(new CustomEvent('nasus:tool-call', {
                 detail: { taskId, messageId, tool: step.tool },
+              }))
+            } else if (step.type === 'observation' && lastToolCallId) {
+              store.updateStep(taskId, messageId, {
+                kind: 'tool_result',
+                callId: lastToolCallId,
+                output: step.content ?? '',
+                isError: false,
+              })
+              lastToolCallId = null
+            }
+
+            // Accumulate final content for code extraction; also stream to chat.
+            if (step.type === 'final' && step.content) {
+              store.appendChunk(taskId, messageId, step.content)
+              accumulatedFinal += step.content
+              window.dispatchEvent(new CustomEvent('nasus:stream-chunk', {
+                detail: { taskId, messageId, delta: step.content },
               }))
             }
             break
@@ -268,6 +282,20 @@ export class AgentOrchestrator {
           case 'done': {
             const final = event.data as StatusResponse & { errors?: string[] }
             if (final.status === 'completed') {
+              // Extract code files from the fully-accumulated response text.
+              if (accumulatedFinal) {
+                void extractAndWriteCodeFiles(
+                  accumulatedFinal,
+                  taskId,
+                  (s) => {
+                    if (s.kind === 'tool_result') {
+                      store.updateStep(taskId, messageId, s)
+                    } else {
+                      store.addStep(taskId, messageId, s)
+                    }
+                  },
+                )
+              }
               finishOk()
             } else if (final.status === 'error') {
               finishErr(final.error ?? final.errors?.[0] ?? 'Sidecar execution failed')
@@ -360,6 +388,8 @@ export class AgentOrchestrator {
     const store = useAppStore.getState()
 
     store.setCurrentPlan(plan)
+    store.setCurrentPhase(0)
+    store.setCurrentStep(0)
     store.setStatus(taskId, 'executing')
 
     const executionParams: ExecutionConfigParams = {

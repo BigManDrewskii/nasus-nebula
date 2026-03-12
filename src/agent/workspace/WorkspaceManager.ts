@@ -1,4 +1,3 @@
-import * as path from 'path'
 import { tauriInvoke, workspaceReadBinary } from '../../tauri'
 import { parseFileBuffer, isSupportedBinaryFormat } from '../FileParser'
 import { createLogger } from '../../lib/logger'
@@ -190,10 +189,10 @@ export class WorkspaceManager {
 
     const workspacePath = await this.getWorkspacePath(taskId)
 
-    // Path traversal guard — reject any path that escapes the workspace root
-    const _resolvedFull = path.resolve(workspacePath, filePath)
-    const _resolvedBase = path.resolve(workspacePath)
-    if (_resolvedBase && !_resolvedFull.startsWith(_resolvedBase + path.sep) && _resolvedFull !== _resolvedBase) {
+    // Path traversal guard — reject any path containing '..' components.
+    // Browser-safe: does not use Node.js path module. The Rust backend also
+    // validates with validate_path_no_traversal as a second line of defence.
+    if (filePath.split('/').some(part => part === '..')) {
       throw new Error(`Path traversal detected: the path escapes the workspace boundary`)
     }
 

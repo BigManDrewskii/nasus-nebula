@@ -9,6 +9,8 @@ import { OutputCardRenderer } from './OutputCards'
 import { useDebouncedStreaming } from '../hooks/useStreaming'
 import { logger } from '../lib/logger'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { CompactPlanView } from './PlanConfirmationModal'
+import { useAppStore } from '../store'
 
 // ─── Agent content normalizer ─────────────────────────────────────────────────
 // Splits colon-joined narration runs into separate paragraphs so each step
@@ -330,8 +332,13 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
     return []
   }, [message.steps])
 
+  const currentPlan  = useAppStore(s => s.currentPlan)
+  const currentPhase = useAppStore(s => s.currentPhase)
+  const currentStep  = useAppStore(s => s.currentStep)
+
     if (isWaiting) {
         const lastToolStep = message.steps?.findLast((s: AgentStep) => s.kind === 'tool_call')
+      const phaseName = currentPlan?.phases[currentPhase]?.title
       return <ThinkingIndicator
         visible={true}
         activeModel={message.modelId ? {
@@ -340,6 +347,7 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
           provider: message.provider || 'AI'
         } : null}
         currentTool={lastToolStep?.kind === 'tool_call' ? lastToolStep.tool : null}
+        currentPhaseName={phaseName}
       />
     }
 
@@ -370,6 +378,17 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
               isStreaming={isStreaming}
             />
           )}
+
+        {/* Plan progress tracker — shown during active execution */}
+        {isStreaming && currentPlan && (
+          <div style={{ marginBottom: 12 }}>
+            <CompactPlanView
+              plan={currentPlan}
+              currentPhase={currentPhase}
+              currentStep={currentStep}
+            />
+          </div>
+        )}
 
         {/* Steps (tool calls) */}
         {hasSteps && <AgentStepsView steps={message.steps!} isStreaming={isStreaming} />}

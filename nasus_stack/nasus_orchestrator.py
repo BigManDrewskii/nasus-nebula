@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 if TYPE_CHECKING:
     # Avoid a hard import of the sidecar package from the orchestrator module —
@@ -215,6 +215,26 @@ class NasusOrchestrator:
         self.memory_context: List[str] = []
         self.created_at: str = datetime.now(timezone.utc).isoformat()
         self.log: List[str] = []
+
+        # Step emitter — injected per-job by the sidecar to push progress events
+        # to the SSE stream while execution is in progress.
+        self._emitter: Optional[Callable[[Dict], None]] = None
+        self._step_counter: int = 0
+
+    def _next_step(self) -> int:
+        self._step_counter += 1
+        return self._step_counter
+
+    def _emit(self, step_type: str, content: str, **extra: Any) -> None:
+        """Push a progress step to the SSE stream via the injected emitter."""
+        if self._emitter is not None:
+            self._emitter({
+                "step": self._next_step(),
+                "type": step_type,
+                "content": content,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                **extra,
+            })
 
     def _log(self, msg: str):
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
@@ -719,6 +739,8 @@ class NasusOrchestrator:
             '- DIRECT: null'
         )
 
+        self._emit("plan", "Analyzing your request\u2026")
+
         try:
             routing = self.llm.chat_json(
                 [{"role": "user", "content": user_message}],
@@ -736,6 +758,8 @@ class NasusOrchestrator:
             return self._llm_chat_direct(user_message, payload)
 
         # Build a sub-envelope and call the specialist module
+        module_label = MODULE_NAMES.get(module, module.lower()).replace("_", " ").title()
+        self._emit("plan", f"Using {module_label} ({module})\u2026")
         try:
             specialist_env = NasusEnvelope(
                 module_id=ModuleID[module],
@@ -862,8 +886,21 @@ class NasusOrchestrator:
         if not llm_messages or llm_messages[-1].get("role") != "user":
             llm_messages.append({"role": "user", "content": user_message})
 
+        self._emit("plan", "Generating response\u2026")
+
         try:
-            response_text = self.llm.chat(llm_messages)
+            if self._emitter is not None:
+                # Stream tokens through the emitter so the UI sees real-time output.
+                full_text = ""
+                for chunk in self.llm.chat_stream(llm_messages):
+                    full_text += chunk
+                    self._emit("final", chunk)
+                response_text = full_text
+                # Mark payload as already-streamed so _run_envelope skips the
+                # duplicate full-response push.
+                return {"response": response_text, "streamed": True, "session_id": self.session_id}
+            else:
+                response_text = self.llm.chat(llm_messages)
         except Exception as exc:
             self._log(f"_llm_chat_direct: LLM call failed: {exc}")
             response_text = f"I encountered an error processing your request: {exc}"

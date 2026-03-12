@@ -5,9 +5,10 @@ interface ThinkingIndicatorProps {
   visible: boolean
   activeModel?: { id: string; displayName: string; provider: string } | null
   currentTool?: string | null
+  currentPhaseName?: string
 }
 
-export function ThinkingIndicator({ visible, activeModel, currentTool }: ThinkingIndicatorProps) {
+export function ThinkingIndicator({ visible, activeModel, currentTool, currentPhaseName }: ThinkingIndicatorProps) {
   const [elapsed, setElapsed] = useState(0)
   const [dotPhase, setDotPhase] = useState(0)
 
@@ -42,12 +43,13 @@ export function ThinkingIndicator({ visible, activeModel, currentTool }: Thinkin
       }
       return toolLabels[currentTool] || `Using ${currentTool}…`
     }
+    if (currentPhaseName) return currentPhaseName
     if (elapsed > 12000) return 'Almost there…'
     if (elapsed > 8000)  return 'Refining…'
     if (elapsed > 5000)  return 'Working on it…'
     if (elapsed > 3000)  return 'Planning…'
     return 'Thinking…'
-  }, [elapsed, currentTool])
+  }, [elapsed, currentTool, currentPhaseName])
 
   if (!visible) return null
 

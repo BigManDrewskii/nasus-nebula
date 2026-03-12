@@ -25,7 +25,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 import httpx
 
@@ -180,6 +180,48 @@ def _post_chat(
     return choices[0]["message"]["content"]
 
 
+def _post_chat_stream(
+    messages: List[Dict[str, str]],
+    model: str,
+    api_key: str,
+    api_base: str,
+    timeout_s: float,
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+) -> Generator[str, None, None]:
+    """
+    POST a streaming chat completion request and yield token delta strings.
+    Uses SSE (Server-Sent Events) from the OpenAI-compatible /chat/completions endpoint.
+    """
+    url = f"{api_base}/chat/completions"
+    body: Dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+    }
+    headers = _build_headers(api_key, api_base)
+
+    with httpx.Client(timeout=httpx.Timeout(timeout_s, read=timeout_s)) as client:
+        with client.stream("POST", url, json=body, headers=headers) as resp:
+            resp.raise_for_status()
+            for raw_line in resp.iter_lines():
+                line = raw_line.strip()
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                    delta = chunk["choices"][0]["delta"].get("content") or ""
+                    if delta:
+                        yield delta
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+
 # ---------------------------------------------------------------------------
 # Public client class
 # ---------------------------------------------------------------------------
@@ -271,6 +313,39 @@ class NasusLLMClient:
             f"LLM call failed after {retries} attempts: {last_err}"
         ) from last_err
 
+    # ── Streaming output ─────────────────────────────────────────────────────
+
+    def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Generator[str, None, None]:
+        """
+        Streaming variant of chat(). Yields token delta strings as they arrive.
+        Falls back to yielding the full response in one chunk if streaming fails.
+        """
+        if not is_configured():
+            raise RuntimeError(
+                "NasusLLMClient: not configured. Call llm_client.configure() first."
+            )
+        try:
+            yield from _post_chat_stream(
+                messages=messages,
+                model=model or self._effective_model(),
+                api_key=self._cfg.api_key,
+                api_base=self._cfg.api_base,
+                timeout_s=self._cfg.timeout_s,
+                temperature=temperature if temperature is not None else self.temperature,
+                max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
+            )
+        except Exception:
+            # Streaming failed — fall back to non-streaming and yield full response
+            text = self.chat(messages, model=model, temperature=temperature, max_tokens=max_tokens)
+            yield text
+
     # ── JSON output ──────────────────────────────────────────────────────────
 
     def chat_json(
@@ -322,9 +397,17 @@ class NasusLLMClient:
             else:
                 augmented.append(user(schema_instruction))
 
-        # Determine if we can request JSON mode.
-        # OpenRouter and OpenAI support it; Ollama supports it for most models.
-        use_json_mode = not (
+        # Only request JSON mode for models known to support it reliably.
+        # Many OpenRouter models reject response_format with a 400, which wastes a
+        # full LLM call before the retry logic kicks in. The schema hint + _extract_json
+        # handles parsing for all models, so JSON mode is an optional optimisation only.
+        _openai_base = "openai" in effective_model.lower() or "gpt-" in effective_model.lower()
+        _anthropic_base = "anthropic" in effective_model.lower() or "claude-" in effective_model.lower()
+        _openrouter_ok = _openai_base or _anthropic_base
+        use_json_mode = (
+            "ollama" in self._cfg.api_base.lower()
+            or _openrouter_ok
+        ) and not (
             "ollama" in self._cfg.api_base.lower()
             and "mistral" in effective_model.lower()
         )

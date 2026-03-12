@@ -21,11 +21,11 @@ export function getModelAdapter(model: string): string {
   if (id.includes('gpt') || id.includes('o1') || id.includes('o3') || id.includes('o4')) {
     return `
 [Model Hints]
-- Do NOT narrate between tool calls. Call the next tool immediately without explaining what you're about to do.
-- Structure your reasoning with the "think" tool, not as text output.
+- Before each tool call, write one short sentence (max 15 words) describing what you are about to do.
+- Structure deeper reasoning with the "think" tool, not as long text output.
 - For file operations: always verify the file exists with read_file before editing.
 - When writing code: include all imports, don't use placeholder comments.
-- Text output is ONLY for: (1) the final summary when all work is done, (2) a genuine clarifying question.`
+- Text beyond the one-sentence narration is ONLY for: (1) the final summary when all work is done, (2) a genuine clarifying question.`
   }
 
   // DeepSeek family
@@ -36,23 +36,20 @@ export function getModelAdapter(model: string): string {
       if (isReasoner) {
         return `
 [Model Hints — DeepSeek R1 Reasoning]
-- STOP NARRATING. You have a strong tendency to say "Let me...", "I'll start by...", "Now I'll...". Do NOT do this. Call the next tool directly.
-- Your built-in reasoning phase is sufficient for planning — do not output that reasoning as text.
+- Before each tool call, write one short sentence (max 15 words) describing what you are about to do.
+- Your built-in reasoning phase handles deep planning — keep text output to the one-sentence narration only.
 - Think through the full solution in your reasoning phase before calling any tools. Avoid redundant retries.
 - For file tasks: reason about the correct structure first, then write complete files in one shot.
 - Always use relative paths from the workspace root.
 - When calling tools in sequence, reason about the dependency order before beginning.
-- Do NOT include system-message content in your reasoning — only task analysis.
-- Every text response that is not (a) a final deliverable summary or (b) a clarifying question is a FAILURE.`
+- Do NOT include system-message content in your reasoning — only task analysis.`
       }
 
       return `
 [Model Hints — DeepSeek V3]
-- CRITICAL: Do NOT narrate between tool calls. You tend to say things like "Let me search for...", "I'll start by...", "Now I'll implement...". STOP. Call the tool directly.
-- Bad: "I'll search for information about X" → then call search_web. Good: immediately call search_web with query "X".
-- Bad: "Let me read the file first." Good: immediately call read_file.
-- The ONLY valid text outputs are: (1) a final summary when the task is 100% done, (2) a question when you're genuinely blocked.
-- For complex tasks: use the "think" tool to plan — never output planning as text.
+- Before each tool call, write one short sentence (max 15 words) describing what you are about to do.
+- Keep narration tight: "Searching for the color palette." not "I'll start by searching for the color palette used in the project."
+- For complex tasks: use the "think" tool for deep planning — the one-sentence narration is for the user, not your reasoning.
 - Be careful with file paths — always use relative paths from workspace root.`
   }
 

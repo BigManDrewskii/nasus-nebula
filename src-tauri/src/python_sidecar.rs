@@ -52,6 +52,16 @@ pub async fn spawn_sidecar(
         return Ok(());
     }
 
+    // Kill any stale process holding port 4751 (e.g. from a previous dev session)
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("sh")
+            .args(["-c", &format!("lsof -ti:{} | xargs kill -9 2>/dev/null", NASUS_PORT)])
+            .output();
+        // Give the kernel a moment to release the port
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
     let data_dir = format!("{}/nasus_data", sidecar_dir);
 
     // Candidate Python executables in priority order:

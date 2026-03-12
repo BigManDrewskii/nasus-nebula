@@ -216,37 +216,49 @@ def _route_m09(env: NasusEnvelope) -> NasusEnvelope:
 async def _run_envelope(env: NasusEnvelope) -> None:
     """
     Execute a job envelope asynchronously.
-    Routes M09 to MemoryStore, everything else to NasusOrchestrator.
+    Routes M09 to MemoryStore, everything else to a per-job NasusOrchestrator
+    instance with a thread-safe step emitter for real-time progress.
     Updates _jobs[job_id] in place.
     """
     job_id = env.job_id
-    await _push_log(
-        job_id,
-        json.dumps({
-            "step": 0,
-            "type": "log",
-            "content": f"job {job_id} started module={env.module_id.value}",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }),
-    )
-
     loop = asyncio.get_event_loop()
+
+    # Thread-safe emitter: called from the executor thread to push SidecarStep
+    # events onto this job's SSE queue on the asyncio event loop.
+    def _push_step_sync(step_dict: Dict[str, Any]) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            _push_log(job_id, json.dumps(step_dict)), loop
+        )
+        try:
+            future.result(timeout=2.0)
+        except Exception:
+            pass  # Never let a logging failure abort execution
+
     try:
         if env.module_id == ModuleID.M09:
-            # M09: MemoryStore -- synchronous, run in thread pool
+            # M09: MemoryStore — synchronous, no progress steps needed
             result_env = await loop.run_in_executor(None, _route_m09, env)
         else:
-            # All other modules: NasusOrchestrator.route_envelope
+            # Create a fresh per-job orchestrator so concurrent jobs never share
+            # emitter state, then wire up the step emitter for live progress.
+            job_orch = NasusOrchestrator()
+            if _orchestrator is not None and _orchestrator.llm is not None:
+                job_orch.llm = _orchestrator.llm
+            elif llm_client.is_configured():
+                job_orch.llm = llm_client.get_client()
+            job_orch._emitter = _push_step_sync
+
             result_env = await loop.run_in_executor(
-                None, _orchestrator.route_envelope, env
+                None, job_orch.route_envelope, env
             )
 
         _jobs[job_id] = result_env
 
-        # Emit the LLM response (or any textual result) as a structured SidecarStep
-        # so the TypeScript client can display it in the chat UI.
+        # Emit the full response as a final step ONLY if it wasn't already streamed
+        # token-by-token via the emitter (streamed=True means each chunk was already pushed).
         payload_data = result_env.payload if result_env.payload else {}
-        if isinstance(payload_data, dict):
+        already_streamed = isinstance(payload_data, dict) and payload_data.get("streamed")
+        if not already_streamed and isinstance(payload_data, dict):
             response_text = (
                 payload_data.get("response")
                 or payload_data.get("content")
@@ -254,23 +266,15 @@ async def _run_envelope(env: NasusEnvelope) -> None:
                 or ""
             )
             if response_text:
-                step_event = json.dumps({
-                    "step": 1,
-                    "type": "final",
-                    "content": str(response_text),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                })
-                await _push_log(job_id, step_event)
-
-        await _push_log(
-            job_id,
-            json.dumps({
-                "step": 0,
-                "type": "log",
-                "content": f"job {job_id} completed status={result_env.status.value if hasattr(result_env.status, 'value') else result_env.status}",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }),
-        )
+                await _push_log(
+                    job_id,
+                    json.dumps({
+                        "step": 1,
+                        "type": "final",
+                        "content": str(response_text),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }),
+                )
 
     except Exception as exc:
         env.mark_failed(str(exc))

@@ -682,6 +682,14 @@ export class ExecutionAgent extends BaseAgent {
     // NASUS standard: process one tool call at a time for maximum reliability
     const singleToolCall = toolCalls.slice(0, 1)
 
+    // Surface LLM pre-tool narration as a thinking step so the user sees what the
+    // agent is about to do (Manus-style). This text arrives in the `content` field
+    // alongside tool_calls — it was previously stored in rawHistory but never shown.
+    if (content?.trim()) {
+      const thinkStep: AgentStep = { kind: 'thinking', content: content.trim() }
+      useAppStore.getState().addStep(taskId, messageId, thinkStep)
+    }
+
       // DeepSeek R1: must include reasoning_content in assistant message during tool call loops.
       // The API returns 400 if reasoning_content is present in the stream but omitted here.
       // Guard: only inject if the model is actually an R1 reasoning model — injecting it for

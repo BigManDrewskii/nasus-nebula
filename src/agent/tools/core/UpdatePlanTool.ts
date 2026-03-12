@@ -67,9 +67,26 @@ export class UpdatePlanTool extends BaseTool {
       const planMarkdown = this.convertToMarkdown(plan)
       await workspaceManager.writeFile(taskId, 'task_plan.md', planMarkdown)
       
-      // 2. Update store
+      // 2. Update store plan + derive active phase/step from statuses
       useAppStore.getState().setCurrentPlan(plan)
-      
+
+      const activePhaseIdx = plan.phases.findIndex(p => p.status === 'in_progress')
+      const phaseIdx = activePhaseIdx >= 0
+        ? activePhaseIdx
+        : plan.phases.filter(p => p.status === 'completed').length
+      useAppStore.getState().setCurrentPhase(phaseIdx)
+
+      if (activePhaseIdx >= 0) {
+        const phase = plan.phases[activePhaseIdx]
+        const activeStepIdx = phase.steps.findIndex(s => s.status === 'in_progress')
+        const stepIdx = activeStepIdx >= 0
+          ? activeStepIdx
+          : phase.steps.filter(s => s.status === 'completed').length
+        useAppStore.getState().setCurrentStep(stepIdx)
+      } else {
+        useAppStore.getState().setCurrentStep(0)
+      }
+
       return toolSuccess(`Execution plan updated and saved to task_plan.md`)
     } catch (error) {
       return toolFailure(`Failed to update plan: ${error}`)

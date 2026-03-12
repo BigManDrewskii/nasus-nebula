@@ -7,7 +7,7 @@
  */
 
 import { workspaceManager } from './workspace/WorkspaceManager'
-import type { AgentStep } from '../store/appSlice'
+import type { AgentStep } from '../types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,12 +163,10 @@ export async function extractAndWriteCodeFiles(
 
     // Emit a tool-call step so the UI shows "Writing filename..."
     emitStep({
-      id: `ws-write-${filename}`,
-      type: 'tool',
-      content: `Writing \`${filename}\``,
+      kind: 'tool_call',
       tool: 'write_file',
-      toolInput: { path: filename, lines: lineCount },
-      timestamp: new Date().toISOString(),
+      input: { path: filename, lines: lineCount },
+      callId: `ws-${filename}`,
     })
 
     try {
@@ -176,22 +174,19 @@ export async function extractAndWriteCodeFiles(
 
       // Emit a result step confirming success
       emitStep({
-        id: `ws-done-${filename}`,
-        type: 'result',
-        content: `Created \`${filename}\` — ${lineCount} lines`,
-        tool: 'write_file',
-        toolOutput: `${lineCount} lines written`,
-        timestamp: new Date().toISOString(),
+        kind: 'tool_result',
+        callId: `ws-${filename}`,
+        output: `Created \`${filename}\` — ${lineCount} lines`,
+        isError: false,
       })
 
       written.push({ filename, language, content: code, lineCount })
     } catch (err) {
       emitStep({
-        id: `ws-err-${filename}`,
-        type: 'error',
-        content: `Failed to write \`${filename}\`: ${err instanceof Error ? err.message : String(err)}`,
-        tool: 'write_file',
-        timestamp: new Date().toISOString(),
+        kind: 'tool_result',
+        callId: `ws-${filename}`,
+        output: `Failed to write \`${filename}\`: ${err instanceof Error ? err.message : String(err)}`,
+        isError: true,
       })
     }
   }
