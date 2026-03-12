@@ -166,6 +166,9 @@ export async function configureSidecar(config: {
   api_key: string
   api_base: string
   model: string
+  exa_key?: string
+  brave_key?: string
+  serper_key?: string
 }): Promise<boolean> {
   try {
     const res = await fetch(`${SIDECAR_BASE}/configure`, {

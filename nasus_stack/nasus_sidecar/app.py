@@ -54,6 +54,15 @@ from nasus_sidecar import llm_client
 _orchestrator: Optional[NasusOrchestrator] = None
 _memory: Optional[MemoryStore] = None
 
+# Search API keys — populated via POST /configure
+_SEARCH_CONFIG: Dict[str, str] = {"exa_key": "", "brave_key": "", "serper_key": ""}
+
+
+def get_search_config() -> Dict[str, str]:
+    """Read-only snapshot of current search key config (imported by M01 and other research modules)."""
+    return dict(_SEARCH_CONFIG)
+
+
 # In-flight job registry: job_id -> NasusEnvelope
 _jobs: Dict[str, NasusEnvelope] = {}
 
@@ -111,6 +120,9 @@ class LLMConfigRequest(BaseModel):
     api_base: str = "https://openrouter.ai/api/v1"
     model: str = "openai/gpt-4o-mini"
     timeout_s: float = 60.0
+    exa_key: str = ""
+    brave_key: str = ""
+    serper_key: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +254,29 @@ async def _run_envelope(env: NasusEnvelope) -> None:
             # Create a fresh per-job orchestrator so concurrent jobs never share
             # emitter state, then wire up the step emitter for live progress.
             job_orch = NasusOrchestrator()
-            if _orchestrator is not None and _orchestrator.llm is not None:
+
+            # Prefer a per-task api_base from the payload (sent by the TypeScript
+            # orchestrator alongside every task). This eliminates race conditions
+            # where the global _CONFIG or _orchestrator.llm is stale from a previous
+            # provider session (e.g. DeepSeek key left over when switching to OpenRouter).
+            payload_for_llm = env.payload or {}
+            task_api_base = payload_for_llm.get("api_base", "").rstrip("/") if isinstance(payload_for_llm, dict) else ""
+
+            if task_api_base and llm_client.is_configured():
+                cfg = llm_client.get_config()
+                if cfg.api_base != task_api_base:
+                    from nasus_sidecar.llm_client import _LLMConfig, NasusLLMClient
+                    per_task_cfg = _LLMConfig(
+                        api_key=cfg.api_key,
+                        api_base=task_api_base,
+                        default_model=cfg.default_model,
+                        timeout_s=cfg.timeout_s,
+                        max_retries=cfg.max_retries,
+                    )
+                    job_orch.llm = NasusLLMClient(model=cfg.default_model, _cfg=per_task_cfg)
+                else:
+                    job_orch.llm = llm_client.get_client()
+            elif _orchestrator is not None and _orchestrator.llm is not None:
                 job_orch.llm = _orchestrator.llm
             elif llm_client.is_configured():
                 job_orch.llm = llm_client.get_client()
@@ -329,12 +363,19 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
     running _orchestrator singleton so subsequent route_envelope() calls immediately
     benefit from LLM reasoning without requiring a restart.
     """
+    global _SEARCH_CONFIG
+
     llm_client.configure(
         api_key=req.api_key,
         api_base=req.api_base,
         model=req.model,
         timeout_s=req.timeout_s,
     )
+
+    # Persist search API keys for use by M01 and other research modules.
+    _SEARCH_CONFIG["exa_key"] = req.exa_key
+    _SEARCH_CONFIG["brave_key"] = req.brave_key
+    _SEARCH_CONFIG["serper_key"] = req.serper_key
 
     # Inject a live client into the orchestrator singleton so M10/M11/M00
     # calls made after this point use LLM reasoning.
@@ -346,6 +387,7 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
         "api_base": req.api_base,
         "model": req.model,
         "llm_ready": llm_client.is_configured(),
+        "search_configured": bool(req.exa_key or req.brave_key or req.serper_key),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 

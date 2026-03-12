@@ -248,9 +248,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     }
     // Also push credentials to the Python sidecar so modules have LLM access
     // without requiring a restart when the user updates their API key.
+    // Use the active (enabled) gateway's apiBase — store.apiBase may be stale
+    // because setApiBase() is called after setApiKey() in the save sequence.
     if (key) {
-      const { apiBase, model } = get()
-      _pushLlmConfigToSidecar(key, apiBase, model).catch(() => {})
+      const { model } = get()
+      const activeGateway = s.gateways.find(g => g.enabled)
+      const correctApiBase = activeGateway?.apiBase || get().apiBase
+      _pushLlmConfigToSidecar(key, correctApiBase, model).catch(() => {})
     }
   },
 
@@ -459,10 +463,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
       // push credentials to the sidecar immediately (covers cold-start where
       // the key was persisted from a previous session).
       if (ready) {
-        const { apiKey, apiBase, model } = get()
+        const { apiKey, model } = get()
+        const sa = get() as unknown as WithGatewayAccess & SettingsSlice
+        const activeGw = sa.gateways.find(g => g.enabled)
+        const correctApiBase = activeGw?.apiBase || get().apiBase
         if (apiKey) {
           tauriInvoke('nasus_configure_llm', {
-            config: { api_key: apiKey, api_base: apiBase || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
+            config: { api_key: apiKey, api_base: correctApiBase || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
           }).catch(() => { /* sidecar may not be running yet — NasusAgentTool will retry */ })
         }
       }
@@ -486,10 +493,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
       set({ nasusInstalling: false, nasusInstallProgress: null, nasusReady: true, nasusInstallError: null })
 
       // Push LLM credentials to the freshly-installed sidecar if available.
-      const { apiKey, apiBase, model } = get()
+      const { apiKey, model } = get()
+      const si = get() as unknown as WithGatewayAccess & SettingsSlice
+      const activeGwi = si.gateways.find(g => g.enabled)
+      const correctApiBasei = activeGwi?.apiBase || get().apiBase
       if (apiKey) {
         tauriInvoke('nasus_configure_llm', {
-          config: { api_key: apiKey, api_base: apiBase || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
+          config: { api_key: apiKey, api_base: correctApiBasei || 'https://openrouter.ai/api/v1', model: model || 'openai/gpt-4o-mini' },
         }).catch(() => { /* best-effort — sidecar may still be starting */ })
       }
 

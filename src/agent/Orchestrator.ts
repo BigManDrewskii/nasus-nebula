@@ -172,12 +172,25 @@ export class AgentOrchestrator {
 
     // Always sync the sidecar's LLM credentials before each task so that model/key
     // changes made in Settings take effect immediately without requiring a restart.
+    // Also forward search API keys so M01 (Research Analyst) can do real web searches.
     if (params.apiKey) {
-      await configureSidecar({
+      const ok = await configureSidecar({
         api_key: params.apiKey,
         api_base: params.apiBase || 'https://openrouter.ai/api/v1',
         model: params.model || 'openai/gpt-4o-mini',
+        exa_key: params.searchConfig?.exaKey || '',
+        brave_key: params.searchConfig?.braveKey || '',
+        serper_key: params.searchConfig?.serperKey || '',
       })
+      if (!ok) {
+        // /configure failed — check if sidecar has credentials from a previous call.
+        // If not, bail rather than running with stale (possibly wrong-provider) config.
+        const health = await healthStatus()
+        if (!health?.llm_configured) {
+          store.setError(taskId, messageId, 'Failed to configure LLM credentials. Check your API key and try again.')
+          return
+        }
+      }
     } else {
       // No key in params — still check if sidecar needs any credentials at all
       const health = await healthStatus()

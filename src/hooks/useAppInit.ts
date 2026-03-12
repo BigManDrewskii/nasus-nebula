@@ -155,16 +155,18 @@ export function useAppInit(): UseAppInitResult {
       if (!sidecarOk) {
         log.warn('Sidecar health check failed - continuing anyway')
       } else {
-        // Sidecar is up — push LLM credentials from persisted store so modules
+        // Sidecar is up — push LLM credentials from the gateway system so modules
         // can make LLM calls without the user having to re-enter their API key.
-        const { apiKey, apiBase, model } = useAppStore.getState()
-        if (apiKey) {
+        // Use resolveConnection() — store.apiBase may be stale (DeepSeek URL from
+        // a previous session); the gateway slice always has the correct per-provider apiBase.
+        const conn = useAppStore.getState().resolveConnection()
+        if (conn.apiKey) {
           import('../tauri').then(({ tauriInvoke }) =>
             tauriInvoke('nasus_configure_llm', {
               config: {
-                api_key: apiKey,
-                api_base: apiBase || 'https://openrouter.ai/api/v1',
-                model: model || 'openai/gpt-4o-mini',
+                api_key: conn.apiKey,
+                api_base: conn.apiBase,
+                model: conn.model || 'openai/gpt-4o-mini',
               },
             })
           ).catch(() => {})

@@ -255,7 +255,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
           }
           updatedGateways = currentGateways.map((g) => {
             if (g.type === config.provider || (config.provider === 'openrouter' && g.type === 'openrouter')) {
-              return { ...g, apiBase: config.api_base || g.apiBase, apiKey: resolvedKey, enabled: true }
+              return { ...g, apiKey: resolvedKey, enabled: true }
             }
             if (g.type !== 'ollama') return { ...g, enabled: false }
             return g

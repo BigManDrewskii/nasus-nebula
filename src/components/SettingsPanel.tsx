@@ -123,12 +123,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localSerperKey, setLocalSerperKey] = useState(serperKey || '')
   const [localTavilyKey, setLocalTavilyKey] = useState(tavilyKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
-  // Preserve custom API base (e.g. proxy URL) — only reset to OR_BASE when switching back to openrouter
+  // Preserve custom API base (e.g. proxy URL) — source from the OpenRouter gateway config,
+  // NOT from store.apiBase (a legacy field that may hold a different provider's URL).
   const OR_BASE = 'https://openrouter.ai/api/v1'
   const OLLAMA_BASE = 'http://localhost:11434/v1'
-  const [localApiBase, setLocalApiBase] = useState(
-    storedApiBase && storedApiBase !== OLLAMA_BASE ? storedApiBase : OR_BASE
-  )
+  const [localApiBase, setLocalApiBase] = useState(() => {
+    const orGateway = useAppStore.getState().gateways.find(g => g.id === 'openrouter')
+    const base = orGateway?.apiBase || storedApiBase || OR_BASE
+    return base && base !== OLLAMA_BASE ? base : OR_BASE
+  })
 
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
 
@@ -620,8 +623,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           {/* Header */}
           <div className="flex-v-center justify-between shrink-0 settings-header">
             <div className="flex-v-center gap-2">
-              <Pxi name="cog" size={14} className="text-amber" />
-              <h2 style={{ fontSize: 'var(--text-xs)', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>System Configuration</h2>
+              <Pxi name="cog" size={16} className="text-amber" />
+              <h2 style={{ fontSize: 'var(--text-xs)', fontWeight: 800, fontFamily: 'var(--font-display)', letterSpacing: '0.12em', color: 'var(--tx-primary)', margin: 0, textTransform: 'uppercase' }}>Settings</h2>
             </div>
             {/* OpenRouter badge */}
             <div className="flex-v-center gap-2">
@@ -646,7 +649,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
           {/* Tab Bar */}
-          <div className="flex-v-center gap-1 shrink-0 settings-tabs">
+          <div className="flex-v-center shrink-0 settings-tabs">
             {(['general', 'model', 'execution', 'browser', 'search', 'about'] as const).map((tab) => {
             const isActive = settingsTab === tab
             return (
@@ -654,16 +657,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 key={tab}
                 onClick={() => setSettingsTab(tab)}
                 style={{
-                  padding: '8px 16px',
                   borderRadius: 8,
-                  background: isActive ? 'var(--amber)' : 'transparent',
-                  color: isActive ? '#000' : 'var(--tx-secondary)',
-                  fontSize: 'var(--text-xs)',
+                  background: isActive ? 'rgba(234,179,8,0.15)' : 'transparent',
+                  color: isActive ? 'var(--amber)' : 'var(--tx-secondary)',
                   fontWeight: isActive ? 600 : 400,
                   letterSpacing: '0.02em',
                   cursor: 'pointer',
                   transition: 'background 0.12s, color 0.12s',
-                  border: 'none',
+                  border: isActive ? '1px solid rgba(234,179,8,0.25)' : '1px solid transparent',
                 }}
                 >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -674,26 +675,32 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           {/* Scrollable content */}
           <div ref={scrollableRef} className="flex-col settings-scroll">
-          <div className="flex-col gap-5 pb-1">
+          <div className="flex-col gap-6">
             {settingsTab === 'general' && (
             <>
-            {/* ── Workspace Path ── */}
-            <Field
-              label="Workspace Path"
-              icon="folder-open"
-              hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)' }}>/workspace</code></>}
-              error={errors.workspacePath}
-            >
-              <WorkspacePicker
-                value={localWorkspace}
-                onChange={(v) => { setLocalWorkspace(v); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
+            {/* ── Group: Workspace ── */}
+            <div className="settings-group">
+              <Field
+                label="Workspace Path"
+                icon="folder-open"
+                hint={<>Host directory mounted into the sandbox at <code style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)' }}>/workspace</code></>}
                 error={errors.workspacePath}
-              />
-            </Field>
+              >
+                <WorkspacePicker
+                  value={localWorkspace}
+                  onChange={(v) => { setLocalWorkspace(v); setErrors((p) => ({ ...p, workspacePath: undefined })) }}
+                  error={errors.workspacePath}
+                />
+              </Field>
+            </div>
 
-              {/* ── Verification Toggle ── */}
+            {/* ── Group: Behavior ── */}
+            <div className="settings-group">
+              <div className="settings-group-label">Behavior</div>
+
+              {/* Verification Toggle */}
               <div className="flex-v-center justify-between settings-banner">
-                <div className="flex-col gap-0.5">
+                <div className="flex-col gap-1">
                   <span className="text-[12px] font-medium text-[var(--tx-primary)]">
                     Enable verification
                   </span>
@@ -701,76 +708,80 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     Automatically verify execution results and self-correct if needed
                   </span>
                 </div>
-              <button
-                type="button"
-                onClick={() => setLocalEnableVerification(!localEnableVerification)}
-                className="settings-toggle"
-                style={{ background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
-              >
-                <span className="settings-toggle-knob" style={{ left: localEnableVerification ? 'calc(100% - 20px)' : 2 }} />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalEnableVerification(!localEnableVerification)}
+                  className="settings-toggle"
+                  style={{ background: localEnableVerification ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
+                >
+                  <span className="settings-toggle-knob" style={{ left: localEnableVerification ? 'calc(100% - 20px)' : 2 }} />
+                </button>
+              </div>
+
+              {/* Text Density */}
+              <div className="flex-v-center justify-between settings-banner">
+                <div className="flex-col gap-1">
+                  <span className="text-[12px] font-medium text-[var(--tx-primary)]">Text size</span>
+                  <span className="text-tertiary text-[10px]">Controls the UI font density across the entire app</span>
+                </div>
+                <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: 3 }}>
+                  {(['default', 'compact'] as const).map((scale) => (
+                    <button
+                      key={scale}
+                      type="button"
+                      onClick={() => setTextScale(scale)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        fontWeight: 500,
+                        fontFamily: 'var(--font-sans)',
+                        background: textScale === scale ? 'var(--amber)' : 'transparent',
+                        color: textScale === scale ? '#000' : 'var(--tx-secondary)',
+                        transition: 'background 0.15s, color 0.15s',
+                      }}
+                    >
+                      {scale.charAt(0).toUpperCase() + scale.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-                {/* ── Text Density ── */}
-                <div className="flex-v-center justify-between settings-banner">
-                  <div className="flex-col gap-0.5">
-                    <span className="text-[12px] font-medium text-[var(--tx-primary)]">Text size</span>
-                    <span className="text-tertiary text-[10px]">Controls the UI font density across the entire app</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 8, padding: 3 }}>
-                    {(['default', 'compact'] as const).map((scale) => (
-                      <button
-                        key={scale}
-                        type="button"
-                        onClick={() => setTextScale(scale)}
-                        style={{
-                          padding: '3px 8px',
-                          borderRadius: 6,
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: 11,
-                          fontWeight: 500,
-                          fontFamily: 'var(--font-sans)',
-                          background: textScale === scale ? 'var(--amber)' : 'transparent',
-                          color: textScale === scale ? '#000' : 'var(--tx-secondary)',
-                          transition: 'background 0.15s, color 0.15s',
-                        }}
-                      >
-                        {scale.charAt(0).toUpperCase() + scale.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            {/* ── Group: Limits ── */}
+            <div className="settings-group">
+              <div className="settings-group-label">Limits</div>
 
-                {/* ── Max Iterations ── */}
-                <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
+              {/* Max Iterations */}
+              <Field label="Max Iterations" icon="repeat" hint="Max agent loop iterations per task (1–200). Higher values let the agent work longer on complex tasks.">
                 <input
                   type="number"
                   min={1}
                   max={200}
                   value={localMaxIterations}
                   onChange={(e) => setLocalMaxIterations(e.target.value)}
-                    className="settings-input placeholder-[var(--tx-muted)]"
+                  className="settings-input placeholder-[var(--tx-muted)]"
                 />
               </Field>
 
-              {/* ── Rate Limiting ── */}
+              {/* Rate Limiting */}
               <div className="flex-col settings-rate-section">
                 <label className="flex-v-center settings-label">
                   <Pxi name="gauge" size={12} className="text-tertiary" />
                   Rate Limiting
                 </label>
 
-                  {/* Enable toggle row */}
-                  <div className="flex-v-center justify-between settings-banner">
-                    <div className="flex-col gap-0.5">
-                      <span className="text-[12px] font-medium text-[var(--tx-primary)]">
-                        Enable rate limiting
-                      </span>
-                      <span className="text-tertiary text-[10px]">
-                        Throttle outbound API requests to avoid provider rate-limit errors
-                      </span>
-                    </div>
+                <div className="flex-v-center justify-between settings-banner">
+                  <div className="flex-col gap-1">
+                    <span className="text-[12px] font-medium text-[var(--tx-primary)]">
+                      Enable rate limiting
+                    </span>
+                    <span className="text-tertiary text-[10px]">
+                      Throttle outbound API requests to avoid provider rate-limit errors
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setLocalRateLimitEnabled(!localRateLimitEnabled)}
@@ -781,23 +792,23 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </button>
                 </div>
 
-                {/* RPM input — only shown when enabled */}
-                  {localRateLimitEnabled && (
-                    <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
-                      <div className="flex-v-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={600}
-                          value={localMaxRPM}
-                          onChange={(e) => setLocalMaxRPM(e.target.value)}
-                           className="settings-input placeholder-[var(--tx-muted)] flex-1"
-                        />
-                          <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
-                      </div>
-                    </Field>
-                  )}
+                {localRateLimitEnabled && (
+                  <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
+                    <div className="flex-v-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={localMaxRPM}
+                        onChange={(e) => setLocalMaxRPM(e.target.value)}
+                        className="settings-input placeholder-[var(--tx-muted)] flex-1"
+                      />
+                      <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
+                    </div>
+                  </Field>
+                )}
               </div>
+            </div>
             </>
             )}
 
@@ -863,13 +874,20 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             // Auto-fetch models when switching providers.
                             // Use newProvider (not activeProvider) to avoid stale-closure: React state
                             // updates are async, so activeProvider still holds the OLD value here.
-                            if (newProvider === 'openrouter' && localOpenRouterKey.trim()) {
-                              setFetchingModels(true)
-                              setFetchModelsError(null)
-                              fetchOpenRouterModels(localOpenRouterKey.trim())
-                                .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
-                                .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
-                                .finally(() => setFetchingModels(false))
+                            if (newProvider === 'openrouter') {
+                              // Reset localApiBase to OR_BASE when switching to OpenRouter, unless
+                              // the user has configured a custom openrouter.ai proxy (preserve that).
+                              if (!localApiBase.includes('openrouter.ai')) {
+                                setLocalApiBase(OR_BASE)
+                              }
+                              if (localOpenRouterKey.trim()) {
+                                setFetchingModels(true)
+                                setFetchModelsError(null)
+                                fetchOpenRouterModels(localOpenRouterKey.trim())
+                                  .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
+                                  .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
+                                  .finally(() => setFetchingModels(false))
+                              }
                             } else if (newProvider === 'requesty' && localRequestyKey.trim()) {
                               setFetchingModels(true)
                               setFetchModelsError(null)
@@ -1218,7 +1236,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 <div className="flex-col settings-section gap-4">
                   <div className="about-header">
                     <div className="flex-center gap-2 mb-2">
-                      <Pxi name="cpu" size={24} className="text-amber" />
+                      <Pxi name="cpu" size={28} className="text-amber" />
                       <span className="about-title">Nasus</span>
                     </div>
                     <span className="text-tertiary text-[11px]">Autonomous AI Agent · Desktop Application</span>
@@ -1901,34 +1919,34 @@ function BrowserSetupSection() {
 
         {/* Overall status */}
         {statusMessage && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: isReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${isReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+          <div className={`settings-alert ${isReady ? 'settings-alert--success' : 'settings-alert--error'}`} style={{ alignItems: 'center' }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-            <span style={{ fontSize: 'var(--text-xs)', color: isReady ? '#4ade80' : '#f87171' }}>{statusMessage}</span>
+            <span>{statusMessage}</span>
           </div>
         )}
       </div>
 
       {/* Install progress */}
       {sidecarInstallProgress && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
-          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-soft)' }}>{sidecarInstallProgress}</span>
+        <div className="settings-alert settings-alert--warning" style={{ alignItems: 'center' }}>
+          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+          <span>{sidecarInstallProgress}</span>
         </div>
       )}
 
       {/* Install error */}
       {installError && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
-          <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', lineHeight: 1.5 }}>{installError}</span>
+        <div className="settings-alert settings-alert--error">
+          <Pxi name="exclamation-triangle" size={12} style={{ marginTop: 1, flexShrink: 0 }} />
+          <span>{installError}</span>
         </div>
       )}
 
       {/* Success */}
       {installDone && !installError && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
-          <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: '#4ade80' }}>Browser installed successfully. Agent browsing is ready.</span>
+        <div className="settings-alert settings-alert--success" style={{ alignItems: 'center' }}>
+          <Pxi name="check-circle" size={12} style={{ flexShrink: 0 }} />
+          <span>Browser installed successfully. Agent browsing is ready.</span>
         </div>
       )}
 
@@ -1971,7 +1989,7 @@ function BrowserSetupSection() {
 
       {/* Node.js install hint if missing */}
       {!checking && !nodeVersion && (
-        <div style={{ padding: '8px 8px', borderRadius: 8, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55 }}>
+        <div className="settings-alert settings-alert--info">
           Node.js is required. Install it from{' '}
           <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>nodejs.org</a>
           {' '}(LTS recommended), then restart Nasus and click Install Browser.
@@ -2093,14 +2111,9 @@ function NasusStackSection() {
       </div>
 
       {/* Overall status banner */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '8px 8px', borderRadius: 8,
-        background: nasusReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)',
-        border: `1px solid ${nasusReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
-      }}>
+      <div className={`settings-alert ${nasusReady ? 'settings-alert--success' : 'settings-alert--error'}`} style={{ alignItems: 'center' }}>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-        <span style={{ fontSize: 'var(--text-xs)', color: nasusReady ? '#4ade80' : '#f87171' }}>
+        <span>
           {nasusChecking
             ? 'Checking status…'
             : nasusReady
@@ -2111,39 +2124,25 @@ function NasusStackSection() {
 
       {/* Install progress */}
       {nasusInstallProgress && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 8px', borderRadius: 8,
-          background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)',
-        }}>
-          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-soft)' }}>{nasusInstallProgress}</span>
+        <div className="settings-alert settings-alert--warning" style={{ alignItems: 'center' }}>
+          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
+          <span>{nasusInstallProgress}</span>
         </div>
       )}
 
       {/* Install error */}
       {nasusInstallError && (
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: 8,
-          padding: '8px 8px', borderRadius: 8,
-          background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
-        }}>
-          <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', lineHeight: 1.5 }}>{nasusInstallError}</span>
+        <div className="settings-alert settings-alert--error">
+          <Pxi name="exclamation-triangle" size={12} style={{ marginTop: 1, flexShrink: 0 }} />
+          <span>{nasusInstallError}</span>
         </div>
       )}
 
       {/* Success */}
       {installDone && !nasusInstallError && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 8px', borderRadius: 8,
-          background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)',
-        }}>
-          <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
-          <span style={{ fontSize: 'var(--text-xs)', color: '#4ade80' }}>
-            Nasus stack installed successfully. Agent modules are ready.
-          </span>
+        <div className="settings-alert settings-alert--success" style={{ alignItems: 'center' }}>
+          <Pxi name="check-circle" size={12} style={{ flexShrink: 0 }} />
+          <span>Nasus stack installed successfully. Agent modules are ready.</span>
         </div>
       )}
 
@@ -2188,11 +2187,7 @@ function NasusStackSection() {
 
       {/* Python install hint if missing */}
       {!nasusChecking && !nasusReady && (
-        <div style={{
-          padding: '8px 8px', borderRadius: 8,
-          background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
-          fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55,
-        }}>
+        <div className="settings-alert settings-alert--info">
           Python 3 is required to run the Nasus stack. Install it from{' '}
           <a href="https://python.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>python.org</a>
           {' '}(3.10+ recommended), then click <strong>Install Stack</strong> to set up the virtual environment and dependencies.

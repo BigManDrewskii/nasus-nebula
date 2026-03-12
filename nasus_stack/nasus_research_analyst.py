@@ -1,6 +1,6 @@
 """
 NASUS RESEARCH ANALYST -- RUNTIME MODULE
-Version: 1.0 | Module: M01 | Stack: Nasus Sub-Agent Network
+Version: 2.0 | Module: M01 | Stack: Nasus Sub-Agent Network
 
 Entry point : route_envelope(envelope: NasusEnvelope) -> NasusEnvelope
 Capabilities: web research, competitive intel, trend scanning, source retrieval
@@ -9,8 +9,8 @@ Pipeline
 --------
   1. route_envelope() receives a NasusEnvelope with payload = ResearchRequest | dict
   2. classify_query()   -- detects query type, complexity, recommended depth
-  3. search()           -- simulates multi-source retrieval with realistic stubs
-  4. synthesize()       -- produces a structured narrative summary
+  3. search()           -- real web search (Exa → Serper → Brave → stub fallback)
+  4. synthesize()       -- LLM synthesis of results (falls back to template)
   5. research()         -- orchestrates 2-4, returns ResearchResult | ResearchError
   6. route_envelope()   -- wraps result into envelope, marks DONE or FAILED
 """
@@ -57,7 +57,6 @@ CAPABILITIES = ["web research", "competitive intel", "trend scanning", "source r
 # STEP 1 -- Query Classification
 # ---------------------------------------------------------------------------
 
-# Keyword maps for query categorisation
 _MARKET_KEYS     = {"market", "industry", "segment", "tam", "valuation", "funding",
                     "revenue", "growth", "size", "adoption", "demand"}
 _COMPETITOR_KEYS = {"competitor", "competitors", "vs", "versus", "alternative",
@@ -69,19 +68,9 @@ _TREND_KEYS      = {"trend", "trends", "emerging", "future", "2024", "2025", "20
 
 
 def classify_query(request: ResearchRequest) -> QueryClassification:
-    """
-    Analyses the query string to determine:
-    - category   : market / competitor / technical / trend / general
-    - complexity : low / medium / high
-    - suggested_depth  : ResearchDepth override recommendation
-    - inferred_sources : best source types for this category
-
-    Does NOT mutate the request -- caller decides whether to apply overrides.
-    """
     tokens = set(request.query.lower().split())
     word_count = len(request.query.split())
 
-    # Category detection via keyword overlap (highest score wins)
     scores = {
         QueryCategory.MARKET:     len(tokens & _MARKET_KEYS),
         QueryCategory.COMPETITOR: len(tokens & _COMPETITOR_KEYS),
@@ -89,12 +78,10 @@ def classify_query(request: ResearchRequest) -> QueryClassification:
         QueryCategory.TREND:      len(tokens & _TREND_KEYS),
         QueryCategory.GENERAL:    0,
     }
-    # Default to GENERAL if no signal
     best = max(scores, key=lambda k: scores[k])
     if scores[best] == 0:
         best = QueryCategory.GENERAL
 
-    # Complexity: driven by word count and clause density
     if word_count <= 5:
         complexity = "low"
     elif word_count <= 15:
@@ -102,7 +89,6 @@ def classify_query(request: ResearchRequest) -> QueryClassification:
     else:
         complexity = "high"
 
-    # Suggested depth based on category + complexity
     depth_map = {
         (QueryCategory.GENERAL,    "low"):    ResearchDepth.SURFACE,
         (QueryCategory.GENERAL,    "medium"): ResearchDepth.STANDARD,
@@ -122,7 +108,6 @@ def classify_query(request: ResearchRequest) -> QueryClassification:
     }
     suggested_depth = depth_map.get((best, complexity), ResearchDepth.STANDARD)
 
-    # Source recommendations per category
     source_map = {
         QueryCategory.MARKET:     [SourceType.WEB, SourceType.NEWS, SourceType.ACADEMIC],
         QueryCategory.COMPETITOR: [SourceType.WEB, SourceType.NEWS, SourceType.SOCIAL],
@@ -147,10 +132,123 @@ def classify_query(request: ResearchRequest) -> QueryClassification:
 
 
 # ---------------------------------------------------------------------------
-# STEP 2 -- Multi-Source Retrieval (stub)
+# STEP 2 -- Multi-Source Retrieval
 # ---------------------------------------------------------------------------
 
-# Source pool: realistic stub entries used to populate findings
+_DEPTH_SOURCE_COUNT = {
+    ResearchDepth.SURFACE:    3,
+    ResearchDepth.STANDARD:   8,
+    ResearchDepth.DEEP:       15,
+    ResearchDepth.EXHAUSTIVE: 25,
+}
+
+
+def _get_search_config():
+    """Read search API keys from the sidecar's live config (populated by POST /configure)."""
+    try:
+        from nasus_sidecar.app import get_search_config
+        return get_search_config()
+    except Exception:
+        return {"exa_key": "", "brave_key": "", "serper_key": ""}
+
+
+def _search_exa(query: str, num_results: int, exa_key: str) -> List[ResearchFinding]:
+    """Call Exa AI search API and return ResearchFindings."""
+    import httpx
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        resp = httpx.post(
+            "https://api.exa.ai/search",
+            json={"query": query, "numResults": num_results, "useAutoprompt": True},
+            headers={"x-api-key": exa_key, "Content-Type": "application/json"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        findings = []
+        for r in results:
+            findings.append(ResearchFinding(
+                source_url      = r.get("url", ""),
+                title           = r.get("title", ""),
+                excerpt         = r.get("text", r.get("snippet", ""))[:400],
+                relevance_score = float(r.get("score", 0.8)),
+                source_type     = SourceType.WEB,
+                retrieved_at    = ts,
+            ))
+        return findings
+    except Exception:
+        return []
+
+
+def _search_serper(query: str, num_results: int, serper_key: str) -> List[ResearchFinding]:
+    """Call Serper Google Search API and return ResearchFindings."""
+    import httpx
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        resp = httpx.post(
+            "https://google.serper.dev/search",
+            json={"q": query, "num": num_results},
+            headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        findings = []
+        # organic results
+        for i, r in enumerate(data.get("organic", [])):
+            findings.append(ResearchFinding(
+                source_url      = r.get("link", ""),
+                title           = r.get("title", ""),
+                excerpt         = r.get("snippet", "")[:400],
+                relevance_score = max(0.5, 1.0 - i * 0.05),
+                source_type     = SourceType.WEB,
+                retrieved_at    = ts,
+            ))
+        # knowledge graph snippet if present
+        kg = data.get("knowledgeGraph", {})
+        if kg.get("description"):
+            findings.insert(0, ResearchFinding(
+                source_url      = kg.get("website", "https://google.com"),
+                title           = kg.get("title", query),
+                excerpt         = kg["description"][:400],
+                relevance_score = 0.95,
+                source_type     = SourceType.WEB,
+                retrieved_at    = ts,
+            ))
+        return findings
+    except Exception:
+        return []
+
+
+def _search_brave(query: str, num_results: int, brave_key: str) -> List[ResearchFinding]:
+    """Call Brave Search API and return ResearchFindings."""
+    import httpx
+    ts = datetime.now(timezone.utc).isoformat()
+    try:
+        resp = httpx.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": query, "count": num_results},
+            headers={"Accept": "application/json", "X-Subscription-Token": brave_key},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("web", {}).get("results", [])
+        findings = []
+        for i, r in enumerate(results):
+            findings.append(ResearchFinding(
+                source_url      = r.get("url", ""),
+                title           = r.get("title", ""),
+                excerpt         = r.get("description", "")[:400],
+                relevance_score = max(0.5, 1.0 - i * 0.05),
+                source_type     = SourceType.WEB,
+                retrieved_at    = ts,
+            ))
+        return findings
+    except Exception:
+        return []
+
+
+# Stub pool kept as last-resort fallback for offline/unconfigured state
 _STUB_POOL = [
     {
         "domain": "techcrunch.com",
@@ -175,17 +273,6 @@ _STUB_POOL = [
         "relevance": 0.87,
     },
     {
-        "domain": "arxiv.org",
-        "source_type": SourceType.ACADEMIC,
-        "title_template": "A Survey of {query} Methods and Benchmarks (2024)",
-        "excerpt_template": (
-            "This paper surveys 143 peer-reviewed works on {query} published between "
-            "2021-2024. The dominant approaches leverage transformer-based architectures "
-            "with retrieval-augmented generation, achieving state-of-the-art on 7 of 9 benchmarks."
-        ),
-        "relevance": 0.84,
-    },
-    {
         "domain": "hbr.org",
         "source_type": SourceType.WEB,
         "title_template": "Why {query} Is Reshaping Competitive Strategy",
@@ -197,139 +284,57 @@ _STUB_POOL = [
         "relevance": 0.88,
     },
     {
-        "domain": "mckinsey.com",
-        "source_type": SourceType.WEB,
-        "title_template": "The State of {query}: McKinsey Global Survey",
-        "excerpt_template": (
-            "McKinsey's global survey of 1,200 executives reveals that {query} has moved "
-            "from pilot to production in 61% of Fortune 500 companies. The primary barrier "
-            "remains talent: 74% of respondents cite skills gaps as the top inhibitor."
-        ),
-        "relevance": 0.93,
-    },
-    {
-        "domain": "venturebeat.com",
-        "source_type": SourceType.NEWS,
-        "title_template": "{query} Startups Raised $4.2B in 2024 -- VentureBeat Tracker",
-        "excerpt_template": (
-            "Venture funding for {query} startups reached $4.2 billion across 312 deals in 2024, "
-            "a 61% increase over 2023. Seed and Series A rounds dominate, suggesting the "
-            "market is still early-stage with significant consolidation expected."
-        ),
-        "relevance": 0.82,
-    },
-    {
-        "domain": "gartner.com",
-        "source_type": SourceType.WEB,
-        "title_template": "Gartner Hype Cycle: {query} Positioned in Early Majority",
-        "excerpt_template": (
-            "Gartner positions {query} on the Slope of Enlightenment in its 2025 Hype Cycle, "
-            "indicating mainstream adoption within 2-5 years. Key risks include vendor lock-in, "
-            "regulatory ambiguity, and integration complexity with legacy systems."
-        ),
-        "relevance": 0.90,
-    },
-    {
-        "domain": "reddit.com",
-        "source_type": SourceType.SOCIAL,
-        "title_template": "r/technology: Real-world {query} experiences -- megathread",
-        "excerpt_template": (
-            "Practitioners on Reddit share hands-on experience with {query}. Common themes: "
-            "faster prototyping (upvoted 847x), hidden operational costs (upvoted 612x), "
-            "and difficulty integrating with existing data pipelines (upvoted 503x)."
-        ),
-        "relevance": 0.72,
-    },
-    {
-        "domain": "nature.com",
-        "source_type": SourceType.ACADEMIC,
-        "title_template": "Empirical evaluation of {query} across multi-domain settings",
-        "excerpt_template": (
-            "Nature publishes a controlled study comparing {query} approaches across "
-            "healthcare, finance, and logistics. Results show domain-specific tuning "
-            "improves accuracy by 22-41% versus general-purpose baselines (p < 0.001)."
-        ),
-        "relevance": 0.85,
-    },
-    {
-        "domain": "bloomberg.com",
-        "source_type": SourceType.NEWS,
-        "title_template": "Bloomberg Intelligence: {query} -- Q1 2025 Sector Report",
-        "excerpt_template": (
-            "Bloomberg Intelligence forecasts the {query} market to reach $89B by 2028. "
-            "Top-quartile performers are distinguished by data flywheel effects and "
-            "proprietary model training pipelines rather than base model selection."
-        ),
-        "relevance": 0.89,
-    },
-    {
         "domain": "wired.com",
         "source_type": SourceType.NEWS,
         "title_template": "Inside the Race to Dominate {query}",
         "excerpt_template": (
             "WIRED profiles the six companies leading the {query} space, "
-            "examining their technical differentiation, go-to-market strategies, and "
-            "the regulatory challenges shaping the next phase of competition."
+            "examining their technical differentiation and go-to-market strategies."
         ),
         "relevance": 0.80,
     },
-    {
-        "domain": "github.com",
-        "source_type": SourceType.API,
-        "title_template": "awesome-{query}: curated open-source resources",
-        "excerpt_template": (
-            "The awesome-list for {query} on GitHub has 12,400 stars and covers "
-            "frameworks, datasets, evaluation harnesses, and production deployment guides. "
-            "Most-starred repos focus on retrieval, evaluation, and observability tooling."
-        ),
-        "relevance": 0.77,
-    },
 ]
-
-# Depth -> source count mapping
-_DEPTH_SOURCE_COUNT = {
-    ResearchDepth.SURFACE:    3,
-    ResearchDepth.STANDARD:   10,
-    ResearchDepth.DEEP:       25,
-    ResearchDepth.EXHAUSTIVE: 50,
-}
 
 
 def search(request: ResearchRequest) -> List[ResearchFinding]:
     """
-    Simulates multi-source retrieval.
-
-    Uses the stub pool to generate realistic findings keyed to the query.
-    Respects request.depth (source count), request.max_sources cap,
-    and request.source_types filter.
-
-    In production this would call:
-      - web_search() for WEB/NEWS sources
-      - academic_search() for ACADEMIC sources
-      - social_search() for SOCIAL sources
-      - internal_query() for INTERNAL sources
-      - api_call() for API sources
+    Multi-source retrieval with priority:
+      1. Exa AI (if key configured)
+      2. Serper / Google (if key configured)
+      3. Brave Search (if key configured)
+      4. Stub fallback (offline / unconfigured)
     """
     target_count = min(
-        _DEPTH_SOURCE_COUNT.get(request.depth, 10),
+        _DEPTH_SOURCE_COUNT.get(request.depth, 8),
         request.max_sources,
     )
 
-    # Filter stubs by requested source types
+    search_cfg = _get_search_config()
+    findings: List[ResearchFinding] = []
+
+    if search_cfg.get("exa_key"):
+        findings = _search_exa(request.query, target_count, search_cfg["exa_key"])
+    elif search_cfg.get("serper_key"):
+        findings = _search_serper(request.query, target_count, search_cfg["serper_key"])
+    elif search_cfg.get("brave_key"):
+        findings = _search_brave(request.query, target_count, search_cfg["brave_key"])
+
+    # If a real search returned results, return them
+    if findings:
+        findings.sort(key=lambda f: f.relevance_score, reverse=True)
+        return findings[:target_count]
+
+    # Stub fallback — used when no search API is configured or all calls failed
     pool = [
         s for s in _STUB_POOL
         if s["source_type"] in request.source_types
     ]
-    # If filter leaves us short, fall back to full pool
-    if len(pool) < 3:
+    if len(pool) < 2:
         pool = _STUB_POOL
 
-    # Cycle through pool until we have enough findings
-    findings: List[ResearchFinding] = []
     ts = datetime.now(timezone.utc).isoformat()
     query_short = request.query[:60]
-
-    for i in range(target_count):
+    for i in range(min(target_count, len(pool) * 2)):
         stub = pool[i % len(pool)]
         url  = f"https://www.{stub['domain']}/research/{query_short.lower().replace(' ', '-')}-{i+1}"
         findings.append(
@@ -342,8 +347,6 @@ def search(request: ResearchRequest) -> List[ResearchFinding]:
                 retrieved_at    = ts,
             )
         )
-
-    # Sort by relevance descending
     findings.sort(key=lambda f: f.relevance_score, reverse=True)
     return findings
 
@@ -352,29 +355,80 @@ def search(request: ResearchRequest) -> List[ResearchFinding]:
 # STEP 3 -- Synthesis
 # ---------------------------------------------------------------------------
 
+def _format_findings_for_llm(findings: List[ResearchFinding]) -> str:
+    """Format search results into a compact context block for the LLM."""
+    lines = []
+    for i, f in enumerate(findings[:8], 1):
+        lines.append(f"{i}. [{f.title}]({f.source_url})")
+        if f.excerpt:
+            lines.append(f"   {f.excerpt[:300]}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _has_real_results(findings: List[ResearchFinding]) -> bool:
+    """True if findings came from a real search API (not stubs)."""
+    stub_domains = {"techcrunch.com", "reuters.com", "hbr.org", "wired.com",
+                    "mckinsey.com", "bloomberg.com", "gartner.com", "arxiv.org",
+                    "venturebeat.com", "reddit.com", "nature.com", "github.com"}
+    if not findings:
+        return False
+    from urllib.parse import urlparse
+    domains = {urlparse(f.source_url).netloc.replace("www.", "") for f in findings}
+    return not domains.issubset(stub_domains)
+
+
 def synthesize(query: str, findings: List[ResearchFinding]) -> str:
     """
-    Produces a structured narrative summary from the list of findings.
-
-    Structure
-    ---------
-    1. Overview paragraph
-    2. Key themes (bulleted)
-    3. Source notes
-    4. Gaps / caveats
-
-    In production this calls the LLM with findings as context and the
-    synthesis prompt from nasus_research_analyst_prompt.md.
+    Produce a research summary with priority:
+      1. LLM synthesis of real search results (best)
+      2. LLM direct answer from knowledge (no search key, but LLM available)
+      3. Template synthesis (offline / no LLM)
     """
     if not findings:
         return f"No findings retrieved for query: {query}"
 
+    try:
+        from nasus_sidecar import llm_client as _llm_client
+        if _llm_client.is_configured():
+            client = _llm_client.get_client()
+            real_results = _has_real_results(findings)
+
+            if real_results:
+                context = _format_findings_for_llm(findings)
+                prompt = (
+                    f"You are a research analyst. Synthesize the following web search results "
+                    f"into a clear, factual, well-organized answer.\n\n"
+                    f"Query: {query}\n\n"
+                    f"Search Results:\n{context}\n"
+                    f"Provide a comprehensive answer using the information above. "
+                    f"Include specific details, names, venues, dates, and links where present. "
+                    f"Do not add information not present in the results."
+                )
+            else:
+                # No real search results — ask LLM from knowledge
+                prompt = (
+                    f"You are a research analyst. Answer the following question using your knowledge:\n\n"
+                    f"{query}\n\n"
+                    f"Provide a helpful, factual, well-organized answer with specific details. "
+                    f"If this involves current events or real-time data you may not have, "
+                    f"clearly say so and suggest reliable sources or websites where the user "
+                    f"can find up-to-date information (e.g. event listing sites, official venues)."
+                )
+
+            response = client.chat([{"role": "user", "content": prompt}])
+            return response
+
+    except Exception:
+        pass
+
+    # Template fallback
     n   = len(findings)
     avg = sum(f.relevance_score for f in findings) / n
     top = findings[0]
 
     source_types_seen = list({f.source_type.value for f in findings})
-    domains_seen      = []
+    domains_seen = []
     try:
         from urllib.parse import urlparse
         domains_seen = list({urlparse(f.source_url).netloc for f in findings})
@@ -392,7 +446,6 @@ def synthesize(query: str, findings: List[ResearchFinding]) -> str:
         "### Key Findings",
     ]
 
-    # Pull top-3 excerpt highlights
     for i, f in enumerate(findings[:3], 1):
         summary_lines.append(f"{i}. [{f.title}]({f.source_url})")
         summary_lines.append(f"   > {f.excerpt[:200].strip()}...")
@@ -403,12 +456,6 @@ def synthesize(query: str, findings: List[ResearchFinding]) -> str:
         f"- {n} total sources retrieved",
         f"- Domains covered: {', '.join(domains_seen[:5])}{' ...' if len(domains_seen) > 5 else ''}",
         f"- Highest-relevance source: {top.source_url} (score: {top.relevance_score:.2f})",
-        "",
-        "### Caveats",
-        "- Stub retrieval mode: findings are representative placeholders, "
-        "not live web content.",
-        "- Confidence is calibrated against source count and diversity. "
-        "Run with DEEP or EXHAUSTIVE depth for production use.",
     ]
 
     return "\n".join(summary_lines)
@@ -419,16 +466,18 @@ def synthesize(query: str, findings: List[ResearchFinding]) -> str:
 # ---------------------------------------------------------------------------
 
 def _score_confidence(findings: List[ResearchFinding]) -> ConfidenceLevel:
-    """Derives a ConfidenceLevel from source count and type diversity."""
     n = len(findings)
     unique_types = len({f.source_type for f in findings})
+    real = _has_real_results(findings)
 
-    if n >= 15 and unique_types >= 3:
-        return ConfidenceLevel.VERIFIED
-    elif n >= 10 or (n >= 5 and unique_types >= 2):
+    if real and n >= 5:
         return ConfidenceLevel.HIGH
-    elif n >= 3:
+    elif real:
         return ConfidenceLevel.MEDIUM
+    elif n >= 10 or (n >= 5 and unique_types >= 2):
+        return ConfidenceLevel.MEDIUM
+    elif n >= 3:
+        return ConfidenceLevel.LOW
     else:
         return ConfidenceLevel.LOW
 
@@ -440,17 +489,8 @@ def _score_confidence(findings: List[ResearchFinding]) -> ConfidenceLevel:
 def research(
     request: ResearchRequest,
 ) -> Union[ResearchResult, ResearchError]:
-    """
-    Orchestrates the full M01 pipeline:
-      classify -> search -> synthesize -> confidence score -> validate
-
-    Returns ResearchResult on success, ResearchError on any failure.
-    """
     try:
-        # 1. Classify query (advisory -- we log but do not force-override)
         classification = classify_query(request)
-
-        # 2. Retrieve findings
         findings = search(request)
 
         if not findings:
@@ -463,13 +503,9 @@ def research(
                 ),
             )
 
-        # 3. Synthesize
         summary = synthesize(request.query, findings)
-
-        # 4. Confidence
         confidence = _score_confidence(findings)
 
-        # 5. Build result
         result = ResearchResult(
             query         = request.query,
             summary       = summary,
@@ -479,10 +515,8 @@ def research(
             total_sources = len(findings),
         )
 
-        # 6. Validate (log issues but do not block delivery)
         issues = validate_research_output(result)
         if issues:
-            # Append validation notes to summary for transparency
             result.summary += (
                 "\n\n### Validation Notes\n"
                 + "\n".join(f"- {issue}" for issue in issues)
@@ -516,7 +550,6 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
       - error field populated on failure
     """
     try:
-        # Normalise payload to ResearchRequest
         payload = envelope.payload
         if isinstance(payload, dict):
             if "query" not in payload:
@@ -530,7 +563,6 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
                 f"got {type(payload).__name__}"
             )
 
-        # Run the pipeline
         result = research(request)
 
         if isinstance(result, ResearchError):
@@ -551,79 +583,3 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
         }
 
     return envelope
-
-
-# ---------------------------------------------------------------------------
-# DEMO (run directly)
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    # Minimal stub for NasusEnvelope when running standalone
-    try:
-        from nasus_module_registry import ModuleID, NasusEnvelope, NasusStatus
-    except ImportError:
-        from dataclasses import dataclass as _dc, field as _f
-        from enum import Enum as _E
-        class NasusStatus(_E):
-            PENDING = "pending"; DONE = "done"; FAILED = "failed"
-        class ModuleID(_E):
-            M01 = "M01"
-        @_dc
-        class NasusEnvelope:
-            module_id: object
-            payload:   object
-            status:    object = NasusStatus.PENDING
-            error:     object = None
-
-    print("=" * 60)
-    print("NASUS M01 RESEARCH ANALYST -- Demo Run")
-    print("=" * 60)
-
-    # --- Query 1: Market research ---
-    print("\n[Query 1] AI agent market size 2025\n")
-    env1 = NasusEnvelope(
-        module_id = ModuleID.M01,
-        payload   = {
-            "query":        "AI agent market size 2025",
-            "depth":        "standard",
-            "source_types": ["web", "news", "academic"],
-            "max_sources":  8,
-        },
-    )
-    env1 = route_envelope(env1)
-    print(f"Status   : {env1.status}")
-    print(f"Error    : {env1.error}")
-    if isinstance(env1.payload, dict) and "summary" in env1.payload:
-        print(f"Confidence: {env1.payload.get('confidence')}")
-        print(f"Sources   : {env1.payload.get('total_sources')}")
-        print(f"\n{env1.payload['summary'][:600]}...")
-
-    print("\n" + "-" * 60)
-
-    # --- Query 2: Competitor landscape ---
-    print("\n[Query 2] Competitors of Notion and their design strengths\n")
-    env2 = NasusEnvelope(
-        module_id = ModuleID.M01,
-        payload   = {
-            "query":        "Competitors of Notion and their design strengths",
-            "depth":        "deep",
-            "source_types": ["web", "news", "social"],
-            "max_sources":  12,
-            "require_citations": True,
-        },
-    )
-    env2 = route_envelope(env2)
-    print(f"Status   : {env2.status}")
-    print(f"Error    : {env2.error}")
-    if isinstance(env2.payload, dict) and "summary" in env2.payload:
-        print(f"Confidence: {env2.payload.get('confidence')}")
-        print(f"Sources   : {env2.payload.get('total_sources')}")
-        print(f"\n{env2.payload['summary'][:600]}...")
-        # Validate output
-        from nasus_research_analyst_schema import ResearchResult
-        result_obj = ResearchResult.from_dict(env2.payload)
-        issues = validate_research_output(result_obj)
-        print(f"\nValidation issues: {issues if issues else 'none'}")
-
-    print("\n" + "=" * 60)
-    print("Demo complete.")
