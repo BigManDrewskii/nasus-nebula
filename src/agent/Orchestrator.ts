@@ -21,8 +21,13 @@ import {
   healthStatus,
   configureSidecar,
   runTask,
+  streamJobEvents,
+  approveSubtask,
+  rejectSubtask,
+  resumeTask,
   type SidecarStep,
   type StatusResponse,
+  type CheckpointPayload,
 } from './sidecarClient'
 import { extractAndWriteCodeFiles } from './codeExtractor'
 
@@ -245,6 +250,16 @@ export class AgentOrchestrator {
     let accumulatedFinal = ''
     // Track the callId of the most recent tool_call for pairing with observations.
     let lastToolCallId: string | null = null
+    // The sidecar job_id for this run — captured from the first status event so
+    // the CHECKPOINT handler can call approve/reject/resume on the right job.
+    let sidecarJobId: string | null = null
+
+    // Listen for the panel dispatching a resume decision.
+    const onCheckpointResume = (e: Event) => {
+      const detail = (e as CustomEvent<{ jobId: string }>).detail
+      void this.continueFromCheckpoint(params, detail.jobId)
+    }
+    window.addEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
 
     try {
       for await (const event of runTask('M00', payload)) {
@@ -290,12 +305,27 @@ export class AgentOrchestrator {
             break
           }
           case 'status': {
-            const s = (event.data as StatusResponse).status
-            if (s === 'running') store.setStatus(taskId, 'executing')
+            const s = event.data as StatusResponse
+            if (!sidecarJobId) sidecarJobId = s.job_id
+            if (s.status === 'running') store.setStatus(taskId, 'executing')
             break
           }
           case 'done': {
             const final = event.data as StatusResponse & { errors?: string[] }
+            if (!sidecarJobId) sidecarJobId = final.job_id
+
+            // HITL checkpoint: execution paused, waiting for human approval.
+            const result = final.result as Record<string, unknown> | undefined
+            if (result?.output_type === 'CHECKPOINT') {
+              store.setStreaming(taskId, messageId, false)
+              store.setStatus(taskId, 'awaiting_checkpoint_approval')
+              store.setPendingCheckpoint(result as unknown as CheckpointPayload, sidecarJobId, messageId)
+              window.dispatchEvent(new CustomEvent('nasus:checkpoint', {
+                detail: { taskId, messageId, checkpoint: result, jobId: sidecarJobId },
+              }))
+              break
+            }
+
             if (final.status === 'completed') {
               // Extract code files from the fully-accumulated response text.
               if (accumulatedFinal) {
@@ -336,6 +366,139 @@ export class AgentOrchestrator {
       if (signal.aborted) return
       finishErr(err instanceof Error ? err.message : 'Sidecar stream failed')
       throw err
+    } finally {
+      window.removeEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
+    }
+  }
+
+  /**
+   * Continue execution after a HITL checkpoint.
+   * Called when the user dispatches `nasus:checkpoint-resume-{taskId}`.
+   * Sends all approve/reject decisions to the sidecar, then re-opens the
+   * SSE stream for the resumed job and pipes events into the same handlers.
+   */
+  async continueFromCheckpoint(
+    params: OrchestratorTaskParams,
+    checkpointJobId: string,
+  ): Promise<void> {
+    const { taskId, messageId, signal } = params
+    const store = useAppStore.getState()
+
+    const decisions = store.checkpointDecisions ?? {}
+    const checkpoint = store.pendingCheckpoint
+
+    if (!checkpoint) return
+
+    store.clearCheckpoint()
+
+    // Send all decisions before calling resume
+    await Promise.all(
+      checkpoint.pending_approvals.map(({ subtask_id }) => {
+        const decision = decisions[subtask_id] ?? 'approve'
+        return decision === 'approve'
+          ? approveSubtask(checkpointJobId, subtask_id)
+          : rejectSubtask(checkpointJobId, subtask_id)
+      }),
+    )
+
+    // Open resumed stream
+    let resumeJobId: string
+    try {
+      const resumed = await resumeTask(checkpointJobId)
+      resumeJobId = resumed.job_id
+    } catch (err) {
+      store.setError(taskId, messageId, err instanceof Error ? err.message : 'Resume failed')
+      return
+    }
+
+    store.setStreaming(taskId, messageId, true)
+    store.setStatus(taskId, 'executing')
+
+    const finishOk = () => {
+      store.setStreaming(taskId, messageId, false)
+      store.updateTaskStatus(taskId, 'completed')
+      store.setStatus(taskId, 'completed')
+      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
+      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+    }
+
+    const finishErr = (msg: string) => {
+      store.setError(taskId, messageId, msg)
+      store.setStatus(taskId, 'error')
+      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
+      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
+    }
+
+    let accumulatedFinal = ''
+    let lastToolCallId: string | null = null
+    let resumeSidecarJobId: string | null = null
+
+    try {
+      for await (const event of streamJobEvents(resumeJobId)) {
+        if (signal.aborted) break
+        switch (event.type) {
+          case 'status': {
+            const s = event.data as StatusResponse
+            if (!resumeSidecarJobId) resumeSidecarJobId = s.job_id
+            break
+          }
+          case 'step': {
+            const step = event.data as SidecarStep
+            const callId = `sc-${step.step}`
+            if (step.type === 'plan' && step.content) {
+              store.addStep(taskId, messageId, { kind: 'thinking', content: step.content })
+            } else if (step.type === 'tool_call' && step.tool) {
+              lastToolCallId = callId
+              store.addStep(taskId, messageId, {
+                kind: 'tool_call', tool: step.tool,
+                input: (step.tool_input as Record<string, unknown>) ?? {}, callId,
+              })
+            } else if (step.type === 'observation' && lastToolCallId) {
+              store.updateStep(taskId, messageId, {
+                kind: 'tool_result', callId: lastToolCallId,
+                output: step.content ?? '', isError: false,
+              })
+              lastToolCallId = null
+            }
+            if (step.type === 'final' && step.content) {
+              store.appendChunk(taskId, messageId, step.content)
+              accumulatedFinal += step.content
+            }
+            break
+          }
+          case 'done': {
+            const final = event.data as StatusResponse & { errors?: string[] }
+            const result = final.result as Record<string, unknown> | undefined
+            if (result?.output_type === 'CHECKPOINT') {
+              store.setStreaming(taskId, messageId, false)
+              store.setStatus(taskId, 'awaiting_checkpoint_approval')
+              store.setPendingCheckpoint(result as unknown as CheckpointPayload, resumeSidecarJobId ?? resumeJobId, messageId)
+              window.dispatchEvent(new CustomEvent('nasus:checkpoint', {
+                detail: { taskId, messageId, checkpoint: result, jobId: resumeSidecarJobId ?? resumeJobId },
+              }))
+              break
+            }
+            if (final.status === 'completed') {
+              if (accumulatedFinal) {
+                void extractAndWriteCodeFiles(accumulatedFinal, taskId, (s) => {
+                  if (s.kind === 'tool_result') store.updateStep(taskId, messageId, s)
+                  else store.addStep(taskId, messageId, s)
+                })
+              }
+              finishOk()
+            } else if (final.status === 'error') {
+              finishErr(final.error ?? final.errors?.[0] ?? 'Resumed execution failed')
+            }
+            break
+          }
+          case 'error': {
+            finishErr((event as { error?: string }).error ?? 'Resume stream error')
+            break
+          }
+        }
+      }
+    } catch (err) {
+      if (!signal.aborted) finishErr(err instanceof Error ? err.message : 'Resume failed')
     }
   }
 

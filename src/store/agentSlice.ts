@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { ExecutionPlan } from '../agent/core/Agent'
+import type { CheckpointPayload } from '../agent/sidecarClient'
 import { stopWebAgent } from '../agent/index'
 
 export interface AgentSlice {
@@ -27,6 +28,16 @@ export interface AgentSlice {
   setPendingToolApproval: (approval: { tool: string; args: Record<string, unknown>; reason?: string; taskId: string } | null) => void
   approveTool: (taskId: string, tool: string) => void
   rejectTool: (taskId: string, tool: string) => void
+
+  // HITL checkpoint state
+  pendingCheckpoint: CheckpointPayload | null
+  checkpointJobId: string | null
+  checkpointMessageId: string | null
+  checkpointDecisions: Record<string, 'approve' | 'reject'>
+
+  setPendingCheckpoint: (cp: CheckpointPayload, jobId: string | null, messageId: string | null) => void
+  clearCheckpoint: () => void
+  setCheckpointDecision: (subtaskId: string, decision: 'approve' | 'reject') => void
 }
 
 export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never]], [], AgentSlice> = (set, get) => ({
@@ -36,6 +47,10 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   currentPhase: 0,
   currentStep: 0,
   pendingToolApproval: null,
+  pendingCheckpoint: null,
+  checkpointJobId: null,
+  checkpointMessageId: null,
+  checkpointDecisions: {},
 
   setPendingPlan: (plan) => set({ pendingPlan: plan }),
   setPlanApprovalStatus: (status) => set({ planApprovalStatus: status }),
@@ -88,5 +103,19 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   rejectTool: (taskId, tool) => {
     set({ pendingToolApproval: null })
     window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { tool } }))
+  },
+
+  setPendingCheckpoint: (cp, jobId, messageId) => {
+    set({ pendingCheckpoint: cp, checkpointJobId: jobId, checkpointMessageId: messageId, checkpointDecisions: {} })
+  },
+
+  clearCheckpoint: () => {
+    set({ pendingCheckpoint: null, checkpointJobId: null, checkpointMessageId: null, checkpointDecisions: {} })
+  },
+
+  setCheckpointDecision: (subtaskId, decision) => {
+    set((state) => {
+      state.checkpointDecisions[subtaskId] = decision
+    })
   },
 })

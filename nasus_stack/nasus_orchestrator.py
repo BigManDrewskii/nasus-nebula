@@ -235,6 +235,10 @@ class NasusOrchestrator:
     # human approval when interrupt_on_irreversible=True is passed to execute_plan.
     _IRREVERSIBLE_MODULES = frozenset({"M02", "M03", "M05"})
 
+    # Modules whose DONE output must be persisted to episodic memory
+    # (per memory spec Section 7 — the "memory bus" contract).
+    _MEMORY_BUS_MODULES = frozenset({"M01", "M05", "M06", "M07", "M08"})
+
     def approve(self, subtask_id: str) -> None:
         """Grant approval for a subtask that was paused at a checkpoint."""
         self._approvals[subtask_id] = "approved"
@@ -632,6 +636,28 @@ class NasusOrchestrator:
                                 )
                             except Exception:
                                 pass  # Never let artifact persistence abort execution
+
+                            # Memory bus: write key module outputs to episodic memory.
+                            if st.module in self._MEMORY_BUS_MODULES:
+                                try:
+                                    _mem_payload = {
+                                        "action": "write",
+                                        "layer": "episodic",
+                                        "key": f"{self.session_id}:{subtask_id}",
+                                        "value": {
+                                            "module": st.module,
+                                            "instruction": st.instruction[:200],
+                                            "summary": str(result_env.payload)[:500],
+                                        },
+                                    }
+                                    _mem_env = NasusEnvelope(
+                                        module_id=ModuleID.M09,
+                                        payload=_mem_payload,
+                                    )
+                                    self.route_envelope(_mem_env)
+                                except Exception:
+                                    pass  # Never let M09 write abort pipeline execution
+
                             self._emit("plan", f"{subtask_id} completed")
                             break
                         else:
@@ -902,7 +928,8 @@ class NasusOrchestrator:
                             self._llm_plan(goal, payload)
                         else:
                             self.build_plan(goal, self._deserialize_subtasks(payload.get("subtasks", [])))
-                    result_dict = self.execute_plan()
+                    _interrupt = bool(payload.get("interrupt_on_irreversible", False))
+                    result_dict = self.execute_plan(interrupt_on_irreversible=_interrupt)
 
                 elif self.llm:
                     if not goal:
@@ -930,6 +957,37 @@ class NasusOrchestrator:
                         "module": "M11",
                         "verdict": "SKIPPED",
                     }
+
+                # GAP-04: Persist non-APPROVED verdicts to episodic memory so
+                # review outcomes survive across sessions.
+                _qr_verdict = result_dict.get("verdict", "")
+                if _qr_verdict in ("REVISE", "REJECT"):
+                    try:
+                        _mem_payload = {
+                            "action": "write",
+                            "layer": "episodic",
+                            "key": f"review:{result_dict.get('review_id', uuid.uuid4().hex[:8])}",
+                            "value": {
+                                "source_module": result_dict.get("source_module", "unknown"),
+                                "verdict": _qr_verdict,
+                                "quality_score": result_dict.get("quality_score", 0.0),
+                                "review_id": result_dict.get("review_id", ""),
+                                "findings": result_dict.get("findings", []),
+                            },
+                        }
+                        _mem_env = NasusEnvelope(
+                            module_id=ModuleID.M09,
+                            payload=_mem_payload,
+                        )
+                        self.route_envelope(_mem_env)
+                        self._log(
+                            f"QR memory write: review:{result_dict.get('review_id')} "
+                            f"verdict={_qr_verdict}"
+                        )
+                    except Exception as _exc:
+                        self._log(
+                            f"QR memory write failed (non-fatal): {_exc}", level="warning"
+                        )
 
             elif module_id == ModuleID.M09:
                 # Memory Manager — handled directly in app.py via MemoryStore;
@@ -1348,6 +1406,19 @@ class NasusOrchestrator:
             indent=2,
         )
 
+        # GAP-09: When reviewing M10 plan output, include the correct PlanStep
+        # field names (description, input_artifacts) so the LLM checklist
+        # references fields that actually exist on PlanStep.
+        m10_checklist = (
+            "\n\nFor M10 plan output, additionally verify:\n"
+            "  • Every step has a non-empty `description` field (NOT `goal`)\n"
+            "  • Every step has an `input_artifacts` list (NOT `inputs`)\n"
+            "  • step_id follows pattern sNN (e.g. s01, s02)\n"
+            "  • No two steps have the same output_artifact name"
+            if source_module == "M10"
+            else ""
+        )
+
         messages = [
             {
                 "role": "system",
@@ -1360,6 +1431,7 @@ class NasusOrchestrator:
                     "  0.00–0.69 → REJECT    (fundamentally flawed or incomplete)\n\n"
                     "Be specific: name concrete issues, not vague criticism.\n"
                     "findings should enumerate every noteworthy observation."
+                    + m10_checklist
                 ),
             },
             {

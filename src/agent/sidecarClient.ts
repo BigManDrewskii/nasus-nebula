@@ -134,6 +134,24 @@ export interface HealthStatus {
   active_jobs?: number
 }
 
+export interface ApprovalResponse {
+  job_id: string
+  subtask_id: string
+  decision: 'approved' | 'rejected'
+}
+
+export interface WorkspaceFile {
+  name: string
+  size: number
+  created_at: string
+}
+
+export interface WorkspaceListResponse {
+  session_id: string
+  files: WorkspaceFile[]
+  count: number
+}
+
 /**
  * Health check — returns true if the sidecar is up and responding.
  */
@@ -256,6 +274,129 @@ export function streamLogs(
       closed = true
       es.close()
     }
+  }
+}
+
+// ─── HITL checkpoint types + approval ────────────────────────────────────────
+
+export interface CheckpointApproval {
+  subtask_id: string
+  module: string
+  instruction: string
+}
+
+export interface CheckpointPayload {
+  output_type: 'CHECKPOINT'
+  session_id: string
+  plan_id: string
+  goal: string
+  pending_approvals: CheckpointApproval[]
+  created_at: string
+}
+
+/**
+ * Resume execution after all HITL decisions have been recorded.
+ * Returns a new {job_id} for the continuation stream.
+ */
+export async function resumeTask(jobId: string): Promise<TaskResponse> {
+  return sidecarFetch<TaskResponse>(`/task/${jobId}/resume`, { method: 'POST' })
+}
+
+/**
+ * Approve a subtask that was paused at a HITL checkpoint.
+ */
+export async function approveSubtask(
+  jobId: string,
+  subtaskId: string,
+): Promise<ApprovalResponse> {
+  return sidecarFetch<ApprovalResponse>(`/task/${jobId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ subtask_id: subtaskId }),
+  })
+}
+
+/**
+ * Reject a subtask that was paused at a HITL checkpoint.
+ */
+export async function rejectSubtask(
+  jobId: string,
+  subtaskId: string,
+): Promise<ApprovalResponse> {
+  return sidecarFetch<ApprovalResponse>(`/task/${jobId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ subtask_id: subtaskId }),
+  })
+}
+
+// ─── Workspace helpers ────────────────────────────────────────────────────────
+
+/**
+ * List all artifact files for a session workspace.
+ */
+export async function listWorkspace(sessionId: string): Promise<WorkspaceListResponse> {
+  return sidecarFetch<WorkspaceListResponse>(`/workspace/${sessionId}`)
+}
+
+/**
+ * Retrieve the content of a specific artifact file.
+ * Returns parsed JSON if the file is JSON, otherwise the raw text.
+ */
+export async function getArtifact(sessionId: string, filename: string): Promise<unknown> {
+  return sidecarFetch<unknown>(`/workspace/${sessionId}/${filename}`)
+}
+
+/**
+ * Delete all artifact files for a session workspace.
+ */
+export async function deleteWorkspace(
+  sessionId: string,
+): Promise<{ session_id: string; deleted_count: number }> {
+  return sidecarFetch<{ session_id: string; deleted_count: number }>(
+    `/workspace/${sessionId}`,
+    { method: 'DELETE' },
+  )
+}
+
+/**
+ * Stream events for an already-submitted job (e.g. a resumed checkpoint job).
+ * Unlike runTask, this does NOT call postTask — it streams an existing job_id.
+ */
+export async function* streamJobEvents(jobId: string): AsyncGenerator<SidecarEvent> {
+  const initial = await pollStatus(jobId)
+  yield { type: 'status', data: initial }
+
+  const buffer: SidecarEvent[] = []
+  let done = false
+  let resolveNext: (() => void) | null = null
+
+  const push = (event: SidecarEvent) => {
+    buffer.push(event)
+    resolveNext?.()
+    resolveNext = null
+  }
+
+  const cleanup = streamLogs(
+    jobId,
+    (step) => push({ type: 'step', data: step }),
+    (final) => {
+      if (final) push({ type: 'done', data: final })
+      done = true
+      resolveNext?.()
+      resolveNext = null
+    },
+  )
+
+  try {
+    while (!done || buffer.length > 0) {
+      if (buffer.length === 0) {
+        await new Promise<void>((r) => { resolveNext = r })
+      }
+      while (buffer.length > 0) {
+        yield buffer.shift()!
+      }
+    }
+  } finally {
+    cleanup()
   }
 }
 

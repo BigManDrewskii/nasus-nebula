@@ -29,6 +29,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -80,6 +81,13 @@ _jobs: Dict[str, NasusEnvelope] = {}
 
 # SSE log queues: job_id -> asyncio.Queue of log line strings (None = sentinel)
 _log_queues: Dict[str, asyncio.Queue] = {}
+
+# Per-job orchestrator instances preserved when a job returns a CHECKPOINT.
+# Keyed by job_id. Entries are removed on resume or cancel.
+_job_orchestrators: Dict[str, NasusOrchestrator] = {}
+
+# Process start time for uptime calculation
+_start_time: float = time.monotonic()
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +334,12 @@ async def _run_envelope(env: NasusEnvelope) -> None:
 
         _jobs[job_id] = result_env
 
+        # When the result is a CHECKPOINT, keep job_orch alive so
+        # /approve, /reject, and /resume can operate on the same instance.
+        payload_result = result_env.payload if result_env.payload else {}
+        if isinstance(payload_result, dict) and payload_result.get("output_type") == "CHECKPOINT":
+            _job_orchestrators[job_id] = job_orch
+
         # Emit the full response as a final step ONLY if it wasn't already streamed
         # token-by-token via the emitter (streamed=True means each chunk was already pushed).
         payload_data = result_env.payload if result_env.payload else {}
@@ -366,6 +380,73 @@ async def _run_envelope(env: NasusEnvelope) -> None:
         q = _log_queues.get(job_id)
         if q is not None:
             await q.put(None)  # None = sentinel -> stream closes
+
+
+async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
+    """
+    Re-run execute_plan(interrupt_on_irreversible=True) on a stored per-job
+    orchestrator after all HITL decisions have been recorded. Streams step
+    events under new_job_id and writes the final result to _jobs[new_job_id].
+    """
+    loop = asyncio.get_event_loop()
+
+    def _push_step_sync(step_dict: Dict[str, Any]) -> None:
+        future = asyncio.run_coroutine_threadsafe(
+            _push_log(new_job_id, json.dumps(step_dict)), loop
+        )
+        try:
+            future.result(timeout=2.0)
+        except Exception:
+            pass
+
+    job_orch._emitter = _push_step_sync  # type: ignore[attr-defined]
+
+    try:
+        result_dict = await loop.run_in_executor(
+            None, lambda: job_orch.execute_plan(interrupt_on_irreversible=True)
+        )
+        resume_env = _jobs[new_job_id]
+        resume_env.mark_done(result_dict)
+
+        # If still a CHECKPOINT, store the orch again so client can re-resume.
+        if isinstance(result_dict, dict) and result_dict.get("output_type") == "CHECKPOINT":
+            _job_orchestrators[new_job_id] = job_orch
+
+        payload_data = resume_env.payload if resume_env.payload else {}
+        if not isinstance(payload_data, dict) or not payload_data.get("streamed"):
+            response_text = (
+                payload_data.get("response")
+                or payload_data.get("content")
+                or payload_data.get("next_recommended_action")
+                or ""
+            ) if isinstance(payload_data, dict) else ""
+            if response_text:
+                await _push_log(
+                    new_job_id,
+                    json.dumps({
+                        "step": 1,
+                        "type": "final",
+                        "content": str(response_text),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }),
+                )
+    except Exception as exc:
+        env = _jobs.get(new_job_id)
+        if env:
+            env.mark_failed(str(exc))
+        await _push_log(
+            new_job_id,
+            json.dumps({
+                "step": 0,
+                "type": "error",
+                "content": f"resume {new_job_id} FAILED: {exc}",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }),
+        )
+    finally:
+        q = _log_queues.get(new_job_id)
+        if q is not None:
+            await q.put(None)
 
 
 # ---------------------------------------------------------------------------
@@ -554,6 +635,9 @@ async def cancel_task(job_id: str) -> Dict[str, Any]:
     if q is not None:
         await q.put(None)
 
+    # Release any stored checkpoint orchestrator
+    _job_orchestrators.pop(job_id, None)
+
     return {"job_id": job_id, "status": "cancelled"}
 
 
@@ -597,6 +681,46 @@ async def delete_workspace(session_id: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Metrics endpoint
+# ---------------------------------------------------------------------------
+
+
+@app.get("/metrics")
+async def get_metrics() -> Dict[str, Any]:
+    """Operational telemetry: job counts, token usage, memory stats, uptime."""
+    job_list = list(_jobs.values())
+    jobs_by_status: Dict[str, int] = {"pending": 0, "running": 0, "completed": 0, "failed": 0}
+    for j in job_list:
+        raw = getattr(j, "status", None)
+        status_val = raw.value if raw is not None else ""
+        if status_val == "PENDING":
+            jobs_by_status["pending"] += 1
+        elif status_val == "RUNNING":
+            jobs_by_status["running"] += 1
+        elif status_val == "DONE":
+            jobs_by_status["completed"] += 1
+        elif status_val == "FAILED":
+            jobs_by_status["failed"] += 1
+
+    client = _orchestrator.llm if _orchestrator is not None else None
+    return {
+        "jobs": {
+            "total": len(job_list),
+            **jobs_by_status,
+        },
+        "tokens": {
+            "used": client.tokens_used if client is not None else 0,
+            "budget": client.token_budget if client is not None else None,
+            "budget_remaining": client.budget_remaining if client is not None else None,
+        },
+        "memory": _memory.health_check() if _memory is not None else {},
+        "llm_configured": llm_client.is_configured(),
+        "uptime_s": round(time.monotonic() - _start_time, 1),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Human-in-the-loop checkpoint endpoints
 # ---------------------------------------------------------------------------
 
@@ -609,11 +733,12 @@ class _ApprovalRequest(BaseModel):
 async def approve_subtask(job_id: str, req: _ApprovalRequest) -> Dict[str, Any]:
     """
     Approve a subtask that was paused at a HITL checkpoint.
-    Call execute_plan again (via a new M10 envelope) to resume execution.
+    Call POST /task/{job_id}/resume after all decisions are recorded.
     """
-    if _orchestrator is None:
+    orch = _job_orchestrators.get(job_id) or _orchestrator
+    if orch is None:
         raise HTTPException(status_code=503, detail="Orchestrator not initialised")
-    _orchestrator.approve(req.subtask_id)
+    orch.approve(req.subtask_id)
     return {
         "job_id": job_id,
         "subtask_id": req.subtask_id,
@@ -625,15 +750,44 @@ async def approve_subtask(job_id: str, req: _ApprovalRequest) -> Dict[str, Any]:
 async def reject_subtask(job_id: str, req: _ApprovalRequest) -> Dict[str, Any]:
     """
     Reject a subtask that was paused at a HITL checkpoint.
-    The subtask will be marked FAILED when execute_plan is next called.
+    Call POST /task/{job_id}/resume after all decisions are recorded.
     """
-    if _orchestrator is None:
+    orch = _job_orchestrators.get(job_id) or _orchestrator
+    if orch is None:
         raise HTTPException(status_code=503, detail="Orchestrator not initialised")
-    _orchestrator.reject(req.subtask_id)
+    orch.reject(req.subtask_id)
     return {
         "job_id": job_id,
         "subtask_id": req.subtask_id,
         "decision": "rejected",
+    }
+
+
+@app.post("/task/{job_id}/resume")
+async def resume_task(job_id: str) -> Dict[str, Any]:
+    """
+    Resume execution after all HITL approvals/rejections have been recorded.
+    Calls execute_plan(interrupt_on_irreversible=True) on the stored per-job
+    orchestrator and streams results under a new job_id.
+    Returns {job_id: new_job_id, status: 'PENDING'} immediately.
+    """
+    job_orch = _job_orchestrators.pop(job_id, None)
+    if job_orch is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No checkpoint found for job_id={job_id!r}. "
+                   "Either approvals were not recorded or job already resumed.",
+        )
+    new_job_id = f"resume_{uuid.uuid4().hex[:8]}"
+    resume_env = NasusEnvelope(module_id=ModuleID.M00, payload={"resumed_from": job_id})
+    resume_env.mark_running()
+    _jobs[new_job_id] = resume_env
+    _log_queues[new_job_id] = asyncio.Queue()
+    asyncio.create_task(_run_resume(new_job_id, job_orch))
+    return {
+        "job_id": new_job_id,
+        "status": NasusStatus.PENDING.value,
+        "resumed_from": job_id,
     }
 
 

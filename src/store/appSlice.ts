@@ -26,6 +26,7 @@ export type TaskStatus =
   | 'idle'
   | 'planning'
   | 'awaiting_approval'
+  | 'awaiting_checkpoint_approval'
   | 'executing'
   | 'completed'
   | 'stopped'
