@@ -89,7 +89,7 @@ export class ErrorBoundary extends Component<Props, State> {
           >
             <summary
               style={{
-                padding: '8px 14px',
+                padding: '8px 16px',
                 fontSize: 'var(--text-xs)',
                 color: 'rgba(255,255,255,0.35)',
                 cursor: 'pointer',
@@ -101,7 +101,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <pre
               style={{
                 margin: 0,
-                padding: '10px 14px',
+                padding: '8px 16px',
                 fontSize: 'var(--text-xs)',
                 color: 'rgba(255,255,255,0.3)',
                 fontFamily: 'var(--font-mono)',

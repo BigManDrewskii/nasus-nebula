@@ -476,8 +476,8 @@ export const PlanView = memo(function PlanView({
             className="custom-scrollbar flex-col pv-phases-list"
             style={{
               maxHeight: 340,
-              padding: '10px 12px 12px',
-              gap: 3,
+              padding: '8px 12px 12px',
+              gap: 4,
             }}
           >
             {plan.phases.map((phase, i) => (

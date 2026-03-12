@@ -40,7 +40,7 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        padding: '6px 8px',
+        padding: '8px 8px',
         borderRadius: 6,
         cursor: 'pointer',
         background: isSelected
@@ -53,7 +53,7 @@ export function ModelItem({ model, isSelected, isHighlighted, onSelect }: ModelI
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span
             style={{
               fontSize: 'var(--text-sm)',

@@ -654,7 +654,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 key={tab}
                 onClick={() => setSettingsTab(tab)}
                 style={{
-                  padding: '8px 14px',
+                  padding: '8px 16px',
                   borderRadius: 8,
                   background: isActive ? 'var(--amber)' : 'transparent',
                   color: isActive ? '#000' : 'var(--tx-secondary)',
@@ -724,7 +724,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                         type="button"
                         onClick={() => setTextScale(scale)}
                         style={{
-                          padding: '3px 10px',
+                          padding: '3px 8px',
                           borderRadius: 6,
                           border: 'none',
                           cursor: 'pointer',
@@ -890,13 +890,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           }}
                           style={{
                             width: '100%',
-                            padding: '10px 12px',
+                            padding: '8px 12px',
                             borderRadius: 10,
                             border: `1px solid ${isSelected ? 'oklch(64% 0.214 40.1 / 0.5)' : 'rgba(255,255,255,0.08)'}`,
                             background: isSelected ? 'oklch(64% 0.214 40.1 / 0.08)' : 'transparent',
                             cursor: 'pointer',
                             transition: 'all 0.12s',
-                            gap: 10,
+                            gap: 8,
                           }}
                             className="flex-v-center settings-model-row"
                         >
@@ -1029,8 +1029,8 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                             onClick={handleFetchModels}
                             disabled={fetchingModels}
                             style={{
-                              gap: 6,
-                              padding: '4px 10px', borderRadius: 8, fontSize: 'var(--text-xs)',
+                              gap: 8,
+                              padding: '4px 8px', borderRadius: 8, fontSize: 'var(--text-xs)',
                               background: 'rgba(255,255,255,0.07)', border: 'none',
                               cursor: fetchingModels ? 'default' : 'pointer',
                               color: 'var(--tx-secondary)', transition: 'color 0.12s',
@@ -1119,7 +1119,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                                         className="flex-col w-full hover-bg-app-3"
                                         style={{
                                           alignItems: 'flex-start',
-                                          padding: '7px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
+                                          padding: '8px 12px', textAlign: 'left', border: 'none', cursor: 'pointer', gap: 2,
                                           color: isSelected ? 'var(--tx-primary)' : 'var(--tx-secondary)',
                                           background: isSelected ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
                                           transition: 'background 0.1s',
@@ -1262,7 +1262,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               color: '#fca5a5',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
             }}>
               <Pxi name="exclamation-triangle" size={12} style={{ flexShrink: 0 }} />
               {errors.apiKey || errors.workspacePath}
@@ -1596,7 +1596,7 @@ function ModelRouterSection({
       </div>
       {refreshMessage && (
         <div style={{
-          fontSize: 'var(--text-xs)', padding: '6px 8px', borderRadius: 6,
+          fontSize: 'var(--text-xs)', padding: '8px 8px', borderRadius: 6,
           background: refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.1)' : 'rgba(34,197,94,0.1)',
           color: refreshMessage.startsWith('Failed') ? '#fca5a5' : '#86efac',
           border: `1px solid ${refreshMessage.startsWith('Failed') ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)'}`,
@@ -1619,7 +1619,7 @@ function ModelRouterSection({
               onClick={() => onModeChange(opt.id === 'auto' ? 'auto' : mode === 'auto' ? 'anthropic/claude-3.7-sonnet' : mode)}
               title={opt.desc}
               style={{
-                flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
+                flex: 1, padding: '8px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
                 border: `1px solid ${isSel ? 'oklch(64% 0.214 40.1 / 0.4)' : 'rgba(255,255,255,0.08)'}`,
                 background: isSel ? 'oklch(64% 0.214 40.1 / 0.1)' : 'transparent',
                 color: isSel ? 'var(--amber)' : 'var(--tx-secondary)',
@@ -1652,7 +1652,7 @@ function ModelRouterSection({
                   onClick={() => onBudgetChange(opt.id)}
                   title={opt.desc}
                   style={{
-                    flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
+                    flex: 1, padding: '8px 8px', borderRadius: 8, fontSize: 'var(--text-sm)',
                     border: `1px solid ${isSel ? (opt.id === 'free' ? 'rgba(129,140,248,0.4)' : 'oklch(64% 0.214 40.1 / 0.4)') : 'rgba(255,255,255,0.08)'}`,
                     background: isSel ? (opt.id === 'free' ? 'rgba(99,102,241,0.1)' : 'oklch(64% 0.214 40.1 / 0.1)') : 'transparent',
                     color: isSel ? (opt.id === 'free' ? '#818cf8' : 'var(--amber)') : 'var(--tx-secondary)',
@@ -1671,7 +1671,7 @@ function ModelRouterSection({
       {/* Hint about free tier */}
       {isAutoMode && budget === 'free' && (
         <div style={{
-          padding: '8px 10px', borderRadius: 8, fontSize: 'var(--text-xs)',
+          padding: '8px 8px', borderRadius: 8, fontSize: 'var(--text-xs)',
           background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
           color: '#a5b4fc', lineHeight: 1.55,
         }}>
@@ -1687,7 +1687,7 @@ function ModelRouterSection({
             onClick={() => setExpanded((o) => !o)}
               className="flex-v-center text-tertiary hover-text-secondary"
               style={{
-                gap: 5,
+                gap: 4,
                 background: 'none', border: 'none', cursor: 'pointer',
                 fontSize: 'var(--text-xs)', padding: '2px 0',
                 transition: 'color 0.12s',
@@ -1711,7 +1711,7 @@ function ModelRouterSection({
                     key={m.id}
                     className="flex-v-center"
                     style={{
-                      gap: 10,
+                      gap: 8,
                       padding: '8px 12px',
                       background: enabled ? 'transparent' : 'rgba(0,0,0,0.2)',
                       borderTop: i > 0 ? '1px solid rgba(255,255,255,0.05)' : undefined,
@@ -1744,7 +1744,7 @@ function ModelRouterSection({
 
                     {/* Tier badge */}
                     <span style={{
-                      fontSize: 'var(--text-2xs)', padding: '2px 6px', borderRadius: 5, flexShrink: 0,
+                      fontSize: 'var(--text-2xs)', padding: '2px 8px', borderRadius: 5, flexShrink: 0,
                       background: tier.bg, color: tier.color, fontWeight: 500,
                     }}>
                       {tier.label}
@@ -1901,7 +1901,7 @@ function BrowserSetupSection() {
 
         {/* Overall status */}
         {statusMessage && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 8, background: isReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${isReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: isReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)', border: `1px solid ${isReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
             <span style={{ fontSize: 'var(--text-xs)', color: isReady ? '#4ade80' : '#f87171' }}>{statusMessage}</span>
           </div>
@@ -1910,7 +1910,7 @@ function BrowserSetupSection() {
 
       {/* Install progress */}
       {sidecarInstallProgress && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
           <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--amber-soft)' }}>{sidecarInstallProgress}</span>
         </div>
@@ -1918,7 +1918,7 @@ function BrowserSetupSection() {
 
       {/* Install error */}
       {installError && (
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)' }}>
           <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
           <span style={{ fontSize: 'var(--text-xs)', color: '#f87171', lineHeight: 1.5 }}>{installError}</span>
         </div>
@@ -1926,7 +1926,7 @@ function BrowserSetupSection() {
 
       {/* Success */}
       {installDone && !installError && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px', borderRadius: 8, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)' }}>
           <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
           <span style={{ fontSize: 'var(--text-xs)', color: '#4ade80' }}>Browser installed successfully. Agent browsing is ready.</span>
         </div>
@@ -1939,10 +1939,10 @@ function BrowserSetupSection() {
           onClick={runInstall}
           disabled={installing || isReady}
           style={{
-            padding: '7px 16px', borderRadius: 8, border: 'none', cursor: installing || isReady ? 'not-allowed' : 'pointer',
+            padding: '8px 16px', borderRadius: 8, border: 'none', cursor: installing || isReady ? 'not-allowed' : 'pointer',
             background: isReady ? 'rgba(34,197,94,0.12)' : 'var(--amber)', color: isReady ? '#4ade80' : '#000',
             fontSize: 'var(--text-sm)', fontWeight: 600, opacity: installing ? 0.6 : 1,
-            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
           }}
         >
           {installing
@@ -1958,10 +1958,10 @@ function BrowserSetupSection() {
           onClick={runCheck}
           disabled={checking}
           style={{
-            padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
+            padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
             cursor: checking ? 'not-allowed' : 'pointer', background: 'transparent',
             color: 'var(--tx-secondary)', fontSize: 'var(--text-sm)', opacity: checking ? 0.5 : 1,
-            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
           }}
         >
           <Pxi name={checking ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
@@ -1971,7 +1971,7 @@ function BrowserSetupSection() {
 
       {/* Node.js install hint if missing */}
       {!checking && !nodeVersion && (
-        <div style={{ padding: '8px 10px', borderRadius: 8, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55 }}>
+        <div style={{ padding: '8px 8px', borderRadius: 8, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)', fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55 }}>
           Node.js is required. Install it from{' '}
           <a href="https://nodejs.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>nodejs.org</a>
           {' '}(LTS recommended), then restart Nasus and click Install Browser.
@@ -2094,8 +2094,8 @@ function NasusStackSection() {
 
       {/* Overall status banner */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '7px 10px', borderRadius: 8,
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '8px 8px', borderRadius: 8,
         background: nasusReady ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)',
         border: `1px solid ${nasusReady ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
       }}>
@@ -2113,7 +2113,7 @@ function NasusStackSection() {
       {nasusInstallProgress && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 10px', borderRadius: 8,
+          padding: '8px 8px', borderRadius: 8,
           background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)',
         }}>
           <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite' }} />
@@ -2125,7 +2125,7 @@ function NasusStackSection() {
       {nasusInstallError && (
         <div style={{
           display: 'flex', alignItems: 'flex-start', gap: 8,
-          padding: '8px 10px', borderRadius: 8,
+          padding: '8px 8px', borderRadius: 8,
           background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.2)',
         }}>
           <Pxi name="exclamation-triangle" size={12} style={{ color: '#f87171', marginTop: 1, flexShrink: 0 }} />
@@ -2137,7 +2137,7 @@ function NasusStackSection() {
       {installDone && !nasusInstallError && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '8px 10px', borderRadius: 8,
+          padding: '8px 8px', borderRadius: 8,
           background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.2)',
         }}>
           <Pxi name="check-circle" size={12} style={{ color: '#4ade80' }} />
@@ -2154,12 +2154,12 @@ function NasusStackSection() {
           onClick={runInstall}
           disabled={nasusInstalling || nasusReady}
           style={{
-            padding: '7px 16px', borderRadius: 8, border: 'none',
+            padding: '8px 16px', borderRadius: 8, border: 'none',
             cursor: nasusInstalling || nasusReady ? 'not-allowed' : 'pointer',
             background: nasusReady ? 'rgba(34,197,94,0.12)' : 'var(--amber)',
             color: nasusReady ? '#4ade80' : '#000',
             fontSize: 'var(--text-sm)', fontWeight: 600, opacity: nasusInstalling ? 0.6 : 1,
-            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
           }}
         >
           {nasusInstalling
@@ -2174,11 +2174,11 @@ function NasusStackSection() {
           onClick={runCheck}
           disabled={nasusChecking}
           style={{
-            padding: '7px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
+            padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
             cursor: nasusChecking ? 'not-allowed' : 'pointer', background: 'transparent',
             color: 'var(--tx-secondary)', fontSize: 'var(--text-sm)',
             opacity: nasusChecking ? 0.5 : 1,
-            display: 'flex', alignItems: 'center', gap: 6, transition: 'opacity 0.15s',
+            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
           }}
         >
           <Pxi name={nasusChecking ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
@@ -2189,7 +2189,7 @@ function NasusStackSection() {
       {/* Python install hint if missing */}
       {!nasusChecking && !nasusReady && (
         <div style={{
-          padding: '8px 10px', borderRadius: 8,
+          padding: '8px 8px', borderRadius: 8,
           background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)',
           fontSize: 'var(--text-xs)', color: '#a5b4fc', lineHeight: 1.55,
         }}>

@@ -122,7 +122,7 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
       {editing ? (
         <div
           style={{
-            padding: '5px 8px',
+            padding: '4px 8px',
             borderRadius: 7,
             background: 'rgba(255,255,255,0.06)',
             border: '1px solid rgba(255,255,255,0.12)',
@@ -166,8 +166,8 @@ export const TaskListItem = memo(function TaskListItem({ task, isActive, onClick
               width: '100%',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '5px 8px 6px 10px',
+              gap: 8,
+              padding: '8px 8px 8px 12px',
               borderRadius: 7,
               cursor: 'pointer',
               fontFamily: 'inherit',

@@ -20,8 +20,8 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
+          gap: 8,
+          padding: '8px 8px',
           background: 'rgba(0,0,0,0.4)',
           borderBottom: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '6px 6px 0 0',
@@ -47,7 +47,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
       }}>
         <pre style={{
           margin: 0,
-          padding: '10px 12px',
+          padding: '8px 12px',
           color: 'var(--tx-secondary)',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
@@ -81,12 +81,12 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
         marginTop: 4,
         padding: '0 4px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {exitCode !== undefined && (
             <span style={{
               fontSize: 'var(--text-2xs)',
               fontFamily: 'var(--font-mono)',
-              padding: '1px 5px',
+              padding: '1px 4px',
               borderRadius: 4,
               background: exitCode === 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
               color: exitCode === 0 ? '#34d399' : '#f87171',
@@ -108,7 +108,7 @@ export function BashOutput({ output, command, exitCode, maxHeight = 300 }: BashO
               color: 'var(--tx-tertiary)',
               fontSize: 'var(--text-xs)',
               cursor: 'pointer',
-              padding: '2px 6px',
+              padding: '2px 8px',
               borderRadius: 4,
             }}
               className="hover-text-secondary"

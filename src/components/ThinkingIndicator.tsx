@@ -61,7 +61,7 @@ export function ThinkingIndicator({ visible, activeModel, currentTool, currentPh
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        gap: 10,
+        gap: 8,
         animation: 'fadeInUp 0.22s cubic-bezier(0.22,1,0.36,1) forwards',
       }}
     >
@@ -82,7 +82,7 @@ export function ThinkingIndicator({ visible, activeModel, currentTool, currentPh
       <div style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 7,
+        gap: 8,
         paddingTop: 3,
       }}>
         {/* Three dots — manual animation via dotPhase */}

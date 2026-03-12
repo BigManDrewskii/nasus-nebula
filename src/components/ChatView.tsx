@@ -755,7 +755,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
               className="flex-1 overflow-y-auto custom-scrollbar"
               id="message-list"
             >
-              <div className="max-w-[780px] mx-auto px-6 py-8 flex flex-col gap-6">
+              <div className="max-w-[780px] mx-auto px-6 py-8 flex flex-col gap-8">
                     {visibleMessages.map((msg, i) => (
                       <div key={msg.id} className="msg-in" style={{ animationDelay: `${Math.min(i * 20, 80)}ms` }}>
                         <ChatMessage
@@ -820,7 +820,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                       background: 'rgba(18,18,18,0.97)',
                       border: '1px solid rgba(234,179,8,0.3)',
                       borderRadius: 10,
-                      padding: '12px 14px',
+                      padding: '12px 16px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: 8,
@@ -839,7 +839,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                         )}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       <button
                         onClick={() => rejectTool(task.id, pendingToolApproval.tool)}
                         style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'var(--tx-secondary)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}
@@ -858,7 +858,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
               )}
 
               {/* Input */}
-              <div ref={inputWrapRef} className="flex-shrink-0 px-6 pb-6 pt-2">
+              <div ref={inputWrapRef} className="flex-shrink-0 px-6 pb-8 pt-3">
                 <div className="max-w-[780px] mx-auto">
               {/* Meta strip — routing preview + cost, consolidated */}
               {(activeModelBadge || routingPreview || taskCostBadge) && (

@@ -656,7 +656,7 @@ function ScrollableCode({ content, maxHeight, isError = false }: { content: stri
           maxHeight,
           overflowY: 'auto',
           margin: 0,
-          padding: '9px 12px',
+          padding: '8px 12px',
           color: isError ? '#fca5a5' : 'var(--tx-secondary)',
           background: isError ? 'rgba(239,68,68,0.03)' : 'transparent',
         }}

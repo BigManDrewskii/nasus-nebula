@@ -69,7 +69,7 @@ export function ChatEmptyState({
           {extensionConnected && (
             <div style={{
               position: 'absolute', top: -22, right: 2,
-              display: 'flex', alignItems: 'center', gap: 5,
+              display: 'flex', alignItems: 'center', gap: 4,
               fontSize: 'var(--text-2xs)', fontWeight: 500, color: '#22c55e', opacity: 0.8,
             }}>
               <span style={{
@@ -101,13 +101,13 @@ export function ChatEmptyState({
             { key: '⌘,', label: 'Settings' },
             { key: 'Esc', label: 'Stop' },
           ].map(({ key, label }) => (
-            <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <kbd style={{
                 fontSize: 'var(--text-2xs)', fontFamily: 'var(--font-mono)',
                 color: 'var(--tx-secondary)',
                 background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.09)',
-                borderRadius: 4, padding: '2px 6px',
+                borderRadius: 4, padding: '2px 8px',
               }}>{key}</kbd>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-tertiary)' }}>{label}</span>
             </span>

@@ -46,7 +46,7 @@ function AttachmentChip({ attachment, onRemove }: ChipProps) {
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        padding: '6px 8px',
+        padding: '8px 8px',
         borderRadius: 10,
         background: isError ? 'rgba(239,68,68,0.07)' : 'rgba(255,255,255,0.04)',
         border: `1px solid ${isError ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}`,
@@ -174,11 +174,11 @@ export function AttachmentPreviewBar({
 
   return (
     <div
-      style={{ padding: '10px 14px 0' }}
+      style={{ padding: '8px 16px 0' }}
       role="list"
       aria-label="Queued attachments"
     >
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {attachments.map((att) => (
           <div key={att.id} role="listitem">
             <AttachmentChip attachment={att} onRemove={onRemove} />
@@ -193,7 +193,7 @@ export function AttachmentPreviewBar({
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              padding: '6px 10px',
+              padding: '8px 8px',
               borderRadius: 10,
               border: '1px dashed rgba(255,255,255,0.12)',
               background: 'transparent',

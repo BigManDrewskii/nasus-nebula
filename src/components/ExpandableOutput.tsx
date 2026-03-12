@@ -30,11 +30,11 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '6px 10px',
+        padding: '8px 8px',
         background: isError ? 'rgba(239,68,68,0.08)' : 'rgba(255,255,255,0.03)',
         borderBottom: `1px solid ${isError ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.05)'}`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Pxi name={isError ? 'alert-circle' : 'file-text'} size={14} style={{ color: isError ? '#f87171' : 'var(--tx-tertiary)' }} />
           {fileName && (
             <span style={{
@@ -76,7 +76,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
       {/* Content */}
       <pre style={{
         margin: 0,
-        padding: '10px 12px',
+        padding: '8px 12px',
         fontSize: 'var(--text-xs)',
         fontFamily: 'var(--font-mono)',
         lineHeight: 1.5,
@@ -106,7 +106,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
       {/* Footer when expanded */}
       {expanded && (
         <div style={{
-          padding: '6px 10px',
+          padding: '8px 8px',
           borderTop: '1px solid rgba(255,255,255,0.05)',
           display: 'flex',
           justifyContent: 'flex-end',
@@ -119,7 +119,7 @@ export function ExpandableOutput({ output, maxHeight = 200, isError = false, fil
               color: 'var(--tx-tertiary)',
               fontSize: 'var(--text-xs)',
               cursor: 'pointer',
-              padding: '3px 10px',
+              padding: '3px 8px',
               borderRadius: 4,
             }}
               className="hover-text-secondary"

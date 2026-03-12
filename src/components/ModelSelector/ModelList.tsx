@@ -188,7 +188,7 @@ export function ModelList({
       onKeyDown={handleKeyDown}
     >
       {/* Search bar */}
-      <div style={{ padding: '10px 10px 6px', flexShrink: 0 }}>
+      <div style={{ padding: '8px 8px 8px', flexShrink: 0 }}>
         <div style={{ position: 'relative' }}>
           <Pxi
             name="search"
@@ -211,7 +211,7 @@ export function ModelList({
               className="model-list-input"
               style={{
                 width: '100%',
-                padding: '6px 10px 6px 30px',
+                padding: '8px 8px 8px 30px',
                 borderRadius: 6,
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 background: '#111',
@@ -230,14 +230,14 @@ export function ModelList({
           flex: 1,
           overflowY: 'auto',
           overflowX: 'hidden',
-          padding: '0 10px 10px',
+          padding: '0 8px 8px',
           minHeight: 0,
         }}
       >
         {flatModels.length === 0 ? (
           <div
             style={{
-              padding: '24px 10px',
+              padding: '24px 8px',
               textAlign: 'center',
               color: 'var(--tx-tertiary)',
               fontSize: 'var(--text-sm)',
@@ -254,7 +254,7 @@ export function ModelList({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 8,
                     padding: '8px 0 4px',
                     fontSize: 'var(--text-xs)',
                     fontWeight: 600,
@@ -292,7 +292,7 @@ export function ModelList({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6,
+                    gap: 8,
                     padding: groupedModels.free.length > 0 ? '12px 0 4px' : '8px 0 4px',
                     fontSize: 'var(--text-xs)',
                     fontWeight: 600,

@@ -26,7 +26,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
     <div
       className="flex-col mb-card"
       style={{
-        padding: '10px 12px',
+        padding: '8px 12px',
         borderRadius: 8,
           border: `1px solid ${isSelected ? 'var(--amber-a35)' : 'var(--glass-border)'}`,
           background: isSelected ? 'var(--amber-a08)' : 'var(--glass-bg)',
@@ -36,10 +36,10 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
       onClick={onSelect}
     >
       <div className="flex-v-center justify-between mb-card-top">
-        <div className="flex-v-center" style={{ gap: 6, flexWrap: 'wrap' }}>
+        <div className="flex-v-center" style={{ gap: 8, flexWrap: 'wrap' }}>
           {meta.contentType && (
             <span style={{
-              fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
+              fontSize: 'var(--text-xs)', padding: '1px 8px', borderRadius: 4,
               background: 'var(--bg-app-3)', color: 'var(--tx-muted)',
               textTransform: 'capitalize',
             }}>
@@ -48,7 +48,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
           )}
           {meta.framework && (
             <span style={{
-              fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
+              fontSize: 'var(--text-xs)', padding: '1px 8px', borderRadius: 4,
               background: 'rgba(125,211,252,0.1)', color: 'var(--tok-key)',
             }}>
               {meta.framework}
@@ -65,7 +65,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
           <Pxi name="times" size={12} />
         </button>
       </div>
-      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', margin: '6px 0 0', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)', margin: '8px 0 0', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {memory.content}
       </p>
       {meta.tags && meta.tags.length > 0 && (
@@ -74,7 +74,7 @@ const MemoryCard = memo(({ memory, isSelected, onSelect, onDelete }: MemoryCardP
             <span
               key={tag}
               style={{
-                fontSize: 'var(--text-xs)', padding: '1px 6px', borderRadius: 4,
+                fontSize: 'var(--text-xs)', padding: '1px 8px', borderRadius: 4,
                   background: 'var(--glass-bg)', color: 'var(--tx-muted)',
               }}
             >
@@ -244,9 +244,9 @@ export const MemoryBrowser = memo(({ onClose }: MemoryBrowserProps) => {
           onClick={() => memoryStore.clear().then(loadMemories)}
           className="flex-v-center justify-center hover-text-red"
           style={{
-            width: '100%', padding: '7px 12px', fontSize: 'var(--text-xs)', borderRadius: 6,
+            width: '100%', padding: '8px 12px', fontSize: 'var(--text-xs)', borderRadius: 6,
             border: '1px solid rgba(248,113,113,0.2)', background: 'transparent',
-            color: 'var(--tx-muted)', cursor: 'pointer', gap: 6,
+            color: 'var(--tx-muted)', cursor: 'pointer', gap: 8,
             transition: 'color 0.12s, border-color 0.12s',
           }}
         >
@@ -280,7 +280,7 @@ export const CompactMemoryView = memo(({ onSelectMemory }: { onSelectMemory?: (c
           border: 'none', cursor: 'pointer', transition: 'background 0.12s',
         }}
       >
-        <span className="flex-v-center" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--tx-secondary)', gap: 6 }}>
+        <span className="flex-v-center" style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--tx-secondary)', gap: 8 }}>
           <Pxi name="database" size={12} style={{ color: 'var(--tx-tertiary)' }} />
           Memory ({memories.length})
         </span>
@@ -295,7 +295,7 @@ export const CompactMemoryView = memo(({ onSelectMemory }: { onSelectMemory?: (c
               onClick={() => onSelectMemory?.(memory.content)}
               className="hover-bg-app-3"
               style={{
-                width: '100%', textAlign: 'left', padding: '6px 8px', borderRadius: 4,
+                width: '100%', textAlign: 'left', padding: '8px 8px', borderRadius: 4,
                 background: 'transparent', border: 'none', cursor: 'pointer',
                 fontSize: 'var(--text-xs)', color: 'var(--tx-muted)', transition: 'background 0.1s',
               }}

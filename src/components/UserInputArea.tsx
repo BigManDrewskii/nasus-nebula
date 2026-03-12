@@ -277,8 +277,8 @@ export const UserInputArea = forwardRef<UserInputAreaHandle, UserInputAreaProps>
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 5,
-                  padding: '5px 11px',
+                  gap: 4,
+                  padding: '4px 11px',
                   borderRadius: 8,
                   fontSize: 'var(--text-xs)',
                   fontWeight: 500,

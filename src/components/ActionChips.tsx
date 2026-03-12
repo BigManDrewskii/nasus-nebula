@@ -55,8 +55,8 @@ export function ActionChips({ onSend, onPrefill }: ActionChipsProps) {
           style={{
             display: 'flex',
             alignItems: 'flex-start',
-            gap: 10,
-            padding: '10px 12px',
+            gap: 8,
+            padding: '8px 12px',
             borderRadius: 10,
             border: '1px solid rgba(255,255,255,0.07)',
             background: 'rgba(255,255,255,0.02)',

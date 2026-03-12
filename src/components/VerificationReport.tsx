@@ -80,9 +80,9 @@ const VerificationIssues = memo(({ issues }: { issues: VerificationIssue[] }) =>
           <div
             key={idx}
             className="vr-issue-item"
-            style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 6, padding: '8px 10px' }}
+            style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 6, padding: '8px 8px' }}
           >
-            <div className="flex-v-center vr-issue-header" style={{ gap: 6 }}>
+            <div className="flex-v-center vr-issue-header" style={{ gap: 8 }}>
               <Pxi
                 name={issue.type === 'error' ? 'times-circle' : issue.type === 'warning' ? 'exclamation-triangle' : 'info-circle'}
                 size={12}
@@ -117,12 +117,12 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
       <div
         className="flex-v-center justify-between vr-header"
         style={{
-          padding: '10px 14px',
+          padding: '8px 16px',
           borderBottom: `1px solid ${passed ? 'rgba(134,239,172,0.15)' : 'var(--red-a13)'}`,
           background: passed ? 'rgba(134,239,172,0.06)' : 'var(--red-a07)',
         }}
       >
-        <div className="flex-v-center" style={{ gap: 6 }}>
+        <div className="flex-v-center" style={{ gap: 8 }}>
           <Pxi
             name={passed ? 'check-circle' : 'times-circle'}
             size={14}
@@ -143,7 +143,7 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
       </div>
 
       {/* Content */}
-      <div className="flex-col vr-body" style={{ padding: '12px 14px', gap: 12 }}>
+      <div className="flex-col vr-body" style={{ padding: '12px 16px', gap: 12 }}>
         {/* Checklist */}
         <div>
           <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -154,7 +154,7 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
 
         {/* Issues */}
         {!passed && result.issues.length > 0 && (
-          <div className="flex-col" style={{ gap: 6 }}>
+          <div className="flex-col" style={{ gap: 8 }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Issues Found
             </span>
@@ -164,13 +164,13 @@ export const VerificationReport = memo(({ result, attempt = 1, maxAttempts = 3 }
 
         {/* Corrections */}
         {!passed && result.corrections.length > 0 && (
-          <div className="flex-col" style={{ gap: 6 }}>
+          <div className="flex-col" style={{ gap: 8 }}>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--tx-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Suggested Corrections
             </span>
             <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {result.corrections.map((correction, idx) => (
-                <li key={idx} className="flex-v-center" style={{ gap: 6, fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>
+                <li key={idx} className="flex-v-center" style={{ gap: 8, fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>
                   <span style={{ color: 'var(--tx-muted)', minWidth: 16, textAlign: 'right', flexShrink: 0 }}>{idx + 1}.</span>
                   <span>{correction}</span>
                 </li>
