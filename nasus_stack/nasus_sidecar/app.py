@@ -32,14 +32,26 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 # Add parent dir so imports work when run from code/
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import re as _re
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+
+_SECRET_RE = _re.compile(
+    r'(Bearer\s+|api[_-]?key[=:\s]+)[^\s\'"&,]{8,}',
+    _re.IGNORECASE,
+)
+
+
+def _redact_secrets(text: str) -> str:
+    return _SECRET_RE.sub(r'\1[REDACTED]', text)
 from nasus_memory_manager import MemoryStore
 from nasus_module_registry import ModuleID, NasusEnvelope, NasusStatus
 from nasus_orchestrator import NasusOrchestrator
@@ -78,7 +90,9 @@ _log_queues: Dict[str, asyncio.Queue] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _orchestrator, _memory
-    _memory = MemoryStore()
+    _db_dir = Path.home() / ".nasus"
+    _db_dir.mkdir(parents=True, exist_ok=True)
+    _memory = MemoryStore(db_path=str(_db_dir / "memory.db"))
     _orchestrator = NasusOrchestrator()
     yield
     # Cleanup: nothing needed for stateless sidecar
@@ -97,7 +111,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tauri webview origin; tighten in production
+    allow_origins=[
+        "tauri://localhost",
+        "https://tauri.localhost",
+        "http://localhost",
+        "http://127.0.0.1",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -123,6 +142,7 @@ class LLMConfigRequest(BaseModel):
     exa_key: str = ""
     brave_key: str = ""
     serper_key: str = ""
+    token_budget: Optional[int] = None  # per-session cumulative token cap
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +400,7 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
     # Inject a live client into the orchestrator singleton so M10/M11/M00
     # calls made after this point use LLM reasoning.
     if _orchestrator is not None:
-        _orchestrator.llm = llm_client.get_client(model=req.model)
+        _orchestrator.llm = llm_client.get_client(model=req.model, token_budget=req.token_budget)
 
     return {
         "status": "configured",
@@ -388,6 +408,7 @@ async def configure_llm(req: LLMConfigRequest) -> Dict[str, Any]:
         "model": req.model,
         "llm_ready": llm_client.is_configured(),
         "search_configured": bool(req.exa_key or req.brave_key or req.serper_key),
+        "token_budget": req.token_budget,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -519,7 +540,7 @@ async def global_error_handler(request: Request, exc: Exception) -> JSONResponse
     return JSONResponse(
         status_code=500,
         content={
-            "error": str(exc),
+            "error": _redact_secrets(str(exc)),
             "type": type(exc).__name__,
             "path": str(request.url),
         },

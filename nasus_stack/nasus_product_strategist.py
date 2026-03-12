@@ -390,11 +390,66 @@ if __name__ == "__main__":
     run_demo(output_dir=script_dir)
 
 
+def _build_strategy_prompt(product_name: str, description: str,
+                            competitors: list, user_message: str) -> str:
+    parts = [
+        "You are an expert product strategist. Provide a rigorous, actionable strategy analysis.",
+    ]
+    if product_name:
+        parts.append(f"Product: {product_name}")
+    if description:
+        parts.append(f"Description: {description}")
+    if competitors:
+        comp_str = ", ".join(competitors) if isinstance(competitors, list) else str(competitors)
+        parts.append(f"Competitors: {comp_str}")
+    if user_message:
+        parts.append(f"\nUser request: {user_message}")
+    parts.append(
+        "\nProvide: positioning framework, top 3-5 RICE-prioritized initiatives, "
+        "key strategic tensions, open questions, and specific recommendations. "
+        "Be concrete — name the actual product, users, and market. No filler."
+    )
+    return "\n".join(parts)
+
+
 def route_envelope(envelope):
     """Standard Nasus entry point for M07 Product Strategist."""
+    envelope.mark_running()
     try:
-        envelope.mark_running()
-        result = run_demo()
-        return envelope.mark_done(result)
+        payload = envelope.payload or {}
+        if not isinstance(payload, dict):
+            return envelope.mark_failed("payload must be a dict")
+
+        product_name = payload.get("product_name", "")
+        description = payload.get("description", "")
+        competitors = payload.get("competitors", [])
+        user_message = payload.get("message", description)
+
+        # LLM path
+        try:
+            from nasus_sidecar import llm_client as _llm_client
+            if _llm_client.is_configured():
+                client = _llm_client.get_client()
+                prompt = _build_strategy_prompt(
+                    product_name, description, competitors, user_message
+                )
+                response = client.chat([{"role": "user", "content": prompt}])
+                return envelope.mark_done({
+                    "strategy": response,
+                    "product": product_name,
+                })
+        except Exception:
+            pass
+
+        # Fallback: structured placeholder
+        return envelope.mark_done({
+            "strategy": (
+                f"Strategy framework for {product_name or 'product'}:\n"
+                "Configure an LLM gateway to get real strategic analysis. "
+                "Key areas to address: positioning, ICP, competitive differentiation, "
+                "go-to-market motion, pricing model, and key metrics."
+            ),
+            "product": product_name,
+        })
     except Exception as e:
         return envelope.mark_failed(str(e))

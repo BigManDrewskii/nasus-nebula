@@ -209,10 +209,25 @@ def run_analysis(rows: List[dict], summary: DataSummary, request: DataRequest) -
                     )
 
         elif atype == AnalysisType.CUSTOM and request.custom_instruction:
-            insights.append(
-                f"Custom analysis: '{request.custom_instruction}' — "
-                f"applied over {summary.row_count} rows."
-            )
+            from nasus_sidecar import llm_client as _llm_client
+            if _llm_client.is_configured():
+                try:
+                    client = _llm_client.get_client()
+                    sample = json.dumps(summary.sample_rows, default=str)[:2000]
+                    resp = client.chat([{"role": "user", "content":
+                        f"Dataset ({summary.row_count} rows x {summary.col_count} cols). "
+                        f"Sample rows: {sample}\n\nAnalyze: {request.custom_instruction}"}])
+                    insights.append(f"Custom analysis: {resp[:800]}")
+                except Exception as exc:
+                    insights.append(
+                        f"Custom analysis: '{request.custom_instruction}' — "
+                        f"applied over {summary.row_count} rows. (LLM error: {exc})"
+                    )
+            else:
+                insights.append(
+                    f"Custom analysis: '{request.custom_instruction}' — "
+                    f"applied over {summary.row_count} rows."
+                )
 
     return insights or ["No insights could be derived from the provided data and analysis types."]
 
@@ -335,6 +350,29 @@ def build_narrative(insights: List[str]) -> str:
     return "\n".join(parts)
 
 
+def _llm_narrative(insights: List[str], summary: DataSummary,
+                   custom_instruction: str = "") -> str:
+    from nasus_sidecar import llm_client as _llm_client
+    if not _llm_client.is_configured():
+        return build_narrative(insights)
+    client = _llm_client.get_client()
+    cols_desc = ", ".join(f"{c.name}({c.dtype})" for c in summary.columns[:8])
+    ins_block = "\n".join(f"- {ins}" for ins in insights)
+    prompt = (
+        f"You are a senior data analyst. The dataset has {summary.row_count} rows "
+        f"and {summary.col_count} columns ({cols_desc}).\n\n"
+        f"Statistical findings:\n{ins_block}\n\n"
+        + (f"The analyst asked: {custom_instruction}\n\n" if custom_instruction else "")
+        + "Write a concise markdown summary (2-4 paragraphs) with key takeaways, "
+          "notable patterns, and 1-2 actionable recommendations. "
+          "Do not repeat the raw numbers verbatim."
+    )
+    try:
+        return client.chat([{"role": "user", "content": prompt}])
+    except Exception:
+        return build_narrative(insights)
+
+
 # ---------------------------------------------------------------------------
 # MAIN PIPELINE
 # ---------------------------------------------------------------------------
@@ -364,7 +402,7 @@ def analyse(request: DataRequest) -> Union[AnalysisResult, AnalysisError]:
         except Exception as e:
             sql_result = {"error": str(e)}
 
-    narrative = build_narrative(insights)
+    narrative = _llm_narrative(insights, summary, request.custom_instruction or "")
 
     result = AnalysisResult(
         request_summary=f"{request.format.value} | {[a.value for a in request.analysis_types]}",

@@ -507,11 +507,76 @@ if __name__ == "__main__":
     print("ALL OUTPUTS VERIFIED")
 
 
+def _build_landing_page_prompt(product_name: str, value_prop: str,
+                                target_audience: str, cta_goal: str,
+                                voice: str, sections: list) -> str:
+    section_str = ", ".join(sections) if sections else "Hero, Features, Social Proof, Pricing, FAQ, CTA"
+    parts = [
+        "You are an expert landing page copywriter and conversion specialist.",
+        f"Write a complete landing page for: {product_name or 'the product'}",
+    ]
+    if value_prop:
+        parts.append(f"Value proposition: {value_prop}")
+    if target_audience:
+        parts.append(f"Target audience: {target_audience}")
+    if cta_goal:
+        parts.append(f"Primary CTA goal: {cta_goal}")
+    if voice:
+        parts.append(f"Voice/tone: {voice}")
+    parts.append(f"Sections to include: {section_str}")
+    parts.append(
+        "\nFor each section provide: eyebrow text (if applicable), headline, "
+        "body copy, and CTA text. Use specific numbers, real-sounding social proof, "
+        "and benefit-led language. No generic filler. Output structured markdown."
+    )
+    return "\n".join(parts)
+
+
 def route_envelope(envelope):
     """Standard Nasus entry point for M08 Landing Page Builder."""
+    envelope.mark_running()
     try:
-        envelope.mark_running()
-        result = build_turn_1()
-        return envelope.mark_done(result)
+        payload = envelope.payload or {}
+        if not isinstance(payload, dict):
+            return envelope.mark_failed("payload must be a dict")
+
+        product_name = payload.get("product_name", "")
+        value_prop = payload.get("value_prop", "")
+        target_audience = payload.get("target_audience", "")
+        cta_goal = payload.get("primary_cta_goal", "signup")
+        voice = payload.get("voice", "bold")
+        sections = payload.get("sections", [])
+
+        # LLM path
+        try:
+            from nasus_sidecar import llm_client as _llm_client
+            if _llm_client.is_configured():
+                client = _llm_client.get_client()
+                prompt = _build_landing_page_prompt(
+                    product_name, value_prop, target_audience, cta_goal, voice, sections
+                )
+                content = client.chat([{"role": "user", "content": prompt}])
+                return envelope.mark_done({
+                    "landing_page": content,
+                    "product": product_name,
+                    "format": "markdown",
+                })
+        except Exception:
+            pass
+
+        # Fallback: build_turn_1() with product substituted where feasible
+        try:
+            output = build_turn_1()
+            result = json.loads(output.to_json())
+            result["_note"] = "Fallback template used — configure LLM for real output"
+            return envelope.mark_done(result)
+        except Exception:
+            return envelope.mark_done({
+                "landing_page": (
+                    f"Landing page for {product_name or 'product'}:\n"
+                    "Configure an LLM gateway to generate real landing page copy."
+                ),
+                "product": product_name,
+            })
     except Exception as e:
         return envelope.mark_failed(str(e))

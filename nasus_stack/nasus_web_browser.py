@@ -21,6 +21,8 @@ import time
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urljoin, urlparse
 
+import httpx
+
 from nasus_web_browser_schema import (
     BrowserError, BrowserMode, BrowserStatus, CrawlResult,
     ExtractionTarget, PageContent, PageRequest,
@@ -90,6 +92,83 @@ def _get_stub(url: str) -> Dict[str, Any]:
     return {**_DEFAULT_PAGE, "title": f"Page: {url}", "links": [url + "/about", url + "/contact"]}
 
 
+def _real_scrape(url: str) -> Dict[str, Any]:
+    """Fetch a URL and extract title, text, and links using stdlib html.parser."""
+    from html.parser import HTMLParser
+
+    class _PageParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__()
+            self.title = ""
+            self._in_title = False
+            self._in_script = False
+            self._in_style = False
+            self.text_parts: List[str] = []
+            self.links: List[str] = []
+            self.meta: Dict[str, str] = {}
+
+        def handle_starttag(self, tag: str, attrs: List) -> None:
+            attr_dict = dict(attrs)
+            if tag == "title":
+                self._in_title = True
+            elif tag in ("script", "style"):
+                if tag == "script":
+                    self._in_script = True
+                else:
+                    self._in_style = True
+            elif tag == "a":
+                href = attr_dict.get("href", "")
+                if href.startswith("http"):
+                    self.links.append(href)
+            elif tag == "meta":
+                name = attr_dict.get("name", attr_dict.get("property", ""))
+                content = attr_dict.get("content", "")
+                if name and content:
+                    self.meta[name] = content[:200]
+
+        def handle_endtag(self, tag: str) -> None:
+            if tag == "title":
+                self._in_title = False
+            elif tag == "script":
+                self._in_script = False
+            elif tag == "style":
+                self._in_style = False
+
+        def handle_data(self, data: str) -> None:
+            if self._in_title:
+                self.title += data
+            elif not self._in_script and not self._in_style:
+                stripped = data.strip()
+                if stripped:
+                    self.text_parts.append(stripped)
+
+    resp = httpx.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; NasusBot/1.0)"},
+        timeout=15.0,
+        follow_redirects=True,
+        verify=False,
+    )
+    resp.raise_for_status()
+
+    parser = _PageParser()
+    parser.feed(resp.text)
+
+    title = parser.title.strip() or url
+    text = " ".join(parser.text_parts)
+    text = re.sub(r"\s{2,}", " ", text)[:5000]
+    links = list(dict.fromkeys(parser.links))[:30]
+
+    return {
+        "title": title,
+        "text": text,
+        "links": links,
+        "meta": parser.meta,
+        "structured": {},
+        "status_code": resp.status_code,
+    }
+
+
 # ---------------------------------------------------------------------------
 # URL VALIDATOR  (RT-01)
 # ---------------------------------------------------------------------------
@@ -115,12 +194,29 @@ def scrape(request: PageRequest) -> PageContent:
     if err:
         raise ValueError(f"RT-01: {err}")
 
-    stub = _get_stub(request.url)
-    text = stub["text"]
+    # Attempt real HTTP scrape first; fall back to stub on failure
+    page_data: Dict[str, Any] = {}
+    scrape_error: Optional[str] = None
+    js_required = not request.follow_links  # follow_links=False → may need JS; True → real HTTP crawl
+    if not js_required:
+        try:
+            page_data = _real_scrape(request.url)
+        except Exception as exc:
+            scrape_error = str(exc)
 
-    # RT-02: JS fallback flag
-    js_required = "javascript" in text.lower() or request.js_required
-    js_note = " [JS rendering simulated]" if js_required else ""
+    # Try real scrape even when follow_links is True
+    if not page_data:
+        try:
+            page_data = _real_scrape(request.url)
+        except Exception as exc:
+            scrape_error = str(exc)
+
+    if not page_data:
+        page_data = _get_stub(request.url)
+        if scrape_error:
+            page_data = {**page_data, "text": page_data.get("text", "") + f" [scrape failed: {scrape_error}]"}
+
+    text = page_data.get("text", "")
 
     # RT-03: empty content check
     if not text.strip():
@@ -128,12 +224,13 @@ def scrape(request: PageRequest) -> PageContent:
 
     return PageContent(
         url=request.url,
-        title=stub["title"],
-        text=text + js_note,
-        links=stub.get("links", []),
-        meta=stub.get("meta", {}),
-        status_code=200,
-        success=True,
+        title=page_data.get("title", request.url),
+        text=text,
+        links=page_data.get("links", []),
+        tables=[],
+        metadata=page_data.get("meta", {}),
+        extracted={},
+        status_code=page_data.get("status_code", 200),
     )
 
 
@@ -141,7 +238,7 @@ def scrape(request: PageRequest) -> PageContent:
 # CRAWL  (RT-04)
 # ---------------------------------------------------------------------------
 
-def crawl(request: PageRequest, max_pages: int = 5) -> CrawlResult:
+def crawl(request: PageRequest) -> CrawlResult:
     err = validate_url(request.url)
     if err:
         raise ValueError(f"RT-01: {err}")
@@ -149,7 +246,8 @@ def crawl(request: PageRequest, max_pages: int = 5) -> CrawlResult:
     visited: set = set()
     queue: List[str] = [request.url]
     pages: List[PageContent] = []
-    all_links: List[str] = []
+    max_pages = request.max_depth * 3
+    failed_urls: List[str] = []
 
     while queue and len(pages) < max_pages:
         url = queue.pop(0)
@@ -159,26 +257,22 @@ def crawl(request: PageRequest, max_pages: int = 5) -> CrawlResult:
 
         try:
             sub_req = PageRequest(url=url, mode=BrowserMode.SCRAPE,
-                                  js_required=request.js_required)
+                                  targets=request.targets, follow_links=False)
             page = scrape(sub_req)
             pages.append(page)
 
-            # RT-04: dedup links before adding to queue
-            for link in page.links:
-                if link not in visited and link not in all_links:
-                    all_links.append(link)
-                    queue.append(link)
+            if request.follow_links:
+                for link in page.links:
+                    if link not in visited:
+                        queue.append(link)
         except Exception as e:
-            pages.append(PageContent(
-                url=url, title="", text="", links=[], meta={},
-                status_code=500, success=False, error=str(e),
-            ))
+            failed_urls.append(url)
 
     return CrawlResult(
-        start_url=request.url,
+        seed_url=request.url,
         pages=pages,
         total_pages=len(pages),
-        all_links=list(dict.fromkeys(all_links)),  # dedup preserve order
+        failed_urls=failed_urls,
     )
 
 
@@ -191,34 +285,40 @@ def extract_structured(request: PageRequest) -> Dict[str, Any]:
     if err:
         raise ValueError(f"RT-01: {err}")
 
-    stub = _get_stub(request.url)
-    result: Dict[str, Any] = {
-        "url": request.url,
-        "extracted": {},
-        "meta": stub.get("meta", {}),
-    }
+    # Use real scrape for extraction
+    try:
+        page_data = _real_scrape(request.url)
+    except Exception:
+        page_data = _get_stub(request.url)
 
-    for target in (request.extraction_targets or []):
-        if target == ExtractionTarget.TITLE:
-            result["extracted"]["title"] = stub["title"]
-        elif target == ExtractionTarget.TEXT:
-            result["extracted"]["text"] = stub["text"]
+    extracted: Dict[str, Any] = {}
+    targets = request.targets or [ExtractionTarget.TEXT]
+
+    for target in targets:
+        if target == ExtractionTarget.TEXT:
+            extracted["text"] = page_data.get("text", "")
         elif target == ExtractionTarget.LINKS:
-            result["extracted"]["links"] = stub.get("links", [])
-        elif target == ExtractionTarget.META:
-            result["extracted"]["meta"] = stub.get("meta", {})
-        elif target == ExtractionTarget.STRUCTURED_DATA:
-            result["extracted"]["structured_data"] = stub.get("structured", {})
+            extracted["links"] = page_data.get("links", [])
+        elif target == ExtractionTarget.METADATA:
+            extracted["metadata"] = page_data.get("meta", {})
+        elif target == ExtractionTarget.STRUCTURED:
+            extracted["structured"] = page_data.get("structured", {})
         elif target == ExtractionTarget.IMAGES:
-            result["extracted"]["images"] = [f"{request.url}/logo.png"]
-        elif target == ExtractionTarget.CONTACT_INFO:
-            result["extracted"]["contact"] = {"email": "info@example.com", "phone": "+1-555-0100"}
+            extracted["images"] = []  # static scraping can't reliably extract images
 
-    # RT-06: schema alignment check
-    if not result["extracted"]:
-        result["extracted"]["text"] = stub["text"]  # fallback
+    if not extracted:
+        extracted["text"] = page_data.get("text", "")
 
-    return result
+    return PageContent(
+        url=request.url,
+        title=page_data.get("title", request.url),
+        text=page_data.get("text", ""),
+        links=page_data.get("links", []),
+        tables=[],
+        metadata=page_data.get("meta", {}),
+        extracted=extracted,
+        status_code=page_data.get("status_code", 200),
+    ).to_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -286,12 +386,12 @@ def browse(request: PageRequest) -> Union[PageContent, CrawlResult, Dict[str, An
     try:
         issues = validate_page_request(request)
         if issues:
-            return BrowserError(message="; ".join(issues), error_code="VALIDATION_ERROR")
+            return BrowserError(url=request.url, message="; ".join(issues), error_code="VALIDATION_ERROR")
 
         if request.mode == BrowserMode.SCRAPE:
             return scrape(request)
         elif request.mode == BrowserMode.CRAWL:
-            return crawl(request, max_pages=request.max_pages or 5)
+            return crawl(request)
         elif request.mode == BrowserMode.EXTRACT:
             return extract_structured(request)
         elif request.mode == BrowserMode.INTERACT:
@@ -309,9 +409,9 @@ def browse(request: PageRequest) -> Union[PageContent, CrawlResult, Dict[str, An
             return BrowserError(message=f"Unknown mode: {request.mode}", error_code="MODE_ERROR")
 
     except ValueError as e:
-        return BrowserError(message=str(e), error_code="VALIDATION_ERROR")
+        return BrowserError(url=request.url, message=str(e), error_code="VALIDATION_ERROR")
     except Exception as e:
-        return BrowserError(message=f"Browser error: {e}", error_code="RUNTIME_ERROR")
+        return BrowserError(url=request.url, message=f"Browser error: {e}", error_code="RUNTIME_ERROR")
 
 
 # ---------------------------------------------------------------------------
@@ -325,16 +425,17 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
 
         if isinstance(payload, dict):
             mode = BrowserMode(payload.get("mode", "scrape"))
-            targets_raw = payload.get("extraction_targets", [])
-            targets = [ExtractionTarget(t) for t in targets_raw] if targets_raw else None
+            targets_raw = payload.get("targets") or payload.get("extraction_targets", [])
+            targets = [ExtractionTarget(t) for t in targets_raw] if targets_raw else [ExtractionTarget.TEXT]
             request = PageRequest(
                 url=payload.get("url", ""),
                 mode=mode,
-                js_required=payload.get("js_required", False),
-                extraction_targets=targets,
+                targets=targets,
                 interaction_steps=payload.get("interaction_steps"),
-                max_pages=payload.get("max_pages", 5),
-                wait_for=payload.get("wait_for"),
+                extract_prompt=payload.get("extract_prompt", ""),
+                max_depth=payload.get("max_depth") or payload.get("max_pages", 1),
+                follow_links=payload.get("follow_links", False),
+                wait_for_selector=payload.get("wait_for_selector") or payload.get("wait_for", ""),
             )
         elif isinstance(payload, PageRequest):
             request = payload
@@ -344,7 +445,7 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
         result = browse(request)
 
         if isinstance(result, BrowserError):
-            return envelope.mark_failed(result.to_dict()["message"])
+            return envelope.mark_failed(result.message)
 
         if hasattr(result, "to_dict"):
             return envelope.mark_done(result.to_dict())

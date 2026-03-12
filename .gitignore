@@ -30,3 +30,8 @@ src-tauri/target
 # Logs
 logs
 *.log
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo

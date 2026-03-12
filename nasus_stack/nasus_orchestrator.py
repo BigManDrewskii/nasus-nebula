@@ -497,6 +497,88 @@ class NasusOrchestrator:
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
+    # ── Step 7: Auto-execute DAG ──────────────────────────────────────────────
+
+    def execute_plan(self) -> Dict:
+        """
+        Walk the DAG stage by stage, executing all subtasks.
+        Returns a SynthesisReport dict.
+        """
+        if not self.stages:
+            return self.escalate_out_of_scope(
+                self.goal,
+                "execute_plan called before build_plan",
+                "Call M10 with action=plan first",
+            )
+
+        for stage in self.stages:
+            self._emit("plan", f"Stage {stage.stage_number} — {len(stage.subtask_ids)} task(s)")
+            self._log(f"execute_plan: stage {stage.stage_number} start")
+
+            for subtask_id in stage.subtask_ids:
+                st = self.subtasks.get(subtask_id)
+                if st is None or st.status == SubtaskStatus.COMPLETED:
+                    continue
+
+                for attempt in range(3):
+                    self._emit(
+                        "plan",
+                        f"Dispatching {subtask_id} -> {st.module} (attempt {attempt + 1})",
+                    )
+                    self.dispatch(subtask_id)
+
+                    sub_payload: Dict[str, Any] = {"instruction": st.instruction}
+                    for inp in st.inputs:
+                        if inp.value is not None:
+                            sub_payload[inp.name] = inp.value
+
+                    # Map instruction to each module's primary required field
+                    # so generic DAG subtasks work without explicit input values.
+                    _MODULE_PRIMARY_FIELD = {
+                        "M01": "query",
+                        "M04": "custom_instruction",
+                        "M06": "topic",
+                        "M07": "product_name",
+                        "M08": "product_name",
+                    }
+                    primary = _MODULE_PRIMARY_FIELD.get(st.module)
+                    if primary and primary not in sub_payload:
+                        sub_payload[primary] = st.instruction
+
+                    try:
+                        sub_env = NasusEnvelope(
+                            module_id=ModuleID(st.module),
+                            payload=sub_payload,
+                        )
+                        result_env = self.route_envelope(sub_env)
+
+                        if result_env.status.value == "DONE":
+                            self.receive_result(subtask_id, result_env.payload, success=True)
+                            self.deliverables.append(
+                                Deliverable(
+                                    index=len(self.deliverables),
+                                    label=f"{st.module}: {st.instruction[:50]}",
+                                    source_module=st.module,
+                                    output_type="module_output",
+                                    artifact=result_env.payload,
+                                )
+                            )
+                            self._emit("plan", f"{subtask_id} completed")
+                            break
+                        else:
+                            err = result_env.errors[0] if result_env.errors else "FAILED status"
+                            self.receive_result(subtask_id, None, success=False, error=err)
+                            if st.status == SubtaskStatus.FAILED:
+                                self._emit("plan", f"{subtask_id} failed: {err}")
+                                break
+
+                    except Exception as exc:
+                        self.receive_result(subtask_id, None, success=False, error=str(exc))
+                        if st.status == SubtaskStatus.FAILED:
+                            break
+
+        return self.synthesize()
+
     # ── Escalation helpers ────────────────────────────────────────────────────
 
     def escalate_out_of_scope(self, goal: str, reason: str, suggestion: str) -> Dict:
@@ -592,6 +674,29 @@ class NasusOrchestrator:
         env.mark_done(self.to_session_record())
         return env
 
+    @staticmethod
+    def _deserialize_subtasks(raw: List[Any]) -> "List[Subtask]":
+        """Convert a list of plain dicts (e.g. from JSON payload) into Subtask objects."""
+        result = []
+        for s in raw:
+            if isinstance(s, Subtask):
+                result.append(s)
+                continue
+            if not isinstance(s, dict):
+                continue
+            result.append(Subtask(
+                subtask_id=s.get("step_id") or s.get("subtask_id") or f"step_{uuid.uuid4().hex[:6]}",
+                module=s.get("module", "M01"),
+                instruction=s.get("description") or s.get("instruction", ""),
+                inputs=[SubtaskIO(name=i, description=i, source="user") for i in s.get("inputs", [])],
+                outputs=[SubtaskIO(name=o, description=o, source="") for o in s.get("outputs", [])],
+                depends_on=s.get("depends_on", []),
+                deadline=Deadline.NON_BLOCKING,
+                stage=int(s.get("stage", 1)),
+                constraints=s.get("constraints", []),
+            ))
+        return result
+
     def route_envelope(self, envelope: "NasusEnvelope") -> "NasusEnvelope":
         """
         Accept an incoming NasusEnvelope from the sidecar layer, validate it,
@@ -609,22 +714,32 @@ class NasusOrchestrator:
             module_id = envelope.module_id
 
             if module_id == ModuleID.M10:
-                # Task Planner — decompose a goal into a structured plan
                 goal = payload.get("goal", "")
-                if not goal:
-                    raise ValueError("route_envelope: M10 requires payload.goal")
-                if self.llm:
+                action = payload.get("action", "plan")  # "plan" | "execute_plan"
+
+                if action == "execute_plan":
+                    # Build the plan first if not already built
+                    if not self.stages and goal:
+                        if self.llm:
+                            self._llm_plan(goal, payload)
+                        else:
+                            self.build_plan(goal, self._deserialize_subtasks(payload.get("subtasks", [])))
+                    result_dict = self.execute_plan()
+
+                elif self.llm:
+                    if not goal:
+                        raise ValueError("route_envelope: M10 action=plan requires payload.goal")
                     result_dict = self._llm_plan(goal, payload)
+
                 else:
-                    # Algorithmic fallback: build plan from any provided subtasks
-                    subtasks = payload.get("subtasks", [])
+                    if not goal:
+                        raise ValueError("route_envelope: M10 requires payload.goal")
+                    subtasks = self._deserialize_subtasks(payload.get("subtasks", []))
                     result = self.build_plan(goal, subtasks)
                     result_dict = (
                         result
                         if isinstance(result, dict)
-                        else (
-                            result.to_dict() if hasattr(result, "to_dict") else result
-                        )
+                        else (result.to_dict() if hasattr(result, "to_dict") else result)
                     )
 
             elif module_id == ModuleID.M11:

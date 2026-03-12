@@ -144,7 +144,7 @@ def _build_headers(api_key: str, api_base: str) -> Dict[str, str]:
     return headers
 
 
-def _post_chat(
+def _post_chat_full(
     messages: List[Dict[str, str]],
     model: str,
     api_key: str,
@@ -153,9 +153,10 @@ def _post_chat(
     response_format: Optional[Dict[str, str]] = None,
     temperature: float = 0.3,
     max_tokens: int = 4096,
-) -> str:
+) -> tuple:
     """
-    POST a chat completion request and return the assistant message content as a string.
+    POST a chat completion request.
+    Returns (content: str, raw_response: dict) so callers can inspect usage data.
     Raises httpx.HTTPStatusError or httpx.TimeoutException on failure.
     """
     url = f"{api_base}/chat/completions"
@@ -177,7 +178,27 @@ def _post_chat(
     choices = data.get("choices", [])
     if not choices:
         raise ValueError(f"LLM returned no choices: {data}")
-    return choices[0]["message"]["content"]
+    return choices[0]["message"]["content"], data
+
+
+def _post_chat(
+    messages: List[Dict[str, str]],
+    model: str,
+    api_key: str,
+    api_base: str,
+    timeout_s: float,
+    response_format: Optional[Dict[str, str]] = None,
+    temperature: float = 0.3,
+    max_tokens: int = 4096,
+) -> str:
+    """
+    POST a chat completion request and return the assistant message content as a string.
+    Raises httpx.HTTPStatusError or httpx.TimeoutException on failure.
+    """
+    content, _ = _post_chat_full(
+        messages, model, api_key, api_base, timeout_s, response_format, temperature, max_tokens
+    )
+    return content
 
 
 def _post_chat_stream(
@@ -236,12 +257,15 @@ class NasusLLMClient:
     Usage:
         client = NasusLLMClient()                    # uses global config
         client = NasusLLMClient(model="gpt-4o")      # override model for this module
+        client = NasusLLMClient(token_budget=50000)  # hard-stop after 50k tokens
     """
 
     model: Optional[str] = None  # None → use global default
     temperature: float = 0.3
     max_tokens: int = 4096
+    token_budget: Optional[int] = None  # per-instance cumulative token cap
     _cfg: _LLMConfig = field(default_factory=get_config, repr=False)
+    _tokens_used: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         # Re-snapshot config at instantiation so injected clients are consistent.
@@ -251,6 +275,27 @@ class NasusLLMClient:
 
     def _effective_model(self) -> str:
         return self.model or _CONFIG.default_model
+
+    @property
+    def tokens_used(self) -> int:
+        return self._tokens_used
+
+    @property
+    def budget_remaining(self) -> Optional[int]:
+        if self.token_budget is None:
+            return None
+        return max(0, self.token_budget - self._tokens_used)
+
+    def _check_budget(self) -> None:
+        if self.token_budget is not None and self._tokens_used >= self.token_budget:
+            raise RuntimeError(
+                f"Token budget exhausted: used {self._tokens_used} of {self.token_budget} tokens"
+            )
+
+    def _record_usage(self, response_data: Dict[str, Any]) -> None:
+        usage = response_data.get("usage") if isinstance(response_data, dict) else None
+        if usage:
+            self._tokens_used += usage.get("total_tokens", 0)
 
     # ── Core call ────────────────────────────────────────────────────────────
 
@@ -272,13 +317,15 @@ class NasusLLMClient:
                 "or POST /configure before running any LLM module."
             )
 
+        self._check_budget()
+
         retries = self._cfg.max_retries
         last_err: Optional[Exception] = None
         backoff = 1.0
 
         for attempt in range(retries):
             try:
-                return _post_chat(
+                content, raw = _post_chat_full(
                     messages=messages,
                     model=model or self._effective_model(),
                     api_key=self._cfg.api_key,
@@ -291,6 +338,8 @@ class NasusLLMClient:
                     if max_tokens is not None
                     else self.max_tokens,
                 )
+                self._record_usage(raw)
+                return content
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_err = exc
                 time.sleep(backoff)
@@ -375,6 +424,8 @@ class NasusLLMClient:
             raise RuntimeError(
                 "NasusLLMClient: not configured. Call llm_client.configure() first."
             )
+
+        self._check_budget()
 
         effective_model = model or self._effective_model()
         temp = temperature if temperature is not None else self.temperature
@@ -466,7 +517,7 @@ class NasusLLMClient:
 # ---------------------------------------------------------------------------
 
 
-def get_client(model: Optional[str] = None) -> NasusLLMClient:
+def get_client(model: Optional[str] = None, token_budget: Optional[int] = None) -> NasusLLMClient:
     """
     Return a NasusLLMClient snapshot using the current global config.
     Preferred over instantiating NasusLLMClient() directly in module code
@@ -475,5 +526,6 @@ def get_client(model: Optional[str] = None) -> NasusLLMClient:
     cfg = get_config()
     return NasusLLMClient(
         model=model or cfg.default_model,
+        token_budget=token_budget,
         _cfg=cfg,
     )

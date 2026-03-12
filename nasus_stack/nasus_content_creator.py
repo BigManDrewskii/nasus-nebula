@@ -595,11 +595,80 @@ if __name__ == "__main__":
     main()
 
 
+def _build_content_prompt(topic: str, content_format: str, tone: str,
+                           audience: str, word_count: int, extra_context: str) -> str:
+    fmt_label = content_format.replace("_", " ")
+    parts = [
+        f"You are an expert content writer. Write a {fmt_label} about: {topic}",
+    ]
+    if audience:
+        parts.append(f"Target audience: {audience}")
+    if tone:
+        parts.append(f"Tone: {tone}")
+    if word_count:
+        parts.append(f"Target length: approximately {word_count} words")
+    if extra_context:
+        parts.append(f"Additional context: {extra_context}")
+    parts.append(
+        "Write only the final content — no meta-commentary, no explanations. "
+        "Make it compelling, specific, and free of generic filler phrases."
+    )
+    return "\n".join(parts)
+
+
 def route_envelope(envelope):
     """Standard Nasus entry point for M06 Content Creator."""
+    envelope.mark_running()
     try:
-        envelope.mark_running()
-        result = main()
-        return envelope.mark_done(result)
+        payload = envelope.payload or {}
+        if not isinstance(payload, dict):
+            return envelope.mark_failed("payload must be a dict with 'topic' key")
+
+        topic = payload.get("topic", "")
+        content_format = payload.get("content_format", "linkedin_post")
+        tone = payload.get("tone", "conversational")
+        audience = payload.get("audience", "")
+        word_count = int(payload.get("word_count_hint", 300))
+        extra_context = payload.get("extra_context", "")
+
+        if not topic:
+            return envelope.mark_failed("payload must include 'topic'")
+
+        # LLM path
+        try:
+            from nasus_sidecar import llm_client as _llm_client
+            if _llm_client.is_configured():
+                client = _llm_client.get_client()
+                prompt = _build_content_prompt(
+                    topic, content_format, tone, audience, word_count, extra_context
+                )
+                content = client.chat([{"role": "user", "content": prompt}])
+                return envelope.mark_done({
+                    "content": content,
+                    "format": content_format,
+                    "topic": topic,
+                    "tone": tone,
+                })
+        except Exception:
+            pass
+
+        # Template fallback
+        req = ContentRequest(
+            topic=topic,
+            content_format=ContentFormat.LINKEDIN_POST,
+            audience=AudienceSpec(notes=audience),
+            tone=ToneSpec(
+                primary=ToneMode.AUTHORITATIVE if "authoritative" in tone.lower()
+                         else ToneMode.CONVERSATIONAL
+            ),
+            hook_type=HookType.BOLD_CLAIM,
+        )
+        content = generate_linkedin_post(req)
+        return envelope.mark_done({
+            "content": content,
+            "format": content_format,
+            "topic": topic,
+            "tone": tone,
+        })
     except Exception as e:
         return envelope.mark_failed(str(e))

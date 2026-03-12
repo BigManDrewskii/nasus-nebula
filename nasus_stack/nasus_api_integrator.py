@@ -23,6 +23,8 @@ import time
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
+import httpx
+
 from nasus_api_integrator_schema import (
     ApiRequest, ApiResponse, AuthType, ContentType, HttpMethod,
     IntegrationError, IntegrationStatus, WebhookConfig,
@@ -44,7 +46,7 @@ def build_headers(request: ApiRequest) -> Dict[str, str]:
     val = request.auth_value or ""
 
     if auth == AuthType.API_KEY:
-        key_name = request.auth_header_name or "X-Api-Key"
+        key_name = getattr(request, "auth_header_name", None) or "X-Api-Key"
         headers[key_name] = val
     elif auth == AuthType.BEARER:
         headers["Authorization"] = f"Bearer {val}"
@@ -55,7 +57,7 @@ def build_headers(request: ApiRequest) -> Dict[str, str]:
     elif auth == AuthType.OAUTH2:
         headers["Authorization"] = f"Bearer {val}"
     elif auth == AuthType.CUSTOM:
-        template = request.auth_header_template or "Token {token}"
+        template = getattr(request, "auth_header_template", None) or "Token {token}"
         headers["Authorization"] = template.replace("{token}", val)
     # AuthType.NONE — no auth header added
 
@@ -97,57 +99,96 @@ def execute(request: ApiRequest, max_retries: int = 3) -> ApiResponse:
             status_code=400,
             body={"validation_errors": pre_issues},
             headers={},
+            latency_ms=0.0,
             success=False,
-            error_message="; ".join(pre_issues),
+            label=request.label,
         )
 
     headers = build_headers(request)
     attempt = 0
-    last_response: Optional[ApiResponse] = None
+    effective_retries = request.retry_count
 
-    while attempt <= max_retries:
-        stub = _stub_response(request)
-        status = stub["status"]
-        body = stub.get("body", {})
+    with httpx.Client(timeout=float(request.timeout_seconds)) as http_client:
+        while attempt <= effective_retries:
+            t0 = time.monotonic()
+            try:
+                kwargs: Dict[str, Any] = {
+                    "method": request.method.value,
+                    "url": request.url,
+                    "headers": headers,
+                    "follow_redirects": True,
+                }
+                if request.body is not None:
+                    if request.content_type == ContentType.JSON:
+                        kwargs["json"] = request.body
+                    else:
+                        kwargs["data"] = request.body
 
-        # RT-04: rate limit handling
-        if status == 429:
-            retry_after = stub.get("retry_after", 1)
-            if attempt < max_retries:
-                wait = retry_after + random.uniform(0, 0.5)
-                time.sleep(min(wait, 0.05))  # stub: cap at 50ms
+                http_resp = http_client.request(**kwargs)
+                latency_ms = (time.monotonic() - t0) * 1000
+                status = http_resp.status_code
+                try:
+                    body = http_resp.json()
+                except Exception:
+                    body = {"text": http_resp.text[:4000]}
+                resp_headers = dict(http_resp.headers)
+
+            except httpx.TimeoutException:
+                if attempt < effective_retries:
+                    time.sleep((2 ** attempt) + random.uniform(0, 0.1))
+                    attempt += 1
+                    continue
+                return ApiResponse(
+                    status_code=504, body={"error": "Request timed out"},
+                    headers={}, latency_ms=(time.monotonic() - t0) * 1000,
+                    success=False, label=request.label,
+                )
+            except httpx.ConnectError as exc:
+                if attempt < effective_retries:
+                    time.sleep((2 ** attempt) + random.uniform(0, 0.1))
+                    attempt += 1
+                    continue
+                return ApiResponse(
+                    status_code=503, body={"error": f"Connection error: {exc}"},
+                    headers={}, latency_ms=(time.monotonic() - t0) * 1000,
+                    success=False, label=request.label,
+                )
+
+            # RT-04: rate limit handling
+            if status == 429:
+                retry_after = float(resp_headers.get("Retry-After", 1))
+                if attempt < effective_retries:
+                    time.sleep(retry_after + random.uniform(0, 0.5))
+                    attempt += 1
+                    continue
+                return ApiResponse(
+                    status_code=429, body=body, headers=resp_headers,
+                    latency_ms=latency_ms, success=False, label=request.label,
+                )
+
+            # RT-03: retry on 5xx
+            if status >= 500 and attempt < effective_retries:
+                backoff = (2 ** attempt) + random.uniform(0, 0.1)
+                time.sleep(backoff)
                 attempt += 1
                 continue
-            return ApiResponse(
-                status_code=429, body=body, headers={}, success=False,
-                error_message="Rate limited — max retries exhausted",
+
+            success = 200 <= status < 300
+            response = ApiResponse(
+                status_code=status,
+                body=body,
+                headers=resp_headers,
+                latency_ms=latency_ms,
+                success=success,
+                label=request.label,
             )
 
-        # RT-03: retry on 5xx
-        if status >= 500 and attempt < max_retries:
-            backoff = (2 ** attempt) + random.uniform(0, 0.1)
-            time.sleep(min(backoff, 0.05))  # stub: cap at 50ms
-            attempt += 1
-            continue
-
-        success = 200 <= status < 300
-        response = ApiResponse(
-            status_code=status,
-            body=body,
-            headers={"Content-Type": "application/json"},
-            success=success,
-            error_message=None if success else body.get("error", f"HTTP {status}"),
-        )
-
-        issues = validate_api_output(response)
-        if issues:
-            response.error_message = (response.error_message or "") + " | " + "; ".join(issues)
-
-        return response
+            validate_api_output(response)
+            return response
 
     return ApiResponse(
-        status_code=500, body={}, headers={}, success=False,
-        error_message="Max retries exceeded",
+        status_code=500, body={"error": "Max retries exceeded"},
+        headers={}, latency_ms=0.0, success=False, label=request.label,
     )
 
 
@@ -166,10 +207,10 @@ def execute_batch(requests: List[ApiRequest]) -> List[ApiResponse]:
 
 def setup_webhook(config: WebhookConfig) -> Dict[str, Any]:
     return {
-        "webhook_id": f"wh_{hashlib.md5(config.url.encode()).hexdigest()[:8]}",
-        "url": config.url,
-        "events": config.events,
-        "active": True,
+        "webhook_id": f"wh_{hashlib.md5(config.endpoint_url.encode()).hexdigest()[:8]}",
+        "endpoint_url": config.endpoint_url,
+        "event_types": config.event_types,
+        "active": config.active,
         "secret_set": bool(config.secret),
     }
 
@@ -193,15 +234,7 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
             requests = []
             for item in payload:
                 if isinstance(item, dict):
-                    requests.append(ApiRequest(
-                        url=item.get("url", ""),
-                        method=HttpMethod(item.get("method", "GET").upper()),
-                        auth_type=AuthType(item.get("auth_type", "none")),
-                        auth_value=item.get("auth_value"),
-                        headers=item.get("headers", {}),
-                        body=item.get("body"),
-                        content_type=ContentType(item.get("content_type", "application/json")),
-                    ))
+                    requests.append(ApiRequest.from_dict(item))
                 elif isinstance(item, ApiRequest):
                     requests.append(item)
             responses = execute_batch(requests)
@@ -210,27 +243,16 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
         # Single request mode
         if isinstance(payload, dict):
             # Webhook setup
-            if payload.get("webhook_url"):
+            if payload.get("webhook_url") or payload.get("endpoint_url"):
                 cfg = WebhookConfig(
-                    url=payload["webhook_url"],
-                    events=payload.get("events", ["*"]),
+                    endpoint_url=payload.get("endpoint_url") or payload.get("webhook_url", ""),
+                    event_types=payload.get("event_types") or payload.get("events", ["*"]),
                     secret=payload.get("secret", ""),
                 )
                 result = setup_webhook(cfg)
                 return envelope.mark_done(result)
 
-            request = ApiRequest(
-                url=payload.get("url", ""),
-                method=HttpMethod(payload.get("method", "GET").upper()),
-                auth_type=AuthType(payload.get("auth_type", "none")),
-                auth_value=payload.get("auth_value"),
-                headers=payload.get("headers", {}),
-                body=payload.get("body"),
-                content_type=ContentType(payload.get("content_type", "application/json")),
-                auth_header_name=payload.get("auth_header_name"),
-                auth_header_template=payload.get("auth_header_template"),
-                timeout=payload.get("timeout", 30),
-            )
+            request = ApiRequest.from_dict(payload)
         elif isinstance(payload, ApiRequest):
             request = payload
         else:
@@ -238,7 +260,11 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
 
         response = execute(request)
         if not response.success:
-            return envelope.mark_failed(response.error_message or f"HTTP {response.status_code}")
+            error_detail = (
+                response.body.get("error") or f"HTTP {response.status_code}"
+                if isinstance(response.body, dict) else f"HTTP {response.status_code}"
+            )
+            return envelope.mark_failed(error_detail)
         return envelope.mark_done(response.to_dict())
 
     except Exception as e:

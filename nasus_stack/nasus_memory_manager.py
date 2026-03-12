@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import uuid
 import math
 from datetime import datetime, timezone
@@ -65,7 +66,7 @@ class MemoryStore:
 
     VALID_LAYERS = {"episodic", "semantic", "procedural", "working"}
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[str] = None):
         self._store: dict[str, Any] = {
             "episodic":   [],          # list[EpisodicRecord]
             "semantic":   {},          # key -> SemanticFact
@@ -73,6 +74,15 @@ class MemoryStore:
             "working":    {},          # key -> WorkingEntry
         }
         self._op_log: list[dict] = []  # lightweight audit trail
+        self._db: Optional[sqlite3.Connection] = None
+        self._db_path: Optional[str] = None
+        if db_path:
+            self._db_path = str(db_path)
+            Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(db_path, check_same_thread=False)
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._init_db()
+            self._warm_start()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -113,6 +123,112 @@ class MemoryStore:
         expired = [k for k, v in self._store["working"].items() if self._is_expired(v)]
         for k in expired:
             del self._store["working"][k]
+
+    # ------------------------------------------------------------------
+    # SQLite helpers
+    # ------------------------------------------------------------------
+
+    def _init_db(self):
+        cur = self._db.cursor()
+        cur.executescript("""
+            CREATE TABLE IF NOT EXISTS episodic (
+                session_id TEXT, timestamp TEXT, module TEXT,
+                summary TEXT, artifacts TEXT
+            );
+            CREATE TABLE IF NOT EXISTS semantic (
+                key TEXT PRIMARY KEY, value TEXT, source TEXT,
+                confidence REAL, last_updated TEXT
+            );
+            CREATE TABLE IF NOT EXISTS procedural (
+                pattern_id TEXT PRIMARY KEY, description TEXT,
+                trigger TEXT, steps TEXT, success_rate REAL, last_used TEXT
+            );
+            CREATE TABLE IF NOT EXISTS working (
+                key TEXT PRIMARY KEY, value TEXT,
+                ttl_seconds INTEGER, created_at TEXT
+            );
+        """)
+        self._db.commit()
+
+    def _warm_start(self):
+        cur = self._db.cursor()
+        for row in cur.execute(
+            "SELECT session_id,timestamp,module,summary,artifacts FROM episodic"
+        ):
+            self._store["episodic"].append(EpisodicRecord(
+                session_id=row[0], timestamp=row[1], module=row[2],
+                summary=row[3], artifacts=json.loads(row[4] or "{}"),
+            ))
+        for row in cur.execute(
+            "SELECT key,value,source,confidence,last_updated FROM semantic"
+        ):
+            self._store["semantic"][row[0]] = SemanticFact(
+                key=row[0], value=json.loads(row[1]), source=row[2],
+                confidence=row[3], last_updated=row[4],
+            )
+        for row in cur.execute(
+            "SELECT pattern_id,description,trigger,steps,success_rate,last_used FROM procedural"
+        ):
+            self._store["procedural"][row[0]] = ProceduralPattern(
+                pattern_id=row[0], description=row[1], trigger=row[2],
+                steps=json.loads(row[3] or "[]"), success_rate=row[4], last_used=row[5],
+            )
+        for row in cur.execute(
+            "SELECT key,value,ttl_seconds,created_at FROM working"
+        ):
+            entry = WorkingEntry(
+                key=row[0], value=json.loads(row[1]),
+                ttl_seconds=row[2], created_at=row[3],
+            )
+            if not self._is_expired(entry):
+                self._store["working"][row[0]] = entry
+
+    def _db_write(self, layer: str, key: str):
+        if self._db is None:
+            return
+        try:
+            if layer == "episodic":
+                rec = self._store["episodic"][-1]
+                self._db.execute(
+                    "INSERT INTO episodic VALUES (?,?,?,?,?)",
+                    (rec.session_id, rec.timestamp, rec.module,
+                     rec.summary, json.dumps(rec.artifacts)),
+                )
+            elif layer == "semantic":
+                f = self._store["semantic"][key]
+                self._db.execute(
+                    "INSERT OR REPLACE INTO semantic VALUES (?,?,?,?,?)",
+                    (f.key, json.dumps(f.value), f.source, f.confidence, f.last_updated),
+                )
+            elif layer == "procedural":
+                p = self._store["procedural"][key]
+                self._db.execute(
+                    "INSERT OR REPLACE INTO procedural VALUES (?,?,?,?,?,?)",
+                    (p.pattern_id, p.description, p.trigger,
+                     json.dumps(p.steps), p.success_rate, p.last_used),
+                )
+            elif layer == "working":
+                e = self._store["working"][key]
+                self._db.execute(
+                    "INSERT OR REPLACE INTO working VALUES (?,?,?,?)",
+                    (e.key, json.dumps(e.value, default=str), e.ttl_seconds, e.created_at),
+                )
+            self._db.commit()
+        except Exception:
+            pass  # Never let persistence failure abort in-memory operation
+
+    def _db_forget(self, layer: str, key: str):
+        if self._db is None:
+            return
+        try:
+            if layer == "episodic":
+                self._db.execute("DELETE FROM episodic WHERE session_id=?", (key,))
+            else:
+                col = {"semantic": "key", "procedural": "pattern_id", "working": "key"}[layer]
+                self._db.execute(f"DELETE FROM {layer} WHERE {col}=?", (key,))  # noqa: S608
+            self._db.commit()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # write
@@ -176,6 +292,7 @@ class MemoryStore:
             self._store["working"][key] = entry
 
         self._log(op_id, "write", layer, key, "ok")
+        self._db_write(layer, key)
         return {
             "operation_id": op_id,
             "status": "ok",
@@ -370,6 +487,7 @@ class MemoryStore:
             del layer_data[key]
 
         self._log(op_id, "forget", layer, key, "ok")
+        self._db_forget(layer, key)
         return {
             "status": "ok",
             "layer": layer,
