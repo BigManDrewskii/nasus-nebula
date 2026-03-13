@@ -105,9 +105,8 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 
 ### For HTML/CSS/JS landing pages and static sites (browser mode):
 1. **Fetch design rules first:** http_fetch("https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md") and keep the rules in context for the entire task.
-2. Write index.html, css/style.css, js/script.js using write_file.
-3. Reference assets with relative paths: href="css/style.css", src="js/script.js".
-4. For CDN resources (fonts, icons, libraries): use direct https:// links in the HTML — they work fine in the preview.
+2. Write a **SINGLE self-contained index.html** using write_file. All CSS goes in a `<style>` block, all JavaScript goes in a `<script>` block. Do NOT create separate .css or .js files — relative file references are not resolvable in the iframe preview and will produce 404 errors.
+3. CDN resources (fonts, icons, libraries): use direct https:// links in the HTML — they work fine in the preview.
 5. Call serve_preview(command="open index.html") to activate the Preview tab.
 6. **Visual verification (mandatory):** After serve_preview, call browser_screenshot(full_page=true). Inspect the screenshot for: broken nav layout, text-only hero, vertically-stacked stats, empty/cut-off sections. Fix any issues found before calling complete().
 7. **Final audit:** Re-check the fetched Web Interface Guidelines against your HTML. Output any violations and fix them before calling complete().

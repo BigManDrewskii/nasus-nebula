@@ -163,3 +163,69 @@ def test_execute_plan_includes_reflection():
     assert "issues" in reflection
     assert "suggestions" in reflection
     assert "method" in reflection
+
+
+# ---------------------------------------------------------------------------
+# Edge cases
+# ---------------------------------------------------------------------------
+
+def test_reflect_heuristic_empty_subtasks_no_divide_by_zero():
+    """_reflect with zero subtasks must not divide by zero and must pass."""
+    orch = NasusOrchestrator()
+    # build_plan with no subtasks leaves self.subtasks empty
+    orch.goal = "empty goal"
+    orch.subtasks = {}
+
+    result = orch._reflect([], "empty goal")
+
+    assert result["method"] == "heuristic"
+    assert result["passed"] is True
+    assert result["score"] == pytest.approx(0.0)
+    assert result["issues"] == []
+
+
+def test_build_dag_raises_on_circular_dependency():
+    """_build_dag must raise ValueError when subtasks form a cycle."""
+    from nasus_orchestrator import Subtask, SubtaskIO, Deadline
+
+    orch = NasusOrchestrator()
+
+    def _st(sid, deps):
+        return Subtask(
+            subtask_id=sid, module="M06", instruction="x",
+            inputs=[], outputs=[], depends_on=deps,
+            deadline=Deadline.NON_BLOCKING, stage=1,
+        )
+
+    # A → B → C → A  (cycle)
+    orch.subtasks = {
+        "A": _st("A", ["C"]),
+        "B": _st("B", ["A"]),
+        "C": _st("C", ["B"]),
+    }
+
+    with pytest.raises(ValueError, match="Circular dependency"):
+        orch._build_dag(list(orch.subtasks.values()))
+
+
+def test_build_dag_no_false_positive_on_linear_chain():
+    """A → B → C (no cycle) must not raise."""
+    from nasus_orchestrator import Subtask, SubtaskIO, Deadline
+
+    orch = NasusOrchestrator()
+
+    def _st(sid, deps, stage):
+        return Subtask(
+            subtask_id=sid, module="M06", instruction="x",
+            inputs=[], outputs=[], depends_on=deps,
+            deadline=Deadline.NON_BLOCKING, stage=stage,
+        )
+
+    orch.subtasks = {
+        "A": _st("A", [], 1),
+        "B": _st("B", ["A"], 2),
+        "C": _st("C", ["B"], 3),
+    }
+
+    stages = orch._build_dag(list(orch.subtasks.values()))
+    assert len(stages) == 3

@@ -54,6 +54,7 @@ class CodeTask(str, Enum):
     TEST      = "test"
     REVIEW    = "review"
     CONVERT   = "convert"
+    EXECUTE   = "execute"
 
 
 class CodeStyle(str, Enum):
@@ -215,6 +216,40 @@ class CodeError:
             "description": self.description,
             "error_code":  self.error_code,
             "message":     self.message,
+        }
+
+
+@dataclass
+class ExecutionResult:
+    """
+    Result of running code in a subprocess.
+
+    Fields
+    ------
+    exit_code : int
+        Process exit code (0 = success, non-zero = failure, -1 = timeout).
+    stdout : str
+        Captured standard output (capped at 4000 chars).
+    stderr : str
+        Captured standard error (capped at 2000 chars).
+    timed_out : bool
+        True if the subprocess was killed due to timeout.
+    duration_ms : int
+        Wall-clock execution time in milliseconds.
+    """
+    exit_code:   int
+    stdout:      str
+    stderr:      str
+    timed_out:   bool
+    duration_ms: int
+
+    def to_dict(self) -> dict:
+        return {
+            "exit_code":   self.exit_code,
+            "stdout":      self.stdout,
+            "stderr":      self.stderr,
+            "timed_out":   self.timed_out,
+            "duration_ms": self.duration_ms,
         }
 
 

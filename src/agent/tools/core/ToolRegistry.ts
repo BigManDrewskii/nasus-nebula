@@ -31,28 +31,6 @@ export class ToolRegistry {
   }
 
   /**
-   * @deprecated Use registerConstructor. Kept for API compatibility — registers
-   * a pre-built instance directly (bypasses lazy construction).
-   */
-  register(tool: BaseTool): void {
-    this.instances.set(tool.name, tool)
-    // Also register a pseudo-constructor so has() / getToolNames() stay consistent.
-    if (!this.toolConstructors.has(tool.name)) {
-      this.toolConstructors.set(tool.name, tool.constructor as ToolConstructor)
-    }
-  }
-
-  /**
-   * Register multiple tool instances at once.
-   * @deprecated Prefer registerConstructor for each tool.
-   */
-  registerAll(tools: BaseTool[]): void {
-    for (const tool of tools) {
-      this.register(tool)
-    }
-  }
-
-  /**
    * Unregister a tool by name.
    */
   unregister(name: string): void {
@@ -162,7 +140,3 @@ export class ToolRegistry {
   }
 }
 
-/**
- * Global tool registry instance.
- */
-export const globalToolRegistry = new ToolRegistry()

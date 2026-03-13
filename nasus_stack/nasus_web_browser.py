@@ -170,6 +170,58 @@ def _real_scrape(url: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# PLAYWRIGHT FALLBACK  (optional — only used when playwright is installed)
+# ---------------------------------------------------------------------------
+
+def _try_playwright_scrape(url: str, wait_for_selector: str = "") -> Optional[Dict[str, Any]]:
+    """Attempt JS rendering via Playwright. Returns page_data dict or None if unavailable."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=10000)
+            if wait_for_selector:
+                try:
+                    page.wait_for_selector(wait_for_selector, timeout=5000)
+                except Exception:
+                    pass
+            text = re.sub(r"\s{2,}", " ", page.inner_text("body").strip())[:5000]
+            title = page.title()
+            browser.close()
+            return {"title": title, "text": text, "links": [], "meta": {}}
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# LLM SYNTHESIS  (optional — only used when extract_prompt is set and LLM configured)
+# ---------------------------------------------------------------------------
+
+def _llm_synthesize(text: str, extract_prompt: str, url: str) -> Optional[str]:
+    """Post-process scraped text with LLM when extract_prompt is provided."""
+    try:
+        from nasus_sidecar import llm_client as _llm_client
+        if not _llm_client.is_configured():
+            return None
+        client = _llm_client.get_client()
+        prompt = (
+            f"You are extracting information from a web page.\n\n"
+            f"URL: {url}\n\n"
+            f"PAGE TEXT (truncated to 4000 chars):\n{text[:4000]}\n\n"
+            f"INSTRUCTION: {extract_prompt}\n\n"
+            "Respond with only the extracted information, no preamble."
+        )
+        return client.chat([{"role": "user", "content": prompt}])
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # URL VALIDATOR  (RT-01)
 # ---------------------------------------------------------------------------
 
@@ -194,22 +246,16 @@ def scrape(request: PageRequest) -> PageContent:
     if err:
         raise ValueError(f"RT-01: {err}")
 
-    # Attempt real HTTP scrape first; fall back to stub on failure
+    # Attempt real HTTP scrape; fall back to Playwright (if installed) then stub.
     page_data: Dict[str, Any] = {}
     scrape_error: Optional[str] = None
-    js_required = not request.follow_links  # follow_links=False → may need JS; True → real HTTP crawl
-    if not js_required:
-        try:
-            page_data = _real_scrape(request.url)
-        except Exception as exc:
-            scrape_error = str(exc)
+    try:
+        page_data = _real_scrape(request.url)
+    except Exception as exc:
+        scrape_error = str(exc)
 
-    # Try real scrape even when follow_links is True
     if not page_data:
-        try:
-            page_data = _real_scrape(request.url)
-        except Exception as exc:
-            scrape_error = str(exc)
+        page_data = _try_playwright_scrape(request.url, request.wait_for_selector or "") or {}
 
     if not page_data:
         page_data = _get_stub(request.url)
@@ -447,9 +493,18 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
         if isinstance(result, BrowserError):
             return envelope.mark_failed(result.message)
 
-        if hasattr(result, "to_dict"):
-            return envelope.mark_done(result.to_dict())
-        return envelope.mark_done(result)
+        result_dict = result.to_dict() if hasattr(result, "to_dict") else result
+
+        if request.extract_prompt:
+            _text = result.text if isinstance(result, PageContent) else (
+                result.get("text", "") if isinstance(result, dict) else ""
+            )
+            if _text:
+                synthesis = _llm_synthesize(_text, request.extract_prompt, request.url)
+                if synthesis:
+                    result_dict["llm_synthesis"] = synthesis
+
+        return envelope.mark_done(result_dict)
 
     except Exception as e:
         return envelope.mark_failed(f"route_envelope error: {e}")

@@ -4,12 +4,12 @@ Nasus M05 -- Code Engineer
 Runtime: analyze_spec, generate, debug, refactor, review, route_envelope + demo
 """
 from __future__ import annotations
-import json, re
+import json, os, re, subprocess, tempfile, time
 from typing import Union
 from nasus_module_registry import ModuleID, NasusEnvelope, NasusStatus  # noqa: F401
 from nasus_code_engineer_schema import (
     CodeBlock, CodeError, CodeResult, CodeStatus, CodeStyle,
-    CodeTask, Language, Spec, validate_code_output,
+    CodeTask, ExecutionResult, Language, Spec, validate_code_output,
 )
 
 MODULE_ID   = "M05"
@@ -254,6 +254,12 @@ def _build_codegen_prompt(spec: Spec) -> str:
         note = style_notes.get(str(spec.style.value) if hasattr(spec.style, "value") else str(spec.style), "")
         if note:
             parts.append(note)
+    if spec.language == Language.HTML_CSS:
+        parts.append(
+            "IMPORTANT: Output a SINGLE self-contained HTML file. "
+            "Embed ALL CSS inside a <style> block and ALL JavaScript inside a <script> block. "
+            "Do NOT reference external .css or .js files."
+        )
     parts.append(
         f"Output only the {lang} code in a fenced code block. "
         "No explanations outside the code. Include comments only for non-obvious logic."
@@ -458,7 +464,55 @@ def review(spec: Spec) -> Union[CodeResult, CodeError]:
         review_notes=notes, status=CodeStatus.DONE)
 
 # ---------------------------------------------------------------------------
-# 6. route_envelope
+# 6. execute_code
+# ---------------------------------------------------------------------------
+_EXECUTE_TIMEOUT_S = 10
+
+def execute_code(spec: Spec) -> Union[ExecutionResult, CodeError]:
+    """Run spec.context_code in a subprocess and return stdout/stderr."""
+    if not spec.context_code.strip():
+        return _error("No code provided for execution", "MISSING_CONTEXT",
+                      "Populate context_code with the code you want to execute.")
+    if spec.language != Language.PYTHON:
+        return _error(
+            "Unsupported language for execution",
+            "UNSUPPORTED_LANGUAGE",
+            f"execute supports Python only; got {spec.language.value}. "
+            "Other runtimes will be added in a future release.",
+        )
+    with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+        f.write(spec.context_code)
+        tmp_path = f.name
+    try:
+        start = time.monotonic()
+        proc = subprocess.run(
+            ["python3", tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=_EXECUTE_TIMEOUT_S,
+        )
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return ExecutionResult(
+            exit_code=proc.returncode,
+            stdout=proc.stdout[:4000],
+            stderr=proc.stderr[:2000],
+            timed_out=False,
+            duration_ms=duration_ms,
+        )
+    except subprocess.TimeoutExpired:
+        return ExecutionResult(
+            exit_code=-1,
+            stdout="",
+            stderr=f"Execution timed out after {_EXECUTE_TIMEOUT_S}s.",
+            timed_out=True,
+            duration_ms=_EXECUTE_TIMEOUT_S * 1000,
+        )
+    finally:
+        os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# 7. route_envelope
 # ---------------------------------------------------------------------------
 def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
     """Dispatch NasusEnvelope to correct handler based on spec.task."""
@@ -491,6 +545,7 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
             CodeTask.REFACTOR: refactor,
             CodeTask.REVIEW:   review,
             CodeTask.EXPLAIN:  review,
+            CodeTask.EXECUTE:  execute_code,
             CodeTask.TEST:     lambda s: generate(Spec(
                 task=CodeTask.GENERATE, language=s.language, description=s.description,
                 context_code=s.context_code, include_tests=True, style=s.style, max_lines=s.max_lines)),
@@ -507,14 +562,9 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
             from nasus_sidecar.workspace_io import get_workspace_io
             _session_id = (payload or {}).get("session_id")
             if _session_id:
-                ext = spec.language.value if hasattr(spec.language, "value") else "txt"
-                code_content = result_dict.get("code") or result_dict.get("content") or ""
-                if code_content:
-                    get_workspace_io().save(
-                        _session_id,
-                        f"{envelope.job_id}_code.{ext}",
-                        code_content,
-                    )
+                ws = get_workspace_io()
+                for block in result.blocks:
+                    ws.save(_session_id, block.filename, block.code)
         except Exception:
             pass
         return envelope.mark_done(result_dict)

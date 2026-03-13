@@ -15,7 +15,9 @@ Phase 2: LLM reasoning added via injected NasusLLMClient.
 from __future__ import annotations
 
 import json
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -224,6 +226,8 @@ class NasusOrchestrator:
         # Human-in-the-loop approval registry: subtask_id -> "approved" | "rejected"
         self._approvals: Dict[str, str] = {}
 
+        self._lock = threading.RLock()
+
         # Structured logger — lazy import to avoid hard dep when testing
         try:
             from nasus_sidecar.logger import get_logger
@@ -250,8 +254,9 @@ class NasusOrchestrator:
         self._log(f"Approval rejected: {subtask_id}")
 
     def _next_step(self) -> int:
-        self._step_counter += 1
-        return self._step_counter
+        with self._lock:
+            self._step_counter += 1
+            return self._step_counter
 
     def _emit(self, step_type: str, content: str, **extra: Any) -> None:
         """Push a progress step to the SSE stream via the injected emitter."""
@@ -267,7 +272,8 @@ class NasusOrchestrator:
     def _log(self, msg: str, level: str = "info") -> None:
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
         entry = f"[{ts}] {msg}"
-        self.log.append(entry)
+        with self._lock:
+            self.log.append(entry)
         if self._logger is not None:
             getattr(self._logger, level, self._logger.info)(msg)
 
@@ -334,7 +340,34 @@ class NasusOrchestrator:
             "created_at": self.created_at,
         }
 
+    def _has_cycle(self, sub_map: Dict[str, "Subtask"]) -> bool:
+        """DFS cycle detection on the dependency graph. O(V+E)."""
+        visited: Dict[str, bool] = {sid: False for sid in sub_map}
+        rec_stack: Dict[str, bool] = {sid: False for sid in sub_map}
+
+        def dfs(sid: str) -> bool:
+            visited[sid] = True
+            rec_stack[sid] = True
+            for dep in sub_map[sid].depends_on:
+                if dep not in sub_map:
+                    continue
+                if not visited[dep]:
+                    if dfs(dep):
+                        return True
+                elif rec_stack[dep]:
+                    return True
+            rec_stack[sid] = False
+            return False
+
+        return any(not visited[sid] and dfs(sid) for sid in sub_map)
+
     def _build_dag(self, subtasks: List[Subtask]) -> List[DAGStage]:
+        sub_map = {st.subtask_id: st for st in subtasks}
+        if self._has_cycle(sub_map):
+            raise ValueError(
+                "Circular dependency detected in subtask DAG. "
+                "Check depends_on fields for cycles."
+            )
         stage_map: Dict[int, List[str]] = {}
         for st in subtasks:
             stage_map.setdefault(st.stage, []).append(st.subtask_id)
@@ -529,7 +562,132 @@ class NasusOrchestrator:
 
     # ── Step 7: Auto-execute DAG ──────────────────────────────────────────────
 
-    def execute_plan(self, interrupt_on_irreversible: bool = False) -> Dict:
+    def _dispatch_subtask(self, subtask_id: str, interrupt_on_irreversible: bool) -> None:
+        """Dispatch a single subtask, applying HITL checkpoint logic and retry."""
+        st = self.subtasks.get(subtask_id)
+        if st is None or st.status == SubtaskStatus.COMPLETED:
+            return
+
+        # --- Human-in-the-loop checkpoint ---
+        if interrupt_on_irreversible and st.module in self._IRREVERSIBLE_MODULES:
+            decision = self._approvals.get(subtask_id)
+            if decision is None:
+                with self._lock:
+                    st.status = SubtaskStatus.AWAITING_APPROVAL
+                self._log(f"Checkpoint: {subtask_id} ({st.module}) awaiting approval")
+                self._emit(
+                    "checkpoint",
+                    f"{subtask_id} requires approval before {st.module} executes",
+                    subtask_id=subtask_id,
+                    module=st.module,
+                    instruction=st.instruction,
+                )
+                return
+            elif decision == "rejected":
+                with self._lock:
+                    st.status = SubtaskStatus.FAILED
+                self._log(f"Checkpoint rejected: {subtask_id} ({st.module})")
+                return
+
+        for attempt in range(3):
+            self._emit(
+                "plan",
+                f"Dispatching {subtask_id} -> {st.module} (attempt {attempt + 1})",
+            )
+            with self._lock:
+                self.dispatch(subtask_id)
+
+            sub_payload: Dict[str, Any] = {
+                "instruction": st.instruction,
+                "session_id": self.session_id,
+            }
+            for inp in st.inputs:
+                if inp.value is not None:
+                    sub_payload[inp.name] = inp.value
+
+            _MODULE_PRIMARY_FIELD = {
+                "M01": "query",
+                "M04": "custom_instruction",
+                "M06": "topic",
+                "M07": "product_name",
+                "M08": "product_name",
+            }
+            primary = _MODULE_PRIMARY_FIELD.get(st.module)
+            if primary and primary not in sub_payload:
+                sub_payload[primary] = st.instruction
+
+            try:
+                sub_env = NasusEnvelope(
+                    module_id=ModuleID(st.module),
+                    payload=sub_payload,
+                )
+                result_env = self.route_envelope(sub_env)  # runs outside lock
+
+                if result_env.status.value == "DONE":
+                    with self._lock:
+                        self.receive_result(subtask_id, result_env.payload, success=True)
+                        self.deliverables.append(
+                            Deliverable(
+                                index=len(self.deliverables),
+                                label=f"{st.module}: {st.instruction[:50]}",
+                                source_module=st.module,
+                                output_type="module_output",
+                                artifact=result_env.payload,
+                            )
+                        )
+
+                    # Workspace + memory bus writes are keyed by subtask_id; safe outside lock.
+                    try:
+                        from nasus_sidecar.workspace_io import get_workspace_io
+                        _ws = get_workspace_io()
+                        _ws.save(self.session_id, f"{subtask_id}.json", result_env.payload)
+                    except Exception:
+                        pass
+
+                    if st.module in self._MEMORY_BUS_MODULES:
+                        try:
+                            _mem_payload = {
+                                "action": "write",
+                                "layer": "episodic",
+                                "key": f"{self.session_id}:{subtask_id}",
+                                "value": {
+                                    "module": st.module,
+                                    "instruction": st.instruction[:200],
+                                    "summary": str(result_env.payload)[:500],
+                                },
+                            }
+                            _mem_env = NasusEnvelope(
+                                module_id=ModuleID.M09,
+                                payload=_mem_payload,
+                            )
+                            self.route_envelope(_mem_env)
+                        except Exception as _mem_exc:
+                            self._log(
+                                f"Memory bus write failed for {subtask_id}: {_mem_exc}",
+                                level="warning",
+                            )
+
+                    self._emit("plan", f"{subtask_id} completed")
+                    break
+                else:
+                    err = result_env.errors[0] if result_env.errors else "FAILED status"
+                    with self._lock:
+                        self.receive_result(subtask_id, None, success=False, error=err)
+                    if st.status == SubtaskStatus.FAILED:
+                        self._emit("plan", f"{subtask_id} failed: {err}")
+                        break
+
+            except Exception as exc:
+                with self._lock:
+                    self.receive_result(subtask_id, None, success=False, error=str(exc))
+                if st.status == SubtaskStatus.FAILED:
+                    break
+
+    def execute_plan(
+        self,
+        interrupt_on_irreversible: bool = False,
+        max_correction_cycles: int = 0,
+    ) -> Dict:
         """
         Walk the DAG stage by stage, executing all subtasks.
 
@@ -537,6 +695,9 @@ class NasusOrchestrator:
         _IRREVERSIBLE_MODULES is paused for human approval before dispatch.
         Paused tasks get status AWAITING_APPROVAL.  Call approve(subtask_id) or
         reject(subtask_id) then re-invoke execute_plan() to resume.
+
+        When max_correction_cycles > 0, failed subtasks are reset and re-dispatched
+        once per cycle if reflection reports the goal was not achieved.
 
         Returns a SynthesisReport dict (or a CHECKPOINT dict when tasks are paused).
         """
@@ -551,126 +712,27 @@ class NasusOrchestrator:
             self._emit("plan", f"Stage {stage.stage_number} — {len(stage.subtask_ids)} task(s)")
             self._log(f"execute_plan: stage {stage.stage_number} start")
 
-            for subtask_id in stage.subtask_ids:
-                st = self.subtasks.get(subtask_id)
-                if st is None or st.status == SubtaskStatus.COMPLETED:
-                    continue
+            pending = [
+                sid for sid in stage.subtask_ids
+                if self.subtasks.get(sid) and self.subtasks[sid].status != SubtaskStatus.COMPLETED
+            ]
 
-                # --- Human-in-the-loop checkpoint ---
-                if interrupt_on_irreversible and st.module in self._IRREVERSIBLE_MODULES:
-                    decision = self._approvals.get(subtask_id)
-                    if decision is None:
-                        st.status = SubtaskStatus.AWAITING_APPROVAL
-                        self._log(
-                            f"Checkpoint: {subtask_id} ({st.module}) awaiting approval"
-                        )
-                        self._emit(
-                            "checkpoint",
-                            f"{subtask_id} requires approval before {st.module} executes",
-                            subtask_id=subtask_id,
-                            module=st.module,
-                            instruction=st.instruction,
-                        )
-                        continue  # Skip until approved
-                    elif decision == "rejected":
-                        st.status = SubtaskStatus.FAILED
-                        self._log(
-                            f"Checkpoint rejected: {subtask_id} ({st.module})"
-                        )
-                        continue
-
-                for attempt in range(3):
-                    self._emit(
-                        "plan",
-                        f"Dispatching {subtask_id} -> {st.module} (attempt {attempt + 1})",
-                    )
-                    self.dispatch(subtask_id)
-
-                    sub_payload: Dict[str, Any] = {
-                        "instruction": st.instruction,
-                        "session_id": self.session_id,
+            if stage.can_parallelize and len(pending) > 1:
+                with ThreadPoolExecutor(max_workers=len(pending)) as pool:
+                    futures = {
+                        pool.submit(self._dispatch_subtask, sid, interrupt_on_irreversible): sid
+                        for sid in pending
                     }
-                    for inp in st.inputs:
-                        if inp.value is not None:
-                            sub_payload[inp.name] = inp.value
-
-                    # Map instruction to each module's primary required field
-                    # so generic DAG subtasks work without explicit input values.
-                    _MODULE_PRIMARY_FIELD = {
-                        "M01": "query",
-                        "M04": "custom_instruction",
-                        "M06": "topic",
-                        "M07": "product_name",
-                        "M08": "product_name",
-                    }
-                    primary = _MODULE_PRIMARY_FIELD.get(st.module)
-                    if primary and primary not in sub_payload:
-                        sub_payload[primary] = st.instruction
-
-                    try:
-                        sub_env = NasusEnvelope(
-                            module_id=ModuleID(st.module),
-                            payload=sub_payload,
-                        )
-                        result_env = self.route_envelope(sub_env)
-
-                        if result_env.status.value == "DONE":
-                            self.receive_result(subtask_id, result_env.payload, success=True)
-                            self.deliverables.append(
-                                Deliverable(
-                                    index=len(self.deliverables),
-                                    label=f"{st.module}: {st.instruction[:50]}",
-                                    source_module=st.module,
-                                    output_type="module_output",
-                                    artifact=result_env.payload,
-                                )
+                    for future in as_completed(futures):
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            self._log(
+                                f"Parallel dispatch error for {futures[future]}: {exc}", "error"
                             )
-                            # Persist deliverable to workspace filesystem
-                            try:
-                                from nasus_sidecar.workspace_io import get_workspace_io
-                                _ws = get_workspace_io()
-                                _ws.save(
-                                    self.session_id,
-                                    f"{subtask_id}.json",
-                                    result_env.payload,
-                                )
-                            except Exception:
-                                pass  # Never let artifact persistence abort execution
-
-                            # Memory bus: write key module outputs to episodic memory.
-                            if st.module in self._MEMORY_BUS_MODULES:
-                                try:
-                                    _mem_payload = {
-                                        "action": "write",
-                                        "layer": "episodic",
-                                        "key": f"{self.session_id}:{subtask_id}",
-                                        "value": {
-                                            "module": st.module,
-                                            "instruction": st.instruction[:200],
-                                            "summary": str(result_env.payload)[:500],
-                                        },
-                                    }
-                                    _mem_env = NasusEnvelope(
-                                        module_id=ModuleID.M09,
-                                        payload=_mem_payload,
-                                    )
-                                    self.route_envelope(_mem_env)
-                                except Exception:
-                                    pass  # Never let M09 write abort pipeline execution
-
-                            self._emit("plan", f"{subtask_id} completed")
-                            break
-                        else:
-                            err = result_env.errors[0] if result_env.errors else "FAILED status"
-                            self.receive_result(subtask_id, None, success=False, error=err)
-                            if st.status == SubtaskStatus.FAILED:
-                                self._emit("plan", f"{subtask_id} failed: {err}")
-                                break
-
-                    except Exception as exc:
-                        self.receive_result(subtask_id, None, success=False, error=str(exc))
-                        if st.status == SubtaskStatus.FAILED:
-                            break
+            else:
+                for sid in pending:
+                    self._dispatch_subtask(sid, interrupt_on_irreversible)
 
         # If any subtasks are still awaiting approval, return a checkpoint report
         # instead of the final synthesis so the caller knows to wait.
@@ -698,6 +760,30 @@ class NasusOrchestrator:
 
         report = self.synthesize()
         report["reflection"] = self._reflect(self.deliverables, self.goal)
+
+        if (
+            max_correction_cycles > 0
+            and not report["reflection"].get("passed", True)
+        ):
+            failed_ids = [
+                sid for sid, st in self.subtasks.items()
+                if st.status == SubtaskStatus.FAILED
+            ]
+            if failed_ids:
+                self._log(
+                    f"Self-correction cycle {max_correction_cycles}: "
+                    f"re-dispatching {len(failed_ids)} failed subtask(s)"
+                )
+                for sid in failed_ids:
+                    st = self.subtasks[sid]
+                    st.status = SubtaskStatus.PENDING
+                    st.retry_count = 0
+                self.stages = self._build_dag(list(self.subtasks.values()))
+                return self.execute_plan(
+                    interrupt_on_irreversible=interrupt_on_irreversible,
+                    max_correction_cycles=max_correction_cycles - 1,
+                )
+
         return report
 
     # ── Step 8: Self-reflection ────────────────────────────────────────────────
@@ -929,7 +1015,11 @@ class NasusOrchestrator:
                         else:
                             self.build_plan(goal, self._deserialize_subtasks(payload.get("subtasks", [])))
                     _interrupt = bool(payload.get("interrupt_on_irreversible", False))
-                    result_dict = self.execute_plan(interrupt_on_irreversible=_interrupt)
+                    _max_cycles = int(payload.get("max_correction_cycles", 0))
+                    result_dict = self.execute_plan(
+                        interrupt_on_irreversible=_interrupt,
+                        max_correction_cycles=_max_cycles,
+                    )
 
                 elif self.llm:
                     if not goal:

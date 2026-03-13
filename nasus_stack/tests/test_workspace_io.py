@@ -121,6 +121,28 @@ def test_delete_traversal_rejected(ws):
         ws.delete("sess_6", "../secret.txt")
 
 
+def test_save_absolute_path_is_sanitized(ws):
+    """Absolute paths must not escape the workspace — _safe_filename strips slashes."""
+    ws.save("sess_7", "/etc/passwd", "data")
+    # The file is sanitised to 'etcpasswd' and stays inside the workspace
+    content = ws.load("sess_7", "/etc/passwd")
+    assert content == "data"
+
+
+def test_save_url_encoded_traversal_is_sanitized(ws):
+    """URL-encoded traversal sequences must not escape — _safe_filename strips % chars."""
+    ws.save("sess_8", "%2e%2e/secret", "data")
+    # Sanitised to '2e2esecret' or similar — no path traversal
+    content = ws.load("sess_8", "%2e%2e/secret")
+    assert content == "data"
+
+
+def test_guard_rejects_nested_dotdot(ws):
+    """Multi-segment traversal paths are caught by _guard."""
+    with pytest.raises(ValueError, match="traversal"):
+        ws.save("sess_9", "a/../../etc/passwd", "bad")
+
+
 # ---------------------------------------------------------------------------
 # HTTP endpoints (FastAPI TestClient)
 # ---------------------------------------------------------------------------

@@ -89,6 +89,60 @@ def _stub_response(request: ApiRequest) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# LLM REQUEST BUILDER
+# ---------------------------------------------------------------------------
+
+def _llm_build_request(
+    instruction: str,
+    base_url: str = "",
+    docs: str = "",
+) -> Optional[ApiRequest]:
+    """Translate a natural-language API instruction into an ApiRequest via LLM."""
+    try:
+        from nasus_sidecar import llm_client as _llm_client
+        if not _llm_client.is_configured():
+            return None
+        client = _llm_client.get_client()
+    except Exception:
+        return None
+
+    schema_hint = json.dumps({
+        "url": "full URL including base, path, and any required query params",
+        "method": "GET | POST | PUT | PATCH | DELETE",
+        "body": "null or object for request body",
+        "notes": "one-sentence rationale",
+    }, indent=2)
+
+    parts = [
+        "You are a REST API expert. Translate the instruction below into a "
+        "single HTTP API call.\n"
+        f"Instruction: {instruction}"
+    ]
+    if base_url:
+        parts.append(f"Base URL: {base_url}")
+    if docs:
+        parts.append(f"API reference (excerpt):\n{docs[:2000]}")
+    parts.append(
+        "Respond with JSON only. Required fields: 'url' (full URL) and 'method'. "
+        f"Optional: 'body' (dict or null).\nJSON schema:\n{schema_hint}"
+    )
+
+    try:
+        result = client.chat_json(
+            [{"role": "user", "content": "\n\n".join(parts)}],
+            schema_hint=schema_hint,
+        )
+        return ApiRequest(
+            url=result["url"],
+            method=HttpMethod(result.get("method", "GET").upper()),
+            headers={},
+            body=result.get("body"),
+        )
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # EXECUTE (single request, retry + backoff)  (RT-03, RT-04)
 # ---------------------------------------------------------------------------
 
@@ -252,7 +306,22 @@ def route_envelope(envelope: NasusEnvelope) -> NasusEnvelope:
                 result = setup_webhook(cfg)
                 return envelope.mark_done(result)
 
-            request = ApiRequest.from_dict(payload)
+            # LLM path: natural-language instruction without explicit URL
+            if payload.get("instruction") and not payload.get("url"):
+                from nasus_sidecar import llm_client as _llm_client
+                if not _llm_client.is_configured():
+                    return envelope.mark_failed(
+                        "LLM not configured — provide 'url' directly or call POST /configure first."
+                    )
+                request = _llm_build_request(
+                    instruction=payload["instruction"],
+                    base_url=payload.get("base_url", ""),
+                    docs=payload.get("docs", ""),
+                )
+                if request is None:
+                    return envelope.mark_failed("LLM failed to build request from instruction.")
+            else:
+                request = ApiRequest.from_dict(payload)
         elif isinstance(payload, ApiRequest):
             request = payload
         else:

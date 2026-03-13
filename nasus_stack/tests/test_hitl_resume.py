@@ -236,7 +236,7 @@ def test_m10_passes_interrupt_on_irreversible_true():
             payload={"action": "execute_plan", "goal": "g", "interrupt_on_irreversible": True},
         )
         orch.route_envelope(env)
-        mock_ep.assert_called_once_with(interrupt_on_irreversible=True)
+        mock_ep.assert_called_once_with(interrupt_on_irreversible=True, max_correction_cycles=0)
 
 
 def test_m10_passes_interrupt_on_irreversible_false():
@@ -255,4 +255,4 @@ def test_m10_passes_interrupt_on_irreversible_false():
             payload={"action": "execute_plan", "goal": "g"},
         )
         orch.route_envelope(env)
-        mock_ep.assert_called_once_with(interrupt_on_irreversible=False)
+        mock_ep.assert_called_once_with(interrupt_on_irreversible=False, max_correction_cycles=0)

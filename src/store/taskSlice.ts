@@ -56,16 +56,12 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
   rawHistory: {},
 
   setActiveTaskId: (id) => {
-    set({ activeTaskId: id })
+    set((state) => { state.activeTaskId = id })
     if (id && (!get().rawHistory[id] || get().rawHistory[id].length === 0)) {
       getPersistedTaskHistory(id).then((history: unknown[] | null) => {
         if (history && history.length > 0) {
-          // Sanitize on load — any incomplete tool_call blocks persisted from a previous
-          // crash or mid-execution kill are silently dropped before being used as context.
           const cleaned = sanitizeMessages(history as LlmMessage[])
-          set(state => ({
-            rawHistory: { ...state.rawHistory, [id]: cleaned }
-          }))
+          set((state) => { state.rawHistory[id] = cleaned })
         }
       }).catch((err: unknown) => {
         logger.warn('store', `Failed to load history for task ${id}`, err)
@@ -75,15 +71,15 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
 
   addTask: (task) =>
     set((state) => {
-      const tasks = [task, ...state.tasks]
-      const messages = { ...state.messages, [task.id]: [WELCOME_MESSAGE] }
-      const rawHistory = { ...state.rawHistory, [task.id]: [] }
+      state.tasks.unshift(task)
+      state.messages[task.id] = [WELCOME_MESSAGE]
+      state.rawHistory[task.id] = []
 
-      if (tasks.length > MAX_TASKS) {
-        const pruned = tasks.slice(MAX_TASKS)
+      if (state.tasks.length > MAX_TASKS) {
+        const pruned = state.tasks.splice(MAX_TASKS)
         for (const t of pruned) {
-          delete messages[t.id]
-          delete rawHistory[t.id]
+          delete state.messages[t.id]
+          delete state.rawHistory[t.id]
           clearWorkspace(t.id).catch(err => {
             logger.warn('store', `Failed to cleanup workspace for pruned task ${t.id}`, err)
           })
@@ -92,53 +88,47 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
           detail: { count: pruned.length },
         }))
       }
-
-      return {
-        tasks: tasks.slice(0, MAX_TASKS),
-        messages,
-        rawHistory,
-      }
     }),
 
   deleteTask: (id) =>
     set((state) => {
-      const tasks = state.tasks.filter((t) => t.id !== id)
-      const messages = { ...state.messages }
-      const rawHistory = { ...state.rawHistory }
-      delete messages[id]
-      delete rawHistory[id]
+      const taskIdx = state.tasks.findIndex((t) => t.id === id)
+      if (taskIdx === -1) return
+      const wasActive = state.activeTaskId === id
+      state.tasks.splice(taskIdx, 1)
+      delete state.messages[id]
+      delete state.rawHistory[id]
+      if (wasActive) state.activeTaskId = state.tasks[0]?.id ?? null
       clearWorkspace(id).catch((err: unknown) => {
         logger.warn('store', `Failed to cleanup workspace for deleted task ${id}`, err)
       })
       deletePersistedTaskHistory(id).catch((err: unknown) => {
         logger.warn('store', `Failed to delete history for task ${id}`, err)
       })
-      const activeTaskId =
-        state.activeTaskId === id
-          ? (tasks[0]?.id ?? null)
-          : state.activeTaskId
-      return { tasks, messages, rawHistory, activeTaskId }
     }),
 
   updateTaskTitle: (id, title) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, title } : t)),
-    })),
+    set((state) => {
+      const task = state.tasks.find((t) => t.id === id)
+      if (task) task.title = title
+    }),
 
   updateTaskStatus: (id, status) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
-    })),
+    set((state) => {
+      const task = state.tasks.find((t) => t.id === id)
+      if (task) task.status = status
+    }),
 
   toggleTaskPin: (id) =>
-    set((state) => ({
-      tasks: state.tasks.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t)),
-    })),
+    set((state) => {
+      const task = state.tasks.find((t) => t.id === id)
+      if (task) task.pinned = !task.pinned
+    }),
 
   duplicateTask: (id) =>
     set((state) => {
       const source = state.tasks.find((t) => t.id === id)
-      if (!source) return {}
+      if (!source) return
       const newId = crypto.randomUUID()
       const newTask: Task = {
         ...source,
@@ -148,154 +138,115 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
         createdAt: new Date(),
         pinned: false,
       }
-      const tasks = [newTask, ...state.tasks].slice(0, MAX_TASKS)
-      const messages = { ...state.messages, [newId]: [WELCOME_MESSAGE] }
-      const rawHistory = { ...state.rawHistory, [newId]: state.rawHistory[id] ?? [] }
+      state.tasks.unshift(newTask)
+      if (state.tasks.length > MAX_TASKS) state.tasks.splice(MAX_TASKS)
+      state.messages[newId] = [WELCOME_MESSAGE]
+      state.rawHistory[newId] = state.rawHistory[id] ? [...state.rawHistory[id]] : []
+      state.activeTaskId = newId
       copyWorkspace(id, newId)
-      if (rawHistory[newId].length > 0) {
-        persistTaskHistory(newId, rawHistory[newId]).catch((err: unknown) => {
+      if (state.rawHistory[newId].length > 0) {
+        persistTaskHistory(newId, state.rawHistory[newId]).catch((err: unknown) => {
           logger.warn('store', `Failed to persist history for duplicated task ${newId}`, err)
         })
       }
-      return { tasks, messages, rawHistory, activeTaskId: newId }
     }),
 
   getMessages: (taskId) => get().messages[taskId] ?? [WELCOME_MESSAGE],
   getRawHistory: (taskId) => get().rawHistory[taskId] ?? [],
 
   addMessage: (taskId, message) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: [...(state.messages[taskId] ?? [WELCOME_MESSAGE]), message],
-      },
-    })),
-
-    appendChunk: (taskId, messageId, delta) =>
-      set((state) => {
-        const msgs = state.messages[taskId]
-        if (!msgs) return
-        const msg = msgs.find((m) => m.id === messageId)
-        if (msg) {
-          msg.content += delta
-        }
-      }),
-
-    setMessageContent: (taskId, messageId, content) =>
-      set((state) => {
-        const msgs = state.messages[taskId]
-        if (!msgs) return
-        const msg = msgs.find((m) => m.id === messageId)
-        if (msg) {
-          msg.content = content
-        }
-      }),
-
-  setStreaming: (taskId, messageId, streaming) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: (state.messages[taskId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, streaming } : m,
-        ),
-      },
-    })),
-
-  setError: (taskId, messageId, error) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: (state.messages[taskId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, error, streaming: false } : m,
-        ),
-      },
-    })),
-
-  addStep: (taskId, messageId, step) =>
     set((state) => {
-      const msgs = state.messages[taskId] ?? []
-      return {
-        messages: {
-          ...state.messages,
-          [taskId]: msgs.map((m) =>
-            m.id === messageId
-              ? { ...m, steps: [...(m.steps ?? []), step] }
-              : m,
-          ),
-        },
+      (state.messages[taskId] ??= [WELCOME_MESSAGE]).push(message)
+    }),
+
+  appendChunk: (taskId, messageId, delta) =>
+    set((state) => {
+      const msgs = state.messages[taskId]
+      if (!msgs) return
+      const msg = msgs.find((m) => m.id === messageId)
+      if (msg) {
+        msg.content += delta
       }
     }),
 
+  setMessageContent: (taskId, messageId, content) =>
+    set((state) => {
+      const msgs = state.messages[taskId]
+      if (!msgs) return
+      const msg = msgs.find((m) => m.id === messageId)
+      if (msg) {
+        msg.content = content
+      }
+    }),
+
+  setStreaming: (taskId, messageId, streaming) =>
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (msg) msg.streaming = streaming
+    }),
+
+  setError: (taskId, messageId, error) =>
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (msg) { msg.error = error; msg.streaming = false }
+    }),
+
+  addStep: (taskId, messageId, step) =>
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (!msg) return
+      msg.steps ??= []
+      msg.steps.push(step)
+    }),
+
   updateStep: (taskId, messageId, updatedStep) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: (state.messages[taskId] ?? []).map((m) => {
-          if (m.id !== messageId) return m
-          if (updatedStep.kind !== 'tool_result') {
-            return { ...m, steps: [...(m.steps ?? []), updatedStep] }
-          }
-          const callId = updatedStep.callId
-          const existingCall = (m.steps ?? []).find(
-            (s) => s.kind === 'tool_call' && s.callId === callId,
-          )
-          if (existingCall) {
-            return {
-              ...m,
-              steps: (m.steps ?? []).map((s) =>
-                s.kind === 'tool_call' && s.callId === callId
-                  ? { ...s, result: updatedStep }
-                  : s,
-              ),
-            }
-          }
-          return { ...m, steps: [...(m.steps ?? []), updatedStep] }
-        }),
-      },
-    })),
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (!msg) return
+      msg.steps ??= []
+      if (updatedStep.kind !== 'tool_result') {
+        msg.steps.push(updatedStep)
+        return
+      }
+      const callId = updatedStep.callId
+      const existingCall = msg.steps.find(
+        (s) => s.kind === 'tool_call' && s.callId === callId,
+      )
+      if (existingCall) {
+        (existingCall as { result?: unknown }).result = updatedStep
+      } else {
+        msg.steps.push(updatedStep)
+      }
+    }),
 
   updateSearchStatus: (taskId, messageId, step) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: (state.messages[taskId] ?? []).map((m) => {
-          if (m.id !== messageId) return m
-          if (step.kind !== 'search_status') return m
-          const callId = step.callId
-          const steps = m.steps ?? []
-          let existingIdx = -1
-          for (let i = steps.length - 1; i >= 0; i--) {
-            const s = steps[i]
-            if (s.kind === 'search_status' && s.callId === callId) { existingIdx = i; break }
-          }
-          if (existingIdx !== -1) {
-            const next = [...steps]
-            next[existingIdx] = step
-            return { ...m, steps: next }
-          }
-          return { ...m, steps: [...steps, step] }
-        }),
-      },
-    })),
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (!msg || step.kind !== 'search_status') return
+      msg.steps ??= []
+      const callId = step.callId
+      let existingIdx = -1
+      for (let i = msg.steps.length - 1; i >= 0; i--) {
+        const s = msg.steps[i]
+        if (s.kind === 'search_status' && s.callId === callId) { existingIdx = i; break }
+      }
+      if (existingIdx !== -1) {
+        msg.steps[existingIdx] = step
+      } else {
+        msg.steps.push(step)
+      }
+    }),
 
   setMessageModel: (taskId, messageId, modelId, modelName, provider) =>
-    set((state) => ({
-      messages: {
-        ...state.messages,
-        [taskId]: (state.messages[taskId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, modelId, modelName, provider } : m
-        ),
-      },
-    })),
+    set((state) => {
+      const msg = (state.messages[taskId] ?? []).find((m) => m.id === messageId)
+      if (msg) { msg.modelId = modelId; msg.modelName = modelName; msg.provider = provider }
+    }),
 
   appendRawHistory: (taskId, msgs) =>
     set((state) => {
       const current = state.rawHistory[taskId] ?? []
       const appended = [...current, ...msgs]
-      // Sanitize before capping and persisting — prevents corrupt tool_call blocks
-      // (assistant+tool_calls without matching tool results) from being saved to disk
-      // and reloaded on the next session, which would cause sanitizeMessages warnings
-      // on every subsequent LLM call and silently corrupt the conversation context.
       const sanitized = sanitizeMessages(appended)
       const capped = sanitized.length > MAX_RAW_HISTORY_LIVE
         ? sanitized.slice(-MAX_RAW_HISTORY_LIVE)
@@ -305,12 +256,7 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
           logger.warn('store', `Failed to persist history for task ${taskId}`, err)
         })
       })
-      return {
-        rawHistory: {
-          ...state.rawHistory,
-          [taskId]: capped,
-        },
-      }
+      state.rawHistory[taskId] = capped
     }),
 })
 

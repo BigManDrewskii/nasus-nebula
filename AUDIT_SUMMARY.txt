@@ -1,0 +1,108 @@
+NASUS CODEBASE AUDIT - EXECUTIVE SUMMARY
+========================================
+
+Audit Date: March 14, 2026
+Scope: Full codebase review (Python sidecar + TypeScript React + Rust backend)
+Findings: 20 distinct issues across 4 severity tiers
+
+KEY FINDINGS
+============
+
+🔴 CRITICAL BUGS (4 issues) - Must fix before production
+────────────────────────────────────────────────────────
+1. Double-scrape logic error in M03 Web Browser
+   - wasted HTTP requests, backwards heuristic
+   - Fix: Remove duplicate _real_scrape() call
+
+2. No cycle detection in orchestrator DAG
+   - infinite loops on circular dependencies
+   - Fix: Implement DFS cycle detection before execute_plan()
+
+3. Unbounded recursion in self-correction loop
+   - stack overflow risk, memory bloat
+   - Fix: Replace recursion with iterative loop
+
+4. Silent LLM synthesis failures
+   - users don't know extraction failed
+   - Fix: Return structured result with error status
+
+🟡 FUNCTIONAL GAPS (4 issues) - Feature completeness
+─────────────────────────────────────────────────────
+1. Memory bus writes silently fail
+   - no escalation if M09 unavailable
+   - Fix: Log failures, collect in report
+
+2. Workspace files never cleaned up
+   - disk space leak over time
+   - Fix: Implement cleanup in sidecar lifespan
+
+3. No payload schema validation
+   - modules crash with cryptic errors
+   - Fix: Add module-specific validators
+
+4. HTML_CSS execution sandbox not documented
+   - XSS risks if wired to browser
+   - Fix: Disable or add explicit CSP policy
+
+🔵 INCONSISTENCIES (4 issues) - Maintenance risk
+──────────────────────────────────────────────────
+1. Duplicate Subtask/DAGStage definitions
+   - orchestrator.py vs orchestrator_schema.py
+   - Fix: Single source of truth (import from schema)
+
+2. Module metadata hardcoded in 2 places
+   - MODULE_NAMES in orchestrator vs registry
+   - Fix: Centralize in nasus_module_catalog.py
+
+3. Validation score computed but never used
+   - dead code, misleading API
+   - Fix: Use score to escalate or remove field
+
+4. TypeScript self-correction never tested
+   - may be broken, not caught in CI
+   - Fix: Add integration test
+
+⚪ TEST COVERAGE GAPS (4 issues) - Hidden bugs
+──────────────────────────────────────────────
+1. Orchestrator reflection heuristic not tested
+   - edge cases (zero subtasks, all failed) untested
+   - Fix: Add parametrized tests
+
+2. Workspace path traversal only partially tested
+   - absolute paths, symlinks not covered
+   - Fix: Add security test cases
+
+3. Sidecar SSE stream error handling untested
+   - memory leaks under concurrent clients possible
+   - Fix: Add disconnect/overflow tests
+
+4. Generated code execution never validated
+   - syntax errors go undetected
+   - Fix: Compile generated code in test
+
+💡 IMPROVEMENTS (5 suggestions)
+──────────────────────────────
+1. Add Result<T, E> return types for workspace operations
+2. Document consistent LLM fallback semantics
+3. Add structured logging for DAG execution tracing
+4. Implement memory pressure monitoring
+5. Add circuit breaker for slow modules (deadlines)
+
+RISK ASSESSMENT
+===============
+Overall: MEDIUM-HIGH
+
+- 4 critical bugs block production deployment
+- 4 functional gaps indicate incomplete features
+- Duplicate definitions create maintenance burden
+- Memory leaks and untested error paths are stability risks
+
+RECOMMENDATION
+==============
+Priority order:
+1. Fix 4 critical bugs (1-2 weeks)
+2. Add cycle detection & timeout logic (1 week)
+3. Implement tests for self-correction & error paths (1 week)
+4. Unify module definitions & add observability (2 weeks)
+
+Full report: /sessions/nice-peaceful-fermi/AUDIT_REPORT.md
