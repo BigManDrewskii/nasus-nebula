@@ -3,6 +3,14 @@ import type { ExecutionPlan } from '../agent/core/Agent'
 import type { CheckpointPayload } from '../agent/sidecarClient'
 import { stopWebAgent } from '../agent/index'
 
+export interface PendingToolApproval {
+  requestId: string
+  tool: string
+  args: Record<string, unknown>
+  reason?: string
+  taskId: string
+}
+
 export interface AgentSlice {
   pendingPlan: ExecutionPlan | null
   planApprovalStatus: 'pending' | 'approved' | 'rejected' | null
@@ -10,7 +18,7 @@ export interface AgentSlice {
   currentPhase: number
   currentStep: number
 
-  pendingToolApproval: { tool: string; args: Record<string, unknown>; reason?: string; taskId: string } | null
+  pendingToolApprovals: PendingToolApproval[]
 
   setPendingPlan: (plan: ExecutionPlan | null) => void
   setPlanApprovalStatus: (status: 'pending' | 'approved' | 'rejected' | null) => void
@@ -25,9 +33,9 @@ export interface AgentSlice {
 
   resetPlanState: () => void
 
-  setPendingToolApproval: (approval: { tool: string; args: Record<string, unknown>; reason?: string; taskId: string } | null) => void
-  approveTool: (taskId: string, tool: string) => void
-  rejectTool: (taskId: string, tool: string) => void
+  enqueuePendingToolApproval: (approval: PendingToolApproval) => void
+  approveTool: (taskId: string, requestId: string) => void
+  rejectTool: (taskId: string, requestId: string) => void
 
   // HITL checkpoint state
   pendingCheckpoint: CheckpointPayload | null
@@ -46,7 +54,7 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
   currentPlan: null,
   currentPhase: 0,
   currentStep: 0,
-  pendingToolApproval: null,
+  pendingToolApprovals: [],
   pendingCheckpoint: null,
   checkpointJobId: null,
   checkpointMessageId: null,
@@ -93,16 +101,20 @@ export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never
     })
   },
 
-  setPendingToolApproval: (approval) => {
-    set({ pendingToolApproval: approval })
+  enqueuePendingToolApproval: (approval) => {
+    set((state) => { state.pendingToolApprovals.push(approval) })
   },
-  approveTool: (taskId, tool) => {
-    set({ pendingToolApproval: null })
-    window.dispatchEvent(new CustomEvent(`nasus:tool-approved-${taskId}`, { detail: { tool } }))
+  approveTool: (taskId, requestId) => {
+    set((state) => {
+      state.pendingToolApprovals = state.pendingToolApprovals.filter(a => a.requestId !== requestId)
+    })
+    window.dispatchEvent(new CustomEvent(`nasus:tool-approved-${taskId}`, { detail: { requestId } }))
   },
-  rejectTool: (taskId, tool) => {
-    set({ pendingToolApproval: null })
-    window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { tool } }))
+  rejectTool: (taskId, requestId) => {
+    set((state) => {
+      state.pendingToolApprovals = state.pendingToolApprovals.filter(a => a.requestId !== requestId)
+    })
+    window.dispatchEvent(new CustomEvent(`nasus:tool-rejected-${taskId}`, { detail: { requestId } }))
   },
 
   setPendingCheckpoint: (cp, jobId, messageId) => {

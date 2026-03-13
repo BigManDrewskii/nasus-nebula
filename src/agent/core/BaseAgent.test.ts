@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { BaseAgent } from './BaseAgent'
 import { AgentState } from './AgentState'
 import type { AgentContext, AgentResult, AgentTool } from './Agent'

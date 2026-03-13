@@ -31,6 +31,17 @@ import {
 } from './sidecarClient'
 import { extractAndWriteCodeFiles } from './codeExtractor'
 
+// ─── SSE stream type helpers ──────────────────────────────────────────────────
+
+type StreamSource = AsyncIterable<{ type: string; data?: unknown; error?: string }>
+
+interface ConsumeJobStreamOptions {
+  /** Pre-known sidecar job id (checkpoint resume path) */
+  knownJobId?: string
+}
+
+// ─── Public interfaces ────────────────────────────────────────────────────────
+
 /**
  * Orchestrator configuration.
  */
@@ -172,7 +183,7 @@ export class AgentOrchestrator {
    * Streams step events back into the agent store and chat UI in real time.
    */
   private async runViaSidecar(params: OrchestratorTaskParams): Promise<void> {
-    const { taskId, messageId, signal } = params
+    const { taskId, messageId } = params
     const store = useAppStore.getState()
 
     // Always sync the sidecar's LLM credentials before each task so that model/key
@@ -229,6 +240,34 @@ export class AgentOrchestrator {
       max_iterations: params.maxIterations ?? 10,
     }
 
+    // Listen for the panel dispatching a resume decision.
+    const onCheckpointResume = (e: Event) => {
+      const detail = (e as CustomEvent<{ jobId: string }>).detail
+      void this.continueFromCheckpoint(params, detail.jobId)
+    }
+    window.addEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
+
+    store.resetPlanState()
+
+    try {
+      await this.consumeJobStream(params, runTask('M00', payload))
+    } finally {
+      window.removeEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
+    }
+  }
+
+  /**
+   * Shared SSE event processing loop — handles step, status, done, and error
+   * events identically for both initial execution and checkpoint resume paths.
+   */
+  private async consumeJobStream(
+    params: OrchestratorTaskParams,
+    source: StreamSource,
+    opts: ConsumeJobStreamOptions = {},
+  ): Promise<void> {
+    const { taskId, messageId, signal } = params
+    const store = useAppStore.getState()
+
     const finishOk = () => {
       store.setStreaming(taskId, messageId, false)
       store.updateTaskStatus(taskId, 'completed')
@@ -250,21 +289,12 @@ export class AgentOrchestrator {
     let accumulatedFinal = ''
     // Track the callId of the most recent tool_call for pairing with observations.
     let lastToolCallId: string | null = null
-    // The sidecar job_id for this run — captured from the first status event so
-    // the CHECKPOINT handler can call approve/reject/resume on the right job.
-    let sidecarJobId: string | null = null
-
-    // Listen for the panel dispatching a resume decision.
-    const onCheckpointResume = (e: Event) => {
-      const detail = (e as CustomEvent<{ jobId: string }>).detail
-      void this.continueFromCheckpoint(params, detail.jobId)
-    }
-    window.addEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
-
-    store.resetPlanState()
+    // The sidecar job_id for this run — pre-populated for checkpoint resumes,
+    // otherwise captured from the first status/done event.
+    let sidecarJobId: string | null = opts.knownJobId ?? null
 
     try {
-      for await (const event of runTask('M00', payload)) {
+      for await (const event of source) {
         if (signal.aborted) break
 
         switch (event.type) {
@@ -380,8 +410,6 @@ export class AgentOrchestrator {
       if (signal.aborted) return
       finishErr(err instanceof Error ? err.message : 'Sidecar stream failed')
       throw err
-    } finally {
-      window.removeEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
     }
   }
 
@@ -395,7 +423,7 @@ export class AgentOrchestrator {
     params: OrchestratorTaskParams,
     checkpointJobId: string,
   ): Promise<void> {
-    const { taskId, messageId, signal } = params
+    const { taskId, messageId } = params
     const store = useAppStore.getState()
 
     const decisions = store.checkpointDecisions ?? {}
@@ -428,91 +456,10 @@ export class AgentOrchestrator {
     store.setStreaming(taskId, messageId, true)
     store.setStatus(taskId, 'executing')
 
-    const finishOk = () => {
-      store.setStreaming(taskId, messageId, false)
-      store.updateTaskStatus(taskId, 'completed')
-      store.setStatus(taskId, 'completed')
-      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
-      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
-    }
-
-    const finishErr = (msg: string) => {
-      store.setError(taskId, messageId, msg)
-      store.setStatus(taskId, 'error')
-      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
-      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
-    }
-
-    let accumulatedFinal = ''
-    let lastToolCallId: string | null = null
-    let resumeSidecarJobId: string | null = null
-
     try {
-      for await (const event of streamJobEvents(resumeJobId)) {
-        if (signal.aborted) break
-        switch (event.type) {
-          case 'status': {
-            const s = event.data as StatusResponse
-            if (!resumeSidecarJobId) resumeSidecarJobId = s.job_id
-            break
-          }
-          case 'step': {
-            const step = event.data as SidecarStep
-            const callId = `sc-${step.step}`
-            if (step.type === 'plan' && step.content) {
-              store.addStep(taskId, messageId, { kind: 'thinking', content: step.content })
-            } else if (step.type === 'tool_call' && step.tool) {
-              lastToolCallId = callId
-              store.addStep(taskId, messageId, {
-                kind: 'tool_call', tool: step.tool,
-                input: (step.tool_input as Record<string, unknown>) ?? {}, callId,
-              })
-            } else if (step.type === 'observation' && lastToolCallId) {
-              store.updateStep(taskId, messageId, {
-                kind: 'tool_result', callId: lastToolCallId,
-                output: step.content ?? '', isError: false,
-              })
-              lastToolCallId = null
-            }
-            if (step.type === 'final' && step.content) {
-              store.appendChunk(taskId, messageId, step.content)
-              accumulatedFinal += step.content
-            }
-            break
-          }
-          case 'done': {
-            const final = event.data as StatusResponse & { errors?: string[] }
-            const result = final.result as Record<string, unknown> | undefined
-            if (result?.output_type === 'CHECKPOINT') {
-              store.setStreaming(taskId, messageId, false)
-              store.setStatus(taskId, 'awaiting_checkpoint_approval')
-              store.setPendingCheckpoint(result as unknown as CheckpointPayload, resumeSidecarJobId ?? resumeJobId, messageId)
-              window.dispatchEvent(new CustomEvent('nasus:checkpoint', {
-                detail: { taskId, messageId, checkpoint: result, jobId: resumeSidecarJobId ?? resumeJobId },
-              }))
-              break
-            }
-            if (final.status === 'completed') {
-              if (accumulatedFinal) {
-                void extractAndWriteCodeFiles(accumulatedFinal, taskId, (s) => {
-                  if (s.kind === 'tool_result') store.updateStep(taskId, messageId, s)
-                  else store.addStep(taskId, messageId, s)
-                })
-              }
-              finishOk()
-            } else if (final.status === 'error') {
-              finishErr(final.error ?? final.errors?.[0] ?? 'Resumed execution failed')
-            }
-            break
-          }
-          case 'error': {
-            finishErr((event as { error?: string }).error ?? 'Resume stream error')
-            break
-          }
-        }
-      }
-    } catch (err) {
-      if (!signal.aborted) finishErr(err instanceof Error ? err.message : 'Resume failed')
+      await this.consumeJobStream(params, streamJobEvents(resumeJobId), { knownJobId: resumeJobId })
+    } catch {
+      // Error already handled by consumeJobStream (finishErr called + error state set)
     }
   }
 

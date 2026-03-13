@@ -141,22 +141,17 @@ export class PermissionSystem {
     signal?: AbortSignal,
   ): Promise<{ approved: boolean }> {
     return new Promise((resolve) => {
-      // Dispatch event for UI to show approval modal
-      const event = new CustomEvent(`nasus:tool-approval-request-${taskId}`, {
-        detail: { tool, args, reason }
-      })
-      window.dispatchEvent(event)
+      const requestId = crypto.randomUUID()
 
-      // Listen for approval/rejection
       const handleApprove = (e: Event) => {
-        if ((e as CustomEvent<{ tool: string }>).detail?.tool === tool) {
+        if ((e as CustomEvent<{ requestId: string }>).detail?.requestId === requestId) {
           cleanup()
           resolve({ approved: true })
         }
       }
 
       const handleReject = (e: Event) => {
-        if ((e as CustomEvent<{ tool: string }>).detail?.tool === tool) {
+        if ((e as CustomEvent<{ requestId: string }>).detail?.requestId === requestId) {
           cleanup()
           resolve({ approved: false })
         }
@@ -193,8 +188,8 @@ export class PermissionSystem {
         return
       }
 
-      // Update store to show the approval UI
-      useAppStore.getState().setPendingToolApproval({ tool, args, reason, taskId })
+      // Enqueue in store to show the approval UI
+      useAppStore.getState().enqueuePendingToolApproval({ requestId, tool, args, reason, taskId })
     })
   }
 }

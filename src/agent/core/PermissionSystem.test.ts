@@ -2,13 +2,16 @@ import { describe, it, expect, vi } from 'vitest'
 import { PermissionSystem } from './PermissionSystem'
 
 // Mock the global state and event dispatchers
+const mockEnqueue = vi.fn()
+
 vi.mock('../../store', () => ({
   useAppStore: {
     getState: () => ({
-      setPendingToolApproval: vi.fn(),
+      enqueuePendingToolApproval: mockEnqueue,
     }),
   },
 }))
+const realDispatchEvent = window.dispatchEvent.bind(window)
 window.dispatchEvent = vi.fn()
 
 describe('PermissionSystem', () => {
@@ -73,5 +76,30 @@ describe('PermissionSystem', () => {
     requestApprovalSpy.mockRestore()
     // @ts-expect-error - reset state
     ps.state.toolLevels['bash'] = 'ask'
+  })
+
+  it('concurrent requests with different tools both resolve independently via requestId', async () => {
+    mockEnqueue.mockClear()
+
+    const ps2 = new PermissionSystem()
+    // Use an unknown tool so defaultLevel='ask' routes both through requestApproval
+    const p1 = ps2.checkPermission('unknown-tool-a', {}, 'task-concurrent')
+    const p2 = ps2.checkPermission('unknown-tool-b', {}, 'task-concurrent')
+
+    // Both approval requests should be enqueued
+    await vi.waitFor(() => expect(mockEnqueue).toHaveBeenCalledTimes(2))
+
+    const req1 = mockEnqueue.mock.calls[0][0] as { requestId: string }
+    const req2 = mockEnqueue.mock.calls[1][0] as { requestId: string }
+    expect(req1.requestId).not.toBe(req2.requestId)
+
+    // Approve both via requestId — use EventTarget prototype to bypass the
+    // vi.fn() mock on window.dispatchEvent so real listeners are notified.
+    realDispatchEvent(new CustomEvent('nasus:tool-approved-task-concurrent', { detail: { requestId: req2.requestId } }))
+    realDispatchEvent(new CustomEvent('nasus:tool-approved-task-concurrent', { detail: { requestId: req1.requestId } }))
+
+    const [r1, r2] = await Promise.all([p1, p2])
+    expect(r1.approved).toBe(true)
+    expect(r2.approved).toBe(true)
   })
 })
