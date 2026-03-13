@@ -1083,7 +1083,7 @@ class NasusOrchestrator:
             "- M02: API Integrator — HTTP API calls, fetching data from URLs\n"
             "- M03: Web Browser — scraping web pages, extracting content from URLs\n"
             "- M04: Data Analyst — analyzing datasets, statistics, CSV/JSON data processing\n"
-            "- M05: Code Engineer — writing, debugging, refactoring, explaining code\n"
+            "- M05: Code Engineer — writing, debugging, refactoring, explaining code (scripts, utilities, APIs, data processing; NOT multi-file websites or landing pages)\n"
             "- DIRECT: general questions, greetings, creative writing, strategy advice, "
             "product questions, anything conversational\n\n"
             "Respond ONLY with a valid JSON object:\n"
@@ -1118,6 +1118,36 @@ class NasusOrchestrator:
         # Build a sub-envelope and call the specialist module
         module_label = MODULE_NAMES.get(module, module.lower()).replace("_", " ").title()
         self._emit("plan", f"Using {module_label} ({module})\u2026")
+
+        _plan_json = json.dumps({
+            "id": f"sidecar-plan-{uuid.uuid4().hex[:8]}",
+            "title": (user_message[:57] + "\u2026") if len(user_message) > 60 else user_message,
+            "description": user_message,
+            "estimatedSteps": 2,
+            "phases": [
+                {
+                    "id": "phase-0",
+                    "title": "Analysis",
+                    "description": "Analyzed request and selected specialist",
+                    "status": "completed",
+                    "steps": [{"id": "phase-0-step-0", "description": "Route to best module",
+                                "agent": "planner", "tools": [], "status": "completed"}],
+                },
+                {
+                    "id": "phase-1",
+                    "title": f"{module_label} Execution",
+                    "description": f"Executing task using {module_label}",
+                    "status": "in_progress",
+                    "steps": [{"id": "phase-1-step-0",
+                                "description": f"Complete task using {module_label}",
+                                "agent": "executor", "tools": [], "status": "in_progress"}],
+                },
+            ],
+            "dependencies": [],
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        })
+        self._emit("plan_structure", _plan_json)
+
         try:
             specialist_env = NasusEnvelope(
                 module_id=ModuleID[module],
@@ -1163,6 +1193,34 @@ class NasusOrchestrator:
             inner = result_data
             if "result" in result_data and isinstance(result_data["result"], dict):
                 inner = result_data["result"]
+
+            # M05 CodeResult wraps generated code in "blocks" — not in the top-level keys
+            # scanned below. Convert each block to a fenced code string so
+            # extractAndWriteCodeFiles on the TypeScript side can write them to the workspace.
+            _blocks = result_data.get("blocks") or inner.get("blocks")
+            if isinstance(_blocks, list) and _blocks:
+                _fenced_parts: List[str] = []
+                for _blk in _blocks:
+                    if not isinstance(_blk, dict):
+                        continue
+                    _code = _blk.get("code", "").strip()
+                    if not _code:
+                        continue
+                    _fname = _blk.get("filename", "")
+                    _lang = _blk.get("language", "")
+                    if _lang == "html_css":
+                        _lang = "html"
+                    _hint = f"<!-- {_fname} -->" if _fname else ""
+                    _fenced_parts.append(
+                        f"```{_lang}\n{_hint}\n{_code}\n```" if _hint
+                        else f"```{_lang}\n{_code}\n```"
+                    )
+                if _fenced_parts:
+                    return {
+                        "response": "\n\n".join(_fenced_parts),
+                        "module_used": module,
+                        "session_id": self.session_id,
+                    }
 
             content = (
                 _as_str(inner.get("narrative"))
@@ -1243,6 +1301,26 @@ class NasusOrchestrator:
         # Ensure the latest user message is at the end
         if not llm_messages or llm_messages[-1].get("role") != "user":
             llm_messages.append({"role": "user", "content": user_message})
+
+        _direct_plan_json = json.dumps({
+            "id": f"sidecar-plan-{uuid.uuid4().hex[:8]}",
+            "title": (user_message[:57] + "\u2026") if len(user_message) > 60 else user_message,
+            "description": user_message,
+            "estimatedSteps": 1,
+            "phases": [
+                {
+                    "id": "phase-0",
+                    "title": "Response",
+                    "description": "Generating direct response",
+                    "status": "in_progress",
+                    "steps": [{"id": "phase-0-step-0", "description": "Generate response",
+                                "agent": "executor", "tools": [], "status": "in_progress"}],
+                },
+            ],
+            "dependencies": [],
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        })
+        self._emit("plan_structure", _direct_plan_json)
 
         self._emit("plan", "Generating response\u2026")
 

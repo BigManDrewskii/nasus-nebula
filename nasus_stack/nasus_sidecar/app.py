@@ -126,6 +126,9 @@ app.add_middleware(
         "https://tauri.localhost",
         "http://localhost",
         "http://127.0.0.1",
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:4173",  # Vite preview
+        "http://localhost:8080",  # Orchids proxy
     ],
     allow_methods=["*"],
     allow_headers=["*"],

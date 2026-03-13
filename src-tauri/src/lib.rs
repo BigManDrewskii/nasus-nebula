@@ -1077,7 +1077,16 @@ fn ensure_extended_schema(conn: &Connection) -> Result<(), String> {
             estimated_cost_usd REAL DEFAULT 0.0
         );",
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    // Idempotent migration: add embedding column if not present (SQLite ignores
+    // "duplicate column" errors, so we suppress them explicitly).
+    let _ = conn.execute(
+        "ALTER TABLE memories ADD COLUMN embedding BLOB",
+        [],
+    );
+
+    Ok(())
 }
 
 // ── Memory persistence commands ───────────────────────────────────────────────
@@ -1091,6 +1100,9 @@ pub struct DbMemory {
     pub content_type: Option<String>,
     pub tags: Option<Vec<String>>,
     pub timestamp: i64,
+    /// Raw IEEE 754 little-endian bytes for the float32 embedding vector.
+    /// Sent over IPC as a JSON array of 0-255 integers (Vec<u8>).
+    pub embedding: Option<Vec<u8>>,
 }
 
 #[allow(non_snake_case)]
@@ -1101,15 +1113,16 @@ async fn db_save_memory(state: State<'_, AppState>, memory: DbMemory) -> NasusRe
         .tags
         .map(|t| serde_json::to_string(&t).unwrap_or_default());
     conn.execute(
-        "INSERT OR REPLACE INTO memories (id, task_id, content, content_type, tags, timestamp)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT OR REPLACE INTO memories (id, task_id, content, content_type, tags, timestamp, embedding)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             memory.id,
             memory.task_id,
             memory.content,
             memory.content_type,
             tags_json,
-            memory.timestamp
+            memory.timestamp,
+            memory.embedding
         ],
     )
     .map_err(|e| NasusError::Database(e.to_string()))?;
@@ -1128,7 +1141,7 @@ async fn db_query_memories(
     if let Some(tid) = &taskId {
         let mut s = conn
             .prepare(
-                "SELECT id, task_id, content, content_type, tags, timestamp
+                "SELECT id, task_id, content, content_type, tags, timestamp, embedding
              FROM memories WHERE task_id = ?1 ORDER BY timestamp DESC LIMIT ?2",
             )
             .map_err(|e| NasusError::Database(e.to_string()))?;
@@ -1145,6 +1158,7 @@ async fn db_query_memories(
                     content_type: row.get(3)?,
                     tags,
                     timestamp: row.get(5)?,
+                    embedding: row.get(6)?,
                 })
             })
             .map_err(|e| NasusError::Database(e.to_string()))?
@@ -1154,7 +1168,7 @@ async fn db_query_memories(
     }
     let mut stmt = conn
         .prepare(
-            "SELECT id, task_id, content, content_type, tags, timestamp
+            "SELECT id, task_id, content, content_type, tags, timestamp, embedding
          FROM memories ORDER BY timestamp DESC LIMIT ?1",
         )
         .map_err(|e| NasusError::Database(e.to_string()))?;
@@ -1171,6 +1185,7 @@ async fn db_query_memories(
                 content_type: row.get(3)?,
                 tags,
                 timestamp: row.get(5)?,
+                embedding: row.get(6)?,
             })
         })
         .map_err(|e| NasusError::Database(e.to_string()))?
@@ -1184,6 +1199,14 @@ async fn db_query_memories(
 async fn db_delete_memory(state: State<'_, AppState>, memoryId: String) -> NasusResult<()> {
     let conn = state.db.lock().await;
     conn.execute("DELETE FROM memories WHERE id = ?1", params![memoryId])
+        .map_err(|e| NasusError::Database(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn db_clear_memories(state: State<'_, AppState>) -> NasusResult<()> {
+    let conn = state.db.lock().await;
+    conn.execute("DELETE FROM memories", [])
         .map_err(|e| NasusError::Database(e.to_string()))?;
     Ok(())
 }
@@ -1421,6 +1444,7 @@ pub fn run() {
             db_save_memory,
             db_query_memories,
             db_delete_memory,
+            db_clear_memories,
             db_append_trace,
             db_get_trace,
             db_delete_trace,

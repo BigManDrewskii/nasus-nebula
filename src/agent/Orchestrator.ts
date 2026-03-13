@@ -261,6 +261,8 @@ export class AgentOrchestrator {
     }
     window.addEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
 
+    store.resetPlanState()
+
     try {
       for await (const event of runTask('M00', payload)) {
         if (signal.aborted) break
@@ -269,6 +271,18 @@ export class AgentOrchestrator {
           case 'step': {
             const step = event.data as SidecarStep
             const callId = `sc-${step.step}`
+
+            // Handle plan_structure events emitted by the sidecar orchestrator.
+            if (step.type === 'plan_structure' && step.content) {
+              try {
+                const raw = JSON.parse(step.content) as ExecutionPlan & { createdAt: string }
+                const plan: ExecutionPlan = { ...raw, createdAt: new Date(raw.createdAt) }
+                store.setCurrentPlan(plan)
+                store.setCurrentPhase(plan.phases.length > 1 ? 1 : 0)
+                store.setCurrentStep(0)
+              } catch { /* ignore malformed JSON */ }
+              break
+            }
 
             // Map sidecar step types → typed AgentStep on message.steps (drives AgentStepsView).
             if (step.type === 'plan' && step.content) {

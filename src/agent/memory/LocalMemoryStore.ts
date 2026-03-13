@@ -17,6 +17,7 @@ import type {
   MemoryResult,
   MemoryMetadata,
 } from './MemoryStore'
+import { SqliteMemoryStore } from './SqliteMemoryStore'
 
 const log = createLogger('LocalMemoryStore')
 
@@ -353,9 +354,9 @@ export class LocalMemoryStore implements MemoryStore {
 }
 
 /**
- * Global memory store instance.
+ * Global memory store instance — SQLite-backed for cross-session durability.
  */
-export const memoryStore = new LocalMemoryStore()
+export const memoryStore: SqliteMemoryStore = new SqliteMemoryStore()
 
 /**
  * Initialize the memory store (call on app startup).
@@ -372,7 +373,10 @@ export async function storeTaskCompletion(
   summary: string,
   outputFiles: string[] = [],
 ): Promise<void> {
-  await memoryStore.storeTaskOutput(taskId, summary, {
+  await memoryStore.store(summary, {
+    taskId,
+    timestamp: Date.now(),
+    contentType: 'output',
     tags: ['completed', 'summary'],
   })
 

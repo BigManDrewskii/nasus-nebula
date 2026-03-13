@@ -42,7 +42,14 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
     return byName.get(clean)
   }
 
+  // Strip CSP meta tags — the AI often emits <meta http-equiv="Content-Security-Policy">
+  // with restrictive policies (e.g. "default-src 'self'") that block CDN scripts in the iframe.
   let result = html.replace(
+    /<meta[^>]+http-equiv=["']Content-Security-Policy["'][^>]*\/?>/gi,
+    '',
+  )
+
+  result = result.replace(
     /<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["'][^>]*\/?>/gi,
     (_match, href) => {
       const f = resolve(href)

@@ -48,7 +48,7 @@ export interface StatusResponse {
 
 export interface SidecarStep {
   step: number
-  type: 'plan' | 'tool_call' | 'observation' | 'final' | 'error' | 'log'
+  type: 'plan' | 'plan_structure' | 'tool_call' | 'observation' | 'final' | 'error' | 'log'
   content: string
   tool?: string
   tool_input?: unknown
