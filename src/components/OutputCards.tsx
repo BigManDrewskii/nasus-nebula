@@ -39,7 +39,7 @@ function isMemoryFile(filename: string): boolean {
 function shouldBundle(files: OutputCardFile[]): boolean {
   if (files.length >= 3) return true
   const hasHtml = files.some((f) => PREVIEW_EXTS.has(getExt(f.filename)))
-  const hasCompanion = files.some((f) => ['css', 'js', 'ts', 'scss'].includes(getExt(f.filename)))
+  const hasCompanion = files.some((f) => ['css', 'js', 'ts', 'tsx', 'jsx', 'scss'].includes(getExt(f.filename)))
   return hasHtml && hasCompanion && files.length >= 2
 }
 

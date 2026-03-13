@@ -79,12 +79,19 @@ def get_search_config() -> Dict[str, str]:
 # In-flight job registry: job_id -> NasusEnvelope
 _jobs: Dict[str, NasusEnvelope] = {}
 
+# Insertion-ordered list of completed/failed job IDs for bounded cleanup.
+_completed_job_order: List[str] = []
+_MAX_COMPLETED_JOBS = 200
+
 # SSE log queues: job_id -> asyncio.Queue of log line strings (None = sentinel)
 _log_queues: Dict[str, asyncio.Queue] = {}
 
 # Per-job orchestrator instances preserved when a job returns a CHECKPOINT.
 # Keyed by job_id. Entries are removed on resume or cancel.
 _job_orchestrators: Dict[str, NasusOrchestrator] = {}
+# Creation timestamps for TTL-based checkpoint cleanup.
+_job_orchestrators_ts: Dict[str, float] = {}
+_CHECKPOINT_TTL_S = 3600  # 1 hour
 
 # Process start time for uptime calculation
 _start_time: float = time.monotonic()
@@ -93,6 +100,17 @@ _start_time: float = time.monotonic()
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
+
+
+async def _checkpoint_ttl_cleanup() -> None:
+    """Background task: evict _job_orchestrators entries older than _CHECKPOINT_TTL_S."""
+    while True:
+        await asyncio.sleep(300)  # check every 5 minutes
+        cutoff = time.monotonic() - _CHECKPOINT_TTL_S
+        expired = [jid for jid, ts in list(_job_orchestrators_ts.items()) if ts < cutoff]
+        for jid in expired:
+            _job_orchestrators.pop(jid, None)
+            _job_orchestrators_ts.pop(jid, None)
 
 
 @asynccontextmanager
@@ -104,8 +122,13 @@ async def lifespan(app: FastAPI):
     _orchestrator = NasusOrchestrator()
     from nasus_sidecar.workspace_io import init_workspace_io
     init_workspace_io(base=str(_db_dir / "workspaces"))
+    cleanup_task = asyncio.create_task(_checkpoint_ttl_cleanup())
     yield
-    # Cleanup: nothing needed for stateless sidecar
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +365,13 @@ async def _run_envelope(env: NasusEnvelope) -> None:
         payload_result = result_env.payload if result_env.payload else {}
         if isinstance(payload_result, dict) and payload_result.get("output_type") == "CHECKPOINT":
             _job_orchestrators[job_id] = job_orch
+            _job_orchestrators_ts[job_id] = time.monotonic()
+        else:
+            # Track completion order for bounded _jobs cleanup.
+            _completed_job_order.append(job_id)
+            while len(_completed_job_order) > _MAX_COMPLETED_JOBS:
+                old_id = _completed_job_order.pop(0)
+                _jobs.pop(old_id, None)
 
         # Emit the full response as a final step ONLY if it wasn't already streamed
         # token-by-token via the emitter (streamed=True means each chunk was already pushed).
@@ -414,6 +444,12 @@ async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
         # If still a CHECKPOINT, store the orch again so client can re-resume.
         if isinstance(result_dict, dict) and result_dict.get("output_type") == "CHECKPOINT":
             _job_orchestrators[new_job_id] = job_orch
+            _job_orchestrators_ts[new_job_id] = time.monotonic()
+        else:
+            _completed_job_order.append(new_job_id)
+            while len(_completed_job_order) > _MAX_COMPLETED_JOBS:
+                old_id = _completed_job_order.pop(0)
+                _jobs.pop(old_id, None)
 
         payload_data = resume_env.payload if resume_env.payload else {}
         if not isinstance(payload_data, dict) or not payload_data.get("streamed"):
@@ -597,6 +633,7 @@ async def task_stream(job_id: str) -> StreamingResponse:
         while True:
             line = await queue.get()
             if line is None:  # sentinel -- job done
+                _log_queues.pop(job_id, None)  # release queue memory
                 env = _jobs.get(job_id)
                 if env:
                     yield (
@@ -640,6 +677,7 @@ async def cancel_task(job_id: str) -> Dict[str, Any]:
 
     # Release any stored checkpoint orchestrator
     _job_orchestrators.pop(job_id, None)
+    _job_orchestrators_ts.pop(job_id, None)
 
     return {"job_id": job_id, "status": "cancelled"}
 
@@ -775,6 +813,7 @@ async def resume_task(job_id: str) -> Dict[str, Any]:
     Returns {job_id: new_job_id, status: 'PENDING'} immediately.
     """
     job_orch = _job_orchestrators.pop(job_id, None)
+    _job_orchestrators_ts.pop(job_id, None)
     if job_orch is None:
         raise HTTPException(
             status_code=404,

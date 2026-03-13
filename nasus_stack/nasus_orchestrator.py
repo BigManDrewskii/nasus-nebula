@@ -178,6 +178,7 @@ class Deliverable:
     output_type: str
     artifact: Any
     verified: bool = True
+    subtask_id: str = ""
 
     def to_dict(self):
         return {
@@ -375,6 +376,37 @@ class NasusOrchestrator:
         stages = []
         for stage_num in sorted(stage_map.keys()):
             ids = stage_map[stage_num]
+            ids_set = set(ids)
+
+            # Detect intra-stage dependencies (subtask A depends on subtask B,
+            # both in the same stage).  When present the stage must execute
+            # serially in topological order — not in parallel.
+            intra_deps: Dict[str, List[str]] = {sid: [] for sid in ids}
+            has_intra = False
+            for st_id in ids:
+                st = self.subtasks[st_id]
+                for dep_id in st.depends_on:
+                    if dep_id in ids_set:
+                        intra_deps[st_id].append(dep_id)
+                        has_intra = True
+
+            # Topological sort within the stage (DFS post-order, reversed).
+            if has_intra:
+                visited_topo: Dict[str, bool] = {}
+                topo_order: List[str] = []
+
+                def _topo_visit(sid: str) -> None:
+                    if visited_topo.get(sid):
+                        return
+                    visited_topo[sid] = True
+                    for dep in intra_deps[sid]:
+                        _topo_visit(dep)
+                    topo_order.append(sid)
+
+                for sid in ids:
+                    _topo_visit(sid)
+                ids = topo_order  # replace with dependency-respecting order
+
             contracts = []
             for st_id in ids:
                 st = self.subtasks[st_id]
@@ -391,7 +423,7 @@ class NasusOrchestrator:
                 DAGStage(
                     stage_number=stage_num,
                     subtask_ids=ids,
-                    can_parallelize=len(ids) > 1,
+                    can_parallelize=len(ids) > 1 and not has_intra,
                     data_contracts=contracts,
                 )
             )
@@ -633,6 +665,7 @@ class NasusOrchestrator:
                                 source_module=st.module,
                                 output_type="module_output",
                                 artifact=result_env.payload,
+                                subtask_id=subtask_id,
                             )
                         )
 
@@ -774,10 +807,16 @@ class NasusOrchestrator:
                     f"Self-correction cycle {max_correction_cycles}: "
                     f"re-dispatching {len(failed_ids)} failed subtask(s)"
                 )
+                failed_ids_set = set(failed_ids)
                 for sid in failed_ids:
                     st = self.subtasks[sid]
                     st.status = SubtaskStatus.PENDING
                     st.retry_count = 0
+                # Drop deliverables from failed subtasks so re-runs don't
+                # accumulate duplicate artifacts across correction cycles.
+                self.deliverables = [
+                    d for d in self.deliverables if d.subtask_id not in failed_ids_set
+                ]
                 self.stages = self._build_dag(list(self.subtasks.values()))
                 return self.execute_plan(
                     interrupt_on_irreversible=interrupt_on_irreversible,

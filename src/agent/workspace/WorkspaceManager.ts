@@ -10,12 +10,13 @@ const log = createLogger('WorkspaceManager')
  */
 
 export function slugify(text: string): string {
-  return text.toLowerCase()
+  const result = text.toLowerCase()
     .replace(/[^a-z0-9\s-_]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .slice(0, 30)
     .replace(/-+$/, '')
+  return result || 'task'
 }
 
 /**

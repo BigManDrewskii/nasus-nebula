@@ -125,6 +125,7 @@ export function useSidecarStream(
       es.addEventListener('done', () => {
         retryCountRef.current = 0
         setDone(true)
+        esRef.current = null
         es.close()
         closedRef.current = true
       })
