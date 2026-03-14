@@ -98,6 +98,9 @@ export function getActiveToolsForPhase(
       'browser_aria_snapshot',
       'browser_scroll',
       'browser_wait_for',
+      'browser_get_tabs',
+      'browser_select',
+      'browser_eval',
       'read_file',
       'write_file',
     ]
@@ -171,6 +174,9 @@ export function getActiveToolsForPhase(
       'browser_aria_snapshot',
       'browser_scroll',
       'browser_wait_for',
+      'browser_get_tabs',
+      'browser_select',
+      'browser_eval',
       'read_file',
       'write_file',
     ]

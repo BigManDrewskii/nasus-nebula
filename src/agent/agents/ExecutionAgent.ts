@@ -182,7 +182,8 @@ export class ExecutionAgent extends BaseAgent {
     }
 
     const env = params.executionConfig?.executionMode === 'docker' ? 'sandbox' : 'browser-only'
-    const toolDefs = getToolDefinitions(env)
+    const nasusStackEnabled = store.nasusStackEnabled ?? true
+    const toolDefs = getToolDefinitions(env, nasusStackEnabled ? undefined : { excludeTools: ['call_nasus_agent'] })
     const forcePowerfulModel = params.plan?.complexity === 'high'
 
     // Phase-aware tool masking (research phases only)

@@ -94,6 +94,10 @@ _job_orchestrators: Dict[str, NasusOrchestrator] = {}
 _job_orchestrators_ts: Dict[str, float] = {}
 _CHECKPOINT_TTL_S = 3600  # 1 hour
 
+# Live asyncio.Task handles: job_id -> Task
+# Stored so cancel_task() can call task.cancel() to preempt the job.
+_job_tasks: Dict[str, "asyncio.Task[None]"] = {}
+
 # Process start time for uptime calculation
 _start_time: float = time.monotonic()
 
@@ -414,6 +418,7 @@ async def _run_envelope(env: NasusEnvelope) -> None:
         )
 
     finally:
+        _job_tasks.pop(job_id, None)
         # Signal SSE stream to close
         q = _log_queues.get(job_id)
         if q is not None:
@@ -495,6 +500,7 @@ async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
             }),
         )
     finally:
+        _job_tasks.pop(new_job_id, None)
         q = _log_queues.get(new_job_id)
         if q is not None:
             await q.put(None)
@@ -585,8 +591,8 @@ async def submit_task(req: EnvelopeRequest) -> Dict[str, Any]:
     _jobs[job_id] = env
     _log_queues[job_id] = asyncio.Queue()
 
-    # Fire-and-forget
-    asyncio.create_task(_run_envelope(env))
+    task = asyncio.create_task(_run_envelope(env))
+    _job_tasks[job_id] = task
 
     return {
         "job_id": job_id,
@@ -672,9 +678,13 @@ async def task_stream(job_id: str) -> StreamingResponse:
 @app.delete("/task/{job_id}")
 async def cancel_task(job_id: str) -> Dict[str, Any]:
     """
-    Cancel a job. Marks it FAILED with reason 'cancelled by client'.
-    Note: Python tasks cannot be truly interrupted mid-run;
-    this marks the envelope and closes the SSE stream.
+    Cancel a running job.
+
+    Calls task.cancel() on the asyncio Task to raise CancelledError at the
+    next await point in _run_envelope/_run_resume (typically the run_in_executor
+    call). The finally block in those coroutines pushes the SSE sentinel and
+    cleans up state. The underlying executor thread cannot be force-killed but
+    detaches from the job — its eventual completion is silently discarded.
     """
     env = _jobs.get(job_id)
     if not env:
@@ -684,7 +694,14 @@ async def cancel_task(job_id: str) -> Dict[str, Any]:
     if current_status == NasusStatus.RUNNING:
         env.mark_failed("Cancelled by client request")
 
-    # Push sentinel to close any open SSE stream
+    # Cancel the asyncio Task — raises CancelledError into the coroutine at its
+    # current await point so it exits promptly instead of running to completion.
+    task = _job_tasks.pop(job_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+    # Push sentinel immediately so the SSE stream closes without waiting for the
+    # task's finally block (which may take an event-loop tick to run).
     q = _log_queues.get(job_id)
     if q is not None:
         await q.put(None)
@@ -839,7 +856,8 @@ async def resume_task(job_id: str) -> Dict[str, Any]:
     resume_env.mark_running()
     _jobs[new_job_id] = resume_env
     _log_queues[new_job_id] = asyncio.Queue()
-    asyncio.create_task(_run_resume(new_job_id, job_orch))
+    resume_task = asyncio.create_task(_run_resume(new_job_id, job_orch))
+    _job_tasks[new_job_id] = resume_task
     return {
         "job_id": new_job_id,
         "status": NasusStatus.PENDING.value,

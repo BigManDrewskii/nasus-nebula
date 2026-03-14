@@ -33,6 +33,15 @@ import type { getToolDefinitions } from '../tools/index'
 
 const log = createLogger('ReactLoop')
 
+/** Derive an OpenAI-compatible provider type string from a gateway base URL. */
+function _providerFromBase(apiBase: string): string | undefined {
+  if (apiBase.includes('openrouter.ai')) return 'openrouter'
+  if (apiBase.includes('requesty.ai')) return 'requesty'
+  if (apiBase.includes('deepseek.com')) return 'deepseek'
+  if (apiBase.includes('api.openai.com')) return 'openai'
+  return undefined
+}
+
 // ── Public interfaces ────────────────────────────────────────────────────────
 
 /**
@@ -329,15 +338,14 @@ export class ReactLoop {
     callbacks: ReactLoopCallbacks,
   ): Promise<LlmResponse | null> {
     const store = useAppStore.getState()
-    const apiBase = resolvedConnection.apiBase || store.apiBase
-    const apiKey = resolvedConnection.apiKey || store.apiKey
-    const provider = resolvedConnection.provider || store.provider
+    const primaryProvider = resolvedConnection.provider || store.provider
+    const primaryApiKey = resolvedConnection.apiKey || store.apiKey
 
     let model: string
     if (forcePowerfulModel) {
-      if (provider === 'openrouter' || provider === 'requesty') {
+      if (primaryProvider === 'openrouter' || primaryProvider === 'requesty') {
         model = powerfulModel(store.openRouterModels)
-      } else if (provider === 'deepseek') {
+      } else if (primaryProvider === 'deepseek') {
         model = 'deepseek-chat'
       } else {
         model = resolvedConnection.model || store.model
@@ -346,38 +354,42 @@ export class ReactLoop {
       model = resolvedConnection.model || store.model
     }
 
-    if (!apiKey || apiKey.length === 0) {
+    // Guard: no API key configured at all — fail fast before hitting the network
+    if (!primaryApiKey || primaryApiKey.length === 0) {
       const providerLabel =
-        provider === 'vercel' ? 'Vercel AI Gateway' :
-        provider === 'openrouter' ? 'OpenRouter' :
-        provider === 'openai' ? 'OpenAI' : provider
+        primaryProvider === 'vercel' ? 'Vercel AI Gateway' :
+        primaryProvider === 'openrouter' ? 'OpenRouter' :
+        primaryProvider === 'openai' ? 'OpenAI' : primaryProvider
       log.error('callLLM failed', new Error(`No API key for ${providerLabel}`))
       return null
     }
 
-    try {
-      callbacks.onModelSelected(model, model.split('/').pop() || model, provider)
+    callbacks.onModelSelected(model, model.split('/').pop() || model, primaryProvider)
 
-      const result = await streamCompletion(
-        apiBase,
-        apiKey,
-        provider,
-        model,
-        messages,
-        toolDefs,
-        {
-          onDelta: (delta) => callbacks.onChunk(delta),
-          onToolCalls: () => {},
-          onUsage: (p, c, t) => callbacks.onTokenUsage(p, c, t),
-          onError: suppressErrorEmit ? () => {} : (_err) => {
-            // Error handling is done at the loop level
-          },
-          onReasoning: (reasoning) => callbacks.onReasoning(reasoning),
-          signal,
-          extraHeaders: resolvedConnection.extraHeaders,
+    try {
+      const gatewayService = store.getGatewayService()
+      const { result } = await gatewayService.callWithFailover(
+        async (apiBase, apiKey, extraHeaders) => {
+          const provider = _providerFromBase(apiBase) ?? primaryProvider
+          return streamCompletion(
+            apiBase,
+            apiKey,
+            provider,
+            model,
+            messages,
+            toolDefs,
+            {
+              onDelta: (delta) => callbacks.onChunk(delta),
+              onToolCalls: () => {},
+              onUsage: (p, c, t) => callbacks.onTokenUsage(p, c, t),
+              onError: suppressErrorEmit ? () => {} : (_err) => {},
+              onReasoning: (reasoning) => callbacks.onReasoning(reasoning),
+              signal,
+              extraHeaders,
+            },
+          )
         },
       )
-
       return result
     } catch (err) {
       // Clean up a partial assistant+tool_calls message if the stream failed before
@@ -413,9 +425,6 @@ export class ReactLoop {
     preIterationContent: string,
     callbacks: ReactLoopCallbacks,
   ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
-    // Process one tool call at a time for maximum reliability
-    const singleToolCall = toolCalls.slice(0, 1)
-
     // Surface LLM pre-tool narration as a thinking step
     if (content?.trim()) {
       const thinkStep: AgentStep = { kind: 'thinking', content: content.trim() }
@@ -425,10 +434,12 @@ export class ReactLoop {
       }
     }
 
+    // Assistant message includes ALL tool calls so every tool_call_id has a
+    // matching tool result before the next assistant turn (OpenAI-format requirement).
     const assistantMsg: LlmMessage = {
       role: 'assistant',
       content: content || null,
-      tool_calls: singleToolCall,
+      tool_calls: toolCalls,
     }
     if (reasoningContent) {
       const currentModel = useAppStore.getState().model
@@ -440,7 +451,15 @@ export class ReactLoop {
 
     startTurnTracking(taskId)
 
-    for (const tc of singleToolCall) {
+    const availableTools = toolDefs.map((t: { function: { name: string } }) => t.function.name)
+
+    // ── Phase 1: pre-execution checks (sequential) ──────────────────────────
+    // Validate each tool call. Blocked / loop-detected / unavailable calls get
+    // an immediate synthetic error result pushed now. The rest go into readyTools.
+
+    const readyTools: Array<{ callId: string; fnName: string; args: Record<string, unknown> }> = []
+
+    for (const tc of toolCalls) {
       if (signal?.aborted) return 'aborted'
 
       const callId = tc.id
@@ -451,8 +470,6 @@ export class ReactLoop {
       } catch { /* malformed JSON */ }
 
       callbacks.onToolCall(fnName, args, callId)
-
-      const availableTools = toolDefs.map((t: { function: { name: string } }) => t.function.name)
 
       if (!availableTools.includes(fnName)) {
         const output = `Tool "${fnName}" is not available in the current environment. ${
@@ -503,7 +520,7 @@ export class ReactLoop {
         continue
       }
 
-      // Research checkpoint
+      // Research checkpoint (update shared counter before parallel dispatch)
       if (fnName === 'search_web' || fnName === 'http_fetch' || fnName === 'read_file') {
         this.searchBrowseCount++
         if (this.searchBrowseCount > 0 && this.searchBrowseCount % 3 === 0) {
@@ -515,38 +532,61 @@ export class ReactLoop {
         }
       }
 
-      // Execute tool
-      const traceSpan = tracer?.startToolCall(fnName, args)
-      let output: string
-      let isError: boolean
-      try {
-        const result = await executeTool(
-          fnName,
-          args,
-          {
-            taskId,
-            executionConfig: executionConfig ? {
-              ...executionConfig,
-              onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
-                useAppStore.getState().setSandboxStatus(status, message)
-              },
-            } : undefined,
-            onSearchStatus: (evt: Parameters<SearchStatusCallback>[0]) =>
-              callbacks.onSearchStatus(callId, evt),
-          },
-        )
-        const rawOutput = result.output
-        isError = result.isError
-        output = typeof rawOutput === 'string'
-          ? this.truncateOutput(rawOutput, fnName)
-          : JSON.stringify(rawOutput)
-      } catch (toolErr) {
-        isError = true
-        output = `Tool execution threw: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`
-        log.warn(`executeTool threw for ${fnName}`, toolErr instanceof Error ? toolErr : new Error(String(toolErr)))
-      }
+      readyTools.push({ callId, fnName, args })
+    }
 
-      traceSpan?.end(output, isError)
+    // ── Phase 2: parallel tool execution ────────────────────────────────────
+    // All non-skipped tools run concurrently. Each trace span opens before
+    // dispatch and closes when its individual promise resolves.
+
+    const execResults = await Promise.all(
+      readyTools.map(async ({ callId, fnName, args }) => {
+        const traceSpan = tracer?.startToolCall(fnName, args)
+        let output: string
+        let isError: boolean
+        try {
+          const result = await executeTool(
+            fnName,
+            args,
+            {
+              taskId,
+              executionConfig: executionConfig ? {
+                ...executionConfig,
+                onSandboxStatus: (status: 'starting' | 'ready' | 'error', message?: string) => {
+                  useAppStore.getState().setSandboxStatus(status, message)
+                },
+              } : undefined,
+              onSearchStatus: (evt: Parameters<SearchStatusCallback>[0]) =>
+                callbacks.onSearchStatus(callId, evt),
+            },
+          )
+          const rawOutput = result.output
+          isError = result.isError
+          output = typeof rawOutput === 'string'
+            ? this.truncateOutput(rawOutput, fnName)
+            : JSON.stringify(rawOutput)
+        } catch (toolErr) {
+          isError = true
+          output = `Tool execution threw: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}`
+          log.warn(`executeTool threw for ${fnName}`, toolErr instanceof Error ? toolErr : new Error(String(toolErr)))
+        }
+        traceSpan?.end(output, isError)
+        return { callId, fnName, output, isError }
+      })
+    )
+
+    if (signal?.aborted) return 'aborted'
+
+    // ── Phase 3: post-execution processing (sequential, original order) ──────
+    // Push tool result messages and system nudges in original tool-call order
+    // so the LLM sees a deterministic, well-structured conversation history.
+
+    const execResultMap = new Map(execResults.map(r => [r.callId, r]))
+    let shouldComplete = false
+
+    for (const { callId, fnName } of readyTools) {
+      const { output, isError } = execResultMap.get(callId)!
+
       this.recordToolResult(callId, output, isError, callbacks)
 
       // 3-strike error escalation
@@ -625,7 +665,7 @@ export class ReactLoop {
         }
       }
 
-      if (fnName === 'complete') return 'complete'
+      if (fnName === 'complete') shouldComplete = true
 
       // Auto-advance plan phase/step proportionally
       if (fnName !== 'update_plan' && plan) {
@@ -653,6 +693,7 @@ export class ReactLoop {
       }
     }
 
+    if (shouldComplete) return 'complete'
     return 'continue'
   }
 

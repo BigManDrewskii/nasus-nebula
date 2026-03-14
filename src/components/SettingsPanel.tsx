@@ -2008,8 +2008,10 @@ function NasusStackSection() {
     nasusInstalling,
     nasusInstallProgress,
     nasusInstallError,
+    nasusStackEnabled,
     checkNasusInstalled,
     installNasusSidecar,
+    setNasusStackEnabled,
   } = useAppStore(
     useShallow((s) => ({
       nasusReady: s.nasusReady,
@@ -2017,8 +2019,10 @@ function NasusStackSection() {
       nasusInstalling: s.nasusInstalling,
       nasusInstallProgress: s.nasusInstallProgress,
       nasusInstallError: s.nasusInstallError,
+      nasusStackEnabled: s.nasusStackEnabled,
       checkNasusInstalled: s.checkNasusInstalled,
       installNasusSidecar: s.installNasusSidecar,
+      setNasusStackEnabled: s.setNasusStackEnabled,
     }))
   )
 
@@ -2071,6 +2075,22 @@ function NasusStackSection() {
       </div>
       <div className="text-tertiary settings-exec-desc">
         The Nasus Python stack runs as a local FastAPI sidecar on port 4751. It provides specialist AI modules (Planner, Reviewer, Orchestrator, Memory) that the main agent can delegate complex sub-tasks to.
+      </div>
+
+      {/* Delegation toggle */}
+      <div className="flex-v-center justify-between settings-banner">
+        <div className="flex-col gap-1">
+          <span className="text-[12px] font-medium text-[var(--tx-primary)]">Enable delegation</span>
+          <span className="text-tertiary text-[10px]">Allow the agent to delegate sub-tasks to Nasus modules (M00, M09, M10, M11)</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => setNasusStackEnabled(!nasusStackEnabled)}
+          className="settings-toggle"
+          style={{ background: nasusStackEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
+        >
+          <span className="settings-toggle-knob" style={{ left: nasusStackEnabled ? 'calc(100% - 20px)' : 2 }} />
+        </button>
       </div>
 
       {/* Status rows */}

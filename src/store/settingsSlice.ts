@@ -132,6 +132,8 @@ export interface SettingsSlice {
   nasusInstalling: boolean
   nasusInstallProgress: string | null
   nasusInstallError: string | null
+  /** Allow agent to delegate to the Python Nasus stack via call_nasus_agent */
+  nasusStackEnabled: boolean
   /** Rate limiting settings (to avoid 429 errors) */
   rateLimitEnabled: boolean
   maxRequestsPerMinute: number
@@ -176,6 +178,7 @@ export interface SettingsSlice {
   setRoutingPreview: (preview: { modelId: string; displayName: string; reason: string } | null) => void
   setTaskRouterState: (taskId: string, state: Partial<TaskRouterState>) => void
   updateTokenUsage: (taskId: string, usage: { promptTokens: number; completionTokens: number }, modelId: string) => void
+  setNasusStackEnabled: (enabled: boolean) => void
   setRateLimitEnabled: (enabled: boolean) => void
   setMaxRequestsPerMinute: (max: number) => void
   setTextScale: (scale: TextScale) => void
@@ -228,6 +231,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   nasusInstalling: false,
   nasusInstallProgress: null,
   nasusInstallError: null,
+  nasusStackEnabled: true,
   rateLimitEnabled: true,
   maxRequestsPerMinute: 60,
   routerConfig: {
@@ -564,6 +568,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
         }
       }
     }),
+
+  setNasusStackEnabled: (enabled) => set({ nasusStackEnabled: enabled }),
 
   setRateLimitEnabled: (enabled) => {
     set({ rateLimitEnabled: enabled })

@@ -280,9 +280,7 @@ export function partializeTaskSlice(state: TaskSlice): Partial<TaskSlice> {
   return {
     tasks: state.tasks,
     messages: trimmedMessages,
-    rawHistory: Object.fromEntries(
-      Object.entries(state.rawHistory).map(([tid, msgs]) => [tid, msgs.slice(-5)])
-    ),
+    rawHistory: {},
     activeTaskId: state.activeTaskId,
   }
 }

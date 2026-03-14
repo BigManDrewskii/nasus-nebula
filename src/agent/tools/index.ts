@@ -58,6 +58,9 @@ import { BrowserScrollTool } from './browser/BrowserScrollTool'
 import { BrowserWaitForTool } from './browser/BrowserWaitForTool'
 import { BrowserAriaSnapshotTool } from './browser/BrowserAriaSnapshotTool'
 import { BrowserReadPageTool } from './browser/BrowserReadPageTool'
+import { BrowserGetTabsTool } from './browser/BrowserGetTabsTool'
+import { BrowserSelectTool } from './browser/BrowserSelectTool'
+import { BrowserEvalTool } from './browser/BrowserEvalTool'
 
 /**
  * Global tool registry instance.
@@ -99,6 +102,9 @@ toolRegistry.registerConstructor('browser_scroll', BrowserScrollTool)
 toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
 toolRegistry.registerConstructor('browser_read_page', BrowserReadPageTool)
+toolRegistry.registerConstructor('browser_get_tabs', BrowserGetTabsTool)
+toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
+toolRegistry.registerConstructor('browser_eval', BrowserEvalTool)
 
 // ── Workspace bridge ──────────────────────────────────────────────────────────
 // Extract code blocks from an M05 CodeResult or M00 SynthesisReport payload
@@ -251,21 +257,23 @@ toolRegistry.registerConstructor('call_nasus_agent', NasusAgentTool)
 /**
  * Get tool function definitions for OpenAI function calling.
  */
-export function getToolDefinitions(env: 'sandbox' | 'browser-only' = 'sandbox'): Array<{ type: 'function'; function: { name: string; description: string; parameters: JSONSchema7 } }> {
+export function getToolDefinitions(
+  env: 'sandbox' | 'browser-only' = 'sandbox',
+  opts?: { excludeTools?: string[] },
+): Array<{ type: 'function'; function: { name: string; description: string; parameters: JSONSchema7 } }> {
   const allTools = toolRegistry.getToolDefinitions()
+  const extraExcludes = new Set(opts?.excludeTools ?? [])
 
-    if (env === 'browser-only') {
-      // Remove tools that require shell/sandbox
-      const excludeInBrowserMode = new Set([
-        'bash_execute',
-        'git',
-      ])
+  if (env === 'browser-only') {
+    const excludeInBrowserMode = new Set(['bash_execute', 'git', ...extraExcludes])
     return allTools
       .filter(t => !excludeInBrowserMode.has(t.function.name))
       .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
   }
 
-  return allTools.map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
+  return allTools
+    .filter(t => !extraExcludes.has(t.function.name))
+    .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
 }
 
 /**
@@ -354,4 +362,7 @@ export {
   BrowserWaitForTool,
   BrowserAriaSnapshotTool,
   BrowserReadPageTool,
+  BrowserGetTabsTool,
+  BrowserSelectTool,
+  BrowserEvalTool,
 } from './browser'
