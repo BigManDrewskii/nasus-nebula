@@ -391,7 +391,7 @@ export class ReactLoop {
         },
       )
       return result
-    } catch (err) {
+    } catch (_err) {
       // Clean up a partial assistant+tool_calls message if the stream failed before
       // tool execution could complete.
       if (messages.length > 0) {

@@ -13,9 +13,10 @@ import { BaseAgent } from '../core/BaseAgent'
 import { AgentState } from '../core/AgentState'
 import type { AgentContext, AgentResult, ExecutionPlan, PlanPhase, PlanFile } from '../core/Agent'
 import { cheapestModel, chatJsonViaGateway } from '../llm'
-import { memoryStore } from '../memory/LocalMemoryStore'
+import { memoryStore } from '../memory/SqliteMemoryStore'
 import { useAppStore } from '../../store'
 import { createLogger } from '../../lib/logger'
+import type { SpecialistDomain } from '../prompts/specialistContexts'
 
 const log = createLogger('PlanningAgent')
 
@@ -155,6 +156,7 @@ export class PlanningAgent extends BaseAgent {
 
       // Parse/Validate the response into an ExecutionPlan
       const plan = this.validatePlan(planData, userInput)
+      plan.specialistDomain = this.detectDomain(userInput)
 
       return {
         state: this.state,
@@ -236,6 +238,19 @@ export class PlanningAgent extends BaseAgent {
         log.warn('callWithStructuredOutput failed, falling back to chatJson', err instanceof Error ? err : new Error(String(err)))
         return null
       }
+  }
+
+  private detectDomain(task: string): SpecialistDomain {
+    const t = task.toLowerCase()
+    if (/\b(research|find|search|investigate|compare|survey|sources)\b/.test(t)) return 'research'
+    if (/\b(code|implement|build|debug|refactor|write.*function|fix.*bug|test)\b/.test(t)) return 'code'
+    if (/\b(analyze|data|csv|chart|plot|graph|pandas|statistics|dataset)\b/.test(t)) return 'data_analysis'
+    if (/\b(write|draft|blog|email|copy|content|article|post|social)\b/.test(t)) return 'content'
+    if (/\b(browser|scrape|click|navigate|fill.*form|automate.*web)\b/.test(t)) return 'browser_automation'
+    if (/\b(api|endpoint|rest|graphql|webhook|integration|fetch)\b/.test(t)) return 'api_integration'
+    if (/\b(product|strategy|roadmap|prd|feature|prioritize|stakeholder)\b/.test(t)) return 'product_strategy'
+    if (/\b(landing page|html.*page|website|web page|homepage)\b/.test(t)) return 'landing_page'
+    return 'general'
   }
 
   /**

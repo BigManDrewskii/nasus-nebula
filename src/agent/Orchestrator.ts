@@ -1,12 +1,9 @@
 /**
- * Agent Orchestrator — Coordinates multiple agents in a workflow.
+ * Agent Orchestrator — Coordinates the planning and execution agents.
  *
- * The Orchestrator:
- * 1. Checks if the Python sidecar is available
- * 2. If sidecar is ready: routes tasks through the sidecar (FastAPI :4751)
- * 3. If sidecar is unavailable: falls back to direct LLM execution
- * 4. Presents plans for user approval
- * 5. Tracks overall progress and handles errors
+ * Single execution path: plan → user approval → execute via ReactLoop.
+ * The Python sidecar path has been removed; the TypeScript ReactLoop
+ * is the sole execution engine.
  */
 
 import type { ExecutionPlan } from './core/Agent'
@@ -16,29 +13,6 @@ import type { ExecutionConfig as SandboxConfig } from './sandboxRuntime'
 import { generatePlan, isSimplePlan } from './agents/PlanningAgent'
 import { ExecutionAgent, type ExecutionConfigParams } from './agents/ExecutionAgent'
 import { useAppStore } from '../store'
-import {
-  healthCheck,
-  healthStatus,
-  configureSidecar,
-  runTask,
-  streamJobEvents,
-  approveSubtask,
-  rejectSubtask,
-  resumeTask,
-  type SidecarStep,
-  type StatusResponse,
-  type CheckpointPayload,
-} from './sidecarClient'
-import { extractAndWriteCodeFiles } from './codeExtractor'
-
-// ─── SSE stream type helpers ──────────────────────────────────────────────────
-
-type StreamSource = AsyncIterable<{ type: string; data?: unknown; error?: string }>
-
-interface ConsumeJobStreamOptions {
-  /** Pre-known sidecar job id (checkpoint resume path) */
-  knownJobId?: string
-}
 
 // ─── Public interfaces ────────────────────────────────────────────────────────
 
@@ -54,8 +28,6 @@ export interface OrchestratorConfig {
   approvalTimeout?: number
   /** Enable verification after execution */
   enableVerification?: boolean
-  /** Force sidecar routing even if health check is slow */
-  forceSidecar?: boolean
 }
 
 /**
@@ -93,49 +65,19 @@ export class AgentOrchestrator {
   readonly description = 'Coordinates planning and execution agents'
 
   private config: OrchestratorConfig = {}
-  private _isSidecarReady = false
-
-  /** True if the last health check confirmed the sidecar is up */
-  get isSidecarReady(): boolean {
-    return this._isSidecarReady
-  }
 
   setConfig(config: OrchestratorConfig): void {
     this.config = { ...config }
   }
 
   /**
-   * Probe the sidecar health endpoint and cache the result.
-   * Call this once on app startup (App.tsx) and again whenever
-   * the sidecar is restarted.
-   */
-  async checkSidecar(): Promise<boolean> {
-    this._isSidecarReady = await healthCheck()
-    return this._isSidecarReady
-  }
-
-  /**
    * Process a task through the full agent pipeline.
-   * Routes through the Python sidecar if available, otherwise
-   * falls back to direct LLM execution.
+   * Generates a plan, waits for approval, then executes via the ReactLoop.
    */
   async processTask(params: OrchestratorTaskParams): Promise<void> {
     const { taskId, signal } = params
     const store = useAppStore.getState()
 
-    // Refresh sidecar health on each task (cheap ping, ~5ms)
-    if (!this.config.forceSidecar) {
-      await this.checkSidecar()
-    }
-
-    if (this._isSidecarReady) {
-      // ── Sidecar path ─────────────────────────────────────────────────────────────────────
-      store.setStatus(taskId, 'planning')
-      await this.runViaSidecar(params)
-      return
-    }
-
-    // ── Fallback: direct LLM path ────────────────────────────────────────────────────────────
     if (this.config.skipPlanning) {
       await this.executeDirectly(params)
       return
@@ -160,7 +102,6 @@ export class AgentOrchestrator {
 
     if (signal.aborted) return
 
-    // Auto-approve simple plans without blocking on the modal.
     if (this.config.autoApproveSimple && isSimplePlan(plan)) {
       await this.executePlan(params, plan)
       return
@@ -175,291 +116,6 @@ export class AgentOrchestrator {
     }
 
     await this.executePlan(params, approvalResult.plan)
-  }
-
-  /**
-   * Route a task through the Python sidecar (FastAPI :4751).
-   * Streams step events back into the agent store and chat UI in real time.
-   */
-  private async runViaSidecar(params: OrchestratorTaskParams): Promise<void> {
-    const { taskId, messageId } = params
-    const store = useAppStore.getState()
-
-    // Always sync the sidecar's LLM credentials before each task so that model/key
-    // changes made in Settings take effect immediately without requiring a restart.
-    // Also forward search API keys so M01 (Research Analyst) can do real web searches.
-    if (params.apiKey) {
-      const ok = await configureSidecar({
-        api_key: params.apiKey,
-        api_base: params.apiBase || 'https://openrouter.ai/api/v1',
-        model: params.model || 'openai/gpt-4o-mini',
-        exa_key: params.searchConfig?.exaKey || '',
-        brave_key: params.searchConfig?.braveKey || '',
-        serper_key: params.searchConfig?.serperKey || '',
-      })
-      if (!ok) {
-        // /configure failed — check if sidecar has credentials from a previous call.
-        // If not, bail rather than running with stale (possibly wrong-provider) config.
-        const health = await healthStatus()
-        if (!health?.llm_configured) {
-          store.setError(taskId, messageId, 'Failed to configure LLM credentials. Check your API key and try again.')
-          return
-        }
-      }
-    } else {
-      // No key in params — still check if sidecar needs any credentials at all
-      const health = await healthStatus()
-      if (health && !health.llm_configured) {
-        return // can't run without credentials
-      }
-    }
-
-    // Notify UI that the agent has started (drives useAgentStatus → 'processing')
-    window.dispatchEvent(new CustomEvent('nasus:agent-started', { detail: { taskId, messageId } }))
-
-    // Normalize messages to a simple {role, content} format the Python LLM client expects
-    const normalizedMessages = params.userMessages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string'
-        ? m.content
-        : Array.isArray(m.content)
-          ? m.content.map((p: { text?: string }) => p.text ?? '').join(' ')
-          : String(m.content),
-    }))
-
-    const payload: Record<string, unknown> = {
-      task_id: taskId,
-      message_id: messageId,
-      user_message: params.userMessage,
-      goal: params.userMessage,
-      messages: normalizedMessages,
-      model: params.model,
-      api_base: params.apiBase,
-      provider: params.provider,
-      max_iterations: params.maxIterations ?? 10,
-    }
-
-    // Listen for the panel dispatching a resume decision.
-    const onCheckpointResume = (e: Event) => {
-      const detail = (e as CustomEvent<{ jobId: string }>).detail
-      void this.continueFromCheckpoint(params, detail.jobId)
-    }
-    window.addEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
-
-    store.resetPlanState()
-
-    try {
-      await this.consumeJobStream(params, runTask('M00', payload))
-    } finally {
-      window.removeEventListener(`nasus:checkpoint-resume-${taskId}`, onCheckpointResume)
-    }
-  }
-
-  /**
-   * Shared SSE event processing loop — handles step, status, done, and error
-   * events identically for both initial execution and checkpoint resume paths.
-   */
-  private async consumeJobStream(
-    params: OrchestratorTaskParams,
-    source: StreamSource,
-    opts: ConsumeJobStreamOptions = {},
-  ): Promise<void> {
-    const { taskId, messageId, signal } = params
-    const store = useAppStore.getState()
-
-    const finishOk = () => {
-      store.setStreaming(taskId, messageId, false)
-      store.updateTaskStatus(taskId, 'completed')
-      store.setStatus(taskId, 'completed')
-      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
-      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
-    }
-
-    const finishErr = (msg: string) => {
-      store.setError(taskId, messageId, msg)
-      store.setStatus(taskId, 'error')
-      window.dispatchEvent(new CustomEvent('nasus:agent-done', { detail: { taskId, messageId } }))
-      window.dispatchEvent(new CustomEvent('nasus:processing-end', { detail: { taskId, messageId } }))
-    }
-
-    // Accumulate all 'final' chunks so code extraction runs on the complete response.
-    // (The sidecar streams final content as many small chunks; running extraction per-chunk
-    //  means the regex never sees a complete closing ``` fence.)
-    let accumulatedFinal = ''
-    // Track the callId of the most recent tool_call for pairing with observations.
-    let lastToolCallId: string | null = null
-    // The sidecar job_id for this run — pre-populated for checkpoint resumes,
-    // otherwise captured from the first status/done event.
-    let sidecarJobId: string | null = opts.knownJobId ?? null
-
-    try {
-      for await (const event of source) {
-        if (signal.aborted) break
-
-        switch (event.type) {
-          case 'step': {
-            const step = event.data as SidecarStep
-            const callId = `sc-${step.step}`
-
-            // Handle plan_structure events emitted by the sidecar orchestrator.
-            if (step.type === 'plan_structure' && step.content) {
-              try {
-                const raw = JSON.parse(step.content) as ExecutionPlan & { createdAt: string }
-                const plan: ExecutionPlan = { ...raw, createdAt: new Date(raw.createdAt) }
-                store.setCurrentPlan(plan)
-                store.setCurrentPhase(plan.phases.length > 1 ? 1 : 0)
-                store.setCurrentStep(0)
-              } catch { /* ignore malformed JSON */ }
-              break
-            }
-
-            // Map sidecar step types → typed AgentStep on message.steps (drives AgentStepsView).
-            if (step.type === 'plan' && step.content) {
-              store.addStep(taskId, messageId, { kind: 'thinking', content: step.content })
-            } else if (step.type === 'tool_call' && step.tool) {
-              lastToolCallId = callId
-              store.addStep(taskId, messageId, {
-                kind: 'tool_call',
-                tool: step.tool,
-                input: (step.tool_input as Record<string, unknown>) ?? {},
-                callId,
-              })
-              window.dispatchEvent(new CustomEvent('nasus:tool-call', {
-                detail: { taskId, messageId, tool: step.tool },
-              }))
-            } else if (step.type === 'observation' && lastToolCallId) {
-              store.updateStep(taskId, messageId, {
-                kind: 'tool_result',
-                callId: lastToolCallId,
-                output: step.content ?? '',
-                isError: false,
-              })
-              lastToolCallId = null
-            }
-
-            // Accumulate final content for code extraction; also stream to chat.
-            if (step.type === 'final' && step.content) {
-              store.appendChunk(taskId, messageId, step.content)
-              accumulatedFinal += step.content
-              window.dispatchEvent(new CustomEvent('nasus:stream-chunk', {
-                detail: { taskId, messageId, delta: step.content },
-              }))
-            }
-            break
-          }
-          case 'status': {
-            const s = event.data as StatusResponse
-            if (!sidecarJobId) sidecarJobId = s.job_id
-            if (s.status === 'running') store.setStatus(taskId, 'executing')
-            break
-          }
-          case 'done': {
-            const final = event.data as StatusResponse & { errors?: string[] }
-            if (!sidecarJobId) sidecarJobId = final.job_id
-
-            // HITL checkpoint: execution paused, waiting for human approval.
-            const result = final.result as Record<string, unknown> | undefined
-            if (result?.output_type === 'CHECKPOINT') {
-              store.setStreaming(taskId, messageId, false)
-              store.setStatus(taskId, 'awaiting_checkpoint_approval')
-              store.setPendingCheckpoint(result as unknown as CheckpointPayload, sidecarJobId, messageId)
-              window.dispatchEvent(new CustomEvent('nasus:checkpoint', {
-                detail: { taskId, messageId, checkpoint: result, jobId: sidecarJobId },
-              }))
-              break
-            }
-
-            if (final.status === 'completed') {
-              // Extract code files from the fully-accumulated response text.
-              if (accumulatedFinal) {
-                void extractAndWriteCodeFiles(
-                  accumulatedFinal,
-                  taskId,
-                  (s) => {
-                    if (s.kind === 'tool_result') {
-                      store.updateStep(taskId, messageId, s)
-                    } else {
-                      store.addStep(taskId, messageId, s)
-                    }
-                  },
-                )
-              }
-              finishOk()
-            } else if (final.status === 'error') {
-              finishErr(final.error ?? final.errors?.[0] ?? 'Sidecar execution failed')
-            }
-            break
-          }
-          case 'error': {
-            finishErr((event as { error?: string }).error ?? 'Sidecar stream error')
-            break
-          }
-        }
-      }
-
-      // If the stream ended without a 'done' event (e.g. sidecar closed cleanly),
-      // ensure the message is closed so it doesn't spin forever.
-      if (!signal.aborted) {
-        const msgs = store.getMessages(taskId)
-        if (msgs.some(m => m.id === messageId && m.streaming)) {
-          finishOk()
-        }
-      }
-    } catch (err) {
-      if (signal.aborted) return
-      finishErr(err instanceof Error ? err.message : 'Sidecar stream failed')
-      throw err
-    }
-  }
-
-  /**
-   * Continue execution after a HITL checkpoint.
-   * Called when the user dispatches `nasus:checkpoint-resume-{taskId}`.
-   * Sends all approve/reject decisions to the sidecar, then re-opens the
-   * SSE stream for the resumed job and pipes events into the same handlers.
-   */
-  async continueFromCheckpoint(
-    params: OrchestratorTaskParams,
-    checkpointJobId: string,
-  ): Promise<void> {
-    const { taskId, messageId } = params
-    const store = useAppStore.getState()
-
-    const decisions = store.checkpointDecisions ?? {}
-    const checkpoint = store.pendingCheckpoint
-
-    if (!checkpoint) return
-
-    store.clearCheckpoint()
-
-    // Send all decisions before calling resume
-    await Promise.all(
-      checkpoint.pending_approvals.map(({ subtask_id }) => {
-        const decision = decisions[subtask_id] ?? 'approve'
-        return decision === 'approve'
-          ? approveSubtask(checkpointJobId, subtask_id)
-          : rejectSubtask(checkpointJobId, subtask_id)
-      }),
-    )
-
-    // Open resumed stream
-    let resumeJobId: string
-    try {
-      const resumed = await resumeTask(checkpointJobId)
-      resumeJobId = resumed.job_id
-    } catch (err) {
-      store.setError(taskId, messageId, err instanceof Error ? err.message : 'Resume failed')
-      return
-    }
-
-    store.setStreaming(taskId, messageId, true)
-    store.setStatus(taskId, 'executing')
-
-    try {
-      await this.consumeJobStream(params, streamJobEvents(resumeJobId), { knownJobId: resumeJobId })
-    } catch {
-      // Error already handled by consumeJobStream (finishErr called + error state set)
-    }
   }
 
   /**
@@ -516,7 +172,7 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Execute a plan using the ExecutionAgent (fallback path).
+   * Execute a plan using the ExecutionAgent.
    */
   private async executePlan(
     params: OrchestratorTaskParams,
@@ -561,7 +217,7 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Execute directly without planning (skipPlanning mode, fallback path).
+   * Execute directly without planning (skipPlanning mode).
    */
   private async executeDirectly(params: OrchestratorTaskParams): Promise<void> {
     const { taskId, messageId, signal } = params
@@ -627,16 +283,14 @@ export class AgentOrchestrator {
   }
 }
 
-// ─── Singleton & named export ───────────────────────────────────────────────────────────────────────────
+// ─── Singleton & named export ─────────────────────────────────────────────────
 
-/** Shared orchestrator instance (use this from components & CallNasusAgentTool). */
+/** Shared orchestrator instance. */
 export const orchestrator = new AgentOrchestrator()
 
 /**
  * Named export alias so callers can do:
  *   import { processTaskWithOrchestrator } from '../agent/Orchestrator'
- *
- * This is a thin wrapper that delegates to the singleton instance.
  */
 export async function processTaskWithOrchestrator(
   params: OrchestratorTaskParams,

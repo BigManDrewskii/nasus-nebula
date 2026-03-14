@@ -6,7 +6,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import { streamText, jsonSchema, type ModelMessage } from 'ai';
 import { useAppStore } from '../store';
-import { getGlobalRateLimiter } from './gateway/rateLimiter';
 import { findModelById } from './gateway/modelRegistry';
 import { getUnifiedModel, type ProviderConfig } from './gateway/provider';
 import { sanitizeMessages } from './messageUtils';
@@ -273,10 +272,6 @@ async function _streamCompletionAttempt(
   }
 
   try {
-      // Proactive rate limiting — wait before making request if needed
-      const rateLimiter = getGlobalRateLimiter()
-      await rateLimiter.acquire()
-
       const { fullStream, toolCalls, usage, finishReason } = await streamText({
         model: unifiedModel,
           messages: coreMessages,
@@ -409,7 +404,6 @@ async function rawChatRequest(
         await new Promise(r => setTimeout(r, 2000 * attempt))
       }
     try {
-      await getGlobalRateLimiter().acquire()
       const resp = await fetch(url, { method: 'POST', headers, body })
       if (!resp.ok) {
         const errText = await resp.text().catch(() => '')
@@ -506,9 +500,6 @@ export async function chatJsonViaGateway<T>(prompt: string, maxTokens = 1000, mo
  * Kept for backwards compat — new code should use fetchOpenRouterModels.
  */
 export async function fetchModels(apiBase: string, apiKey: string): Promise<string[]> {
-  // Rate limiting for model fetching
-  await getGlobalRateLimiter().acquire()
-
   const url = `${apiBase.replace(/\/$/, '')}/models`
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
@@ -572,9 +563,6 @@ function getORHeaders(): Record<string, string> {
  * Returns full OpenRouterModel objects sorted by provider family then name.
  */
 export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
-  // Rate limiting for model fetching too
-  await getGlobalRateLimiter().acquire()
-
   const url = `${OR_API_BASE}/models`
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,

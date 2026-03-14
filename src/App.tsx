@@ -15,7 +15,6 @@ import { useAppEventListeners } from './hooks/useAppEventListeners'
 import { useAppInit } from './hooks/useAppInit'
 import { PanelDivider } from './components/PanelDivider'
 import { createLogger } from './lib/logger'
-import { useSidecarHealthPoll } from './hooks/useSidecarHealthPoll'
 
 const log = createLogger('App')
 
@@ -24,7 +23,6 @@ const SettingsPanel = lazy(() => import('./components/SettingsPanel').then(m => 
 const OnboardingScreen = lazy(() => import('./components/OnboardingScreen').then(m => ({ default: m.OnboardingScreen })))
 const InitializationScreen = lazy(() => import('./components/InitializationScreen').then(m => ({ default: m.InitializationScreen })))
 const MemoryBrowser = lazy(() => import('./components/MemoryBrowser').then(m => ({ default: m.MemoryBrowser })))
-const SidecarPrompt = lazy(() => import('./components/SidecarPrompt').then(m => ({ default: m.SidecarPrompt })))
 
 const LAYOUT_KEY = 'nasus-layout-state'
 
@@ -71,7 +69,7 @@ function saveLayout(state: LayoutState) {
 }
 
 function App() {
-  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, textScale, sidecarInstalled, sidecarPromptShown } = useAppStore(
+  const { tasks, activeTaskId, setActiveTaskId, addTask, onboardingComplete, settingsOpen, closeSettings, openSettings, checkSidecarInstalled, textScale } = useAppStore(
       useShallow((s) => ({
         tasks: s.tasks,
         activeTaskId: s.activeTaskId,
@@ -83,8 +81,6 @@ function App() {
         openSettings: s.openSettings,
         checkSidecarInstalled: s.checkSidecarInstalled,
         textScale: s.textScale,
-        sidecarInstalled: s.sidecarInstalled,
-        sidecarPromptShown: s.sidecarPromptShown,
       }))
     )
 
@@ -101,25 +97,18 @@ function App() {
   const [pruneNotice, setPruneNotice] = useState<string | null>(null)
   const [memoryBrowserOpen, setMemoryBrowserOpen] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
-  const [showSidecarPrompt, setShowSidecarPrompt] = useState(false)
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
   const [updateVersion, setUpdateVersion] = useState('')
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const layoutPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const outputPanelRef = useRef<HTMLDivElement>(null)
 
-  useSidecarHealthPoll()
   useAppEventListeners({
     setRightCollapsed,
     setRightActiveTab,
     setPruneNotice,
     setMemoryBrowserOpen,
     setIsOffline,
-    onBrowserActivity: useCallback(() => {
-      if (!sidecarInstalled && !sidecarPromptShown) {
-        setShowSidecarPrompt(true)
-      }
-    }, [sidecarInstalled, sidecarPromptShown]),
   })
   const workspaceFiles = useWorkspaceFiles(activeTaskId)
   useModelSync()
@@ -437,14 +426,6 @@ function App() {
           {memoryBrowserOpen && (
             <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 360, zIndex: 200, display: 'flex', flexDirection: 'column', background: '#0d0d0d', borderLeft: '1px solid var(--glass-border)' }}>
               <MemoryBrowser onClose={() => setMemoryBrowserOpen(false)} />
-            </div>
-          )}
-          {showSidecarPrompt && (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <SidecarPrompt
-                onInstallComplete={() => setShowSidecarPrompt(false)}
-                onSkip={() => setShowSidecarPrompt(false)}
-              />
             </div>
           )}
         </Suspense>

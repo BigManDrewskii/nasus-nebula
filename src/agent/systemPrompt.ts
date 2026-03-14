@@ -168,7 +168,6 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 - **save_preference(key, value)** — Save a specific user preference (e.g., language, framework, style). Persists across tasks.
 - **complete(summary)** — Signal task completion with a summary. Use when all steps are done.
 - **update_plan(updates)** — Modify the execution plan. Use when you discover that the original plan needs changes (steps to add, remove, reorder, or modify).
-- **call_nasus_agent(module_id, payload?)** — Delegate to the Nasus Python sidecar for pipeline orchestration (M00), memory (M09), planning (M10), or review (M11). Do NOT use for code/file generation — write those directly with write_file. If the result payload contains a "blocks" array or nested deliverables with blocks, the files are automatically written to the workspace — you do not need to call write_file for them.
 
 ## Task Execution Strategy
 
@@ -181,7 +180,7 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 
 ### For HTML/CSS/JS landing pages and static sites (browser mode):
 1. Apply the **Vercel Web Interface Guidelines** already in your context (see below). No fetch needed.
-2. Write the HTML, CSS, and JS code YOURSELF using separate write_file calls — do NOT use call_nasus_agent for website generation (the sidecar's code engineer requires LLM configuration and may fall back to a stub):
+2. Write the HTML, CSS, and JS code YOURSELF using separate write_file calls:
    - **index.html** — HTML markup only, referencing ./style.css and ./script.js
    - **style.css** — all CSS styles
    - **script.js** — all JavaScript

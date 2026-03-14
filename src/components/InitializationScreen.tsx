@@ -12,13 +12,12 @@ import { Pxi } from './Pxi'
 const PHASE_LABELS: Record<InitPhase, string> = {
   hydrating_store: 'Preparing workspace',
   init_gateway: 'Connecting to gateway',
-  checking_sidecar: 'Starting services',
   warming_embeddings: 'Warming up models',
   complete: 'Ready',
   error: 'Initialization failed',
 }
 
-const NON_BLOCKING_PHASES: InitPhase[] = ['checking_sidecar', 'warming_embeddings']
+const NON_BLOCKING_PHASES: InitPhase[] = ['warming_embeddings']
 
 interface Props {
   phase: InitPhase

@@ -67,10 +67,10 @@ const FILENAME_HINT_RE = [
   /^\/\/\s*(?:filename|file|save\s+as)[:\s]+(\S+)/im,
   /^#\s*(?:filename|file|save\s+as)[:\s]+(\S+)/im,
   // Bare filename in a comment: <!-- index.html --> / // script.js / /* styles.css */ / # main.py
-  /^<!--\s*([\w][\w.\-]*\.[\w]+)\s*-->/im,
-  /^\/\*\s*([\w][\w.\-]*\.[\w]+)\s*\*\//im,
-  /^\/\/\s*([\w][\w.\-]*\.[\w]+)\s*$/im,
-  /^#\s*([\w][\w.\-]*\.[\w]+)\s*$/im,
+  /^<!--\s*([\w][\w.-]*\.[\w]+)\s*-->/im,
+  /^\/\*\s*([\w][\w.-]*\.[\w]+)\s*\*\//im,
+  /^\/\/\s*([\w][\w.-]*\.[\w]+)\s*$/im,
+  /^#\s*([\w][\w.-]*\.[\w]+)\s*$/im,
 ]
 
 function extractFilenameHint(code: string): string | null {
@@ -83,7 +83,7 @@ function extractFilenameHint(code: string): string | null {
 }
 
 function safeName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._\-]/g, '_').replace(/^\./, '_')
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^\./, '_')
 }
 
 function inferFilename(

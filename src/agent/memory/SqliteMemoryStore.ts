@@ -172,17 +172,21 @@ export class SqliteMemoryStore implements MemoryStore {
     const ts = metadata.timestamp ?? Date.now()
     const meta: MemoryMetadata = { ...metadata, timestamp: ts }
 
-    await tauriInvoke('db_save_memory', {
-      memory: {
-        id,
-        taskId: meta.taskId,
-        content,
-        contentType: meta.contentType ?? null,
-        tags: meta.tags ?? null,
-        timestamp: ts,
-        embedding: embeddingToBytes(embedding),
-      } satisfies DbMemory,
-    })
+    try {
+      await tauriInvoke('db_save_memory', {
+        memory: {
+          id,
+          taskId: meta.taskId,
+          content,
+          contentType: meta.contentType ?? null,
+          tags: meta.tags ?? null,
+          timestamp: ts,
+          embedding: embeddingToBytes(embedding),
+        } satisfies DbMemory,
+      })
+    } catch (err) {
+      log.warn('db_save_memory unavailable — storing in-memory only', err instanceof Error ? err : new Error(String(err)))
+    }
 
     const item: MemoryItem = { id, content, embedding, metadata: meta }
     this.memories.set(id, item)
@@ -263,5 +267,35 @@ export class SqliteMemoryStore implements MemoryStore {
       .map((m, i) => `${i + 1}. ${m.content.slice(0, 200)}${m.content.length > 200 ? '...' : ''}`)
       .join('\n')}`
     return { memories, context }
+  }
+}
+
+export type { MemoryItem, MemoryResult, MemoryMetadata } from './MemoryStore'
+
+export const memoryStore: SqliteMemoryStore = new SqliteMemoryStore()
+
+export async function initMemoryStore(): Promise<void> {
+  await memoryStore.init()
+}
+
+export async function storeTaskCompletion(
+  taskId: string,
+  summary: string,
+  outputFiles: string[] = [],
+): Promise<void> {
+  await memoryStore.store(summary, {
+    taskId,
+    timestamp: Date.now(),
+    contentType: 'output',
+    tags: ['completed', 'summary'],
+  })
+
+  if (outputFiles.length > 0) {
+    await memoryStore.store(outputFiles.join('\n'), {
+      taskId,
+      timestamp: Date.now(),
+      contentType: 'code',
+      tags: ['files', 'output'],
+    })
   }
 }

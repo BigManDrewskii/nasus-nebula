@@ -956,17 +956,6 @@ function formatActionLabel(tool: string, input: Record<string, unknown>): { labe
     case 'browser_type':
       return { label: 'Typing into field', sublabel: String(input.selector ?? '') }
 
-    case 'call_nasus_agent': {
-      const MODULE_LABELS: Record<string, string> = {
-        M00: 'Orchestrating pipeline',
-        M09: 'Managing memory',
-        M10: 'Planning tasks',
-        M11: 'Reviewing quality',
-      }
-      const moduleId = String(input.module_id ?? '')
-      return { label: MODULE_LABELS[moduleId] ?? 'Delegating to Nasus', sublabel: moduleId || null }
-    }
-
     default:
       return { label: tool, sublabel: null }
   }
@@ -990,7 +979,6 @@ function toolIcon(tool: string): string {
     case 'browser_extract':    return 'file-lines'
     case 'browser_screenshot': return 'camera'
     case 'browser_scroll':     return 'arrows-up-down'
-    case 'call_nasus_agent':   return 'server'
     default:                   return 'cog'
   }
 }
@@ -1011,7 +999,6 @@ function toolIconColor(tool: string): string {
     case 'browser_type':
     case 'browser_extract':
     case 'browser_screenshot': return 'oklch(72% 0.1 300)'
-    case 'call_nasus_agent':   return 'oklch(72% 0.14 290)'
     default:                   return 'var(--tx-tertiary)'
   }
 }

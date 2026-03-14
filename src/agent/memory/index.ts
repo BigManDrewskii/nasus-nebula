@@ -16,11 +16,10 @@ export {
 } from './MemoryStore'
 
 export {
-  LocalMemoryStore,
   memoryStore,
   initMemoryStore,
-    storeTaskCompletion,
-  } from './LocalMemoryStore'
+  storeTaskCompletion,
+} from './SqliteMemoryStore'
 
 export {
   warmEmbeddingModel,

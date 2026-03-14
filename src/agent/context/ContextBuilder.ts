@@ -15,7 +15,7 @@ import type { ToolDefinition } from '../llm'
 import { SYSTEM_PROMPT } from '../systemPrompt'
 import { sanitizeMessages } from '../messageUtils'
 import type { ExecutionPlan } from '../core/Agent'
-import { memoryStore, type MemoryResult } from '../memory/LocalMemoryStore'
+import { memoryStore, type MemoryResult } from '../memory/SqliteMemoryStore'
 
 /**
  * Tool with active/inactive state for masking.

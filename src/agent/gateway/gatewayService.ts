@@ -23,7 +23,6 @@ import type {
   GatewayCallResult,
 } from './gatewayTypes'
 import { getActiveGateways } from './gatewayTypes'
-import { getGlobalRateLimiter, type RateLimiterStats } from './rateLimiter'
 import { isRetryableError } from '../../lib/errors'
 
 // ─── Circuit Breaker Constants ──────────────────────────────────────────────
@@ -139,19 +138,6 @@ export class GatewayService {
       queryParams: Record<string, string>,
     ) => Promise<T>,
   ): Promise<{ result: T; meta: GatewayCallResult }> {
-    // Proactive rate limiting — wait before making request if needed
-    const rateLimiter = getGlobalRateLimiter()
-    const rateLimitWaitMs = await rateLimiter.acquire()
-    if (rateLimitWaitMs > 100) {
-      // Log if we waited more than 100ms (useful for debugging)
-      this.emitEvent({
-        type: 'trying',
-        gatewayId: '',
-        gatewayLabel: '',
-        message: `Rate limiting: waited ${Math.round(rateLimitWaitMs)}ms before request`,
-      })
-    }
-
     const active = this.getEligibleGateways()
 
     if (active.length === 0) {
@@ -310,13 +296,6 @@ export class GatewayService {
         error: err instanceof Error ? err.message : String(err),
       }
     }
-  }
-
-  /**
-   * Get current rate limiter statistics for debugging/UI display.
-   */
-  getRateLimiterStats(): RateLimiterStats {
-    return getGlobalRateLimiter().getStats()
   }
 
   // ── Private: Gateway Selection ──────────────────────────────────────────────

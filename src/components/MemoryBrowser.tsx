@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, memo } from 'react'
-import { memoryStore, type MemoryResult, type MemoryMetadata } from '../agent/memory/LocalMemoryStore'
+import { memoryStore, type MemoryResult, type MemoryMetadata } from '../agent/memory/SqliteMemoryStore'
 import { Pxi } from './Pxi'
 import { createLogger } from '../lib/logger'
 

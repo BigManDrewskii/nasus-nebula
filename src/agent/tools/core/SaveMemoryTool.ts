@@ -4,7 +4,6 @@ import type { ToolResult, ToolParameterSchema } from '../core/ToolResult'
 import { tauriInvoke } from '../../../tauri'
 import { useAppStore } from '../../../store'
 import { memoryStore } from '../../memory'
-import { writeM09SemanticFact } from '../../memory/sidecarMemoryBridge'
 
 /**
  * Tool for saving project-wide facts to project_memory.md.
@@ -34,7 +33,6 @@ export class SaveMemoryTool extends BaseTool {
     if (!workspacePath) {
       try {
         await memoryStore.store(fact, { taskId: '__project__', contentType: 'project_fact', timestamp: Date.now() })
-        writeM09SemanticFact(fact)
         return toolSuccess(`Fact saved to memory: ${fact}`)
       } catch (error) {
         return toolFailure(`Failed to save memory: ${error}`)
@@ -64,7 +62,6 @@ export class SaveMemoryTool extends BaseTool {
         workspacePath
       })
 
-      writeM09SemanticFact(fact)
       return toolSuccess(`Fact saved to project memory: ${fact}`)
     } catch (error) {
       return toolFailure(`Failed to save memory: ${error}`)

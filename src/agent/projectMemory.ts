@@ -3,7 +3,6 @@ import { useAppStore } from '../store'
 import { cheapestModel, chatOnceViaGateway } from './llm'
 import { workspaceManager } from './workspace/WorkspaceManager'
 import { memoryStore } from './memory'
-import { readM09SemanticFacts } from './memory/sidecarMemoryBridge'
 
 /**
  * Project Memory — manages persistent project-level context across tasks.
@@ -12,33 +11,13 @@ import { readM09SemanticFacts } from './memory/sidecarMemoryBridge'
 export async function readProjectMemory(): Promise<string> {
   const workspacePath = useAppStore.getState().workspacePath
 
-  // Query M09 semantic layer with a short timeout — never blocks even if sidecar is down
-  const m09Promise = Promise.race<string[]>([
-    readM09SemanticFacts(),
-    new Promise<string[]>(resolve => setTimeout(() => resolve([]), 800)),
-  ])
-
   if (!workspacePath) {
-    // No workspace path — merge TS vector store facts with M09 semantic facts
     try {
-      const [tsResults, m09Facts] = await Promise.all([
-        memoryStore.search('project fact framework convention api', 20),
-        m09Promise,
-      ])
-      const tsFacts = tsResults
+      const results = await memoryStore.search('project fact framework convention api', 20)
+      const facts = results
         .filter(r => r.metadata.contentType === 'project_fact')
         .map(r => `- ${r.content}`)
-      // Merge M09 facts, dedup by content string
-      const seen = new Set(tsFacts)
-      const merged = [...tsFacts]
-      for (const f of m09Facts) {
-        const line = `- ${f}`
-        if (!seen.has(line)) {
-          seen.add(line)
-          merged.push(line)
-        }
-      }
-      const facts = merged.join('\n')
+        .join('\n')
       return facts ? `# Project Memory\n\n${facts}\n` : ''
     } catch {
       return ''
@@ -47,24 +26,12 @@ export async function readProjectMemory(): Promise<string> {
 
   const memoryPath = '.nasus/project_memory.md'
   try {
-    const [content, m09Facts] = await Promise.all([
-      tauriInvoke<string>('read_file', {
-        taskId: '__system__',
-        path: memoryPath,
-        workspacePath
-      }).catch(() => ''),
-      m09Promise,
-    ])
-    if (!content && m09Facts.length === 0) return ''
-    if (m09Facts.length === 0) return content || ''
-    // Append M09 facts not already present in the file
-    const m09Section = m09Facts
-      .filter(f => !(content ?? '').includes(f))
-      .map(f => `- ${f}`)
-      .join('\n')
-    if (!m09Section) return content || ''
-    const base = content ? content.trimEnd() : '# Project Memory\n\nFacts discovered about this project:'
-    return `${base}\n\n<!-- M09 semantic layer -->\n${m09Section}\n`
+    const content = await tauriInvoke<string>('read_file', {
+      taskId: '__system__',
+      path: memoryPath,
+      workspacePath,
+    }).catch(() => '')
+    return content || ''
   } catch {
     return ''
   }

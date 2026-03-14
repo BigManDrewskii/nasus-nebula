@@ -10,7 +10,6 @@ import { useDebouncedStreaming } from '../hooks/useStreaming'
 import { logger } from '../lib/logger'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { CompactPlanView } from './PlanConfirmationModal'
-import { CheckpointApprovalPanel } from './CheckpointApprovalPanel'
 import { useAppStore } from '../store'
 
 // ─── Agent content normalizer ─────────────────────────────────────────────────
@@ -336,7 +335,6 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
   const currentPlan         = useAppStore(s => s.currentPlan)
   const currentPhase        = useAppStore(s => s.currentPhase)
   const currentStep         = useAppStore(s => s.currentStep)
-  const checkpointMessageId = useAppStore(s => s.checkpointMessageId)
 
     if (isWaiting) {
         const lastToolStep = message.steps?.findLast((s: AgentStep) => s.kind === 'tool_call')
@@ -394,11 +392,6 @@ const AgentMessage = memo(function AgentMessage({ message, onRetry }: { message:
 
         {/* Steps (tool calls) */}
         {hasSteps && <AgentStepsView steps={message.steps!} isStreaming={isStreaming} />}
-
-        {/* HITL checkpoint approval panel */}
-        {checkpointMessageId === message.id && (
-          <CheckpointApprovalPanel messageId={message.id} />
-        )}
 
         {/* Between-turn typing dots */}
         {showBetweenDots && (

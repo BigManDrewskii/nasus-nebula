@@ -8,8 +8,6 @@ interface AppEventHandlers {
   setPruneNotice: (msg: string | null) => void
   setMemoryBrowserOpen: (open: boolean) => void
   setIsOffline: (offline: boolean) => void
-  /** Called when browser automation activity fires — use to gate SidecarPrompt */
-  onBrowserActivity?: () => void
 }
 
 /**
@@ -22,22 +20,20 @@ export function useAppEventListeners({
   setPruneNotice,
   setMemoryBrowserOpen,
   setIsOffline,
-  onBrowserActivity,
 }: AppEventHandlers) {
   const setBrowserActivityActive = useAppStore((s) => s.setBrowserActivityActive)
   const addToast = useAppStore((s) => s.addToast)
 
-  // Browser activity → auto-open browser panel + notify caller
+  // Browser activity → auto-open browser panel
   useEffect(() => {
     const handler = () => {
       setBrowserActivityActive(true)
       setRightCollapsed(false)
       setRightActiveTab('browser')
-      onBrowserActivity?.()
     }
     window.addEventListener('nasus:browser-activity', handler)
     return () => window.removeEventListener('nasus:browser-activity', handler)
-  }, [setBrowserActivityActive, setRightCollapsed, setRightActiveTab, onBrowserActivity])
+  }, [setBrowserActivityActive, setRightCollapsed, setRightActiveTab])
 
   // Tasks pruned → show temporary notice
   useEffect(() => {

@@ -70,8 +70,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     updateGateway,
     settingsTab, setSettingsTab,
     gatewayHealth,
-    rateLimitEnabled, setRateLimitEnabled,
-    maxRequestsPerMinute, setMaxRequestsPerMinute,
     textScale, setTextScale,
   } = useAppStore(useShallow(s => ({
     model: s.model,
@@ -105,10 +103,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     settingsTab: s.settingsTab,
     setSettingsTab: s.setSettingsTab,
     gatewayHealth: s.gatewayHealth,
-    rateLimitEnabled: s.rateLimitEnabled,
-    setRateLimitEnabled: s.setRateLimitEnabled,
-    maxRequestsPerMinute: s.maxRequestsPerMinute,
-    setMaxRequestsPerMinute: s.setMaxRequestsPerMinute,
     textScale: s.textScale,
     setTextScale: s.setTextScale,
   })))
@@ -134,10 +128,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   })
 
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
-
-  // Rate limiting state
-  const [localRateLimitEnabled, setLocalRateLimitEnabled] = useState(rateLimitEnabled ?? true)
-  const [localMaxRPM, setLocalMaxRPM] = useState(String(maxRequestsPerMinute ?? 60))
 
     const [saving, setSaving] = useState(false)
     const [saved, setSaved] = useState(false)
@@ -432,8 +422,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalTavilyKey('')
     setLocalMaxIterations('50')
     setLocalEnableVerification(true)
-    setLocalRateLimitEnabled(true)
-    setLocalMaxRPM('60')
     setLocalRouterMode('auto')
     setLocalRouterBudget('free')
     setLocalModelOverrides({})
@@ -555,11 +543,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         const parsedIter = Math.max(1, Math.min(200, parseInt(localMaxIterations, 10) || 50))
         setMaxIterations(parsedIter)
         setEnableVerification(localEnableVerification)
-
-        // Save rate limiting settings
-        const parsedRPM = Math.max(1, Math.min(600, parseInt(localMaxRPM, 10) || 60))
-        setRateLimitEnabled(localRateLimitEnabled)
-        setMaxRequestsPerMinute(parsedRPM)
 
       // Save router config (force manual for Ollama)
       setRouterConfig({
@@ -766,48 +749,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 />
               </Field>
 
-              {/* Rate Limiting */}
-              <div className="flex-col settings-rate-section">
-                <label className="flex-v-center settings-label">
-                  <Pxi name="gauge" size={12} className="text-tertiary" />
-                  Rate Limiting
-                </label>
-
-                <div className="flex-v-center justify-between settings-banner">
-                  <div className="flex-col gap-1">
-                    <span className="text-[12px] font-medium text-[var(--tx-primary)]">
-                      Enable rate limiting
-                    </span>
-                    <span className="text-tertiary text-[10px]">
-                      Throttle outbound API requests to avoid provider rate-limit errors
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setLocalRateLimitEnabled(!localRateLimitEnabled)}
-                    className="settings-toggle"
-                    style={{ background: localRateLimitEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
-                  >
-                    <span className="settings-toggle-knob" style={{ left: localRateLimitEnabled ? 'calc(100% - 20px)' : 2 }} />
-                  </button>
-                </div>
-
-                {localRateLimitEnabled && (
-                  <Field label="Max requests / minute" icon="clock" hint="Maximum LLM API calls per minute (1–600). Default: 60.">
-                    <div className="flex-v-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={600}
-                        value={localMaxRPM}
-                        onChange={(e) => setLocalMaxRPM(e.target.value)}
-                        className="settings-input placeholder-[var(--tx-muted)] flex-1"
-                      />
-                      <span className="text-tertiary text-[11px] whitespace-nowrap">req / min</span>
-                    </div>
-                  </Field>
-                )}
-              </div>
             </div>
             </>
             )}
@@ -1205,7 +1146,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </span>
                 </div>
               </div>
-                <NasusStackSection />
             </>
             )}
 
@@ -1999,220 +1939,3 @@ function BrowserSetupSection() {
   )
 }
 
-// ─── Nasus Stack Section ──────────────────────────────────────────────────────
-
-function NasusStackSection() {
-  const {
-    nasusReady,
-    nasusChecking,
-    nasusInstalling,
-    nasusInstallProgress,
-    nasusInstallError,
-    nasusStackEnabled,
-    checkNasusInstalled,
-    installNasusSidecar,
-    setNasusStackEnabled,
-  } = useAppStore(
-    useShallow((s) => ({
-      nasusReady: s.nasusReady,
-      nasusChecking: s.nasusChecking,
-      nasusInstalling: s.nasusInstalling,
-      nasusInstallProgress: s.nasusInstallProgress,
-      nasusInstallError: s.nasusInstallError,
-      nasusStackEnabled: s.nasusStackEnabled,
-      checkNasusInstalled: s.checkNasusInstalled,
-      installNasusSidecar: s.installNasusSidecar,
-      setNasusStackEnabled: s.setNasusStackEnabled,
-    }))
-  )
-
-  const [installDone, setInstallDone] = useState(false)
-  const [activeJobs, setActiveJobs] = useState<number | null>(null)
-
-  async function runCheck() {
-    await checkNasusInstalled()
-    // Also probe the live health endpoint so we can show active-job count
-    try {
-      const resp = await fetch('http://127.0.0.1:4751/health', {
-        signal: AbortSignal.timeout(2000),
-      })
-      if (resp.ok) {
-        const data = await resp.json() as { active_jobs?: number }
-        setActiveJobs(data.active_jobs ?? 0)
-      } else {
-        setActiveJobs(null)
-      }
-    } catch {
-      setActiveJobs(null)
-    }
-  }
-
-  async function runInstall() {
-    setInstallDone(false)
-    try {
-      await installNasusSidecar()
-      setInstallDone(true)
-      await runCheck()
-    } catch {
-      // error is already surfaced via nasusInstallError in the store
-    }
-  }
-
-  useEffect(() => { runCheck() }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const statusColor = nasusReady
-    ? '#22c55e'
-    : nasusChecking
-      ? 'var(--amber)'
-      : '#ef4444'
-
-  return (
-    <div className="flex-col settings-section gap-4">
-      {/* Header */}
-      <div className="flex-v-center gap-2">
-        <Pxi name="code-branch" size={20} className="text-amber" />
-        <span className="settings-section-title">Nasus Agent Stack</span>
-      </div>
-      <div className="text-tertiary settings-exec-desc">
-        The Nasus Python stack runs as a local FastAPI sidecar on port 4751. It provides specialist AI modules (Planner, Reviewer, Orchestrator, Memory) that the main agent can delegate complex sub-tasks to.
-      </div>
-
-      {/* Delegation toggle */}
-      <div className="flex-v-center justify-between settings-banner">
-        <div className="flex-col gap-1">
-          <span className="text-[12px] font-medium text-[var(--tx-primary)]">Enable delegation</span>
-          <span className="text-tertiary text-[10px]">Allow the agent to delegate sub-tasks to Nasus modules (M00, M09, M10, M11)</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => setNasusStackEnabled(!nasusStackEnabled)}
-          className="settings-toggle"
-          style={{ background: nasusStackEnabled ? 'var(--amber)' : 'rgba(255,255,255,0.12)' }}
-        >
-          <span className="settings-toggle-knob" style={{ left: nasusStackEnabled ? 'calc(100% - 20px)' : 2 }} />
-        </button>
-      </div>
-
-      {/* Status rows */}
-      <div className="flex-col gap-2">
-        {/* Python venv */}
-        <div className="flex-v-center justify-between settings-banner">
-          <div className="flex-v-center gap-2">
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: nasusReady ? '#22c55e' : nasusChecking ? 'var(--amber)' : '#ef4444',
-              flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Python venv</span>
-          </div>
-          <span style={{ fontSize: 'var(--text-xs)', color: nasusReady ? '#4ade80' : 'var(--tx-muted)' }}>
-            {nasusChecking ? 'Checking…' : nasusReady ? 'Installed' : 'Not installed'}
-          </span>
-        </div>
-
-        {/* Sidecar server */}
-        <div className="flex-v-center justify-between settings-banner">
-          <div className="flex-v-center gap-2">
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: activeJobs !== null ? '#22c55e' : '#ef4444',
-              flexShrink: 0,
-            }} />
-            <span style={{ fontSize: 'var(--text-sm)', color: 'var(--tx-secondary)' }}>Sidecar server (port 4751)</span>
-          </div>
-          <span style={{ fontSize: 'var(--text-xs)', color: activeJobs !== null ? '#4ade80' : 'var(--tx-muted)' }}>
-            {nasusChecking
-              ? 'Checking…'
-              : activeJobs !== null
-                ? `Running · ${activeJobs} active job${activeJobs !== 1 ? 's' : ''}`
-                : 'Not running'}
-          </span>
-        </div>
-      </div>
-
-      {/* Overall status banner */}
-      <div className={`settings-alert ${nasusReady ? 'settings-alert--success' : 'settings-alert--error'}`} style={{ alignItems: 'center' }}>
-        <div style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor, flexShrink: 0 }} />
-        <span>
-          {nasusChecking
-            ? 'Checking status…'
-            : nasusReady
-              ? 'Nasus stack is installed and ready'
-              : 'Python dependencies not found — click Install Stack to set up'}
-        </span>
-      </div>
-
-      {/* Install progress */}
-      {nasusInstallProgress && (
-        <div className="settings-alert settings-alert--warning" style={{ alignItems: 'center' }}>
-          <Pxi name="spinner-third" size={12} style={{ color: 'var(--amber)', animation: 'spin 1s linear infinite', flexShrink: 0 }} />
-          <span>{nasusInstallProgress}</span>
-        </div>
-      )}
-
-      {/* Install error */}
-      {nasusInstallError && (
-        <div className="settings-alert settings-alert--error">
-          <Pxi name="exclamation-triangle" size={12} style={{ marginTop: 1, flexShrink: 0 }} />
-          <span>{nasusInstallError}</span>
-        </div>
-      )}
-
-      {/* Success */}
-      {installDone && !nasusInstallError && (
-        <div className="settings-alert settings-alert--success" style={{ alignItems: 'center' }}>
-          <Pxi name="check-circle" size={12} style={{ flexShrink: 0 }} />
-          <span>Nasus stack installed successfully. Agent modules are ready.</span>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex-v-center gap-2">
-        <button
-          type="button"
-          onClick={runInstall}
-          disabled={nasusInstalling || nasusReady}
-          style={{
-            padding: '8px 16px', borderRadius: 8, border: 'none',
-            cursor: nasusInstalling || nasusReady ? 'not-allowed' : 'pointer',
-            background: nasusReady ? 'rgba(34,197,94,0.12)' : 'var(--amber)',
-            color: nasusReady ? '#4ade80' : '#000',
-            fontSize: 'var(--text-sm)', fontWeight: 600, opacity: nasusInstalling ? 0.6 : 1,
-            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
-          }}
-        >
-          {nasusInstalling
-            ? <><Pxi name="spinner-third" size={12} />Installing…</>
-            : nasusReady
-              ? <><Pxi name="check" size={12} />Ready</>
-              : <><Pxi name="download" size={12} />Install Stack</>}
-        </button>
-
-        <button
-          type="button"
-          onClick={runCheck}
-          disabled={nasusChecking}
-          style={{
-            padding: '8px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)',
-            cursor: nasusChecking ? 'not-allowed' : 'pointer', background: 'transparent',
-            color: 'var(--tx-secondary)', fontSize: 'var(--text-sm)',
-            opacity: nasusChecking ? 0.5 : 1,
-            display: 'flex', alignItems: 'center', gap: 8, transition: 'opacity 0.15s',
-          }}
-        >
-          <Pxi name={nasusChecking ? 'spinner-third' : 'arrow-rotate-right'} size={12} />
-          {nasusChecking ? 'Checking…' : 'Re-check'}
-        </button>
-      </div>
-
-      {/* Python install hint if missing */}
-      {!nasusChecking && !nasusReady && (
-        <div className="settings-alert settings-alert--info">
-          Python 3 is required to run the Nasus stack. Install it from{' '}
-          <a href="https://python.org" target="_blank" rel="noreferrer" style={{ color: '#818cf8', textDecoration: 'underline' }}>python.org</a>
-          {' '}(3.10+ recommended), then click <strong>Install Stack</strong> to set up the virtual environment and dependencies.
-        </div>
-      )}
-    </div>
-  )
-}

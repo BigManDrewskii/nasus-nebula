@@ -12,7 +12,6 @@ pub mod docker;
 mod error;
 pub mod gateway;
 pub mod models;
-pub mod python_sidecar;
 pub mod search;
 pub mod sidecar;
 pub use error::NasusError;
@@ -1483,14 +1482,6 @@ pub fn run() {
             sidecar::browser_check_sidecar_installed,
             sidecar::browser_install_sidecar,
             sidecar::check_node_version,
-            python_sidecar::nasus_is_ready,
-            python_sidecar::nasus_health,
-            python_sidecar::nasus_submit_task,
-            python_sidecar::nasus_task_status,
-            python_sidecar::nasus_cancel_task,
-            python_sidecar::nasus_check_installed,
-            python_sidecar::nasus_install_sidecar,
-            python_sidecar::nasus_configure_llm,
             memory_set,
             memory_get,
         ])
@@ -1564,59 +1555,6 @@ pub fn run() {
             // Otherwise fall back to app_data sidecar dir — browser_install_sidecar
             // will copy the bundled files there on first install.
             let sidecar_path = sidecar_source.unwrap_or(sidecar_dir);
-
-            // ── Python Nasus Sidecar ──────────────────────────────────────────────────
-            // Resolve nasus_stack dir: try several candidate locations then fall back to
-            // bundled resource_dir/sidecar-python (prod). In dev mode cargo runs from
-            // src-tauri/, so we need to walk up to the project root.
-            let nasus_dir: String = {
-                let candidates: Vec<std::path::PathBuf> = {
-                    let mut v = Vec::new();
-                    // cwd/nasus_stack  (project root invocation)
-                    if let Ok(cwd) = std::env::current_dir() {
-                        v.push(cwd.join("nasus_stack"));
-                        v.push(cwd.join("../nasus_stack"));
-                    }
-                    // exe/../../../nasus_stack  (src-tauri/target/debug/nasus → project root)
-                    if let Ok(exe) = std::env::current_exe() {
-                        if let Some(d) = exe
-                            .parent()
-                            .and_then(|p| p.parent())
-                            .and_then(|p| p.parent())
-                            .and_then(|p| p.parent())
-                        {
-                            v.push(d.join("nasus_stack"));
-                        }
-                    }
-                    v
-                };
-                candidates
-                    .into_iter()
-                    .map(|p| p.canonicalize().unwrap_or(p))
-                    .find(|p| p.exists())
-                    .or_else(|| {
-                        app.path()
-                            .resource_dir()
-                            .ok()
-                            .map(|r| r.join("sidecar-python"))
-                    })
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "nasus_stack".to_string())
-            };
-
-            let nasus_arc = std::sync::Arc::new(tokio::sync::Mutex::new(
-                python_sidecar::PythonSidecarState::with_dir(&nasus_dir),
-            ));
-            app.manage(nasus_arc.clone());
-
-            // Spawn in background — non-blocking so the app window opens immediately
-            let nasus_arc_bg = nasus_arc.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = python_sidecar::spawn_and_wait_ready(nasus_arc_bg, &nasus_dir).await
-                {
-                    log::error!("[nasus] sidecar startup failed: {}", e);
-                }
-            });
 
             // Manage GatewayState as standalone Tauri state so that
             // gateway::get_gateways / save_gateways / get_gateway_health commands

@@ -109,6 +109,8 @@ export interface ExecutionPlan {
   createdAt: Date
   /** Files that will be created or modified by this plan */
   files?: PlanFile[]
+  /** Domain detected by PlanningAgent for specialist prompt injection */
+  specialistDomain?: import('../prompts/specialistContexts').SpecialistDomain
 }
 
 export interface PlanFile {

@@ -10,14 +10,6 @@ import { ToolRegistry } from './core/ToolRegistry'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import type { SearchStatusCallback } from '../search'
 
-// Nasus agent delegation
-import { callNasusAgent } from './core/CallNasusAgentTool'
-import type { NasusModuleId } from './core/nasus_types'
-import { BaseTool } from './core/BaseTool'
-import { toolSuccess, toolFailure } from './core/ToolResult'
-import type { ToolResult } from './core/ToolResult'
-import { workspaceManager } from '../workspace/WorkspaceManager'
-
 // Core tools
 import { SaveMemoryTool } from './core/SaveMemoryTool'
 import { UpdatePlanTool } from './core/UpdatePlanTool'
@@ -106,173 +98,22 @@ toolRegistry.registerConstructor('browser_get_tabs', BrowserGetTabsTool)
 toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
 toolRegistry.registerConstructor('browser_eval', BrowserEvalTool)
 
-// ── Workspace bridge ──────────────────────────────────────────────────────────
-// Extract code blocks from an M05 CodeResult or M00 SynthesisReport payload
-// and write them into the TypeScript workspace so PreviewPane can display them.
-
-interface NasusCodeBlock {
-  filename?: string
-  code?: string
-}
-
-function _extractBlocks(payload: unknown): NasusCodeBlock[] {
-  if (!payload || typeof payload !== 'object') return []
-  const p = payload as Record<string, unknown>
-
-  // Direct M05 CodeResult: { blocks: [{ filename, code, ... }] }
-  if (Array.isArray(p.blocks)) {
-    return p.blocks as NasusCodeBlock[]
-  }
-
-  // M00 SynthesisReport: { deliverables: [{ artifact: { blocks: [...] } }] }
-  if (Array.isArray(p.deliverables)) {
-    const blocks: NasusCodeBlock[] = []
-    for (const d of p.deliverables as Array<Record<string, unknown>>) {
-      const artifact = d.artifact
-      if (artifact && typeof artifact === 'object') {
-        const a = artifact as Record<string, unknown>
-        if (Array.isArray(a.blocks)) {
-          blocks.push(...(a.blocks as NasusCodeBlock[]))
-        }
-      }
-    }
-    return blocks
-  }
-
-  return []
-}
-
-async function _writeNasusBlocks(payload: unknown, taskId: string): Promise<string[]> {
-  const blocks = _extractBlocks(payload)
-  const written: string[] = []
-  for (const block of blocks) {
-    const filename = block.filename?.trim()
-    const code = block.code
-    if (filename && typeof code === 'string' && code.length > 0) {
-      try {
-        await workspaceManager.writeFile(taskId, filename, code)
-        written.push(filename)
-      } catch {
-        // Non-fatal — continue with other blocks
-      }
-    }
-  }
-  return written
-}
-
-// Nasus Python agent stack — delegates to local FastAPI sidecar on port 4751
-class NasusAgentTool extends BaseTool {
-  readonly name = 'call_nasus_agent'
-  readonly description = [
-    'Call the Nasus AI agent stack via the local Python sidecar on port 4751.',
-    'Use ONLY for pipeline orchestration, memory, planning, and review:',
-    '  M10 -- Task Planner: break a goal into a DAG of subtasks',
-    '  M11 -- Quality Reviewer: score and approve/reject output',
-    '  M09 -- Memory Manager: read/write persistent project memory',
-    '  M00 -- Orchestrator: run a full multi-module pipeline',
-    'Do NOT use this tool to generate HTML, CSS, JS, or any code/file content.',
-    'For writing code or files, use write_file, edit_file, or bash_execute directly.',
-    'Returns the completed job result including the output payload.',
-  ].join('\n')
-  readonly parameters = {
-    type: 'object' as const,
-    required: ['module_id'] as const,
-    properties: {
-      module_id: {
-        type: 'string' as const,
-        enum: ['M00', 'M09', 'M10', 'M11'],
-        description: 'Which Nasus module to invoke',
-      },
-      payload: {
-        type: 'object' as const,
-        description: 'Module-specific input payload',
-      },
-    },
-  }
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
-    const module_id = args.module_id as NasusModuleId
-    const payload = (args.payload ?? {}) as Record<string, unknown>
-
-    // ── Readiness guard ──────────────────────────────────────────────────
-    // The Python sidecar can take up to 15s to boot. Poll nasus_is_ready
-    // via Tauri IPC before attempting the HTTP fetch so we get a clean error
-    // instead of a connection-refused that burns a strike in ExecutionAgent.
-    const READY_POLL_INTERVAL_MS = 500
-    const READY_TIMEOUT_MS = 20_000
-    const readyStart = Date.now()
-
-    while (true) {
-      // Attempt a lightweight health probe directly — avoids IPC round-trip
-      // when the sidecar is already up (the common case after first use).
-      try {
-        const probe = await fetch('http://127.0.0.1:4751/health', {
-          signal: AbortSignal.timeout(1500),
-        })
-        if (probe.ok) break // sidecar is alive — proceed
-      } catch {
-        // not up yet — fall through to timeout check
-      }
-
-      if (Date.now() - readyStart >= READY_TIMEOUT_MS) {
-        return toolFailure(
-          'Nasus Python sidecar is not running or did not start within 20 seconds. ' +
-          'Check Settings → Execution → Nasus Stack to install or restart the sidecar.',
-        )
-      }
-
-      await new Promise((r) => setTimeout(r, READY_POLL_INTERVAL_MS))
-    }
-    // ────────────────────────────────────────────────────────────────────
-
-    try {
-      const result = await callNasusAgent({ module_id, payload })
-      if (result.status === 'FAILED') {
-        return toolFailure(`Nasus job failed: ${result.errors.join('; ') || 'unknown error'}`)
-      }
-
-      // Auto-write any code blocks produced by M05 (directly or via M00 subtasks)
-      // into the TS workspace so they appear in the PreviewPane and file browser.
-      const taskId = args.__taskId as string | undefined
-      if (taskId) {
-        const written = await _writeNasusBlocks(result.payload, taskId)
-        if (written.length > 0) {
-          const summary = written.map(f => `  • ${f}`).join('\n')
-          return toolSuccess(
-            JSON.stringify(result.payload, null, 2) +
-            `\n\n[Nasus wrote ${written.length} file(s) to workspace:\n${summary}]`
-          )
-        }
-      }
-
-      return toolSuccess(JSON.stringify(result.payload, null, 2))
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return toolFailure(`Nasus sidecar call failed: ${msg}`)
-    }
-  }
-}
-
-toolRegistry.registerConstructor('call_nasus_agent', NasusAgentTool)
-
 /**
  * Get tool function definitions for OpenAI function calling.
  */
 export function getToolDefinitions(
   env: 'sandbox' | 'browser-only' = 'sandbox',
-  opts?: { excludeTools?: string[] },
 ): Array<{ type: 'function'; function: { name: string; description: string; parameters: JSONSchema7 } }> {
   const allTools = toolRegistry.getToolDefinitions()
-  const extraExcludes = new Set(opts?.excludeTools ?? [])
 
   if (env === 'browser-only') {
-    const excludeInBrowserMode = new Set(['bash_execute', 'git', ...extraExcludes])
+    const excludeInBrowserMode = new Set(['bash_execute', 'git'])
     return allTools
       .filter(t => !excludeInBrowserMode.has(t.function.name))
       .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
   }
 
   return allTools
-    .filter(t => !extraExcludes.has(t.function.name))
     .map(t => ({ ...t, function: { ...t.function, parameters: t.function.parameters as JSONSchema7 } }))
 }
 

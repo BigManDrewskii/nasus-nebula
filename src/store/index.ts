@@ -20,7 +20,6 @@ import { createSettingsSlice, type SettingsSlice } from './settingsSlice'
 import { createGatewaySlice, type GatewaySlice } from '../agent/gateway'
 import { createToastSlice, type ToastSlice } from './toastSlice'
 import { createAppSlice, type AppSlice } from './appSlice'
-import { updateGlobalRateLimiterConfig } from '../agent/gateway/rateLimiter'
 import { getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
 
@@ -72,12 +71,9 @@ export const useAppStore = create<AppState>()(
         onboardingComplete: state.onboardingComplete,
         enableVerification: state.enableVerification,
         ollamaModels: state.ollamaModels,
-        rateLimitEnabled: state.rateLimitEnabled,
-        maxRequestsPerMinute: state.maxRequestsPerMinute,
         routerConfig: state.routerConfig,
         extensionConnected: state.extensionConnected,
         extensionVersion: state.extensionVersion,
-          sidecarPromptShown: state.sidecarPromptShown,
           textScale: state.textScale,
           // Gateway slice — strip API keys before writing to localStorage
         gateways: state.gateways.map(g => ({ ...g, apiKey: '' })),
@@ -86,12 +82,6 @@ export const useAppStore = create<AppState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return
-
-        // Re-initialise rate limiter with stored settings
-        updateGlobalRateLimiterConfig({
-          enabled: state.rateLimitEnabled ?? true,
-          maxRequests: state.maxRequestsPerMinute ?? 60,
-        })
 
         // Clear any streaming:true flags left by a previous crashed session
         const fixedMessages: Record<string, import('../types').Message[]> = {}
