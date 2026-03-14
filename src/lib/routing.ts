@@ -31,7 +31,6 @@ export function isPaidRoute(
   selectedModel?: string,
 ): boolean {
   if (provider === 'ollama') return false
-  if (provider !== 'openrouter') return true
   if (!routerConfig) return true
 
   const { mode, budget } = routerConfig
@@ -52,10 +51,6 @@ export function getRouteLabel(provider: string, routerConfig?: RouterConfig, sel
   if (provider === 'ollama') return 'FREE LOCAL'
 
   const paid = isPaidRoute(provider, routerConfig, selectedModel)
-  if (provider === 'openrouter') {
-    return paid ? 'PAID CLOUD' : 'FREE CLOUD'
-  }
-
   return paid ? 'PAID' : 'FREE'
 }
 

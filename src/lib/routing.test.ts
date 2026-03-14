@@ -10,18 +10,18 @@ describe('routing utilities', () => {
   // isPaidRoute
   it('should correctly identify paid routes', () => {
     expect(isPaidRoute('ollama', freeConfig)).toBe(false)
-    expect(isPaidRoute('openrouter', freeConfig)).toBe(false)
-    expect(isPaidRoute('openrouter', paidConfig)).toBe(true)
-    expect(isPaidRoute('openrouter', manualConfig, 'some/model')).toBe(true)
-    expect(isPaidRoute('openrouter', manualConfig, 'some/model:free')).toBe(false)
+    expect(isPaidRoute('deepseek', freeConfig)).toBe(false)
+    expect(isPaidRoute('deepseek', paidConfig)).toBe(true)
+    expect(isPaidRoute('deepseek', manualConfig, 'some/model')).toBe(true)
+    expect(isPaidRoute('deepseek', manualConfig, 'some/model:free')).toBe(false)
     expect(isPaidRoute('some-other-provider', freeConfig)).toBe(true)
   })
 
   // getRouteLabel
   it('should return correct route labels', () => {
     expect(getRouteLabel('ollama')).toBe('FREE LOCAL')
-    expect(getRouteLabel('openrouter', freeConfig)).toBe('FREE CLOUD')
-    expect(getRouteLabel('openrouter', paidConfig)).toBe('PAID CLOUD')
+    expect(getRouteLabel('deepseek', freeConfig)).toBe('FREE')
+    expect(getRouteLabel('deepseek', paidConfig)).toBe('PAID')
     expect(getRouteLabel('some-other-provider', paidConfig)).toBe('PAID')
   })
 

@@ -7,30 +7,6 @@ import { WorkspacePicker } from './WorkspacePicker'
 
 const PROVIDERS = [
   {
-    id: 'openrouter',
-    label: 'OpenRouter',
-    description: 'Access 400+ models with one key',
-    placeholder: 'sk-or-v1-…',
-    apiBase: 'https://openrouter.ai/api/v1',
-    defaultModel: 'anthropic/claude-sonnet-4-20250514',
-    helpUrl: 'https://openrouter.ai/keys',
-    helpLabel: 'openrouter.ai/keys',
-    requiresKey: true,
-    dot: '#a78bfa',
-  },
-  {
-    id: 'requesty',
-    label: 'Requesty',
-    description: 'Smart LLM router with failover',
-    placeholder: 'req_…',
-    apiBase: 'https://router.requesty.ai/v1',
-    defaultModel: 'anthropic/claude-sonnet-4-20250514',
-    helpUrl: 'https://app.requesty.ai/getting-started',
-    helpLabel: 'app.requesty.ai',
-    requiresKey: true,
-    dot: '#60a5fa',
-  },
-  {
     id: 'deepseek',
     label: 'DeepSeek (Direct)',
     description: 'DeepSeek V3 & R1 — direct & cheap',
@@ -117,7 +93,7 @@ export function OnboardingScreen() {
         setApiKey(key)
         // Update the matching gateway with the entered key and enable it.
         // All known gateway IDs map 1:1 with provider IDs.
-        const knownGateways = ['openrouter', 'requesty', 'deepseek', 'ollama']
+        const knownGateways = ['deepseek', 'ollama']
         for (const gwId of knownGateways) {
           if (gwId === selectedProvider.id) {
             updateGateway(gwId, { apiKey: key, enabled: true })

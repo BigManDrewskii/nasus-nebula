@@ -456,9 +456,8 @@ function ModelSection() {
 // ── Provider Section ───────────────────────────────────────────────────────────
 
 const PROVIDERS = [
-  { id: 'openrouter', label: 'OpenRouter', icon: 'cloud',     color: 'var(--amber)', desc: 'Cloud API'  },
-  { id: 'vercel',     label: 'Vercel AI',  icon: 'triangle',  color: '#818cf8',      desc: 'AI Gateway' },
-  { id: 'auto',       label: 'Auto',       icon: 'bolt',      color: '#22c55e',      desc: 'Best route' },
+  { id: 'deepseek', label: 'DeepSeek', icon: 'cloud',  color: 'var(--amber)', desc: 'Direct API' },
+  { id: 'auto',     label: 'Auto',     icon: 'bolt',   color: '#22c55e',      desc: 'Best route' },
 ] as const
 
 function ProviderSection() {
@@ -470,7 +469,7 @@ function ProviderSection() {
   })))
   const activeProvider = routerConfig?.mode === 'auto'
     ? 'auto'
-    : gateways?.find(g => g.enabled)?.type ?? 'openrouter'
+    : gateways?.find(g => g.enabled)?.type ?? 'deepseek'
 
   function pickProvider(id: string) {
     if (id === 'auto') {

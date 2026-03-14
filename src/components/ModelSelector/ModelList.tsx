@@ -30,42 +30,18 @@ export function ModelList({
   const listRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
-  const openRouterModels = useAppStore((s) => s.openRouterModels)
   const ollamaModels = useAppStore((s) => s.ollamaModels)
 
   // Resolve actual gateway type from provider label
   const gatewayType: GatewayType = useMemo(() => {
     const normalized = currentProvider.toLowerCase()
     if (normalized.includes('ollama') || normalized.includes('local')) return 'ollama'
-    return 'openrouter'
+    return 'deepseek'
   }, [currentProvider])
 
     // Build display models by merging registry with live data
     const displayModels = useMemo((): DisplayModel[] => {
       const registryModels = getModelsForGateway(gatewayType)
-
-      // For OpenRouter, use all live models
-      if (gatewayType === 'openrouter' && openRouterModels.length > 0) {
-        return openRouterModels.map((m) => {
-          // Try to find matching registry model for tier
-          const registryModel = registryModels.find((r) => r.ids.openrouter === m.id)
-
-          const promptPrice = parseFloat(m.pricing?.prompt ?? '0')
-          const completionPrice = parseFloat(m.pricing?.completion ?? '0')
-
-          return {
-            id: m.id,
-            name: m.name || m.id.split('/').pop() || m.id,
-            provider: 'openrouter',
-            tier: registryModel?.tier ?? 'general',
-            contextWindow: m.context_length ?? registryModel?.contextWindow ?? 128000,
-            isFree: promptPrice === 0,
-            inputCost: promptPrice * 1_000_000,
-            outputCost: completionPrice * 1_000_000,
-            isAvailable: true,
-          }
-        })
-      }
 
       // For Ollama, use the fetched models list
       if (gatewayType === 'ollama' && ollamaModels.length > 0) {
@@ -94,7 +70,7 @@ export function ModelList({
       outputCost: m.outputCostPer1M,
       isAvailable: true,
     }))
-  }, [gatewayType, openRouterModels, ollamaModels])
+  }, [gatewayType, ollamaModels])
 
   // Filter by search query
   const filteredModels = useMemo(() => {

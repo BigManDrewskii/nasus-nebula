@@ -57,7 +57,7 @@ export class BrowserAnalyzeScreenshotTool extends BaseTool {
     // 2. Pick a vision-capable model and resolve gateway credentials
     const store = useAppStore.getState()
     const conn = store.resolveConnection()
-    const { apiKey, apiBase, provider } = conn
+    const { apiKey, apiBase } = conn
     const currentModel = conn.model || store.model
 
     if (!apiKey) {
@@ -75,26 +75,17 @@ export class BrowserAnalyzeScreenshotTool extends BaseTool {
       currentModel.includes('gemini') ||
       currentModel.includes('vision')
 
-    const visionModel = isVisionCapable
-      ? currentModel
-      : provider === 'deepseek'
-        ? 'deepseek-chat' // DeepSeek V3 has vision via some endpoints
-        : 'anthropic/claude-3.5-haiku' // Reliable fallback on OpenRouter
+    const visionModel = isVisionCapable ? currentModel : 'deepseek-chat'
 
     // 3. Call the vision model via a direct fetch (multipart content)
     try {
-      const base = (apiBase ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '')
+      const base = (apiBase ?? 'https://api.deepseek.com/v1').replace(/\/$/, '')
       const url = `${base}/chat/completions`
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
         ...(conn.extraHeaders ?? {}),
-      }
-      // OpenRouter attribution headers
-      if (provider === 'openrouter') {
-        headers['HTTP-Referer'] = 'https://nasus.app'
-        headers['X-Title'] = 'Nasus'
       }
 
       const body = JSON.stringify({

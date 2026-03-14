@@ -14,7 +14,7 @@
  *  - Plan-progress tracking (task_plan.md checkbox updates)
  */
 
-import { streamCompletion, powerfulModel, isReasoningModel } from '../llm'
+import { streamCompletion, isReasoningModel } from '../llm'
 import type { LlmMessage, LlmResponse, ToolCall } from '../llm'
 import { startTurnTracking } from '../tools'
 import { executeTool } from '../tools/index'
@@ -35,8 +35,6 @@ const log = createLogger('ReactLoop')
 
 /** Derive an OpenAI-compatible provider type string from a gateway base URL. */
 function _providerFromBase(apiBase: string): string | undefined {
-  if (apiBase.includes('openrouter.ai')) return 'openrouter'
-  if (apiBase.includes('requesty.ai')) return 'requesty'
   if (apiBase.includes('deepseek.com')) return 'deepseek'
   if (apiBase.includes('api.openai.com')) return 'openai'
   return undefined
@@ -343,9 +341,7 @@ export class ReactLoop {
 
     let model: string
     if (forcePowerfulModel) {
-      if (primaryProvider === 'openrouter' || primaryProvider === 'requesty') {
-        model = powerfulModel(store.openRouterModels)
-      } else if (primaryProvider === 'deepseek') {
+      if (primaryProvider === 'deepseek') {
         model = 'deepseek-chat'
       } else {
         model = resolvedConnection.model || store.model
@@ -354,13 +350,18 @@ export class ReactLoop {
       model = resolvedConnection.model || store.model
     }
 
-    // Guard: no API key configured at all — fail fast before hitting the network
-    if (!primaryApiKey || primaryApiKey.length === 0) {
+    // Guard: no API key configured at all — fail fast before hitting the network.
+    // Check both the legacy direct apiKey field AND any active gateway key.
+    const hasGatewayKey = store.gateways?.some(
+      (g: { enabled: boolean; apiKey: string }) => g.enabled && g.apiKey?.trim().length > 0
+    ) ?? false
+
+    if (!hasGatewayKey && (!primaryApiKey || primaryApiKey.length === 0)) {
       const providerLabel =
-        primaryProvider === 'vercel' ? 'Vercel AI Gateway' :
-        primaryProvider === 'openrouter' ? 'OpenRouter' :
-        primaryProvider === 'openai' ? 'OpenAI' : primaryProvider
-      log.error('callLLM failed', new Error(`No API key for ${providerLabel}`))
+        primaryProvider === 'deepseek' ? 'DeepSeek' :
+        primaryProvider === 'openai' ? 'OpenAI' :
+        primaryProvider === 'ollama' ? 'Ollama' : primaryProvider
+      log.error('callLLM failed', new Error(`No API key configured for ${providerLabel}`))
       return null
     }
 
@@ -392,6 +393,7 @@ export class ReactLoop {
       )
       return result
     } catch (_err) {
+      log.error('callLLM stream failed', _err instanceof Error ? _err : new Error(String(_err)))
       // Clean up a partial assistant+tool_calls message if the stream failed before
       // tool execution could complete.
       if (messages.length > 0) {

@@ -373,8 +373,8 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
               // from the gateway slice which is correctly populated by loadGatewayConfig.
               const conn = useAppStore.getState().resolveConnection()
               const resolvedApiKey = conn.apiKey || cfg.apiKey || ''
-              const resolvedApiBase = conn.apiBase || cfg.apiBase || 'https://openrouter.ai/api/v1'
-              const resolvedProvider = conn.provider || cfg.provider || 'openrouter'
+              const resolvedApiBase = conn.apiBase || cfg.apiBase || 'https://api.deepseek.com/v1'
+              const resolvedProvider = conn.provider || cfg.provider || 'deepseek'
 
                 // Run the actual web agent (TypeScript orchestrator)
               await runWebAgent({
@@ -466,7 +466,7 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
           const cfg0 = configRef.current
           const conn0 = useAppStore.getState().resolveConnection()
           const effectiveKey = conn0.apiKey || cfg0.apiKey || ''
-          const effectiveProvider = conn0.provider || cfg0.provider || 'openrouter'
+          const effectiveProvider = conn0.provider || cfg0.provider || 'deepseek'
           const needsKey = effectiveProvider !== 'ollama' && !effectiveKey.trim()
             if (needsKey) {
               addToast('Add your API key in Settings before sending.', 'red')

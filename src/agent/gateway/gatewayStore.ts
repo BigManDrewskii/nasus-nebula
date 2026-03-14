@@ -218,9 +218,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         }>('get_config').catch(() => null)
 
         // Load per-provider keys from OS keyring — the most reliable persistence path
-        const [orKeyringKey, reqKeyringKey, dsKeyringKey] = await Promise.all([
-          tauriInvoke<string>('get_provider_key', { provider: 'openrouter' }).catch(() => ''),
-          tauriInvoke<string>('get_provider_key', { provider: 'requesty' }).catch(() => ''),
+        const [dsKeyringKey] = await Promise.all([
           tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => ''),
         ])
 
@@ -254,7 +252,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
             } catch { /* ignore */ }
           }
           updatedGateways = currentGateways.map((g) => {
-            if (g.type === config.provider || (config.provider === 'openrouter' && g.type === 'openrouter')) {
+            if (g.type === config.provider) {
               return { ...g, apiKey: resolvedKey, enabled: true }
             }
             if (g.type !== 'ollama') return { ...g, enabled: false }
@@ -267,16 +265,14 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         // Overlay keyring keys — these take priority over everything else since they
         // are written by SettingsPanel.checkAndSave and are the most up-to-date values
         updatedGateways = updatedGateways.map(g => {
-          if (g.id === 'openrouter' && orKeyringKey) return { ...g, apiKey: orKeyringKey }
-          if (g.id === 'requesty'   && reqKeyringKey) return { ...g, apiKey: reqKeyringKey }
-          if (g.id === 'deepseek'   && dsKeyringKey) return { ...g, apiKey: dsKeyringKey }
+          if (g.id === 'deepseek' && dsKeyringKey) return { ...g, apiKey: dsKeyringKey }
           return g
         })
 
         set({ gateways: updatedGateways })
 
         // Sync the active provider's key into store.apiKey for the needsKey guard
-        const activeProvider = config?.provider || currentGateways.find(g => g.enabled)?.type || 'openrouter'
+        const activeProvider = config?.provider || currentGateways.find(g => g.enabled)?.type || 'deepseek'
         const activeGateway = updatedGateways.find(g => g.type === activeProvider || g.id === activeProvider)
         const resolvedKey = activeGateway?.apiKey || config?.api_key || ''
         if (resolvedKey) {
@@ -308,7 +304,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         try {
           const activeProvider = (() => {
             try { return sessionStorage.getItem('nasus:active-provider') } catch { return null }
-          })() || (await import('../../store')).useAppStore.getState().provider || 'openrouter'
+          })() || (await import('../../store')).useAppStore.getState().provider || 'deepseek'
 
           const keyForProvider = (id: string) => {
             try { return sessionStorage.getItem(`nasus:key:${id}`) ?? '' } catch { return '' }
@@ -365,8 +361,6 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
     // Sensible per-gateway fallback model IDs when auto-selection produces nothing
     const FALLBACK_MODELS: Partial<Record<string, string>> = {
-      openrouter: 'anthropic/claude-sonnet-4-20250514',
-      requesty: 'anthropic/claude-sonnet-4-20250514',
       deepseek: 'deepseek-chat',
       ollama: 'llama3.3:70b',
       custom: '',
@@ -384,12 +378,12 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
 
     if (!primary) {
       // No enabled gateway — best-effort: use the legacy key with the persisted provider
-      const legacyProvider = legacyState.provider ?? 'openrouter'
-      const legacyBase = legacyState.apiBase ?? 'https://openrouter.ai/api/v1'
+      const legacyProvider = legacyState.provider ?? 'deepseek'
+      const legacyBase = legacyState.apiBase ?? 'https://api.deepseek.com/v1'
       return {
         apiBase: legacyBase,
         apiKey: legacyKey,
-        model: FALLBACK_MODELS[legacyProvider] ?? FALLBACK_MODELS['openrouter']!,
+        model: FALLBACK_MODELS[legacyProvider] ?? '',
         provider: legacyProvider,
         extraHeaders: {},
       }
@@ -412,7 +406,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         } else {
           // Not in registry — try a directional translate from every known gateway format.
           // This handles cases like OpenRouter slugs stored while on a direct gateway.
-          const allGatewayTypes: Array<import('./gatewayTypes').GatewayType> = ['openrouter', 'deepseek', 'requesty', 'ollama', 'custom']
+          const allGatewayTypes: Array<import('./gatewayTypes').GatewayType> = ['deepseek', 'ollama', 'litellm', 'direct', 'custom']
           let resolved = manualModelId
           for (const fromGateway of allGatewayTypes) {
             if (fromGateway === primary.type) continue
@@ -422,15 +416,6 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
           modelId = resolved
         }
 
-        // Sanity-check: OpenRouter/Requesty require slugs with a '/' (e.g. 'anthropic/claude-...')
-        // If the resolved ID has no '/' and the gateway is a router, the ID is from a direct
-        // provider and wasn't translated — fall back to auto-select to avoid a 400.
-        const isRouter = primary.type === 'openrouter' || primary.type === 'requesty'
-        if (isRouter && !modelId.includes('/')) {
-          const fallback = selectModel('auto-paid', primary.type, undefined, get().openRouterModels)
-          modelId = fallback?.modelId ?? fallbackModel
-          log.warn(`manualModelId '${manualModelId}' is not valid for ${primary.type} — using auto-select: ${modelId}`)
-        }
       } else {
       // Auto-select based on mode and gateway
       const selection = selectModel(routingMode, primary.type, manualModelId, get().openRouterModels)

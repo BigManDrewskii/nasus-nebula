@@ -487,16 +487,12 @@ If no issues found, return an empty issues array.`
     if (noToolChoice) return null
 
     try {
-      const base = (conn.apiBase ?? 'https://openrouter.ai/api/v1').replace(/\/$/, '')
+      const base = (conn.apiBase ?? 'https://api.deepseek.com/v1').replace(/\/$/, '')
       const url = `${base}/chat/completions`
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${conn.apiKey}`,
         ...(conn.extraHeaders ?? {}),
-      }
-      if (conn.provider === 'openrouter') {
-        headers['HTTP-Referer'] = 'https://nasus.app'
-        headers['X-Title'] = 'Nasus'
       }
 
       const body = JSON.stringify({

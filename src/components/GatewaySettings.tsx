@@ -33,6 +33,8 @@ export function GatewaySettings() {
   })))
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  const needsSetup = gateways.every(g => !g.enabled || !g.apiKey.trim())
+
   const handleUpdate = useCallback((id: string, updates: Partial<GatewayConfig>) => {
     updateGateway(id, updates)
     persistGateways()
@@ -54,6 +56,40 @@ export function GatewaySettings() {
           {gateways.filter(g => g.enabled).length} active
         </span>
       </div>
+
+      {needsSetup && (
+        <div
+          className="flex-v-center gw-setup-banner"
+          style={{
+            background: 'rgba(234,179,8,0.08)',
+            border: '1px solid rgba(234,179,8,0.25)',
+            borderRadius: 8,
+            padding: '10px 12px',
+            gap: 10,
+          }}
+        >
+          <Pxi name="warning" size={13} style={{ color: '#eab308', flexShrink: 0 }} />
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)', flex: 1 }}>
+            No API key configured. Enable a gateway below and paste your key to get started.
+          </span>
+          <button
+            onClick={() => setExpandedId('deepseek')}
+            style={{
+              fontSize: 'var(--text-xs)',
+              color: '#eab308',
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 6px',
+              borderRadius: 4,
+              fontWeight: 500,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Add key →
+          </button>
+        </div>
+      )}
 
       <div className="flex-col gw-list">
         {[...gateways].sort((a, b) => a.priority - b.priority).map((gw) => (
@@ -176,6 +212,7 @@ function GatewayItem({
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean, latencyMs?: number, error?: string } | null>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [keySaved, setKeySaved] = useState(false)
 
   const handleTest = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -292,14 +329,24 @@ function GatewayItem({
               type="password"
               value={gateway.apiKey}
               onChange={(e) => onUpdate({ apiKey: e.target.value })}
+              onBlur={(e) => {
+                if (e.target.value.trim()) {
+                  setKeySaved(true)
+                  setTimeout(() => setKeySaved(false), 2000)
+                }
+              }}
               placeholder={
                 gateway.type === 'ollama'   ? 'Not required for local' :
                 gateway.type === 'deepseek' ? 'sk-… (from platform.deepseek.com/api-keys)' :
-                gateway.type === 'requesty' ? 'req_… (from app.requesty.ai)' :
-                'sk-or-v1-…'
+                'sk-…'
               }
               className="gw-input"
             />
+            {keySaved && (
+              <span style={{ fontSize: 'var(--text-xs)', color: '#22c55e', marginTop: 4 }}>
+                ✓ Saved
+              </span>
+            )}
             {gateway.type === 'deepseek' && (
               <span className="text-tertiary gw-deepseek-hint">
                 Supported models: <code className="font-mono text-secondary">deepseek-chat</code> (V3), <code className="font-mono text-secondary">deepseek-reasoner</code> (R1 / R1-0528)

@@ -59,6 +59,13 @@ function CopyButton({ text }: { text: string }) {
 function getErrorMessage(error: string): { title: string; body: string; icon: string } {
   const e = error.toLowerCase()
 
+  if (e.includes('no gateways available') || e.includes('configure at least one') || e.includes('no api key')) {
+    return {
+      title: 'No Gateway Configured',
+      body: 'No gateway configured — open Settings and add an API key.',
+      icon: 'key',
+    }
+  }
   if (e.includes('401') || e.includes('authentication') || e.includes('api key') || e.includes('unauthorized')) {
     return {
       title: 'Authentication Failed',
@@ -132,7 +139,9 @@ function getErrorMessage(error: string): { title: string; body: string; icon: st
 
 function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }) {
   const { title, body, icon } = getErrorMessage(error)
-  const isQuotaError = error.toLowerCase().includes('402') || error.toLowerCase().includes('credits')
+  const e = error.toLowerCase()
+  const isQuotaError = e.includes('402') || e.includes('credits')
+  const isGatewayConfigError = e.includes('no gateways available') || e.includes('configure at least one') || e.includes('no api key')
 
   return (
     <div className="cm-error-banner slide-down">
@@ -146,20 +155,31 @@ function ErrorBanner({ error, onRetry }: { error: string; onRetry?: () => void }
       <div className="cm-error-body">
         <p
           className="cm-error-text"
-          style={{ marginBottom: onRetry ? 10 : 0 }}
+          style={{ marginBottom: onRetry || isGatewayConfigError ? 10 : 0 }}
         >
           {body}
         </p>
 
-        {onRetry && (
+        {(onRetry || isGatewayConfigError) && (
           <div className="cm-error-actions">
-            <button
-              onClick={onRetry}
+            {isGatewayConfigError && (
+              <button
+                onClick={() => useAppStore.getState().openSettings('model')}
                 className="cm-retry-btn hover-bg-amber"
-            >
-              <Pxi name="refresh" size={11} />
-              Try again
-            </button>
+              >
+                <Pxi name="gear" size={11} />
+                Open Settings
+              </button>
+            )}
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="cm-retry-btn hover-bg-amber"
+              >
+                <Pxi name="refresh" size={11} />
+                Try again
+              </button>
+            )}
 
             {isQuotaError && (
               <span className="cm-quota-hint">

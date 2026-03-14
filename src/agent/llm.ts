@@ -547,60 +547,6 @@ export interface OpenRouterModel {
   is_free?: boolean
 }
 
-const OR_API_BASE = 'https://openrouter.ai/api/v1'
-
-/**
- * Get OpenRouter-specific headers.
- * HTTP-Referer and X-Title are standard/CORS-allowed headers that OpenRouter
- * uses for attribution and free-tier rate limit eligibility. Always include them.
- */
-function getORHeaders(): Record<string, string> {
-  return { 'HTTP-Referer': 'https://nasus.app', 'X-Title': 'Nasus' }
-}
-
-/**
- * Fetch rich model metadata from OpenRouter's /models endpoint.
- * Returns full OpenRouterModel objects sorted by provider family then name.
- */
-export async function fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModel[]> {
-  const url = `${OR_API_BASE}/models`
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    ...getORHeaders(),
-  }
-  const resp = await fetch(url, { headers })
-  if (!resp.ok) {
-    let msg = `HTTP ${resp.status}`
-    try {
-      const body = await resp.json()
-      const orMsg = body?.error?.message
-      const orCode = body?.error?.code
-      if (orMsg) msg = orCode ? `[${orCode}] ${orMsg}` : orMsg
-    } catch {
-      // Response body isn't JSON — ignore and use the status message
-    }
-    throw new Error(msg)
-  }
-  const json = await resp.json()
-  const models: OpenRouterModel[] = (json?.data ?? []).filter(
-    (m: OpenRouterModel) =>
-      m.id &&
-      m.name &&
-      (m.architecture?.output_modalities ?? ['text']).includes('text'),
-  )
-  // Inject an 'is_free' property into the models for easier filtering
-  models.forEach(m => {
-    m.is_free = parseFloat(m.pricing?.prompt ?? '1') === 0;
-  });
-  models.sort((a, b) => {
-    const fa = a.id.split('/')[0]
-    const fb = b.id.split('/')[0]
-    if (fa !== fb) return fa.localeCompare(fb)
-    return a.name.localeCompare(b.name)
-  })
-  return models
-}
 
 /**
  * Format a per-token USD price (as string) into a human-readable label.

@@ -13,7 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'openrouter' | 'requesty' | 'ollama' | 'deepseek' | 'litellm' | 'direct' | 'custom'
+export type GatewayType = 'ollama' | 'deepseek' | 'litellm' | 'direct' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
@@ -22,7 +22,7 @@ export interface GatewayConfig {
   type: GatewayType
   /** Display name for the settings UI */
   label: string
-  /** OpenAI-compatible base URL (e.g., https://openrouter.ai/api/v1) */
+  /** OpenAI-compatible base URL (e.g., https://api.deepseek.com/v1) */
   apiBase: string
   /** API key (empty string for keyless gateways like Ollama) */
   apiKey: string
@@ -30,7 +30,7 @@ export interface GatewayConfig {
   priority: number
   /** Whether this gateway is currently enabled */
   enabled: boolean
-  /** Whether to use the gateway's native routing (e.g., openrouter/auto) */
+  /** Whether to use the gateway's native routing */
   nativeRouting: boolean
   /** Maximum retry attempts before failing over to next gateway */
   maxRetries: number
@@ -134,38 +134,6 @@ export type GatewayEventCallback = (event: GatewayEvent) => void
 
 export const DEFAULT_GATEWAYS: GatewayConfig[] = [
   {
-    id: 'openrouter',
-    type: 'openrouter',
-    label: 'OpenRouter',
-    apiBase: 'https://openrouter.ai/api/v1',
-    apiKey: '',
-    priority: 0,
-    enabled: true,
-    nativeRouting: true,
-    maxRetries: 2,
-    timeoutMs: 180_000,
-    extraHeaders: {
-      'HTTP-Referer': 'https://nasus.app',
-      'X-Title': 'Nasus',
-    },
-  },
-  {
-    id: 'requesty',
-    type: 'requesty',
-    label: 'Requesty',
-    apiBase: 'https://router.requesty.ai/v1',
-    apiKey: '',
-    priority: 1,
-    enabled: false,
-    nativeRouting: true,
-    maxRetries: 2,
-    timeoutMs: 180_000,
-    extraHeaders: {
-      'HTTP-Referer': 'https://nasus.app',
-      'X-Title': 'Nasus',
-    },
-  },
-  {
     id: 'ollama',
     type: 'ollama',
     label: 'Ollama (Local)',
@@ -183,8 +151,8 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     label: 'DeepSeek (Direct)',
     apiBase: 'https://api.deepseek.com/v1',
     apiKey: '',
-    priority: 5,
-    enabled: false,
+    priority: 0,
+    enabled: true,
     nativeRouting: false,
     maxRetries: 2,
     timeoutMs: 180_000,

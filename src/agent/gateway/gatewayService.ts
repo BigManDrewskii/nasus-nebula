@@ -326,18 +326,10 @@ export class GatewayService {
 
   /**
    * Build request headers for a specific gateway.
-   * Injects HTTP-Referer and X-Title for OpenRouter/Requesty (required for attribution
-   * and some free-tier rate limit eligibility). These are standard/allowed CORS headers.
+   * Merges user-configured extra headers from the gateway config.
    */
   private buildHeaders(gw: GatewayConfig): Record<string, string> {
     const headers: Record<string, string> = {}
-
-    // Always inject OpenRouter/Requesty attribution headers — they are explicitly listed in
-    // their Access-Control-Allow-Headers and do NOT cause CORS preflight issues.
-    if (gw.type === 'openrouter' || gw.type === 'requesty') {
-      headers['HTTP-Referer'] = 'https://nasus.app'
-      headers['X-Title'] = 'Nasus'
-    }
 
     // User-configured extra headers (from DEFAULT_GATEWAYS or user config)
     if (gw.extraHeaders) {

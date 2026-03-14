@@ -2,8 +2,8 @@
  * Model Registry — Maps canonical models to gateway-specific IDs and metadata.
  *
  * This is the single source of truth for "what models are available on which gateway".
- * When the user selects "Claude Sonnet 4" in the UI, this registry tells us:
- *  - OpenRouter: "anthropic/claude-sonnet-4-20250514"
+ * When the user selects "DeepSeek V3" in the UI, this registry tells us:
+ *  - DeepSeek direct: "deepseek-chat"
  *  - Ollama: model-specific ID (e.g., "llama3.3:70b")
  *
  * For auto-free mode, we filter to models where freeOn[gatewayType] === true.
@@ -16,87 +16,10 @@ import type { OpenRouterModel } from '../llm'
 // ─── Registry ───────────────────────────────────────────────────────────────
 
 export const MODEL_REGISTRY: GatewayModel[] = [
-  // ── Frontier Reasoning ──────────────────────────────────────────────────
-  {
-    canonicalName: 'GPT-5.2',
-    ids: {
-      openrouter: 'openai/gpt-5.2-thinking',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 400_000,
-    inputCostPer1M: 1.75,
-    outputCostPer1M: 14.0,
-  },
-  {
-    canonicalName: 'Claude 4.6 Sonnet',
-    ids: {
-      openrouter: 'anthropic/claude-4.6-sonnet',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 1_000_000,
-    inputCostPer1M: 3.0,
-    outputCostPer1M: 15.0,
-  },
-  {
-    canonicalName: 'Gemini 3.1 Pro',
-    ids: {
-      openrouter: 'google/gemini-3.1-pro',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 1_500_000,
-    inputCostPer1M: 2.0,
-    outputCostPer1M: 12.0,
-  },
-  {
-    canonicalName: 'Claude Sonnet 4',
-    ids: {
-      openrouter: 'anthropic/claude-sonnet-4-20250514',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 200_000,
-    inputCostPer1M: 3.0,
-    outputCostPer1M: 15.0,
-  },
-  {
-    canonicalName: 'GPT-4.1',
-    ids: {
-      openrouter: 'openai/gpt-4.1',
-    },
-    freeOn: {},
-    tier: 'reasoning',
-    contextWindow: 1_000_000,
-    inputCostPer1M: 2.0,
-    outputCostPer1M: 8.0,
-  },
-
   // ── Coding / Balanced ───────────────────────────────────────────────────
-  {
-    canonicalName: 'DeepSeek V3.2',
-    ids: {
-      // On OpenRouter the V3.2 checkpoint has its own slug
-      openrouter: 'deepseek/deepseek-v3.2',
-      // On api.deepseek.com there is only one "chat" endpoint; it always resolves to the
-      // latest V3 checkpoint (currently 0324). There is no separate v3.2 endpoint.
-      // We intentionally leave the deepseek direct ID absent so that the registry
-      // never maps two separate entries to the same deepseek-chat string — which would
-      // cause translateModelId() to non-deterministically pick either entry.
-    },
-    freeOn: {},
-    tier: 'coding',
-    contextWindow: 163_000,
-    inputCostPer1M: 0.25,
-    outputCostPer1M: 0.38,
-    supportsTools: true,
-  },
   {
     canonicalName: 'DeepSeek V3',
     ids: {
-      openrouter: 'deepseek/deepseek-chat',
-      // deepseek-chat is the only V3-family model ID on api.deepseek.com
       deepseek: 'deepseek-chat',
     },
     freeOn: {},
@@ -107,21 +30,8 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     supportsTools: true,
   },
   {
-    canonicalName: 'DeepSeek V3 (Free)',
-    ids: {
-      openrouter: 'deepseek/deepseek-chat-v3-0324',
-    },
-    freeOn: { openrouter: true },
-    tier: 'coding',
-    contextWindow: 128_000,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
-    supportsTools: true,
-  },
-  {
     canonicalName: 'DeepSeek R1',
     ids: {
-      openrouter: 'deepseek/deepseek-r1',
       deepseek: 'deepseek-reasoner',
     },
     freeOn: {},
@@ -129,25 +39,11 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
-    // Pre-0528: NO tool calling support — sending tools: [] returns HTTP 400
-    supportsTools: false,
-  },
-  {
-    canonicalName: 'DeepSeek R1 (Free)',
-    ids: {
-      openrouter: 'deepseek/deepseek-r1:free',
-    },
-    freeOn: { openrouter: true },
-    tier: 'reasoning',
-    contextWindow: 128_000,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
     supportsTools: false,
   },
   {
     canonicalName: 'DeepSeek R1 0528',
     ids: {
-      openrouter: 'deepseek/deepseek-r1-0528',
       deepseek: 'deepseek-reasoner',
     },
     freeOn: {},
@@ -155,62 +51,16 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     contextWindow: 128_000,
     inputCostPer1M: 0.55,
     outputCostPer1M: 2.19,
-    // R1-0528 added full function/tool calling support
     supportsTools: true,
   },
 
-  // ── Fast / Cheap / Free ─────────────────────────────────────────────────
-  {
-    canonicalName: 'Mimo V2 Flash',
-    ids: {
-      openrouter: 'xiaomi/mimo-v2-flash',
-    },
-    freeOn: { openrouter: true },
-    tier: 'fast',
-    contextWindow: 256_000,
-    inputCostPer1M: 0,
-    outputCostPer1M: 0,
-  },
-  {
-    canonicalName: 'Grok 4.1 Fast',
-    ids: {
-      openrouter: 'xai/grok-4.1-fast',
-    },
-    freeOn: {},
-    tier: 'fast',
-    contextWindow: 2_000_000,
-    inputCostPer1M: 0.20,
-    outputCostPer1M: 0.50,
-  },
-  {
-    canonicalName: 'Gemini 2.0 Flash',
-    ids: {
-      openrouter: 'google/gemini-2.0-flash-001',
-    },
-    freeOn: { openrouter: true },
-    tier: 'fast',
-    contextWindow: 1_048_576,
-    inputCostPer1M: 0.10,
-    outputCostPer1M: 0.40,
-  },
-  {
-    canonicalName: 'GPT-4.1 Mini',
-    ids: {
-      openrouter: 'openai/gpt-4.1-mini',
-    },
-    freeOn: {},
-    tier: 'fast',
-    contextWindow: 1_000_000,
-    inputCostPer1M: 0.4,
-    outputCostPer1M: 1.6,
-  },
+  // ── Local / Ollama ───────────────────────────────────────────────────────
   {
     canonicalName: 'Llama 3.3 70B',
     ids: {
-      openrouter: 'meta-llama/llama-3.3-70b-instruct',
       ollama: 'llama3.3:70b',
     },
-    freeOn: { openrouter: true },
+    freeOn: {},
     tier: 'general',
     contextWindow: 128_000,
     inputCostPer1M: 0,
@@ -235,7 +85,7 @@ export function getFreeModels(gatewayType: GatewayType): GatewayModel[] {
 }
 
 /**
- * Find a model by its gateway-specific ID (e.g., "anthropic/claude-sonnet-4-20250514").
+ * Find a model by its gateway-specific ID (e.g., "deepseek-chat").
  * Searches across all gateways.
  */
 export function findModelById(modelId: string): GatewayModel | undefined {
@@ -245,7 +95,7 @@ export function findModelById(modelId: string): GatewayModel | undefined {
 }
 
 /**
- * Find a model by canonical name (e.g., "Claude Sonnet 4").
+ * Find a model by canonical name (e.g., "DeepSeek V3").
  */
 export function findModelByName(name: string): GatewayModel | undefined {
   return MODEL_REGISTRY.find(
@@ -280,7 +130,7 @@ export function selectModel(
   const staticModels = getModelsForGateway(gatewayType).filter(
     (m) => m.supportsTools !== false,
   )
-  
+
     // Map dynamic models to match GatewayModel interface roughly
     const mappedDynamic: GatewayModel[] = dynamicModels
       .filter(m => {
@@ -295,7 +145,7 @@ export function selectModel(
         const outputPriceStr = m.pricing?.completion || m.pricing?.output || '0'
         const inputPrice = parseFloat(inputPriceStr)
         const outputPrice = parseFloat(outputPriceStr)
-        
+
         return {
           canonicalName: m.name || m.id,
           ids: { [gatewayType]: m.id },
@@ -372,7 +222,7 @@ export function selectModel(
 
 /**
  * Resolve a model ID from one gateway format to another.
- * e.g., "anthropic/claude-sonnet-4-20250514" (openrouter) → "llama3.3:70b" (ollama)
+ * e.g., "deepseek-chat" (deepseek) → "llama3.3:70b" (ollama)
  */
 export function translateModelId(
   modelId: string,

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { FocusTrap } from 'focus-trap-react'
 import { tauriInvoke, checkOllama } from '../tauri'
-import { fetchOpenRouterModels, formatTokenPrice, type OpenRouterModel } from '../agent/llm'
+import { formatTokenPrice, type OpenRouterModel } from '../agent/llm'
 import { useAppStore } from '../store'
 import ConfirmModal from './ConfirmModal'
 import { useShallow } from 'zustand/react/shallow'
@@ -57,7 +57,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const {
     model, workspacePath, apiBase: storedApiBase,
     setApiKey, setModel, setWorkspacePath, setApiBase, setProvider,
-    openRouterModels, setOpenRouterModels,
     ollamaModels, setOllamaModels,
     exaKey, setExaKey,
     braveKey, setBraveKey,
@@ -80,8 +79,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setWorkspacePath: s.setWorkspacePath,
     setApiBase: s.setApiBase,
     setProvider: s.setProvider,
-    openRouterModels: s.openRouterModels,
-    setOpenRouterModels: s.setOpenRouterModels,
     ollamaModels: s.ollamaModels,
     setOllamaModels: s.setOllamaModels,
     exaKey: s.exaKey,
@@ -107,8 +104,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setTextScale: s.setTextScale,
   })))
 
-  const [localOpenRouterKey, setLocalOpenRouterKey] = useState('')
-  const [localRequestyKey, setLocalRequestyKey] = useState('')
   const [localDeepSeekKey, setLocalDeepSeekKey] = useState('')
   const [localModel, setLocalModel] = useState(model)
   const [localWorkspace, setLocalWorkspace] = useState(workspacePath)
@@ -117,14 +112,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [localSerperKey, setLocalSerperKey] = useState(serperKey || '')
   const [localTavilyKey, setLocalTavilyKey] = useState(tavilyKey || '')
   const [localMaxIterations, setLocalMaxIterations] = useState(String(maxIterations ?? 50))
-  // Preserve custom API base (e.g. proxy URL) — source from the OpenRouter gateway config,
-  // NOT from store.apiBase (a legacy field that may hold a different provider's URL).
-  const OR_BASE = 'https://openrouter.ai/api/v1'
+  const DEEPSEEK_BASE = 'https://api.deepseek.com/v1'
   const OLLAMA_BASE = 'http://localhost:11434/v1'
   const [localApiBase, setLocalApiBase] = useState(() => {
-    const orGateway = useAppStore.getState().gateways.find(g => g.id === 'openrouter')
-    const base = orGateway?.apiBase || storedApiBase || OR_BASE
-    return base && base !== OLLAMA_BASE ? base : OR_BASE
+    const dsGateway = useAppStore.getState().gateways.find(g => g.id === 'deepseek')
+    return dsGateway?.apiBase || storedApiBase || DEEPSEEK_BASE
   })
 
   const [localEnableVerification, setLocalEnableVerification] = useState(enableVerification ?? true)
@@ -136,7 +128,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
     const [_ollamaRunning, setOllamaRunning] = useState<boolean | null>(null)
     const [_checkingOllama, setCheckingOllama] = useState(false)
-    const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'openrouter')
+    const [activeProvider, setActiveProvider] = useState(useAppStore.getState().provider || 'deepseek')
 
     // Only probe Ollama if the user is actually on the Ollama provider tab —
     // avoids repeated failed connections when Ollama isn't installed/running.
@@ -162,35 +154,19 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         const state = useAppStore.getState()
 
         const p = state.provider
-        if (p === 'openrouter' || p === 'requesty' || p === 'ollama' || p === 'deepseek') {
+        if (p === 'ollama' || p === 'deepseek') {
           setActiveProvider(p)
         }
 
         // Load all provider keys from the OS keyring. This is the primary persistence
         // path — provider keys are NOT persisted in localStorage (partialize strips them).
-        Promise.all([
-          tauriInvoke<string>('get_provider_key', { provider: 'openrouter' }).catch(() => ''),
-          tauriInvoke<string>('get_provider_key', { provider: 'requesty' }).catch(() => ''),
-          tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => ''),
-        ]).then(([orKey, reqKey, dsKey]) => {
-          // Prefer keyring value; fall back to in-memory gateway state
-          const resolvedOrKey  = orKey  || state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey || ''
-          const resolvedReqKey = reqKey || state.gateways.find((g) => g.id === 'requesty')?.apiKey   || ''
-          const resolvedDsKey  = dsKey  || state.gateways.find((g) => g.id === 'deepseek')?.apiKey   || ''
-          if (resolvedOrKey)  setLocalOpenRouterKey(resolvedOrKey)
-          if (resolvedReqKey) setLocalRequestyKey(resolvedReqKey)
-          if (resolvedDsKey)  setLocalDeepSeekKey(resolvedDsKey)
+        tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => '').then((dsKey) => {
+          const resolvedDsKey = dsKey || state.gateways.find((g) => g.id === 'deepseek')?.apiKey || ''
+          if (resolvedDsKey) setLocalDeepSeekKey(resolvedDsKey)
         }).catch(() => {
-          // Browser mode fallback — read from in-memory gateway state or sessionStorage
-          const orKey  = state.gateways.find((g) => g.id === 'openrouter')?.apiKey || state.apiKey
-            || (() => { try { return sessionStorage.getItem('nasus:key:openrouter') ?? '' } catch { return '' } })()
-          const reqKey = state.gateways.find((g) => g.id === 'requesty')?.apiKey
-            || (() => { try { return sessionStorage.getItem('nasus:key:requesty') ?? '' } catch { return '' } })()
-          const dsKey  = state.gateways.find((g) => g.id === 'deepseek')?.apiKey
+          const dsKey = state.gateways.find((g) => g.id === 'deepseek')?.apiKey
             || (() => { try { return sessionStorage.getItem('nasus:key:deepseek') ?? '' } catch { return '' } })()
-          if (orKey)  setLocalOpenRouterKey(orKey)
-          if (reqKey) setLocalRequestyKey(reqKey)
-          if (dsKey)  setLocalDeepSeekKey(dsKey)
+          if (dsKey) setLocalDeepSeekKey(dsKey)
         })
 
         // Exa key is stripped from localStorage by partialize. Read it back from the
@@ -260,9 +236,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   const [fetchingModels, setFetchingModels] = useState(false)
   const [fetchModelsError, setFetchModelsError] = useState<string | null>(null)
-  const [fetchedCount, setFetchedCount] = useState<number | null>(
-    openRouterModels.length > 0 ? openRouterModels.length : null
-  )
+  const [fetchedCount, setFetchedCount] = useState<number | null>(null)
 
     // The active model list: for Ollama show local models; for DeepSeek show native models; for cloud show fetched/fallback OR list
     const DEEPSEEK_MODELS: OpenRouterModel[] = [
@@ -279,9 +253,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           pricing: { prompt: '0', completion: '0' },
           top_provider: { context_length: null, is_moderated: false },
         }))
-      : activeProvider === 'deepseek'
-        ? DEEPSEEK_MODELS
-        : openRouterModels.length > 0 ? openRouterModels : FALLBACK_MODELS
+      : DEEPSEEK_MODELS
 
   // Filter + group models by family
   const filteredModels = useMemo(() => {
@@ -349,49 +321,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         }
         return
       }
-      if (activeProvider === 'openrouter' && !localOpenRouterKey.trim()) {
-        setFetchModelsError('Enter your OpenRouter API key first')
-        return
-      }
-      if (activeProvider === 'requesty' && !localRequestyKey.trim()) {
-        setFetchModelsError('Enter your Requesty API key first')
-        return
-      }
-      setFetchingModels(true)
-      setFetchModelsError(null)
-      try {
-        // Requesty uses the same API format as OpenRouter, so we use the same fetch function
-        const key = activeProvider === 'requesty'
-          ? localRequestyKey.trim()
-          : localOpenRouterKey.trim()
-        const models = await fetchOpenRouterModels(key)
-        setOpenRouterModels(models)
-        setFetchedCount(models.length)
-        setFetchModelsError(null)
-        // If current model not in new list, keep it anyway — user may have typed custom ID
-      } catch (e) {
-        setFetchModelsError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setFetchingModels(false)
-      }
     }
 
   function validate(): ValidationErrors {
     const errs: ValidationErrors = {}
-    if (activeProvider === 'openrouter') {
-      if (!localOpenRouterKey.trim()) {
-        errs.apiKey = 'API key is required'
-      } else if (!localOpenRouterKey.trim().startsWith('sk-or-')) {
-        errs.apiKey = 'OpenRouter keys start with sk-or-… — get one at openrouter.ai/keys'
-      }
-    }
-    if (activeProvider === 'requesty') {
-      if (!localRequestyKey.trim()) {
-        errs.apiKey = 'API key is required'
-      } else if (!localRequestyKey.trim().startsWith('req_')) {
-        errs.apiKey = 'Requesty keys start with req_… — get one at app.requesty.ai'
-      }
-    }
     if (activeProvider === 'deepseek') {
       if (!localDeepSeekKey.trim()) {
         errs.apiKey = 'API key is required'
@@ -411,8 +344,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
   function doReset() {
     setConfirmReset(false)
-    setLocalOpenRouterKey('')
-    setLocalRequestyKey('')
     setLocalDeepSeekKey('')
     setLocalModel('anthropic/claude-3.7-sonnet')
     setLocalWorkspace('')
@@ -425,13 +356,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setLocalRouterMode('auto')
     setLocalRouterBudget('free')
     setLocalModelOverrides({})
-    setLocalApiBase(OR_BASE)
+    setLocalApiBase(DEEPSEEK_BASE)
     setErrors({})
   }
 
     async function checkAndSave() {
       const errs = validate()
-      if ((activeProvider === 'openrouter' || activeProvider === 'requesty' || activeProvider === 'deepseek') && Object.keys(errs).length > 0) {
+      if (activeProvider === 'deepseek' && Object.keys(errs).length > 0) {
         setErrors(errs)
         // Auto-switch to the tab containing the first error so it's visible
         if (errs.apiKey) setSettingsTab('model')
@@ -443,24 +374,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setSaveError(null)
 
       const isOllama = activeProvider === 'ollama'
-      const isOpenRouter = activeProvider === 'openrouter'
-      const isRequesty = activeProvider === 'requesty'
       const isDeepSeek = activeProvider === 'deepseek'
 
       // Determine API base and provider
-      const REQUESTY_BASE = 'https://router.requesty.ai/v1'
-      const DEEPSEEK_BASE = 'https://api.deepseek.com/v1'
-      const finalApiBase = isOllama ? OLLAMA_BASE : isRequesty ? REQUESTY_BASE : isDeepSeek ? DEEPSEEK_BASE : localApiBase
-      const finalProvider = isOllama ? 'ollama' : isRequesty ? 'requesty' : isDeepSeek ? 'deepseek' : 'openrouter'
+      const finalApiBase = isOllama ? OLLAMA_BASE : isDeepSeek ? DEEPSEEK_BASE : localApiBase
+      const finalProvider = isOllama ? 'ollama' : 'deepseek'
 
         // Save keys to their respective gateways.
         // Each gateway's enabled state must reflect the active provider so that
         // resolveConnection() (which picks the lowest-priority enabled gateway)
         // always returns the gateway the user actually configured — not a higher-
         // priority gateway (e.g. OpenRouter at priority 0) with an empty key.
-        updateGateway('openrouter', { apiKey: localOpenRouterKey.trim(), enabled: isOpenRouter })
-        updateGateway('requesty',   { apiKey: localRequestyKey.trim(),   enabled: isRequesty })
-        updateGateway('deepseek',   { apiKey: localDeepSeekKey.trim(),   enabled: isDeepSeek })
+        updateGateway('deepseek', { apiKey: localDeepSeekKey.trim(), enabled: isDeepSeek })
         // Ollama has its own enabled flag — enable/disable based on active provider.
         updateGateway('ollama',     { enabled: isOllama })
 
@@ -478,9 +403,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         // This is the most reliable persistence path for Tauri desktop — the
         // tauri-plugin-store `save_gateways` path has proven unreliable.
         const keyringWrites = [
-          tauriInvoke('set_provider_key', { provider: 'openrouter', key: localOpenRouterKey.trim() }),
-          tauriInvoke('set_provider_key', { provider: 'requesty',   key: localRequestyKey.trim() }),
-          tauriInvoke('set_provider_key', { provider: 'deepseek',   key: localDeepSeekKey.trim() }),
+          tauriInvoke('set_provider_key', { provider: 'deepseek', key: localDeepSeekKey.trim() }),
         ]
         await Promise.all(keyringWrites).catch((e) => {
           log.warn('Failed to save provider keys to keyring', e instanceof Error ? e : new Error(String(e)))
@@ -491,17 +414,11 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         // Gateway keys are intentionally excluded from Zustand's localStorage persist
         // (partialize strips them), so sessionStorage is the in-memory bridge.
         try {
-          if (localOpenRouterKey.trim()) sessionStorage.setItem('nasus:key:openrouter', localOpenRouterKey.trim())
-          if (localRequestyKey.trim())   sessionStorage.setItem('nasus:key:requesty',   localRequestyKey.trim())
-          if (localDeepSeekKey.trim())   sessionStorage.setItem('nasus:key:deepseek',   localDeepSeekKey.trim())
+          if (localDeepSeekKey.trim()) sessionStorage.setItem('nasus:key:deepseek', localDeepSeekKey.trim())
           sessionStorage.setItem('nasus:active-provider', finalProvider)
         } catch { /* sessionStorage not available in this context */ }
 
-      // The legacy/active apiKey in the store is the one for the currently active provider
-      const finalApiKey = isOpenRouter ? localOpenRouterKey.trim()
-        : isRequesty ? localRequestyKey.trim()
-        : isDeepSeek ? localDeepSeekKey.trim()
-        : ''
+      const finalApiKey = isDeepSeek ? localDeepSeekKey.trim() : ''
 
         setApiKey(finalApiKey)
         setModel(localModel)
@@ -766,18 +683,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     <div className="flex-col gap-1.5">
                     {[
                       {
-                        id: 'openrouter',
-                        label: 'OpenRouter',
-                        description: 'Cloud models via OpenRouter — widest selection',
-                        healthKey: 'openrouter' as const,
-                      },
-                      {
-                        id: 'requesty',
-                        label: 'Requesty',
-                        description: 'LLM router with automatic failover & caching',
-                        healthKey: 'requesty' as const,
-                      },
-                      {
                         id: 'deepseek',
                         label: 'DeepSeek (Direct)',
                         description: 'DeepSeek V3 & R1 — direct API, lowest cost',
@@ -792,13 +697,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                     ].map((opt) => {
                       const isSelected = activeProvider === opt.id
                       const health = gatewayHealth.find(h => h.gatewayId === opt.healthKey)
-                      const hasKey = opt.id === 'openrouter'
-                        ? Boolean(localOpenRouterKey.trim())
-                        : opt.id === 'requesty'
-                          ? Boolean(localRequestyKey.trim())
-                          : opt.id === 'deepseek'
-                            ? Boolean(localDeepSeekKey.trim())
-                            : true // Ollama doesn't need a key
+                      const hasKey = opt.id === 'deepseek'
+                        ? Boolean(localDeepSeekKey.trim())
+                        : true // Ollama doesn't need a key
 
                     const statusColor = health?.status === 'healthy' ? '#22c55e'
                       : health?.status === 'degraded' ? '#eab308'
@@ -812,31 +713,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                           onClick={() => {
                             const newProvider = opt.id
                             setActiveProvider(newProvider)
-                            // Auto-fetch models when switching providers.
-                            // Use newProvider (not activeProvider) to avoid stale-closure: React state
-                            // updates are async, so activeProvider still holds the OLD value here.
-                            if (newProvider === 'openrouter') {
-                              // Reset localApiBase to OR_BASE when switching to OpenRouter, unless
-                              // the user has configured a custom openrouter.ai proxy (preserve that).
-                              if (!localApiBase.includes('openrouter.ai')) {
-                                setLocalApiBase(OR_BASE)
-                              }
-                              if (localOpenRouterKey.trim()) {
-                                setFetchingModels(true)
-                                setFetchModelsError(null)
-                                fetchOpenRouterModels(localOpenRouterKey.trim())
-                                  .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
-                                  .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
-                                  .finally(() => setFetchingModels(false))
-                              }
-                            } else if (newProvider === 'requesty' && localRequestyKey.trim()) {
-                              setFetchingModels(true)
-                              setFetchModelsError(null)
-                              fetchOpenRouterModels(localRequestyKey.trim())
-                                .then((models) => { setOpenRouterModels(models); setFetchedCount(models.length) })
-                                .catch((e) => setFetchModelsError(e instanceof Error ? e.message : String(e)))
-                                .finally(() => setFetchingModels(false))
-                            } else if (newProvider === 'deepseek') {
+                            if (newProvider === 'deepseek') {
                               setLocalModel('deepseek-chat')
                             } else if (newProvider === 'ollama') {
                               fetch('http://localhost:11434/api/tags')
@@ -901,54 +778,6 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 </div>
 
                 {/* API key input for selected provider */}
-                {activeProvider === 'openrouter' && (
-                  <Field
-                    label="OpenRouter API Key"
-                    icon="key"
-                    hint={<>Your OpenRouter key. Get one at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="settings-link">openrouter.ai/keys</a></>}
-                    error={errors.apiKey}
-                  >
-                      <input
-                        key="openrouter-key-input"
-                        type="password"
-                        name="openrouter-api-key"
-                        autoComplete="off"
-                        value={localOpenRouterKey}
-                        onChange={(e) => {
-                          setLocalOpenRouterKey(e.target.value)
-                          setErrors((p) => ({ ...p, apiKey: undefined }))
-                        }}
-                          placeholder="sk-or-v1-..."
-                          className="settings-input placeholder-[var(--tx-muted)]"
-                          style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                        />
-                  </Field>
-                )}
-
-                    {activeProvider === 'requesty' && (
-                      <Field
-                        label="Requesty API Key"
-                        icon="key"
-                        hint={<>Your Requesty key. Get one at <a href="https://app.requesty.ai/getting-started" target="_blank" rel="noreferrer" className="settings-link">app.requesty.ai</a></>}
-                        error={errors.apiKey}
-                      >
-                          <input
-                            key="requesty-key-input"
-                            type="password"
-                            name="requesty-api-key"
-                            autoComplete="off"
-                            value={localRequestyKey}
-                          onChange={(e) => {
-                            setLocalRequestyKey(e.target.value)
-                            setErrors((p) => ({ ...p, apiKey: undefined }))
-                          }}
-                          placeholder="req_..."
-                          className="settings-input placeholder-[var(--tx-muted)]"
-                          style={{ border: `1px solid ${errors.apiKey ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}` }}
-                        />
-                    </Field>
-                  )}
-
                     {activeProvider === 'deepseek' && (
                       <Field
                         label="DeepSeek API Key"
@@ -1281,7 +1110,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                   </div>
 
                   <p className="confirm-body m-0">
-                    Paid mode will use your OpenRouter API credits for each request. Make sure you have credits available at <a href="https://openrouter.ai/credits" target="_blank" rel="noreferrer" className="settings-link">openrouter.ai/credits</a>.
+                    Paid mode will route requests through paid model tiers. Usage costs will be billed through your configured provider.
                   </p>
 
                   <div className="flex-v-center justify-end gap-2.5">

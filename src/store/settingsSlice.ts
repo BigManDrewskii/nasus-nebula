@@ -167,8 +167,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   model: 'anthropic/claude-sonnet-4-20250514',
   workspacePath: '',
   recentWorkspacePaths: [],
-  apiBase: 'https://openrouter.ai/api/v1',
-  provider: 'openrouter',
+  apiBase: 'https://api.deepseek.com/v1',
+  provider: 'deepseek',
   exaKey: '',
   braveKey: '',
   serperKey: '',
@@ -228,10 +228,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
         s.updateGateway(g.id, { enabled: false })
       }
     })
-    const autoCapableProviders = ['openrouter', 'requesty']
-    if (!autoCapableProviders.includes(provider)) {
-      set((st) => ({ routerConfig: { ...st.routerConfig, mode: 'manual' } }))
-    }
       // Don't auto-fetch Ollama models on every provider switch — Ollama may not
       // be running and the repeated failed requests cause console noise. Ollama
       // models are fetched on demand from SettingsPanel when the user opens that
@@ -240,8 +236,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
         get().fetchModelsForProvider(provider)
       }
       const defaultModels: Record<string, string> = {
-      openrouter: 'anthropic/claude-sonnet-4-20250514',
-      requesty: 'anthropic/claude-sonnet-4-20250514',
       deepseek: 'deepseek-chat',
       ollama: 'llama3.3:latest',
       custom: '',
@@ -250,9 +244,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
     const deepseekModelIds = ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder']
     const isModelValidForProvider = (() => {
       if (!currentModel) return false
-      if (provider === 'openrouter' || provider === 'requesty') {
-        return (s.openRouterModels ?? []).some((m) => m.id === currentModel) || currentModel.includes('/')
-      }
       if (provider === 'deepseek') {
         return deepseekModelIds.includes(currentModel)
       }
@@ -286,34 +277,6 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   fetchModelsForProvider: async (provider) => {
     try {
       switch (provider) {
-        case 'openrouter': {
-          const key = get().getProviderKey('openrouter')
-          if (!key) return
-          const { fetchOpenRouterModels } = await import('../agent/llm')
-          const models = await fetchOpenRouterModels(key)
-          // openRouterModels lives on the gateway slice — access via set
-          ;(set as (patch: Record<string, unknown>) => void)({ openRouterModels: models })
-          break
-        }
-        case 'requesty': {
-          const key = get().getProviderKey('requesty')
-          const s = get() as unknown as WithGatewayAccess & SettingsSlice
-          const gw = s.gateways.find((g) => g.type === 'requesty')
-          if (!key || !gw) return
-          const { fetchModels } = await import('../agent/llm')
-          const ids = await fetchModels(gw.apiBase, key).catch(() => [])
-          const models = ids.map((id: string) => ({
-            id,
-            name: id,
-            description: '',
-            context_length: 128_000,
-            architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] },
-            pricing: { prompt: '0', completion: '0' },
-            top_provider: { context_length: null, is_moderated: false },
-          }))
-          ;(set as (patch: Record<string, unknown>) => void)({ openRouterModels: models })
-          break
-        }
         case 'deepseek': {
           const { getModelsForGateway } = await import('../agent/gateway/modelRegistry')
           const registryModels = getModelsForGateway('deepseek')
