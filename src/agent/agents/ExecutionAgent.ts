@@ -165,6 +165,14 @@ export class ExecutionAgent extends BaseAgent {
     if (userPrefs) preambleParts.push(userPrefs)
     if (modelHints) preambleParts.push(modelHints)
 
+    if (!store.extensionConnected) {
+      preambleParts.push(
+        '[BROWSER EXTENSION: NOT CONNECTED] The browser extension is disconnected. ' +
+        'All browser_* tools will fail immediately. Do not plan or attempt browser automation. ' +
+        'Use http_fetch, search_web, or browser_read_page for web content instead.',
+      )
+    }
+
     const projectMemory = await readProjectMemory()
     if (projectMemory?.trim()) {
       preambleParts.push(`[Project Context]\n${projectMemory.slice(0, 2000)}`)

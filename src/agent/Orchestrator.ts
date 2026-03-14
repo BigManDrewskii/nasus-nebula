@@ -92,7 +92,6 @@ export class AgentOrchestrator {
   readonly name = 'Agent Orchestrator'
   readonly description = 'Coordinates planning and execution agents'
 
-  private executionAgent: ExecutionAgent = new ExecutionAgent('execution', 'executor')
   private config: OrchestratorConfig = {}
   private _isSidecarReady = false
 
@@ -552,7 +551,7 @@ export class AgentOrchestrator {
     }
 
     try {
-      await this.executionAgent.execute(executionParams)
+      await new ExecutionAgent('execution', 'executor').execute(executionParams)
       store.setStatus(taskId, 'completed')
     } catch (err) {
       if (signal.aborted) return
@@ -618,7 +617,7 @@ export class AgentOrchestrator {
     }
 
     try {
-      await this.executionAgent.execute(executionParams)
+      await new ExecutionAgent('execution', 'executor').execute(executionParams)
       store.setStatus(taskId, 'completed')
     } catch (err) {
       if (signal.aborted) return

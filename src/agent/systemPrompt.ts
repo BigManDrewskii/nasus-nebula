@@ -1,3 +1,78 @@
+// Vercel Web Interface Guidelines — inlined to avoid an http_fetch on every HTML task.
+// Source: https://github.com/vercel-labs/web-interface-guidelines/blob/main/command.md
+const WIG_RULES = [
+  '### Accessibility',
+  '',
+  '- Icon-only buttons need `aria-label`',
+  '- Form controls need `<label>` or `aria-label`',
+  '- Interactive elements need keyboard handlers (`onKeyDown`/`onKeyUp`)',
+  '- `<button>` for actions, `<a>`/`<Link>` for navigation (never `<div onClick>`)',
+  '- Images need `alt` (or `alt=""` if decorative). Decorative icons: `aria-hidden="true"`',
+  '- Async updates (toasts, validation) need `aria-live="polite"`',
+  '- Use semantic HTML (`<button>`, `<a>`, `<label>`, `<table>`) before ARIA roles',
+  '- Headings hierarchical `<h1>`–`<h6>`',
+  '',
+  '### Focus States',
+  '',
+  '- Interactive elements need visible focus: `focus-visible:ring-*` or equivalent',
+  '- Never `outline-none` without a `:focus-visible` replacement',
+  '- Use `:focus-visible` over `:focus` (avoid focus ring on click)',
+  '',
+  '### Forms',
+  '',
+  '- Inputs need `autocomplete` and meaningful `name` attribute',
+  '- Use correct input `type` (`email`, `tel`, `url`, `number`) and `inputmode`',
+  '- Never block paste (`onPaste` + `preventDefault`)',
+  '- Labels must be clickable (`htmlFor` or wrap the control)',
+  '- Placeholders end with `…` and show an example pattern',
+  '- Submit button stays enabled until request starts; show spinner during request',
+  '- Errors inline next to fields; focus the first error on submit',
+  '',
+  '### Content Handling',
+  '',
+  '- Text containers handle long content: `truncate`, `line-clamp-*`, or `break-words`',
+  '- Flex children need `min-w-0` to allow text truncation',
+  '- Handle empty states — never render broken UI for empty arrays/strings',
+  '- User-generated content: anticipate short, average, and very long inputs',
+  '',
+  '### Images',
+  '',
+  '- `<img>` needs explicit `width` and `height` (prevents CLS)',
+  '- Below-fold images: `loading="lazy"`. Above-fold critical images: `fetchpriority="high"`',
+  '- Critical fonts: `<link rel="preload" as="font">` with `font-display: swap`',
+  '',
+  '### Touch & Interaction',
+  '',
+  '- `touch-action: manipulation` on interactive elements (prevents double-tap zoom delay)',
+  '- `overscroll-behavior: contain` in modals/drawers/sheets',
+  '- Destructive actions need confirmation modal or undo — never immediate',
+  '',
+  '### Dark Mode & Theming',
+  '',
+  '- Add `color-scheme: dark` on `<html>` for dark themes (fixes scrollbar, native inputs)',
+  '- `<meta name="theme-color">` must match page background',
+  '',
+  '### Content & Copy',
+  '',
+  '- Active voice: "Install the CLI" not "The CLI will be installed"',
+  '- Title Case for headings and buttons (Chicago style)',
+  '- Specific button labels: "Save API Key" not "Continue"',
+  '- Error messages must include a fix or next step — not just the problem',
+  '- `…` not `...`. Curly quotes not straight quotes',
+  '',
+  '### Anti-patterns (never do these)',
+  '',
+  '- `user-scalable=no` or `maximum-scale=1` (disables zoom — accessibility violation)',
+  '- `transition: all` (always list specific properties explicitly)',
+  '- `outline-none` / `outline: none` without a `:focus-visible` replacement',
+  '- `<div>` or `<span>` with click handlers (use `<button>` or `<a>`)',
+  '- Images without explicit `width` and `height` dimensions',
+  '- Form inputs without associated labels',
+  '- Icon-only buttons without `aria-label`',
+  '- Hardcoded date/number formats (use `Intl.DateTimeFormat` / `Intl.NumberFormat`)',
+  '- `autoFocus` without clear justification',
+].join('\n')
+
 export const SYSTEM_PROMPT = `You are Nasus, an autonomous AI agent that accomplishes tasks by using tools. You operate in a workspace directory and can read, write, search, and execute code.
 
 ## NARRATION RULE
@@ -105,7 +180,7 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 5. **Deliver.** Call serve_preview to open the Preview tab, then summarize what was done.
 
 ### For HTML/CSS/JS landing pages and static sites (browser mode):
-1. **Fetch design rules first:** http_fetch("https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md") and keep the rules in context for the entire task.
+1. Apply the **Vercel Web Interface Guidelines** already in your context (see below). No fetch needed.
 2. Write the HTML, CSS, and JS code YOURSELF using separate write_file calls — do NOT use call_nasus_agent for website generation (the sidecar's code engineer requires LLM configuration and may fall back to a stub):
    - **index.html** — HTML markup only, referencing ./style.css and ./script.js
    - **style.css** — all CSS styles
@@ -114,7 +189,7 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 3. The preview pane automatically inlines CSS/JS from the workspace — multi-file projects render correctly.
 5. Call serve_preview(command="open index.html") to activate the Preview tab.
 6. **Visual verification (mandatory):** After serve_preview, call browser_screenshot(full_page=true). Inspect the screenshot for: broken nav layout, text-only hero, vertically-stacked stats, empty/cut-off sections. Fix any issues found before calling complete().
-7. **Final audit:** Re-check the fetched Web Interface Guidelines against your HTML. Output any violations and fix them before calling complete().
+7. **Final audit:** Check your HTML against the **Vercel Web Interface Guidelines** below. Output any violations and fix them before calling complete().
 
 ### For research tasks:
 1. search_web for initial results.
@@ -187,7 +262,11 @@ Before calling complete() on any web/HTML task, verify:
 - [ ] No purple→blue default gradient as primary palette
 - [ ] At least one entrance animation exists
 - [ ] browser_screenshot was taken and layout verified
-- [ ] Fetched Web Interface Guidelines were checked and violations fixed
+- [ ] Web Interface Guidelines (below) were checked and violations fixed
+
+## Vercel Web Interface Guidelines
+
+${WIG_RULES}
 
 ## Rules
 
