@@ -45,6 +45,23 @@ class _LLMConfig:
 
 _CONFIG = _LLMConfig()
 
+# ---------------------------------------------------------------------------
+# Shared HTTP client (connection pooling)
+# ---------------------------------------------------------------------------
+
+_HTTP_CLIENT: Optional[httpx.Client] = None
+
+
+def _get_http_client() -> httpx.Client:
+    """Return the module-level httpx.Client, creating it if necessary."""
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        _HTTP_CLIENT = httpx.Client(
+            timeout=_CONFIG.timeout_s,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _HTTP_CLIENT
+
 
 def configure(
     api_key: str,
@@ -56,10 +73,15 @@ def configure(
     Set global LLM credentials.
     Called once by the FastAPI lifespan / POST /configure endpoint before any module runs.
     """
+    global _HTTP_CLIENT
     _CONFIG.api_key = api_key.strip()
     _CONFIG.api_base = api_base.rstrip("/")
     _CONFIG.default_model = model
     _CONFIG.timeout_s = timeout_s
+    # Close and reset the shared client so it is recreated with the new timeout.
+    if _HTTP_CLIENT is not None:
+        _HTTP_CLIENT.close()
+        _HTTP_CLIENT = None
 
 
 def is_configured() -> bool:
@@ -139,8 +161,8 @@ def _build_headers(api_key: str, api_base: str) -> Dict[str, str]:
     }
     # OpenRouter attribution headers (ignored by other providers)
     if "openrouter" in api_base:
-        headers["HTTP-Referer"] = "https://nasus.im"
-        headers["X-Title"] = "Nasus Agent Stack"
+        headers["HTTP-Referer"] = "https://nasus.app"
+        headers["X-Title"] = "Nasus"
     return headers
 
 
@@ -170,10 +192,10 @@ def _post_chat_full(
     if response_format:
         body["response_format"] = response_format
 
-    with httpx.Client(timeout=timeout_s) as client:
-        resp = client.post(url, json=body, headers=_build_headers(api_key, api_base))
-        resp.raise_for_status()
-        data = resp.json()
+    client = _get_http_client()
+    resp = client.post(url, json=body, headers=_build_headers(api_key, api_base))
+    resp.raise_for_status()
+    data = resp.json()
 
     choices = data.get("choices", [])
     if not choices:
@@ -224,8 +246,8 @@ def _post_chat_stream(
     }
     headers = _build_headers(api_key, api_base)
 
-    with httpx.Client(timeout=httpx.Timeout(timeout_s, read=timeout_s)) as client:
-        with client.stream("POST", url, json=body, headers=headers) as resp:
+    client = _get_http_client()
+    with client.stream("POST", url, json=body, headers=headers) as resp:
             resp.raise_for_status()
             for raw_line in resp.iter_lines():
                 line = raw_line.strip()
@@ -324,6 +346,7 @@ class NasusLLMClient:
         backoff = 1.0
 
         for attempt in range(retries):
+            self._check_budget()
             try:
                 content, raw = _post_chat_full(
                     messages=messages,
@@ -542,10 +565,10 @@ def embed(text: str, model: str = "text-embedding-3-small") -> List[float]:
     cfg = get_config()
     url = f"{cfg.api_base}/embeddings"
     body: Dict[str, Any] = {"model": model, "input": text}
-    with httpx.Client(timeout=cfg.timeout_s) as client:
-        resp = client.post(url, json=body, headers=_build_headers(cfg.api_key, cfg.api_base))
-        resp.raise_for_status()
-        data = resp.json()
+    client = _get_http_client()
+    resp = client.post(url, json=body, headers=_build_headers(cfg.api_key, cfg.api_base))
+    resp.raise_for_status()
+    data = resp.json()
     embedding = data.get("data", [{}])[0].get("embedding")
     if not embedding:
         raise ValueError(f"embed(): unexpected response shape: {data}")

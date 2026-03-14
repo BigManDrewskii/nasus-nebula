@@ -222,6 +222,18 @@ pub async fn open_session_connection(
     Err(last_err)
 }
 
+/// Return the appropriate response timeout for a browser command.
+fn timeout_for_command(command: &str) -> Duration {
+    match command {
+        // Heavy DOM operations — allow up to 60 s
+        "screenshot" | "extract" | "read_page" | "aria_snapshot" => Duration::from_secs(60),
+        // Navigation waits for network idle — 30 s is the standard playwright default
+        "navigate" => Duration::from_secs(30),
+        // Quick interactions
+        _ => Duration::from_secs(15),
+    }
+}
+
 /// Send a command over the session's persistent connection and await the response.
 pub async fn send_session_command(
     session: &Arc<Mutex<BrowserSession>>,
@@ -265,8 +277,8 @@ pub async fn send_session_command(
             .map_err(|e| SidecarError::ProcessError(format!("Failed to send: {}", e)))?;
     }
 
-    // Wait for response (30 s timeout)
-    match timeout(Duration::from_secs(30), rx).await {
+    // Wait for response — timeout varies by command (heavy DOM ops get more time)
+    match timeout(timeout_for_command(command), rx).await {
         Ok(Ok(response)) => {
             if response.get("type").and_then(|v| v.as_str()) == Some("error") {
                 let msg = response

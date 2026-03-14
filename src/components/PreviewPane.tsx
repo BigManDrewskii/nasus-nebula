@@ -38,7 +38,7 @@ function inlineAssets(html: string, files: WorkspaceFile[]): string {
   const byName = new Map(files.map((f) => [f.name, f]))
 
   function resolve(ref: string): WorkspaceFile | undefined {
-    const clean = ref.replace(/^\.\//, '').replace(/^\/workspace\//, '')
+    const clean = ref.replace(/^\.\//, '').replace(/^\/workspace\//, '').replace(/^\//, '')
     return byName.get(clean)
   }
 
@@ -93,7 +93,7 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       if (tool === 'write_file' || tool === 'patch_file') {
         const isHtmlFile = path.endsWith('.html')
         const isCssFile = path.endsWith('.css')
-        const isJsFile = path.endsWith('.js') || path.endsWith('.ts') || path.endsWith('.tsx')
+        const isJsFile = path.endsWith('.js')
 
         if (isHtmlFile || isCssFile || isJsFile) {
           setRefreshKey(k => k + 1)
@@ -124,12 +124,9 @@ export function PreviewPane({ files }: PreviewPaneProps) {
   }
 
   function openInTab() {
-    const tab = window.open()
-    if (tab) {
-      tab.document.open()
-      tab.document.write(srcDoc!)
-      tab.document.close()
-    }
+    const blob = new Blob([srcDoc!], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
   }
 
   return (

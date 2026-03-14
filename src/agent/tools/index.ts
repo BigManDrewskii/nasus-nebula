@@ -16,6 +16,7 @@ import type { NasusModuleId } from './core/nasus_types'
 import { BaseTool } from './core/BaseTool'
 import { toolSuccess, toolFailure } from './core/ToolResult'
 import type { ToolResult } from './core/ToolResult'
+import { workspaceManager } from '../workspace/WorkspaceManager'
 
 // Core tools
 import { SaveMemoryTool } from './core/SaveMemoryTool'
@@ -99,16 +100,72 @@ toolRegistry.registerConstructor('browser_wait_for', BrowserWaitForTool)
 toolRegistry.registerConstructor('browser_aria_snapshot', BrowserAriaSnapshotTool)
 toolRegistry.registerConstructor('browser_read_page', BrowserReadPageTool)
 
+// ── Workspace bridge ──────────────────────────────────────────────────────────
+// Extract code blocks from an M05 CodeResult or M00 SynthesisReport payload
+// and write them into the TypeScript workspace so PreviewPane can display them.
+
+interface NasusCodeBlock {
+  filename?: string
+  code?: string
+}
+
+function _extractBlocks(payload: unknown): NasusCodeBlock[] {
+  if (!payload || typeof payload !== 'object') return []
+  const p = payload as Record<string, unknown>
+
+  // Direct M05 CodeResult: { blocks: [{ filename, code, ... }] }
+  if (Array.isArray(p.blocks)) {
+    return p.blocks as NasusCodeBlock[]
+  }
+
+  // M00 SynthesisReport: { deliverables: [{ artifact: { blocks: [...] } }] }
+  if (Array.isArray(p.deliverables)) {
+    const blocks: NasusCodeBlock[] = []
+    for (const d of p.deliverables as Array<Record<string, unknown>>) {
+      const artifact = d.artifact
+      if (artifact && typeof artifact === 'object') {
+        const a = artifact as Record<string, unknown>
+        if (Array.isArray(a.blocks)) {
+          blocks.push(...(a.blocks as NasusCodeBlock[]))
+        }
+      }
+    }
+    return blocks
+  }
+
+  return []
+}
+
+async function _writeNasusBlocks(payload: unknown, taskId: string): Promise<string[]> {
+  const blocks = _extractBlocks(payload)
+  const written: string[] = []
+  for (const block of blocks) {
+    const filename = block.filename?.trim()
+    const code = block.code
+    if (filename && typeof code === 'string' && code.length > 0) {
+      try {
+        await workspaceManager.writeFile(taskId, filename, code)
+        written.push(filename)
+      } catch {
+        // Non-fatal — continue with other blocks
+      }
+    }
+  }
+  return written
+}
+
 // Nasus Python agent stack — delegates to local FastAPI sidecar on port 4751
 class NasusAgentTool extends BaseTool {
   readonly name = 'call_nasus_agent'
   readonly description = [
     'Call the Nasus AI agent stack via the local Python sidecar on port 4751.',
-    'Use to delegate complex tasks to Nasus modules:',
+    'Use ONLY for pipeline orchestration, memory, planning, and review:',
     '  M10 -- Task Planner: break a goal into a DAG of subtasks',
     '  M11 -- Quality Reviewer: score and approve/reject output',
     '  M09 -- Memory Manager: read/write persistent project memory',
     '  M00 -- Orchestrator: run a full multi-module pipeline',
+    'Do NOT use this tool to generate HTML, CSS, JS, or any code/file content.',
+    'For writing code or files, use write_file, edit_file, or bash_execute directly.',
     'Returns the completed job result including the output payload.',
   ].join('\n')
   readonly parameters = {
@@ -166,6 +223,21 @@ class NasusAgentTool extends BaseTool {
       if (result.status === 'FAILED') {
         return toolFailure(`Nasus job failed: ${result.errors.join('; ') || 'unknown error'}`)
       }
+
+      // Auto-write any code blocks produced by M05 (directly or via M00 subtasks)
+      // into the TS workspace so they appear in the PreviewPane and file browser.
+      const taskId = args.__taskId as string | undefined
+      if (taskId) {
+        const written = await _writeNasusBlocks(result.payload, taskId)
+        if (written.length > 0) {
+          const summary = written.map(f => `  • ${f}`).join('\n')
+          return toolSuccess(
+            JSON.stringify(result.payload, null, 2) +
+            `\n\n[Nasus wrote ${written.length} file(s) to workspace:\n${summary}]`
+          )
+        }
+      }
+
       return toolSuccess(JSON.stringify(result.payload, null, 2))
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

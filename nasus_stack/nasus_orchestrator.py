@@ -669,14 +669,6 @@ class NasusOrchestrator:
                             )
                         )
 
-                    # Workspace + memory bus writes are keyed by subtask_id; safe outside lock.
-                    try:
-                        from nasus_sidecar.workspace_io import get_workspace_io
-                        _ws = get_workspace_io()
-                        _ws.save(self.session_id, f"{subtask_id}.json", result_env.payload)
-                    except Exception:
-                        pass
-
                     if st.module in self._MEMORY_BUS_MODULES:
                         try:
                             _mem_payload = {

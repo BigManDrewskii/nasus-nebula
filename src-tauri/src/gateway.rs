@@ -214,9 +214,10 @@ impl GatewayManager {
                     consecutive_failures: h.consecutive_failures,
                     success_rate,
                     avg_latency_ms: h.avg_latency_ms,
-                    retry_after_ms: h
-                        .retry_after
-                        .map(|t| t.saturating_duration_since(Instant::now()).as_millis() as u64),
+                    retry_after_ms: h.retry_after.and_then(|t| {
+                        let remaining = t.saturating_duration_since(Instant::now()).as_millis() as u64;
+                        if remaining > 0 { Some(remaining) } else { None }
+                    }),
                 })
             })
             .collect()

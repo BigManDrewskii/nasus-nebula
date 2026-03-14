@@ -591,8 +591,11 @@ if __name__ == "__main__":
     print(json.dumps(out_1, indent=2))
 
     # Save turn 1 demo
-    with open("/home/user/files/code/demo_plan_turn_1.json", "w") as f:
+    import tempfile as _tempfile
+    _out1_path = _tempfile.gettempdir() + "/demo_plan_turn_1.json"
+    with open(_out1_path, "w") as f:
         json.dump(out_1, f, indent=2)
+    print(f"[Saved] {_out1_path}")
 
     # -----------------------------------------------------------------------
     # TURN 2: Revision — skip the research step
@@ -603,9 +606,11 @@ if __name__ == "__main__":
         out_2 = result_2.to_dict()
         print(json.dumps(out_2, indent=2))
 
-        with open("/home/user/files/code/demo_plan_turn_2.json", "w") as f:
+        _out2_path = _tempfile.gettempdir() + "/demo_plan_turn_2.json"
+        with open(_out2_path, "w") as f:
             json.dump(out_2, f, indent=2)
+        print(f"[Saved] {_out2_path}")
 
     print("\n" + "=" * 65)
-    print("DEMO COMPLETE — both turns saved to demo_plan_turn_1/2.json")
+    print("DEMO COMPLETE — both turns saved to system temp directory")
     print("=" * 65)

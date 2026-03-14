@@ -27,7 +27,7 @@ import { TraceLogger } from '../TraceLogger'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import { createLogger } from '../../lib/logger'
 import type { SearchStatusCallback } from '../search'
-import { runPhaseGate } from './PhaseGate'
+import { runPhaseGate, getActiveToolsForPhase } from './PhaseGate'
 import type { ContextCompressor } from './ContextCompressor'
 import type { getToolDefinitions } from '../tools/index'
 
@@ -162,11 +162,12 @@ export class ReactLoop {
         )
       }
 
-      // Context compression
+      // Context compression — scale the block-count trigger to the model's context window
       const model = useAppStore.getState().model
       const threshold = compressor.getThreshold(model)
+      const minBlocks = Math.min(8, Math.max(1, Math.floor(threshold / 4)))
       if (messages.length > threshold) {
-        const masked = compressor.compress(messages, callbacks.onContextCompressed)
+        const masked = compressor.compress(messages, callbacks.onContextCompressed, minBlocks)
         if (masked > 0) {
           const ws = workspaceManager.getWorkspaceSync(taskId)
           if (ws?.has('context.md')) {
@@ -183,10 +184,29 @@ export class ReactLoop {
       const preIterationContent =
         useAppStore.getState().messages[taskId]?.find((m: { id: string }) => m.id === messageId)?.content ?? ''
 
+      // Phase-aware tool filtering — restrict the visible tool set based on the active plan phase
+      let activeToolDefs = toolDefs
+      if (plan && plan.phases.length > 0) {
+        const phaseIdx = Math.min(
+          useAppStore.getState().currentPhase ?? 0,
+          plan.phases.length - 1,
+        )
+        const phase = plan.phases[phaseIdx]
+        const stepToolLists = phase.steps.map(
+          (s: { tools?: string[] }) => s.tools ?? [],
+        )
+        const activeNames = getActiveToolsForPhase(phase.title, stepToolLists)
+        if (activeNames.length > 0) {
+          activeToolDefs = toolDefs.filter(
+            (t: { function: { name: string } }) => activeNames.includes(t.function.name),
+          )
+        }
+      }
+
       // LLM call
       const hasOuterRetriesLeft = consecutiveLlmFailures < MAX_CONSECUTIVE_LLM_FAILURES
       const llmResult = await this.callLLM(
-        messages, signal, toolDefs, resolvedConnection,
+        messages, signal, activeToolDefs, resolvedConnection,
         forcePowerfulModel, hasOuterRetriesLeft, callbacks,
       )
 
@@ -225,7 +245,7 @@ export class ReactLoop {
         }
 
         if (utilization > 0.85) {
-          compressor.compress(messages, callbacks.onContextCompressed)
+          compressor.compress(messages, callbacks.onContextCompressed, minBlocks)
         }
       }
 

@@ -34,6 +34,7 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from collections import deque
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 # Add parent dir so imports work when run from code/
@@ -79,9 +80,9 @@ def get_search_config() -> Dict[str, str]:
 # In-flight job registry: job_id -> NasusEnvelope
 _jobs: Dict[str, NasusEnvelope] = {}
 
-# Insertion-ordered list of completed/failed job IDs for bounded cleanup.
-_completed_job_order: List[str] = []
+# Bounded deque of completed/failed job IDs — O(1) popleft for old _jobs eviction.
 _MAX_COMPLETED_JOBS = 200
+_completed_job_order: deque = deque()
 
 # SSE log queues: job_id -> asyncio.Queue of log line strings (None = sentinel)
 _log_queues: Dict[str, asyncio.Queue] = {}
@@ -248,6 +249,9 @@ def _route_m09(env: NasusEnvelope) -> NasusEnvelope:
       export_snapshot   -- (no args)
     """
     env.mark_running()
+    if _memory is None:
+        env.mark_failed("Memory store not initialised — sidecar still starting up")
+        return env
     payload = env.payload or {}
     action = payload.get("action", "")
 
@@ -292,7 +296,7 @@ def _route_m09(env: NasusEnvelope) -> NasusEnvelope:
     except (KeyError, TypeError) as exc:
         env.mark_failed(f"M09 {action} missing required field: {exc}")
     except Exception as exc:
-        env.mark_failed(str(exc))
+        env.mark_failed(_redact_secrets(str(exc)))
 
     return env
 
@@ -367,10 +371,10 @@ async def _run_envelope(env: NasusEnvelope) -> None:
             _job_orchestrators[job_id] = job_orch
             _job_orchestrators_ts[job_id] = time.monotonic()
         else:
-            # Track completion order for bounded _jobs cleanup.
+            # Track completion order for bounded _jobs cleanup (O(1) deque ops).
             _completed_job_order.append(job_id)
-            while len(_completed_job_order) > _MAX_COMPLETED_JOBS:
-                old_id = _completed_job_order.pop(0)
+            if len(_completed_job_order) > _MAX_COMPLETED_JOBS:
+                old_id = _completed_job_order.popleft()
                 _jobs.pop(old_id, None)
 
         # Emit the full response as a final step ONLY if it wasn't already streamed
@@ -396,14 +400,15 @@ async def _run_envelope(env: NasusEnvelope) -> None:
                 )
 
     except Exception as exc:
-        env.mark_failed(str(exc))
+        safe_msg = _redact_secrets(str(exc))
+        env.mark_failed(safe_msg)
         _jobs[job_id] = env
         await _push_log(
             job_id,
             json.dumps({
                 "step": 0,
                 "type": "error",
-                "content": f"job {job_id} FAILED: {exc}",
+                "content": f"job {job_id} FAILED: {safe_msg}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }),
         )
@@ -438,7 +443,13 @@ async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
         result_dict = await loop.run_in_executor(
             None, lambda: job_orch.execute_plan(interrupt_on_irreversible=True)
         )
-        resume_env = _jobs[new_job_id]
+        resume_env = _jobs.get(new_job_id)
+        if resume_env is None:
+            # Shouldn't happen if caller pre-registered the job, but guard anyway.
+            from nasus_module_registry import ModuleID as _MID
+            resume_env = NasusEnvelope(module_id=_MID.M00, payload={})
+            resume_env.job_id = new_job_id
+            _jobs[new_job_id] = resume_env
         resume_env.mark_done(result_dict)
 
         # If still a CHECKPOINT, store the orch again so client can re-resume.
@@ -447,8 +458,8 @@ async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
             _job_orchestrators_ts[new_job_id] = time.monotonic()
         else:
             _completed_job_order.append(new_job_id)
-            while len(_completed_job_order) > _MAX_COMPLETED_JOBS:
-                old_id = _completed_job_order.pop(0)
+            if len(_completed_job_order) > _MAX_COMPLETED_JOBS:
+                old_id = _completed_job_order.popleft()
                 _jobs.pop(old_id, None)
 
         payload_data = resume_env.payload if resume_env.payload else {}
@@ -470,15 +481,16 @@ async def _run_resume(new_job_id: str, job_orch: NasusOrchestrator) -> None:
                     }),
                 )
     except Exception as exc:
+        safe_msg = _redact_secrets(str(exc))
         env = _jobs.get(new_job_id)
         if env:
-            env.mark_failed(str(exc))
+            env.mark_failed(safe_msg)
         await _push_log(
             new_job_id,
             json.dumps({
                 "step": 0,
                 "type": "error",
-                "content": f"resume {new_job_id} FAILED: {exc}",
+                "content": f"resume {new_job_id} FAILED: {safe_msg}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }),
         )
@@ -630,27 +642,29 @@ async def task_stream(job_id: str) -> StreamingResponse:
         return StreamingResponse(single_event(), media_type="text/event-stream")
 
     async def event_generator() -> AsyncGenerator[str, None]:
-        while True:
-            line = await queue.get()
-            if line is None:  # sentinel -- job done
-                _log_queues.pop(job_id, None)  # release queue memory
-                env = _jobs.get(job_id)
-                if env:
-                    yield (
-                        f"data: {json.dumps({'done': True, 'status': env.status.value if hasattr(env.status, 'value') else env.status, 'job_id': job_id})}\n\n"
-                    )
-                break
-            # Try to emit as a structured SidecarStep JSON object directly.
-            # Falls back to the legacy {log: ..., job_id: ...} wrapper for
-            # plain-string log lines (e.g. from older code paths).
-            try:
-                parsed = json.loads(line)
-                if isinstance(parsed, dict) and "step" in parsed:
-                    yield f"data: {line}\n\n"
-                    continue
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
-            yield f"data: {json.dumps({'log': line, 'job_id': job_id})}\n\n"
+        try:
+            while True:
+                line = await queue.get()
+                if line is None:  # sentinel -- job done
+                    env = _jobs.get(job_id)
+                    if env:
+                        yield (
+                            f"data: {json.dumps({'done': True, 'status': env.status.value if hasattr(env.status, 'value') else env.status, 'job_id': job_id})}\n\n"
+                        )
+                    break
+                # Try to emit as a structured SidecarStep JSON object directly.
+                # Falls back to the legacy {log: ..., job_id: ...} wrapper for
+                # plain-string log lines (e.g. from older code paths).
+                try:
+                    parsed = json.loads(line)
+                    if isinstance(parsed, dict) and "step" in parsed:
+                        yield f"data: {line}\n\n"
+                        continue
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    pass
+                yield f"data: {json.dumps({'log': line, 'job_id': job_id})}\n\n"
+        finally:
+            _log_queues.pop(job_id, None)  # always release queue memory on exit or cancel
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

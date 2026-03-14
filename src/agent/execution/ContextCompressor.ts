@@ -42,6 +42,7 @@ export class ContextCompressor {
   compress(
     messages: LlmMessage[],
     onCompressed: (maskedCount: number) => void,
+    minBlocks = 8,
   ): number {
     const toolCallBlocks: { assistantIndex: number; toolResultIndices: number[] }[] = []
 
@@ -60,7 +61,7 @@ export class ContextCompressor {
       }
     }
 
-    if (toolCallBlocks.length <= 8) return 0
+    if (toolCallBlocks.length <= minBlocks) return 0
 
     // Mask middle blocks — keep first 3 and last 5 intact
     const toMask = toolCallBlocks.slice(3, -5)
@@ -70,8 +71,9 @@ export class ContextCompressor {
       for (const toolIndex of block.toolResultIndices) {
         const toolMessage = messages[toolIndex]
         if (toolMessage && toolMessage.role === 'tool') {
-          // Replace the message object (not mutate) so any external references
-          // to the original object retain the full content for observability.
+          // Reassign the array slot (not the original object) so observability
+          // code holding a reference to the original message still sees full
+          // content while the LLM context window sees the masked version.
           messages[toolIndex] = {
             ...toolMessage,
             content: '[Observation masked for brevity.]',

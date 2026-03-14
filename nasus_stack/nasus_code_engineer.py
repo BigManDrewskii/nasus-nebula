@@ -256,15 +256,45 @@ def _build_codegen_prompt(spec: Spec) -> str:
             parts.append(note)
     if spec.language == Language.HTML_CSS:
         parts.append(
-            "IMPORTANT: Output a SINGLE self-contained HTML file. "
-            "Embed ALL CSS inside a <style> block and ALL JavaScript inside a <script> block. "
-            "Do NOT reference external .css or .js files."
+            "Output a proper multi-file web project with this EXACT structure:\n"
+            "  index.html — HTML markup only, with <link> and <script> pointing to ./css/style.css and ./js/main.js\n"
+            "  css/style.css — all CSS styles\n"
+            "  js/main.js — all JavaScript\n\n"
+            "Format: output each file in its own fenced code block preceded by a header comment:\n"
+            "// FILE: index.html\n"
+            "```html\n...content...\n```\n\n"
+            "// FILE: css/style.css\n"
+            "```css\n...content...\n```\n\n"
+            "// FILE: js/main.js\n"
+            "```javascript\n...content...\n```"
         )
+        parts.append(
+            "Output ONLY the three file blocks above. No explanations outside the code blocks."
+        )
+        return "\n".join(parts)
     parts.append(
         f"Output only the {lang} code in a fenced code block. "
         "No explanations outside the code. Include comments only for non-obvious logic."
     )
     return "\n".join(parts)
+
+
+# Matches both // FILE: filename  and  <!-- FILE: filename --> headers.
+# Uses \r?\n to tolerate CRLF line endings from LLM outputs.
+_MULTIFILE_BLOCK_RE = re.compile(
+    r'(?://|<!--)\s*FILE:\s*([^\n>]+?)\s*(?:-->)?\r?\n```[\w]*\r?\n(.*?)```',
+    re.DOTALL,
+)
+
+
+def _parse_multifile_html(raw: str, language: Language, desc: str) -> list:
+    blocks = []
+    for m in _MULTIFILE_BLOCK_RE.finditer(raw):
+        fname = m.group(1).strip().rstrip('\r')
+        code = m.group(2).strip()
+        if fname and code:
+            blocks.append(_make_block(language, code, fname, desc))
+    return blocks
 
 
 # ---------------------------------------------------------------------------
@@ -283,11 +313,28 @@ def generate(spec: Spec) -> Union[CodeResult, CodeError]:
             client = _llm_client.get_client()
             prompt = _build_codegen_prompt(spec)
             raw = client.chat([{"role": "user", "content": prompt}])
+            desc = spec.description[:100]
+
+            # HTML_CSS: expect multi-file format (index.html + css/style.css + js/main.js)
+            if spec.language == Language.HTML_CSS:
+                html_blocks = _parse_multifile_html(raw, spec.language, desc)
+                if html_blocks:
+                    return CodeResult(
+                        spec_summary=f"Generate {spec.language.value}: {spec.description[:80]}",
+                        blocks=html_blocks, explanation=f"Generated {len(html_blocks)}-file web project.",
+                        tests=[], status=CodeStatus.DONE,
+                    )
+                # parser yielded nothing — fall through to single-block path below
+
             code = _extract_code_block(raw)
             if code:
                 lang_slug = spec.language.value.lower().replace(" ", "_")
-                fname = f"generated_{lang_slug}{_ext(spec.language)}"
-                desc = spec.description[:100]
+                # For HTML_CSS single-block fallback, prefer a clean filename
+                # rather than the ugly "generated_html_css.html".
+                if spec.language == Language.HTML_CSS:
+                    fname = "index.html"
+                else:
+                    fname = f"generated_{lang_slug}{_ext(spec.language)}"
                 block = _make_block(spec.language, code, fname, desc)
                 tests = []
                 if spec.include_tests:
@@ -316,8 +363,11 @@ def generate(spec: Spec) -> Union[CodeResult, CodeError]:
                 if issues:
                     result.review_notes = issues
                 return result
-    except Exception:
-        pass
+    except Exception as _llm_exc:
+        import logging as _logging
+        _logging.getLogger("nasus.m05").warning(
+            "M05 LLM path failed, falling back to stub: %s", _llm_exc
+        )
 
     if spec.language == Language.PYTHON:
         code, fname = _PYTHON_API_CLIENT, "async_api_client.py"
@@ -339,6 +389,26 @@ def generate(spec: Spec) -> Union[CodeResult, CodeError]:
                 .replace("fn: () => Promise<T>,", "fn,").replace("): Promise<T> {", ") {"))
         fname, desc = "utils.js", "JavaScript utility helpers (types stripped)"
         explain = "Same utilities as TypeScript version with type annotations removed."
+    elif spec.language == Language.HTML_CSS:
+        fname = "index.html"
+        desc = "HTML/CSS/JS starter page (LLM not configured — edit to customise)"
+        code = (
+            "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "  <meta charset=\"UTF-8\">\n"
+            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+            "  <title>My Site</title>\n"
+            "  <link rel=\"stylesheet\" href=\"./style.css\">\n"
+            "</head>\n"
+            "<body>\n"
+            "  <h1>Hello, world!</h1>\n"
+            "  <p>M05 Code Engineer stub — LLM backend required for full generation.</p>\n"
+            "  <script src=\"./script.js\"></script>\n"
+            "</body>\n"
+            "</html>\n"
+        )
+        explain = "HTML stub — LLM backend not configured. Connect an LLM via /configure."
     else:
         lv = spec.language.value
         code = f"# Generated stub for {lv}\n# Task: {spec.description}\n# TODO: implement\n"

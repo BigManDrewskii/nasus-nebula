@@ -93,6 +93,7 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 - **save_preference(key, value)** — Save a specific user preference (e.g., language, framework, style). Persists across tasks.
 - **complete(summary)** — Signal task completion with a summary. Use when all steps are done.
 - **update_plan(updates)** — Modify the execution plan. Use when you discover that the original plan needs changes (steps to add, remove, reorder, or modify).
+- **call_nasus_agent(module_id, payload?)** — Delegate to the Nasus Python sidecar for pipeline orchestration (M00), memory (M09), planning (M10), or review (M11). Do NOT use for code/file generation — write those directly with write_file. If the result payload contains a "blocks" array or nested deliverables with blocks, the files are automatically written to the workspace — you do not need to call write_file for them.
 
 ## Task Execution Strategy
 
@@ -105,8 +106,12 @@ If task_plan.md has ANY unchecked items ([ ], [?], ☐), you MUST NOT stop. You 
 
 ### For HTML/CSS/JS landing pages and static sites (browser mode):
 1. **Fetch design rules first:** http_fetch("https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md") and keep the rules in context for the entire task.
-2. Write a **SINGLE self-contained index.html** using write_file. All CSS goes in a <style> block, all JavaScript goes in a <script> block. Do NOT create separate .css or .js files — relative file references are not resolvable in the iframe preview and will produce 404 errors.
-3. CDN resources (fonts, icons, libraries): use direct https:// links in the HTML — they work fine in the preview.
+2. Write the HTML, CSS, and JS code YOURSELF using separate write_file calls — do NOT use call_nasus_agent for website generation (the sidecar's code engineer requires LLM configuration and may fall back to a stub):
+   - **index.html** — HTML markup only, referencing ./style.css and ./script.js
+   - **style.css** — all CSS styles
+   - **script.js** — all JavaScript
+   CDN links (fonts, icons, libraries) are fine directly in index.html.
+3. The preview pane automatically inlines CSS/JS from the workspace — multi-file projects render correctly.
 5. Call serve_preview(command="open index.html") to activate the Preview tab.
 6. **Visual verification (mandatory):** After serve_preview, call browser_screenshot(full_page=true). Inspect the screenshot for: broken nav layout, text-only hero, vertically-stacked stats, empty/cut-off sections. Fix any issues found before calling complete().
 7. **Final audit:** Re-check the fetched Web Interface Guidelines against your HTML. Output any violations and fix them before calling complete().

@@ -39,7 +39,7 @@ function isMemoryFile(filename: string): boolean {
 function shouldBundle(files: OutputCardFile[]): boolean {
   if (files.length >= 3) return true
   const hasHtml = files.some((f) => PREVIEW_EXTS.has(getExt(f.filename)))
-  const hasCompanion = files.some((f) => ['css', 'js', 'ts', 'tsx', 'jsx', 'scss'].includes(getExt(f.filename)))
+  const hasCompanion = files.some((f) => ['css', 'js', 'scss'].includes(getExt(f.filename)))
   return hasHtml && hasCompanion && files.length >= 2
 }
 
@@ -348,7 +348,7 @@ const PreviewCard = memo(function PreviewCard({ file }: { file: OutputCardFile }
           >
             <iframe
               src={blobUrl}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts allow-forms allow-modals"
               className="oc-iframe"
               title={file.filename}
             />
@@ -451,7 +451,7 @@ const BundleCard = memo(function BundleCard({ files }: { files: OutputCardFile[]
           >
             <iframe
               src={blobUrl}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts allow-forms allow-modals"
               className="oc-iframe"
               title="Preview"
             />

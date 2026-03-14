@@ -21,6 +21,7 @@ export class ErrorTracker {
   // Identical-call detection: key = "toolName|argsJson", value = count
   private callSignatures: Map<string, number> = new Map()
   static readonly IDENTICAL_CALL_CAP = 2
+  private static readonly SIG_CAP = 500
 
   private static readonly STRIKE_CAP = 3
   // Some tools get a higher cap (e.g. bash can legitimately fail a few times)
@@ -54,6 +55,11 @@ export class ErrorTracker {
 
     const sig = `${tool}|${JSON.stringify(args)}`
     const count = (this.callSignatures.get(sig) ?? 0) + 1
+    // FIFO eviction — keep map bounded to avoid unbounded memory growth on long tasks
+    if (!this.callSignatures.has(sig) && this.callSignatures.size >= ErrorTracker.SIG_CAP) {
+      const firstKey = this.callSignatures.keys().next().value
+      if (firstKey !== undefined) this.callSignatures.delete(firstKey)
+    }
     this.callSignatures.set(sig, count)
     return count > ErrorTracker.IDENTICAL_CALL_CAP
   }

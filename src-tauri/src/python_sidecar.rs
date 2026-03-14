@@ -216,6 +216,13 @@ pub async fn nasus_check_installed(
     state: tauri::State<'_, Arc<Mutex<PythonSidecarState>>>,
 ) -> Result<NasusInstallStatus, String> {
     let dir = state.lock().await.sidecar_dir.clone();
+    if dir.is_empty() {
+        return Ok(NasusInstallStatus {
+            installed: false,
+            has_venv: false,
+            message: "Sidecar directory not initialised yet — app is still starting up".into(),
+        });
+    }
     let venv_python = if cfg!(windows) {
         format!("{}/.venv/Scripts/python.exe", dir)
     } else {

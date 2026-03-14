@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,12 +29,17 @@ _UNSAFE_RE = re.compile(r"[^\w\s.\-]", re.UNICODE)
 
 def _safe_filename(name: str) -> str:
     """
-    Normalise to ASCII, strip characters outside [a-zA-Z0-9 ._-], collapse
-    spaces to underscores, enforce a 128-char cap.
+    Normalise to ASCII, strip unsafe characters from each path component
+    while preserving '/' directory separators, collapse spaces to underscores,
+    enforce a 64-char cap per component and 128-char cap overall.
     """
-    name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
-    name = _UNSAFE_RE.sub("", name).strip().replace(" ", "_")
-    return name[:128] or "artifact"
+    safe_parts = []
+    for part in name.split("/"):
+        part = unicodedata.normalize("NFKD", part).encode("ascii", "ignore").decode()
+        part = _UNSAFE_RE.sub("", part).strip().replace(" ", "_")
+        if part:
+            safe_parts.append(part[:64])
+    return "/".join(safe_parts)[:128] or "artifact"
 
 
 def _guard(filename: str) -> None:
@@ -67,6 +73,10 @@ class WorkspaceIO:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def session_path(self, session_id: str) -> Path:
+        """Return the directory path for a session without creating it."""
+        return self._base / session_id
+
+    def ensure_session_path(self, session_id: str) -> Path:
         """Return (and create) the directory for a session."""
         p = self._base / session_id
         p.mkdir(parents=True, exist_ok=True)
@@ -87,7 +97,8 @@ class WorkspaceIO:
         """
         _guard(filename)
         filename = _safe_filename(filename)
-        dest = self.session_path(session_id) / filename
+        dest = self.ensure_session_path(session_id) / filename
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
         if isinstance(content, (dict, list)):
             dest.write_text(json.dumps(content, indent=2, default=str), encoding="utf-8")
@@ -111,6 +122,8 @@ class WorkspaceIO:
         Each entry: {name, size, created_at (ISO)}
         """
         sp = self.session_path(session_id)
+        if not sp.exists():
+            return []
         files = []
         for f in sorted(sp.iterdir()):
             if f.is_file():
@@ -135,19 +148,12 @@ class WorkspaceIO:
         return False
 
     def delete_session(self, session_id: str) -> int:
-        """Delete all artifacts for a session. Returns count of files deleted."""
+        """Delete all artifacts and subdirectories for a session. Returns count of files deleted."""
         sp = self._base / session_id
         if not sp.exists():
             return 0
-        count = 0
-        for f in sp.iterdir():
-            if f.is_file():
-                f.unlink()
-                count += 1
-        try:
-            sp.rmdir()
-        except OSError:
-            pass  # non-empty (subdirs) — leave the directory
+        count = sum(1 for f in sp.rglob("*") if f.is_file())
+        shutil.rmtree(sp, ignore_errors=True)
         return count
 
 
