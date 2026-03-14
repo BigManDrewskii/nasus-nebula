@@ -994,6 +994,20 @@ pub async fn browser_select(
         .map_err(|e| NasusError::Sidecar(e.to_string()))
 }
 
+#[tauri::command]
+pub async fn browser_act(
+    state: State<'_, AppState>,
+    session_id: String,
+    instruction: String,
+) -> NasusResult<serde_json::Value> {
+    log::info!("[Browser] Act {} — {}", session_id, instruction);
+    let session = get_session(&state, &session_id).await?;
+    let params = serde_json::json!({ "instruction": instruction });
+    send_session_command(&session, "act", Some(params))
+        .await
+        .map_err(|e| NasusError::Sidecar(e.to_string()))
+}
+
 // ─── Install / check commands ─────────────────────────────────────────────────
 
 /// Returns the installed Node.js version string (e.g. "v20.11.0"), or an error if not found.

@@ -53,6 +53,7 @@ import { BrowserReadPageTool } from './browser/BrowserReadPageTool'
 import { BrowserGetTabsTool } from './browser/BrowserGetTabsTool'
 import { BrowserSelectTool } from './browser/BrowserSelectTool'
 import { BrowserEvalTool } from './browser/BrowserEvalTool'
+import { BrowserActTool } from './browser/BrowserActTool'
 
 /**
  * Global tool registry instance.
@@ -97,6 +98,7 @@ toolRegistry.registerConstructor('browser_read_page', BrowserReadPageTool)
 toolRegistry.registerConstructor('browser_get_tabs', BrowserGetTabsTool)
 toolRegistry.registerConstructor('browser_select', BrowserSelectTool)
 toolRegistry.registerConstructor('browser_eval', BrowserEvalTool)
+toolRegistry.registerConstructor('browser_act', BrowserActTool)
 
 /**
  * Get tool function definitions for OpenAI function calling.
@@ -206,4 +208,5 @@ export {
   BrowserGetTabsTool,
   BrowserSelectTool,
   BrowserEvalTool,
+  BrowserActTool,
 } from './browser'

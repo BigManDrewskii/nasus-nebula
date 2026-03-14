@@ -11,6 +11,7 @@
 
 import { WebSocketServer } from 'ws';
 import { chromium } from 'playwright-core';
+import { Stagehand } from '@browserbasehq/stagehand'
 
 const PORT = 4750;
 const HEARTBEAT_INTERVAL = 30_000; // 30 seconds
@@ -472,6 +473,66 @@ async function handleMessage(ws, sessionId, message) {
       case 'select':        send(ws, 'select_result',         await handleSelect(session, params));        break;
       case 'set_stealth':   send(ws, 'set_stealth_result',    { stealth: params?.enabled ?? false });      break;
       case 'ping':          send(ws, 'pong');                                                               break;
+
+      case 'act': {
+        if (!session?.sh) {
+          send(ws, 'error', { message: 'Stagehand not available: set OPENAI_API_KEY or ANTHROPIC_API_KEY' })
+          return
+        }
+        // Sync Stagehand's page to the session's current page before acting.
+        // Both pages are in the same browser context, but may be on different URLs.
+        const currentUrl = session.page.url()
+        if (
+          session.sh.page &&
+          session.sh.page.url() !== currentUrl &&
+          currentUrl !== 'about:blank'
+        ) {
+          await session.sh.page.goto(currentUrl, { waitUntil: 'domcontentloaded', timeout: 15000 })
+        }
+        const result = await session.sh.act({ action: params.instruction })
+        send(ws, 'act_result', { success: true, result })
+        break
+      }
+
+      case 'observe': {
+        if (!session?.sh) {
+          send(ws, 'error', { message: 'Stagehand not available: set OPENAI_API_KEY or ANTHROPIC_API_KEY' })
+          return
+        }
+        const observeUrl = session.page.url()
+        if (
+          session.sh.page &&
+          session.sh.page.url() !== observeUrl &&
+          observeUrl !== 'about:blank'
+        ) {
+          await session.sh.page.goto(observeUrl, { waitUntil: 'domcontentloaded', timeout: 15000 })
+        }
+        const observations = await session.sh.observe()
+        send(ws, 'observe_result', { observations })
+        break
+      }
+
+      case 'ai_extract': {
+        if (!session?.sh) {
+          send(ws, 'error', { message: 'Stagehand not available: set OPENAI_API_KEY or ANTHROPIC_API_KEY' })
+          return
+        }
+        const extractUrl = session.page.url()
+        if (
+          session.sh.page &&
+          session.sh.page.url() !== extractUrl &&
+          extractUrl !== 'about:blank'
+        ) {
+          await session.sh.page.goto(extractUrl, { waitUntil: 'domcontentloaded', timeout: 15000 })
+        }
+        const data = await session.sh.extract({
+          instruction: params.instruction,
+          schema: params.schema,
+        })
+        send(ws, 'ai_extract_result', { data })
+        break
+      }
+
       default:              send(ws, 'error', { message: `Unknown message type: ${type}` });
     }
   } catch (error) {
@@ -587,6 +648,34 @@ async function startSession(ws, sessionId) {
     });
 
     sessions.set(sessionId, { browser, context, page, ws, viaCDP });
+
+    // Stagehand wraps the existing page for AI-powered commands
+    let sh = null
+    const shModel = process.env.STAGEHAND_MODEL ?? 'openai/gpt-4o'
+    const shApiKey = process.env.OPENAI_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? null
+    if (shApiKey) {
+      try {
+        sh = new Stagehand({
+          env: 'LOCAL',
+          browserContext: context,
+          model: shModel,
+          modelClientOptions: { apiKey: shApiKey },
+        })
+        await sh.init()
+        // sh.page is now a page within the same browser context.
+        // Navigate it to match the session's current page.
+        if (sh.page && sh.page.url() === 'about:blank') {
+          // ready — no navigation needed until first act call
+        }
+        console.log(`[Sidecar] Stagehand ready for session ${sessionId} (shared context)`)
+      } catch (err) {
+        console.warn(`[Sidecar] Stagehand init failed (AI commands unavailable): ${err.message}`)
+        sh = null
+      }
+    }
+
+    // Update the session to include stagehand
+    sessions.set(sessionId, { browser, context, page, ws, viaCDP, sh });
     send(ws, 'session_ready', { sessionId });
     console.log(`[Sidecar] Session ready: ${sessionId}`);
   } catch (error) {
@@ -602,6 +691,7 @@ async function stopSession(sessionId) {
 
   console.log(`[Sidecar] Stopping session: ${sessionId}`);
   try {
+    if (session.sh) { try { await session.sh.close() } catch {} }
     await session.page.close();
     if (!session.viaCDP) await session.browser.close();
   } catch (error) {

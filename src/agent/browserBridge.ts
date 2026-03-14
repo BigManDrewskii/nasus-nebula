@@ -285,3 +285,11 @@ export async function browserSelect(
     label,
   })
 }
+
+// ─── Act (Stagehand AI) ───────────────────────────────────────────────────────
+
+export async function browserAct(instruction: string): Promise<unknown> {
+  const sessionId = await getTauriSession()
+  emitBrowserActivity('act', { instruction })
+  return await tauriInvokeOrThrow<unknown>('browser_act', { sessionId, instruction })
+}
