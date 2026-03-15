@@ -142,7 +142,7 @@ export class PlanningAgent extends BaseAgent {
         } else if (conn.provider === 'anthropic') {
           const anthropicModels = getModelsForGateway('anthropic')
           const fast = anthropicModels.find(m => m.tier === 'fast')
-          planModel = (fast?.ids['anthropic']) ?? 'claude-haiku-4-5'
+          planModel = (fast?.ids['anthropic']) ?? 'claude-haiku-4-5-20251001'
         } else {
           planModel = cheapestModel(store.openRouterModels) || model || 'anthropic/claude-3.5-haiku'
         }
@@ -369,6 +369,10 @@ Respond ONLY with the JSON, no other text.`
         }
       })
 
+      if (phases.length === 0) {
+        throw new Error('Plan has no phases')
+      }
+
       return {
         id: crypto.randomUUID(),
         title: (parsed.title as string) || 'Task Execution Plan',
@@ -386,8 +390,8 @@ Respond ONLY with the JSON, no other text.`
           dependencies: [],
           createdAt: new Date(),
       }
-    } catch {
-      // Fallback: create a simple plan if validation failed
+    } catch (err) {
+      log.warn('validatePlan: falling back to single-step plan', err instanceof Error ? err : new Error(String(err)))
       return {
         id: crypto.randomUUID(),
         title: 'Task Execution',

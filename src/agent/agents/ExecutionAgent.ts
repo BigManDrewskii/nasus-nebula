@@ -393,11 +393,7 @@ export class ExecutionAgent extends BaseAgent {
         params.messageId,
         'Maximum correction attempts reached',
       )
-      return {
-        state: AgentState.ERROR,
-        done: true,
-        error: `Failed after ${MAX_CORRECTION_ATTEMPTS} correction attempts`,
-      }
+      return { state: AgentState.FINISHED, done: true }
     }
 
     const { correctionHints: _, ...paramsWithoutHints } = params

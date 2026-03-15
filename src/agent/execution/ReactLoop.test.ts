@@ -31,6 +31,7 @@ vi.mock('../../store', () => ({
       provider: 'openai',
       openRouterModels: [],
       messages: {},
+      gateways: [{ id: 'gw-1', enabled: true, apiKey: 'sk-test' }],
       appendChunk: vi.fn(),
       appendRawHistory: vi.fn(),
       addStep: vi.fn(),
@@ -44,6 +45,14 @@ vi.mock('../../store', () => ({
       setCurrentStep: vi.fn(),
       setMessageContent: vi.fn(),
       setSandboxStatus: vi.fn(),
+      getGatewayService: vi.fn(() => ({
+        callWithFailover: async (
+          fn: (apiBase: string, apiKey: string, extraHeaders: Record<string, string>) => Promise<unknown>,
+        ) => {
+          const result = await fn('https://api.openai.com/v1', 'sk-test', {})
+          return { result }
+        },
+      })),
     })),
   },
 }))

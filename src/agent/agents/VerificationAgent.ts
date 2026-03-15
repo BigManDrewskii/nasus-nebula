@@ -433,10 +433,14 @@ export class VerificationAgent extends BaseAgent {
     let verifyModel: string
     if (conn.provider === 'deepseek') {
       verifyModel = 'deepseek-chat'
+    } else if (conn.provider === 'anthropic') {
+      verifyModel = 'claude-haiku-4-5-20251001'
+    } else if (conn.provider === 'ollama') {
+      verifyModel = conn.model || 'llama3.3:70b'
     } else {
       verifyModel = store.openRouterModels.length > 0
         ? cheapestModel(store.openRouterModels)
-        : 'anthropic/claude-3-haiku'
+        : 'anthropic/claude-haiku-4-5'
     }
 
     const prompt = `You are a Verification Agent. Review the following execution results and identify any issues.
@@ -483,17 +487,20 @@ If no issues found, return an empty issues array.`
     model: string,
     conn: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
   ): Promise<{ issues: AgentIssue[] } | null> {
-    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek'
+    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek' || conn.provider === 'anthropic'
     if (noToolChoice) return null
 
     try {
       const base = (conn.apiBase ?? 'https://api.deepseek.com/v1').replace(/\/$/, '')
       const url = `${base}/chat/completions`
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${conn.apiKey}`,
-        ...(conn.extraHeaders ?? {}),
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if ((conn.apiBase ?? '').includes('api.anthropic.com')) {
+        headers['x-api-key'] = conn.apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        headers['Authorization'] = `Bearer ${conn.apiKey}`
       }
+      Object.assign(headers, conn.extraHeaders ?? {})
 
       const body = JSON.stringify({
         model,

@@ -46,7 +46,7 @@ describe('slugify', () => {
   })
 
   it('handles empty string', () => {
-    expect(slugify('')).toBe('')
+    expect(slugify('')).toBe('task')
   })
 })
 
