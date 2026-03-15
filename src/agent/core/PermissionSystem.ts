@@ -68,6 +68,7 @@ export class PermissionSystem {
       'bash_execute': 'ask',
       'python_execute': 'ask',
       'browser_navigate': 'allow',
+      'browser_eval': 'ask',
     },
     autoApproveSafe: true,
   }

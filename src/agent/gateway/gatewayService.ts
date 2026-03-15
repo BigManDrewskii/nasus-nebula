@@ -97,6 +97,17 @@ export class GatewayService {
    */
   updateGateways(gateways: GatewayConfig[]): void {
     this.gateways = gateways
+
+    const currentIds = new Set(gateways.map((g) => g.id))
+
+    // Prune health state for removed gateways
+    for (const id of this.health.keys()) {
+      if (!currentIds.has(id)) {
+        this.health.delete(id)
+        this.requestHistory.delete(id)
+      }
+    }
+
     // Initialize health for any new gateways
     for (const gw of gateways) {
       if (!this.health.has(gw.id)) {
@@ -301,6 +312,14 @@ export class GatewayService {
         error: err instanceof Error ? err.message : String(err),
       }
     }
+  }
+
+  /**
+   * Return gateways currently eligible for requests (not in circuit-breaker cooldown).
+   * Used at startup to check whether any gateways are reachable.
+   */
+  getHealthyGateways(): GatewayConfig[] {
+    return this.getEligibleGateways()
   }
 
   // ── Private: Gateway Selection ──────────────────────────────────────────────

@@ -9,6 +9,15 @@ import type { JSONSchema7 } from 'json-schema'
 import { ToolRegistry } from './core/ToolRegistry'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import type { SearchStatusCallback } from '../search'
+import { permissionSystem } from '../core/PermissionSystem'
+
+const MAX_BASH_CALLS_PER_TASK = 50
+const _bashCallCounts = new Map<string, number>()
+
+/** Call when a task is deleted or completed to free the counter. */
+export function resetBashCallCount(taskId: string): void {
+  _bashCallCounts.delete(taskId)
+}
 
 // Core tools
 import { SaveMemoryTool } from './core/SaveMemoryTool'
@@ -129,6 +138,7 @@ export async function executeTool(
     taskId?: string
     executionConfig?: ExecutionConfig
     onSearchStatus?: SearchStatusCallback
+    signal?: AbortSignal
   }
 ): Promise<{ output: string; isError: boolean }> {
   // Inject context into args for tools that need it
@@ -148,6 +158,34 @@ export async function executeTool(
   // Set search config/status on tools that need it (e.g. SearchWebTool)
   if (tool && 'withConfig' in tool && typeof (tool as { withConfig?: unknown }).withConfig === 'function') {
     (tool as { withConfig: (cfg: undefined, cb?: SearchStatusCallback) => void }).withConfig(undefined, context?.onSearchStatus)
+  }
+
+  // Permission gate — check if this tool requires user approval
+  if (tool?.requiresPermission && context?.taskId) {
+    const { approved, reason } = await permissionSystem.checkPermission(
+      name,
+      args,
+      context.taskId,
+      context.signal,
+    )
+    if (!approved) {
+      return {
+        output: reason ?? `Permission denied: ${name} requires user approval`,
+        isError: true,
+      }
+    }
+  }
+
+  // Per-task bash call cap
+  if ((name === 'bash_execute' || name === 'bash') && context?.taskId) {
+    const count = (_bashCallCounts.get(context.taskId) ?? 0) + 1
+    _bashCallCounts.set(context.taskId, count)
+    if (count > MAX_BASH_CALLS_PER_TASK) {
+      return {
+        output: `[Bash cap reached] This task has made ${count - 1} bash calls (limit: ${MAX_BASH_CALLS_PER_TASK}). Stop using bash for this task and switch to a different approach or use complete() to finish.`,
+        isError: true,
+      }
+    }
   }
 
   const result = await toolRegistry.execute(name, augmentedArgs)

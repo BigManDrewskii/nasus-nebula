@@ -59,17 +59,20 @@ async function warmEmbeddingModel(): Promise<void> {
   }
 }
 
-async function waitForHydration(): Promise<void> {
-  return new Promise<void>((resolve) => {
+async function waitForHydration(): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
     if (useAppStore.persist.hasHydrated()) {
-      resolve()
+      resolve(true)
       return
     }
     const startTime = Date.now()
     const checkInterval = setInterval(() => {
-      if (useAppStore.persist.hasHydrated() || Date.now() - startTime > 2000) {
+      if (useAppStore.persist.hasHydrated()) {
         clearInterval(checkInterval)
-        resolve()
+        resolve(true)
+      } else if (Date.now() - startTime > 2000) {
+        clearInterval(checkInterval)
+        resolve(false)
       }
     }, 50)
   })
@@ -90,14 +93,28 @@ export function useAppInit(): UseAppInitResult {
   const runInitialization = useCallback(async () => {
     try {
       setStatus({ phase: 'hydrating_store', error: null, progress: PHASE_PROGRESS.hydrating_store })
-      await waitForHydration()
-      log.debug('Store hydrated')
+      const hydrated = await waitForHydration()
+      if (!hydrated) {
+        log.warn('Store hydration timed out — proceeding with defaults')
+        addToast('App state could not be restored. Starting fresh.', 'amber')
+      } else {
+        log.debug('Store hydrated')
+      }
 
       setStatus({ phase: 'init_gateway', error: null, progress: PHASE_PROGRESS.init_gateway })
       try {
         initGatewayService()
         await loadGatewayConfig()
         log.debug('Gateway service initialized')
+
+        // Non-blocking health check — warn if all gateways are unreachable but don't block startup
+        import('../agent/gateway').then(() => {
+          const service = useAppStore.getState().getGatewayService()
+          const healthy = service.getHealthyGateways()
+          if (healthy.length === 0) {
+            addToast('No gateways are reachable. Check your API keys in Settings.', 'amber')
+          }
+        }).catch(() => { /* not critical */ })
       } catch (err) {
         log.error('Gateway initialization failed', err instanceof Error ? err : new Error(String(err)))
         setStatus({
@@ -113,7 +130,12 @@ export function useAppInit(): UseAppInitResult {
       }
 
       // Initialize memory store early so it's ready before the first task
-      import('../agent/memory').then(({ initMemoryStore }) => initMemoryStore()).catch(() => {})
+      import('../agent/memory')
+        .then(({ initMemoryStore }) => initMemoryStore())
+        .catch((err: unknown) => {
+          log.warn('Memory store init failed', err instanceof Error ? err : new Error(String(err)))
+          addToast('Memory store unavailable — task recall and preferences are disabled.', 'amber')
+        })
 
       setStatus({ phase: 'warming_embeddings', error: null, progress: PHASE_PROGRESS.warming_embeddings })
       warmEmbeddingModel().catch((err) => log.warn('Embedding warm-up failed', err instanceof Error ? err : new Error(String(err))))
@@ -131,20 +153,31 @@ export function useAppInit(): UseAppInitResult {
         progress: 0,
       })
     }
-  }, [initGatewayService, loadGatewayConfig])
+  }, [initGatewayService, loadGatewayConfig, addToast])
 
   useEffect(() => {
     if (degradedListenedRef.current) return
     degradedListenedRef.current = true
 
     let unlisten: (() => void) | undefined
+    let mounted = true
+
     tauriListen('app:degraded-mode', (event) => {
       const e = event as { payload?: { message?: string } } | null
       const msg = e?.payload?.message ?? 'Database unavailable — task history and memory are disabled.'
       addToast(msg, 'amber')
-    }).then((fn) => { unlisten = fn }).catch(() => { /* not in Tauri */ })
+    }).then((fn) => {
+      if (mounted) {
+        unlisten = fn
+      } else {
+        fn() // component already unmounted — immediately remove listener
+      }
+    }).catch(() => { /* not in Tauri */ })
 
-    return () => { unlisten?.() }
+    return () => {
+      mounted = false
+      unlisten?.()
+    }
   }, [addToast])
 
   useEffect(() => {

@@ -134,7 +134,8 @@ Follow this plan systematically. Complete each phase before moving to the next o
  * - Plan-aware context
  */
 export class ContextBuilder {
-  private stablePrefix: LlmMessage[] = STABLE_CACHE_PREFIX
+  private stablePrefixes: Map<string, LlmMessage[]> = new Map()
+  private defaultStablePrefix: LlmMessage[] = STABLE_CACHE_PREFIX
 
   /**
    * Build context for an LLM request.
@@ -148,13 +149,15 @@ export class ContextBuilder {
     options: ContextBuilderOptions = {},
     plan?: ExecutionPlan,
     envSummary?: string,
+    taskId?: string,
   ): Promise<BuiltContext> {
     const messages: LlmMessage[] = []
     const cacheableMessages: LlmMessage[] = []
 
-    // 1. Stable prefix (cacheable)
-    messages.push(...this.stablePrefix)
-    cacheableMessages.push(...this.stablePrefix)
+    // 1. Stable prefix (cacheable) — task-scoped if taskId provided, else shared default
+    const stablePrefix = (taskId ? this.stablePrefixes.get(taskId) : undefined) ?? this.defaultStablePrefix
+    messages.push(...stablePrefix)
+    cacheableMessages.push(...stablePrefix)
 
     // 2. Environment summary (cacheable if constant)
     if (envSummary) {
@@ -239,12 +242,24 @@ export class ContextBuilder {
   }
 
   /**
-   * Update the stable prefix (use carefully - breaks cache).
+   * Update the stable prefix (use carefully — breaks cache for affected tasks).
    *
-   * Only call this when the system prompt actually changes.
+   * Pass a taskId to scope the prefix to a single task; omit to update the
+   * shared default used by tasks that have no task-specific prefix.
    */
-  updateStablePrefix(prefix: LlmMessage[]): void {
-    this.stablePrefix = prefix
+  updateStablePrefix(prefix: LlmMessage[], taskId?: string): void {
+    if (taskId) {
+      this.stablePrefixes.set(taskId, prefix)
+    } else {
+      this.defaultStablePrefix = prefix
+    }
+  }
+
+  /**
+   * Remove a task-scoped stable prefix once the task is complete.
+   */
+  clearStablePrefix(taskId: string): void {
+    this.stablePrefixes.delete(taskId)
   }
 }
 
@@ -263,6 +278,7 @@ export async function buildContext(
   options?: ContextBuilderOptions,
   plan?: ExecutionPlan,
   envSummary?: string,
+  taskId?: string,
 ): Promise<BuiltContext> {
-  return contextBuilder.build(userMessages, tools, options ?? {}, plan, envSummary)
+  return contextBuilder.build(userMessages, tools, options ?? {}, plan, envSummary, taskId)
 }

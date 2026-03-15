@@ -4,7 +4,7 @@
  * Merge this into your root store (createAppStore) alongside agentSlice and other slices.
  */
 
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from './storeTypes'
 
 // ─── Agent step shape ────────────────────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ export interface AppSlice {
 
 // ─── Slice implementation ──────────────────────────────────────────────────────────────────────────────
 
-export const createAppSlice: StateCreator<AppSlice, [['zustand/immer', never]], [], AppSlice> = (set) => ({
+export const createAppSlice: AppStateCreator<AppSlice> = (set) => ({
   agentTasks: {},
 
   setStatus: (taskId, status) =>

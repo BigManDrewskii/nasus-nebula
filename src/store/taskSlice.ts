@@ -1,10 +1,24 @@
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from './storeTypes'
 import type { Task, Message, AgentStep, LlmMessage } from '../types'
 import { clearWorkspace, copyWorkspace } from '../agent/tools'
 import { persistTaskHistory, deletePersistedTaskHistory, getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
 import { MAX_TASKS, MAX_TOOL_RESULT_CHARS, MAX_RAW_HISTORY_LIVE } from '../lib/constants'
 import { sanitizeMessages } from '../agent/messageUtils'
+import { contextBuilder } from '../agent/context/ContextBuilder'
+
+const _persistDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function _schedulePersist(taskId: string, capped: LlmMessage[]): void {
+  const existing = _persistDebounceTimers.get(taskId)
+  if (existing) clearTimeout(existing)
+  _persistDebounceTimers.set(taskId, setTimeout(() => {
+    _persistDebounceTimers.delete(taskId)
+    persistTaskHistory(taskId, capped).catch((err: unknown) => {
+      logger.warn('store', `Failed to persist history for task ${taskId}`, err)
+    })
+  }, 500))
+}
 
 export const WELCOME_MESSAGE: Message = {
   id: 'welcome',
@@ -49,7 +63,7 @@ export interface TaskSlice {
   appendRawHistory: (taskId: string, msgs: LlmMessage[]) => void
 }
 
-export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]], [], TaskSlice> = (set, get) => ({
+export const createTaskSlice: AppStateCreator<TaskSlice> = (set, get) => ({
   tasks: [INITIAL_TASK],
   activeTaskId: 'initial',
   messages: { initial: [WELCOME_MESSAGE] },
@@ -69,43 +83,57 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
     }
   },
 
-  addTask: (task) =>
+  addTask: (task) => {
+    let prunedIds: string[] = []
     set((state) => {
       state.tasks.unshift(task)
       state.messages[task.id] = [WELCOME_MESSAGE]
       state.rawHistory[task.id] = []
-
       if (state.tasks.length > MAX_TASKS) {
         const pruned = state.tasks.splice(MAX_TASKS)
+        prunedIds = pruned.map(t => t.id)
         for (const t of pruned) {
           delete state.messages[t.id]
           delete state.rawHistory[t.id]
-          clearWorkspace(t.id).catch(err => {
-            logger.warn('store', `Failed to cleanup workspace for pruned task ${t.id}`, err)
-          })
         }
-        window.dispatchEvent(new CustomEvent('nasus:tasks-pruned', {
-          detail: { count: pruned.length },
-        }))
       }
-    }),
+    })
+    if (prunedIds.length > 0) {
+      window.dispatchEvent(new CustomEvent('nasus:tasks-pruned', {
+        detail: { count: prunedIds.length },
+      }))
+      for (const tid of prunedIds) {
+        clearWorkspace(tid).catch(err => {
+          logger.warn('store', `Failed to cleanup workspace for pruned task ${tid}`, err)
+        })
+      }
+    }
+  },
 
-  deleteTask: (id) =>
+  deleteTask: (id) => {
+    let taskFound = false
+    let wasActive = false
     set((state) => {
       const taskIdx = state.tasks.findIndex((t) => t.id === id)
       if (taskIdx === -1) return
-      const wasActive = state.activeTaskId === id
+      taskFound = true
+      wasActive = state.activeTaskId === id
       state.tasks.splice(taskIdx, 1)
       delete state.messages[id]
       delete state.rawHistory[id]
       if (wasActive) state.activeTaskId = state.tasks[0]?.id ?? null
-      clearWorkspace(id).catch((err: unknown) => {
-        logger.warn('store', `Failed to cleanup workspace for deleted task ${id}`, err)
-      })
-      deletePersistedTaskHistory(id).catch((err: unknown) => {
-        logger.warn('store', `Failed to delete history for task ${id}`, err)
-      })
-    }),
+    })
+    // Guard: only run async cleanup if the task actually existed
+    if (!taskFound) return
+    // Async cleanup outside the Immer draft
+    clearWorkspace(id).catch((err: unknown) => {
+      logger.warn('store', `Failed to cleanup workspace for deleted task ${id}`, err)
+    })
+    deletePersistedTaskHistory(id).catch((err: unknown) => {
+      logger.warn('store', `Failed to delete history for task ${id}`, err)
+    })
+    contextBuilder.clearStablePrefix(id)
+  },
 
   updateTaskTitle: (id, title) =>
     set((state) => {
@@ -125,11 +153,13 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
       if (task) task.pinned = !task.pinned
     }),
 
-  duplicateTask: (id) =>
+  duplicateTask: (id) => {
+    let newId = ''
+    let historySnapshot: LlmMessage[] = []
     set((state) => {
       const source = state.tasks.find((t) => t.id === id)
       if (!source) return
-      const newId = crypto.randomUUID()
+      newId = crypto.randomUUID()
       const newTask: Task = {
         ...source,
         id: newId,
@@ -141,15 +171,23 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
       state.tasks.unshift(newTask)
       if (state.tasks.length > MAX_TASKS) state.tasks.splice(MAX_TASKS)
       state.messages[newId] = [WELCOME_MESSAGE]
-      state.rawHistory[newId] = state.rawHistory[id] ? [...state.rawHistory[id]] : []
+      // Deep copy so mutations to either task's history don't affect the other
+      historySnapshot = state.rawHistory[id]
+        ? (JSON.parse(JSON.stringify(state.rawHistory[id])) as LlmMessage[])
+        : []
+      state.rawHistory[newId] = historySnapshot
       state.activeTaskId = newId
-      copyWorkspace(id, newId)
-      if (state.rawHistory[newId].length > 0) {
-        persistTaskHistory(newId, state.rawHistory[newId]).catch((err: unknown) => {
-          logger.warn('store', `Failed to persist history for duplicated task ${newId}`, err)
-        })
-      }
-    }),
+    })
+    if (!newId) return
+    copyWorkspace(id, newId).catch((err: unknown) => {
+      logger.warn('store', `Failed to copy workspace for duplicated task ${newId}`, err)
+    })
+    if (historySnapshot.length > 0) {
+      persistTaskHistory(newId, historySnapshot).catch((err: unknown) => {
+        logger.warn('store', `Failed to persist history for duplicated task ${newId}`, err)
+      })
+    }
+  },
 
   getMessages: (taskId) => get().messages[taskId] ?? [WELCOME_MESSAGE],
   getRawHistory: (taskId) => get().rawHistory[taskId] ?? [],
@@ -243,21 +281,19 @@ export const createTaskSlice: StateCreator<TaskSlice, [['zustand/immer', never]]
       if (msg) { msg.modelId = modelId; msg.modelName = modelName; msg.provider = provider }
     }),
 
-  appendRawHistory: (taskId, msgs) =>
+  appendRawHistory: (taskId, msgs) => {
+    let capped: LlmMessage[] = []
     set((state) => {
       const current = state.rawHistory[taskId] ?? []
       const appended = [...current, ...msgs]
       const sanitized = sanitizeMessages(appended)
-      const capped = sanitized.length > MAX_RAW_HISTORY_LIVE
+      capped = sanitized.length > MAX_RAW_HISTORY_LIVE
         ? sanitized.slice(-MAX_RAW_HISTORY_LIVE)
         : sanitized
-      queueMicrotask(() => {
-        persistTaskHistory(taskId, capped).catch((err: unknown) => {
-          logger.warn('store', `Failed to persist history for task ${taskId}`, err)
-        })
-      })
       state.rawHistory[taskId] = capped
-    }),
+    })
+    _schedulePersist(taskId, capped)
+  },
 })
 
 // Partialize helper — called by the root store's partialize

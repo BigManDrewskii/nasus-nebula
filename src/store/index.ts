@@ -13,13 +13,14 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 
-import { createTaskSlice, type TaskSlice, partializeTaskSlice } from './taskSlice'
-import { createUISlice, type UISlice } from './uiSlice'
-import { createAgentSlice, type AgentSlice } from './agentSlice'
-import { createSettingsSlice, type SettingsSlice } from './settingsSlice'
-import { createGatewaySlice, type GatewaySlice } from '../agent/gateway'
-import { createToastSlice, type ToastSlice } from './toastSlice'
-import { createAppSlice, type AppSlice } from './appSlice'
+import { createTaskSlice, partializeTaskSlice } from './taskSlice'
+import { createUISlice } from './uiSlice'
+import { createAgentSlice } from './agentSlice'
+import { createSettingsSlice } from './settingsSlice'
+import { createGatewaySlice } from '../agent/gateway'
+import { createToastSlice } from './toastSlice'
+import { createAppSlice } from './appSlice'
+import { type AppState } from './storeTypes'
 import { getPersistedTaskHistory } from '../tauri'
 import { logger } from '../lib/logger'
 
@@ -37,23 +38,17 @@ export type {
   TextScale,
 } from './settingsSlice'
 
-type AppState = TaskSlice & UISlice & AgentSlice & SettingsSlice & GatewaySlice & ToastSlice & AppSlice
-
 export const useAppStore = create<AppState>()(
   persist(
-    immer((...a) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const [set, get, api] = a as [any, any, any]
-      return {
-        ...createTaskSlice(set, get, api),
-          ...createUISlice(set, get, api),
-          ...createAgentSlice(set, get, api),
-          ...createSettingsSlice(set, get, api),
-          ...createGatewaySlice(set, get, api),
-          ...createToastSlice(set, get, api),
-          ...createAppSlice(set, get, api),
-      }
-    }),
+    immer<AppState>((set, get, api) => ({
+      ...createTaskSlice(set, get, api),
+      ...createUISlice(set, get, api),
+      ...createAgentSlice(set, get, api),
+      ...createSettingsSlice(set, get, api),
+      ...createGatewaySlice(set, get, api),
+      ...createToastSlice(set, get, api),
+      ...createAppSlice(set, get, api),
+    })),
     {
       name: 'nasus-store-v2',
       partialize: (state): Partial<AppState> => ({
@@ -108,11 +103,22 @@ export const useAppStore = create<AppState>()(
         // Seed workspaceVersions for tasks that have persisted workspace data
         import('../agent/workspace/WorkspaceManager').then(({ workspaceManager }) => {
           const tasks = state.tasks ?? []
-          for (const task of tasks) {
+          let failures = 0
+          const total = tasks.length
+          const checks = tasks.map((task) =>
             workspaceManager.getWorkspace(task.id).catch((err: unknown) => {
               logger.warn('store', `Failed to load workspace for task ${task.id}`, err)
+              failures++
             })
-          }
+          )
+          Promise.allSettled(checks).then(() => {
+            if (total > 0 && failures > total / 2) {
+              useAppStore.getState().addToast(
+                'Workspace files could not be loaded. Check your workspace path in Settings.',
+                'amber',
+              )
+            }
+          })
         }).catch((err: unknown) => {
           logger.warn('store', 'Failed to load WorkspaceManager module', err)
         })

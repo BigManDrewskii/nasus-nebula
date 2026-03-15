@@ -389,11 +389,14 @@ async function rawChatRequest(
   extraHeaders?: Record<string, string>,
 ): Promise<string | null> {
   const url = `${(apiBase ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/chat/completions`
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
-    ...extraHeaders,
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiBase.includes('api.anthropic.com')) {
+    headers['x-api-key'] = apiKey
+    headers['anthropic-version'] = '2023-06-01'
+  } else {
+    headers['Authorization'] = `Bearer ${apiKey}`
   }
+  if (extraHeaders) Object.assign(headers, extraHeaders)
   const body = JSON.stringify({ model, messages, max_tokens: maxTokens, stream: false })
 
   const MAX_RETRIES = 2

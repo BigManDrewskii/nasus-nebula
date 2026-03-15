@@ -148,24 +148,4 @@ export abstract class BaseAgent implements Agent {
     }
   }
 
-  /**
-   * Detect stuck state (repeated similar responses).
-   * Inspired by OpenManus is_stuck() pattern.
-   */
-  protected isStuck(messages: Array<{ content?: string }>): boolean {
-    if (messages.length < 3) return false
-
-    const lastContent = messages[messages.length - 1]?.content
-    if (!lastContent) return false
-
-    // Check for duplicate content in last few messages
-    let duplicateCount = 0
-    for (let i = messages.length - 2; i >= Math.max(0, messages.length - 5); i--) {
-      if (messages[i]?.content === lastContent) {
-        duplicateCount++
-      }
-    }
-
-    return duplicateCount >= 2
-  }
 }

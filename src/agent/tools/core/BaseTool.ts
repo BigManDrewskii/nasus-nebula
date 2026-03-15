@@ -25,6 +25,9 @@ export abstract class BaseTool {
   /** Whether this tool works in browser-only mode */
   readonly worksInBrowser: boolean = true
 
+  /** Whether this tool requires user approval before execution. */
+  readonly requiresPermission: boolean = false
+
   /** Timeout for tool execution (ms) */
   readonly timeout: number = 30_000
 

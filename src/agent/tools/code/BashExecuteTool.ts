@@ -11,6 +11,8 @@ export class BashExecuteTool extends BaseTool {
   private executionConfig?: ExecutionConfig
 
   readonly name = 'bash_execute'
+  readonly requiresSandbox: boolean = true
+  readonly requiresPermission = true
   readonly description =
     'Execute a shell command in a Docker sandbox. Requires Docker Desktop to be running. Use for: installing packages (pip install, apt-get), running CLI tools, file operations, compiling code, running scripts, and any shell operations.'
 

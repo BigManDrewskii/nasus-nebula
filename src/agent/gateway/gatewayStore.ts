@@ -17,7 +17,7 @@
  *   }))
  */
 
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from '../../store/storeTypes'
 import { GatewayService } from './gatewayService'
 import { createLogger } from '../../lib/logger'
 import type {
@@ -100,7 +100,7 @@ export interface GatewaySlice {
 
 // ─── Slice Creator ──────────────────────────────────────────────────────────
 
-export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', never]], [], GatewaySlice> = (set, get) => ({
+export const createGatewaySlice: AppStateCreator<GatewaySlice> = (set, get) => ({
   // ── Initial State ─────────────────────────────────────────────────────────
   gateways: [...DEFAULT_GATEWAYS],
   routingMode: 'auto-paid',
@@ -131,26 +131,23 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
   },
 
   updateGateway: (id, updates) => {
-    set((state) => ({
-      gateways: state.gateways.map((g) =>
-        g.id === id ? { ...g, ...updates } : g,
-      ),
-    }))
+    set((state) => {
+      const idx = state.gateways.findIndex((g) => g.id === id)
+      if (idx >= 0) Object.assign(state.gateways[idx], updates)
+    })
     // Sync to service
     const { gatewayService, gateways } = get()
     gatewayService?.updateGateways(gateways)
   },
 
   addGateway: (config) => {
-    set((state) => ({ gateways: [...state.gateways, config] }))
+    set((state) => { state.gateways.push(config) })
     const { gatewayService, gateways } = get()
     gatewayService?.updateGateways(gateways)
   },
 
   removeGateway: (id) => {
-    set((state) => ({
-      gateways: state.gateways.filter((g) => g.id !== id),
-    }))
+    set((state) => { state.gateways = state.gateways.filter((g) => g.id !== id) })
     const { gatewayService, gateways } = get()
     gatewayService?.updateGateways(gateways)
   },
@@ -304,6 +301,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         // (partialize zeroes them out). When the user saves settings, SettingsPanel
         // writes each provider's key to sessionStorage under 'nasus:key:<provider>'.
         // We read them back here so the gateway layer has valid keys during dev/HMR.
+        let recovered = false
         try {
           const activeProvider = (() => {
             try { return sessionStorage.getItem('nasus:active-provider') } catch { return null }
@@ -337,10 +335,15 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
               useAppStore.getState().setApiKey(activeKey)
             } catch { /* ignore */ }
           }
+          recovered = true
         } catch {
           // ignore
         }
+        if (recovered) {
+          log.debug('Tauri unavailable — loaded gateway config from sessionStorage')
+        } else {
           log.error('Failed to load config', err instanceof Error ? err : new Error(String(err)))
+        }
         // Mark ready even on error so the UI doesn't stay stuck waiting
         set({ gatewayConfigReady: true })
       }
@@ -365,7 +368,10 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
     // Sensible per-gateway fallback model IDs when auto-selection produces nothing
     const FALLBACK_MODELS: Partial<Record<string, string>> = {
       deepseek: 'deepseek-chat',
+      anthropic: 'claude-haiku-4-5-20251001',
+      litellm: '',
       ollama: 'llama3.3:70b',
+      direct: '',
       custom: '',
     }
 

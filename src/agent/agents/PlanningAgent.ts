@@ -17,6 +17,7 @@ import { memoryStore } from '../memory/SqliteMemoryStore'
 import { useAppStore } from '../../store'
 import { createLogger } from '../../lib/logger'
 import type { SpecialistDomain } from '../prompts/specialistContexts'
+import { getModelsForGateway } from '../gateway/modelRegistry'
 
 const log = createLogger('PlanningAgent')
 
@@ -138,8 +139,12 @@ export class PlanningAgent extends BaseAgent {
           planModel = 'deepseek-chat'
         } else if (conn.provider === 'ollama') {
           planModel = conn.model || model || 'llama3.3:70b'
+        } else if (conn.provider === 'anthropic') {
+          const anthropicModels = getModelsForGateway('anthropic')
+          const fast = anthropicModels.find(m => m.tier === 'fast')
+          planModel = (fast?.ids['anthropic']) ?? 'claude-haiku-4-5'
         } else {
-          planModel = cheapestModel(store.openRouterModels) || model || 'anthropic/claude-3-haiku'
+          planModel = cheapestModel(store.openRouterModels) || model || 'anthropic/claude-3.5-haiku'
         }
 
     // Build planning prompt (now async for memory lookup)
@@ -182,18 +187,22 @@ export class PlanningAgent extends BaseAgent {
     model: string,
     conn: ReturnType<ReturnType<typeof useAppStore.getState>['resolveConnection']>,
   ): Promise<Record<string, unknown> | null> {
-    // Providers known NOT to support tool_choice reliably
-    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek'
+    // Providers known NOT to support tool_choice reliably in OpenAI format.
+    // Anthropic native API uses a different schema — skip here, fall back to chatJsonViaGateway.
+    const noToolChoice = conn.provider === 'ollama' || conn.provider === 'deepseek' || conn.provider === 'anthropic'
     if (noToolChoice) return null
 
     try {
       const base = (conn.apiBase ?? 'https://api.deepseek.com/v1').replace(/\/$/, '')
       const url = `${base}/chat/completions`
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${conn.apiKey}`,
-        ...(conn.extraHeaders ?? {}),
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if ((conn.apiBase ?? '').includes('api.anthropic.com')) {
+        headers['x-api-key'] = conn.apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        headers['Authorization'] = `Bearer ${conn.apiKey}`
       }
+      Object.assign(headers, conn.extraHeaders ?? {})
 
       const body = JSON.stringify({
         model,

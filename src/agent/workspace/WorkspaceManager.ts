@@ -53,6 +53,27 @@ export class WorkspaceManager {
   private taskTitles: Map<string, string> = new Map()
   private initialized = false
 
+  /** Approximate total bytes held across all task caches. */
+  private contentCacheBytes = 0
+  private static readonly MAX_CONTENT_CACHE_BYTES = 50 * 1024 * 1024 // 50 MB
+
+  /**
+   * Evict oldest task caches (Map insertion order) until we're under the limit.
+   * Eviction is safe — every file is persisted to disk; re-reading just incurs
+   * a filesystem round-trip via `ensureLoaded`.
+   */
+  private evictIfNeeded(): void {
+    if (this.contentCacheBytes <= WorkspaceManager.MAX_CONTENT_CACHE_BYTES) return
+    for (const [taskId, cache] of this.contentCache) {
+      if (this.contentCacheBytes <= WorkspaceManager.MAX_CONTENT_CACHE_BYTES) break
+      let taskBytes = 0
+      for (const v of cache.values()) taskBytes += v.length
+      this.contentCache.delete(taskId)
+      this.contentCacheBytes -= taskBytes
+      log.debug(`Evicted workspace cache for task ${taskId} (${(taskBytes / 1024).toFixed(1)} KB)`)
+    }
+  }
+
   // ── Path validation ──────────────────────────────────────────────────────────
 
   /**
@@ -129,10 +150,14 @@ export class WorkspaceManager {
     for (const file of files) {
       try {
         const content = await this.readFile(taskId, file.path)
+        const existing = map.get(file.path)
+        if (existing !== undefined) this.contentCacheBytes -= existing.length
         map.set(file.path, content)
+        this.contentCacheBytes += content.length
         this.getHistory(taskId).set(file.path, [content])
       } catch { /* file not yet in workspace, skip */ }
     }
+    this.evictIfNeeded()
   }
 
   /**
@@ -221,8 +246,13 @@ export class WorkspaceManager {
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_write', { taskId, path: filePath, content, workspacePath })
 
-    // Update content cache
-    this.getWorkspaceSync(taskId).set(filePath, content)
+    // Update content cache with byte tracking
+    const ws = this.getWorkspaceSync(taskId)
+    const previous = ws.get(filePath)
+    if (previous !== undefined) this.contentCacheBytes -= previous.length
+    ws.set(filePath, content)
+    this.contentCacheBytes += content.length
+    this.evictIfNeeded()
 
     // Increment version counter for React subscriptions
     this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)
@@ -254,7 +284,10 @@ export class WorkspaceManager {
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_delete', { taskId, path: filePath, workspacePath })
 
-    this.getWorkspaceSync(taskId).delete(filePath)
+    const ws = this.getWorkspaceSync(taskId)
+    const removed = ws.get(filePath)
+    if (removed !== undefined) this.contentCacheBytes -= removed.length
+    ws.delete(filePath)
     this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)
 
     this.emitWorkspaceEvent(taskId)
@@ -266,11 +299,21 @@ export class WorkspaceManager {
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_delete_all', { taskId, workspacePath })
 
+    const cache = this.contentCache.get(taskId)
+    if (cache) {
+      for (const v of cache.values()) this.contentCacheBytes -= v.length
+    }
     this.contentCache.delete(taskId)
+    this.history.delete(taskId)
+    this.taskTitles.delete(taskId)
     this.versions.delete(taskId)
   }
 
   async refresh(taskId: string): Promise<void> {
+    const existing = this.contentCache.get(taskId)
+    if (existing) {
+      for (const v of existing.values()) this.contentCacheBytes -= v.length
+    }
     this.contentCache.delete(taskId)
     await this.ensureLoaded(taskId)
     this.versions.set(taskId, (this.versions.get(taskId) ?? 0) + 1)

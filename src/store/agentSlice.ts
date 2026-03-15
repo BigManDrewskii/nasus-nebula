@@ -1,4 +1,4 @@
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from './storeTypes'
 import type { ExecutionPlan } from '../agent/core/Agent'
 import { stopWebAgent } from '../agent/index'
 
@@ -37,7 +37,7 @@ export interface AgentSlice {
   rejectTool: (taskId: string, requestId: string) => void
 }
 
-export const createAgentSlice: StateCreator<AgentSlice, [['zustand/immer', never]], [], AgentSlice> = (set, get) => ({
+export const createAgentSlice: AppStateCreator<AgentSlice> = (set, get) => ({
   pendingPlan: null,
   planApprovalStatus: null,
   currentPlan: null,

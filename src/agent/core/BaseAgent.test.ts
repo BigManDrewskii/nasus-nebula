@@ -26,10 +26,6 @@ class TestAgent extends BaseAgent {
     return this.filterTools(tools)
   }
 
-  public testIsStuck(messages: Array<{ content?: string }>) {
-    return this.isStuck(messages)
-  }
-
   public testEmitThinking(content: string) {
     this.emitThinking(content)
   }
@@ -177,27 +173,3 @@ describe('BaseAgent.filterTools', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// isStuck
-// ---------------------------------------------------------------------------
-
-describe('BaseAgent.isStuck', () => {
-  it('returns false for fewer than 3 messages', () => {
-    const agent = new TestAgent()
-    expect(agent.testIsStuck([{ content: 'a' }, { content: 'a' }])).toBe(false)
-  })
-
-  it('returns false when messages are not repeated', () => {
-    const agent = new TestAgent()
-    expect(agent.testIsStuck([
-      { content: 'a' }, { content: 'b' }, { content: 'c' },
-    ])).toBe(false)
-  })
-
-  it('returns true when last content repeated 2+ times in recent window', () => {
-    const agent = new TestAgent()
-    expect(agent.testIsStuck([
-      { content: 'x' }, { content: 'x' }, { content: 'x' },
-    ])).toBe(true)
-  })
-})

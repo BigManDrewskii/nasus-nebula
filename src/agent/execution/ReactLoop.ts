@@ -342,7 +342,7 @@ export class ReactLoop {
       const toolResult = await this.handleToolCalls(
         toolCalls, content, messages, taskId, messageId, executionConfig, signal,
         iteration, warnIter, tracer, reasoningContent, toolDefs, env, plan,
-        preIterationContent, callbacks,
+        preIterationContent, callbacks, maxIterations,
       )
 
       if (toolResult === 'aborted' || toolResult === 'complete') {
@@ -479,6 +479,7 @@ export class ReactLoop {
     plan: ExecutionPlan | undefined,
     preIterationContent: string,
     callbacks: ReactLoopCallbacks,
+    maxIterations: number,
   ): Promise<'continue' | 'aborted' | 'max_iterations' | 'complete'> {
     // Surface LLM pre-tool narration as a thinking step
     if (content?.trim()) {
@@ -640,7 +641,18 @@ export class ReactLoop {
     let shouldComplete = false
 
     for (const { callId, fnName } of readyTools) {
-      const { output, isError } = execResultMap.get(callId)!
+      const { output: rawOutput, isError } = execResultMap.get(callId)!
+
+      let output = rawOutput
+      if (isError) {
+        const currentPhase = useAppStore.getState().currentPhase ?? 0
+        const ctx = [
+          `[Tool Error — iteration ${iteration + 1}/${maxIterations}]`,
+          plan ? `[Phase: ${plan.phases[currentPhase]?.title ?? 'unknown'}]` : null,
+          `[Tool: ${fnName}]`,
+        ].filter(Boolean).join(' ')
+        output = `${ctx}\n${rawOutput}`
+      }
 
       this.recordToolResult(callId, output, isError, callbacks)
 

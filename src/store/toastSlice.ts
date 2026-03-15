@@ -1,5 +1,5 @@
 // src/store/toastSlice.ts
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from './storeTypes'
 
 export interface ToastState {
   id: number
@@ -13,14 +13,14 @@ export interface ToastSlice {
   removeToast: (id: number) => void
 }
 
-export const createToastSlice: StateCreator<ToastSlice, [], [], ToastSlice> = (set, get) => ({
+export const createToastSlice: AppStateCreator<ToastSlice> = (set, get) => ({
   toasts: [],
   addToast: (message, type) => {
     const id = Date.now()
-    set(state => ({ toasts: [...state.toasts, { id, message, type }] }))
+    set((state) => { state.toasts.push({ id, message, type }) })
     setTimeout(() => get().removeToast(id), 5000)
   },
   removeToast: (id) => {
-    set(state => ({ toasts: state.toasts.filter(t => t.id !== id) }))
+    set((state) => { state.toasts = state.toasts.filter((t) => t.id !== id) })
   },
 })

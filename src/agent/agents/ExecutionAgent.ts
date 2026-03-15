@@ -19,7 +19,8 @@ import type { AgentContext, AgentResult, ExecutionPlan } from '../core/Agent'
 import type { LlmMessage } from '../llm'
 import { SPECIALIST_CONTEXTS } from '../prompts/specialistContexts'
 import { cheapestModel, chatOnceViaGateway } from '../llm'
-import { flushTurnFiles, type SearchStatusCallback } from '../tools'
+import { getModelsForGateway } from '../gateway/modelRegistry'
+import { flushTurnFiles, resetBashCallCount, type SearchStatusCallback } from '../tools'
 import { workspaceManager } from '../workspace/WorkspaceManager'
 import type { ExecutionConfig } from '../sandboxRuntime'
 import { useAppStore } from '../../store'
@@ -30,7 +31,7 @@ import { verifyExecution, type VerificationContext } from './VerificationAgent'
 import { DEFAULT_MAX_ITERATIONS } from '../../lib/constants'
 import { readProjectMemory, updateProjectMemory } from '../projectMemory'
 import { getModelAdapter } from '../promptAdapter'
-import { buildContext } from '../context/ContextBuilder'
+import { buildContext, contextBuilder } from '../context/ContextBuilder'
 import { createLogger } from '../../lib/logger'
 import { ErrorTracker } from '../core/ErrorTracker'
 import { ReactLoop } from '../execution/ReactLoop'
@@ -153,7 +154,9 @@ export class ExecutionAgent extends BaseAgent {
       const firstContent =
         typeof userMessages[0].content === 'string' ? userMessages[0].content : ''
       if (firstContent) {
-        this.autoTitle(firstContent, taskId).catch(() => {})
+        this.autoTitle(firstContent, taskId).catch((err: unknown) => {
+          log.warn('autoTitle failed', err instanceof Error ? err : new Error(String(err)))
+        })
       }
     }
 
@@ -223,6 +226,7 @@ export class ExecutionAgent extends BaseAgent {
       },
       params.plan,
       envSummary,
+      taskId,
     )
 
     const messages: LlmMessage[] = [...builtContext.messages]
@@ -275,7 +279,10 @@ export class ExecutionAgent extends BaseAgent {
       },
     })
 
-    const result = await loop.run(messages)
+    const result = await loop.run(messages).finally(() => {
+      resetBashCallCount(taskId)
+      contextBuilder.clearStablePrefix(taskId)
+    })
 
     this._priorLoopState = {
       errorTracker: result.errorTracker,
@@ -521,9 +528,14 @@ Strategy: Write files directly with write_file/edit_file. Call serve_preview whe
     const conn = store.resolveConnection()
     if (conn.provider === 'deepseek') {
       titleModel = 'deepseek-chat'
+    } else if (conn.provider === 'anthropic') {
+      const anthropicModels = getModelsForGateway('anthropic')
+      const fast = anthropicModels.find(m => m.tier === 'fast')
+      titleModel = (fast?.ids['anthropic']) ?? 'claude-haiku-4-5'
+    } else if (conn.provider === 'ollama') {
+      titleModel = conn.model || 'llama3.3:70b'
     } else {
-      titleModel =
-        openRouterModels.length > 0 ? cheapestModel(openRouterModels) : 'anthropic/claude-3-haiku'
+      titleModel = openRouterModels.length > 0 ? cheapestModel(openRouterModels) : 'anthropic/claude-3.5-haiku'
     }
 
     const prompt = `Summarise the following task in 4-6 words as a short title. Reply with ONLY the title, no punctuation:\n\n${userMessage}`

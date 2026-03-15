@@ -1,6 +1,7 @@
-import type { StateCreator } from 'zustand'
+import type { AppStateCreator } from './storeTypes'
 import { DEFAULT_MAX_ITERATIONS } from '../lib/constants'
 import { createLogger } from '../lib/logger'
+import { findModelById } from '../agent/gateway/modelRegistry'
 
 const log = createLogger('Settings')
 
@@ -162,7 +163,7 @@ const DEFAULT_ROUTER_STATE: Omit<TaskRouterState, 'tokenUsage'> = {
   isFree: false,
 }
 
-export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer', never]], [], SettingsSlice> = (set, get) => ({
+export const createSettingsSlice: AppStateCreator<SettingsSlice> = (set, get) => ({
   apiKey: '',
   model: 'deepseek-chat',
   workspacePath: '',
@@ -209,11 +210,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
 
   addRecentWorkspacePath: (path) =>
     set((state) => {
-      if (!path.trim()) return {}
+      if (!path.trim()) return
       const existing = state.recentWorkspacePaths.filter((p) => p !== path)
-      return {
-        recentWorkspacePaths: [path, ...existing].slice(0, 5),
-      }
+      state.recentWorkspacePaths = [path, ...existing].slice(0, 5)
     }),
 
   setApiBase: (base) => set({ apiBase: base }),
@@ -375,17 +374,14 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   setBrowserActivityActive: (active) => set({ browserActivityActive: active }),
 
   setRouterConfig: (config) =>
-    set((state) => ({ routerConfig: { ...state.routerConfig, ...config } })),
+    set((state) => { Object.assign(state.routerConfig, config) }),
 
   setRoutingPreview: (preview) => set({ routingPreview: preview }),
 
   setTaskRouterState: (taskId, state) =>
-    set((s) => ({
-      taskRouterState: {
-        ...s.taskRouterState,
-        [taskId]: { ...(s.taskRouterState[taskId] ?? DEFAULT_ROUTER_STATE), ...state },
-      },
-    })),
+    set((s) => {
+      s.taskRouterState[taskId] = { ...(s.taskRouterState[taskId] ?? DEFAULT_ROUTER_STATE), ...state }
+    }),
 
   updateTokenUsage: (taskId, usage, modelId) =>
     set((s) => {
@@ -399,32 +395,28 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
       const totalPromptTokens = current.totalPromptTokens + usage.promptTokens
       const totalCompletionTokens = current.totalCompletionTokens + usage.completionTokens
       const totalTokens = totalPromptTokens + totalCompletionTokens
-      const deltaTokens = usage.promptTokens + usage.completionTokens
-      const { registry } = s.routerConfig
-      const modelInfo = (registry ?? []).find(m => m.id === modelId)
+
+      // Use MODEL_REGISTRY for precise per-token pricing (separate input/output rates).
+      // For models not in the registry (custom/OpenRouter), cost is not estimated.
+      const registryEntry = findModelById(modelId)
       let estimatedCost = current.estimatedCost
-      if (modelInfo) {
-        const tierCost: Record<string, number> = { premium: 10, standard: 2, budget: 0.5, free: 0 }
-        const costPerMillion = tierCost[modelInfo.cost_tier.toLowerCase()] ?? 2
-        estimatedCost += (deltaTokens / 1_000_000) * costPerMillion
-      } else {
-        estimatedCost += (deltaTokens / 1_000_000) * 5
+      if (registryEntry) {
+        estimatedCost +=
+          (usage.promptTokens / 1_000_000) * registryEntry.inputCostPer1M +
+          (usage.completionTokens / 1_000_000) * registryEntry.outputCostPer1M
       }
-      const contextUtilization = usage.promptTokens / (modelInfo?.context_window ?? 128_000)
-      return {
-        taskRouterState: {
-          ...s.taskRouterState,
-          [taskId]: {
-            ...(s.taskRouterState[taskId] ?? DEFAULT_ROUTER_STATE),
-            tokenUsage: {
-              totalPromptTokens,
-              totalCompletionTokens,
-              totalTokens,
-              estimatedCost,
-              contextUtilization,
-            }
-          }
-        }
+
+      const contextUtilization = usage.promptTokens / (registryEntry?.contextWindow ?? 128_000)
+      const entry = s.taskRouterState[taskId] ?? DEFAULT_ROUTER_STATE
+      s.taskRouterState[taskId] = {
+        ...entry,
+        tokenUsage: {
+          totalPromptTokens,
+          totalCompletionTokens,
+          totalTokens,
+          estimatedCost,
+          contextUtilization,
+        },
       }
     }),
 

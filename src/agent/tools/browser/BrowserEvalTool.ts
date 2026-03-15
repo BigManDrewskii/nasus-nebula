@@ -5,11 +5,17 @@ import { browserEval } from '../../browserBridge'
 
 /**
  * Tool for evaluating JavaScript expressions in the browser.
+ *
+ * Requires user approval before execution — browser_eval can read cookies,
+ * localStorage, and other sensitive page data. Every call is gated through
+ * the permission system (enqueuePendingToolApproval → user confirms in UI).
  */
 export class BrowserEvalTool extends BaseTool {
   readonly name = 'browser_eval'
   readonly description =
     "Evaluate a JavaScript expression in the current page and return its value. Use to read page state that browser_extract cannot capture: form field values, JavaScript variables, computed styles, element counts, localStorage values, etc. Keep expressions simple and side-effect-free when possible."
+
+  readonly requiresPermission = true
 
   readonly parameters: ToolParameterSchema = {
     type: 'object',
