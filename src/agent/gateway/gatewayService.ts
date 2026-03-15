@@ -268,7 +268,12 @@ export class GatewayService {
     try {
       const url = `${gw.apiBase.replace(/\/+$/, '')}/models`
       const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-      if (gw.apiKey) headers['Authorization'] = `Bearer ${gw.apiKey}`
+      if (gw.type === 'anthropic') {
+        if (gw.apiKey) headers['x-api-key'] = gw.apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else {
+        if (gw.apiKey) headers['Authorization'] = `Bearer ${gw.apiKey}`
+      }
       Object.assign(headers, gw.extraHeaders ?? {})
 
       const resp = await fetch(url, {

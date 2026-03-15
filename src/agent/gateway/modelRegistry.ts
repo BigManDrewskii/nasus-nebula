@@ -32,6 +32,14 @@ export const MODEL_REGISTRY: GatewayModel[] = [
   {
     canonicalName: 'DeepSeek R1',
     ids: {
+      // api.deepseek.com uses 'deepseek-reasoner' for both the base R1 and the
+      // R1-0528 checkpoint — there is no distinct API ID for R1-0528 on the
+      // DeepSeek gateway. supportsTools is conservatively false here because the
+      // base R1 checkpoint does NOT support function calling.
+      //
+      // For tool-capable R1-0528 access, use the OpenRouter gateway where the
+      // model has the distinct ID 'deepseek/deepseek-r1-0528'. The string-heuristic
+      // fallback in modelSupportsTools() returns true for that slug.
       deepseek: 'deepseek-reasoner',
     },
     freeOn: {},
@@ -41,16 +49,34 @@ export const MODEL_REGISTRY: GatewayModel[] = [
     outputCostPer1M: 2.19,
     supportsTools: false,
   },
+
+  // ── Anthropic / Claude ───────────────────────────────────────────────────
   {
-    canonicalName: 'DeepSeek R1 0528',
+    canonicalName: 'Claude Sonnet 4.5',
     ids: {
-      deepseek: 'deepseek-reasoner',
+      anthropic: 'claude-sonnet-4-5',
     },
     freeOn: {},
     tier: 'reasoning',
-    contextWindow: 128_000,
-    inputCostPer1M: 0.55,
-    outputCostPer1M: 2.19,
+    contextWindow: 200_000,
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    provider: 'Anthropic',
+    description: 'Anthropic\'s best balance of intelligence and speed',
+    supportsTools: true,
+  },
+  {
+    canonicalName: 'Claude Haiku 4.5',
+    ids: {
+      anthropic: 'claude-haiku-4-5',
+    },
+    freeOn: {},
+    tier: 'fast',
+    contextWindow: 200_000,
+    inputCostPer1M: 0.8,
+    outputCostPer1M: 4.0,
+    provider: 'Anthropic',
+    description: 'Anthropic\'s fastest, most compact model',
     supportsTools: true,
   },
 

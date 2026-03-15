@@ -1,9 +1,10 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { type LanguageModel } from 'ai';
 import { withHealthTracking } from './healthMiddleware';
 
 export interface ProviderConfig {
-  provider: 'ollama' | 'deepseek' | 'litellm' | 'direct' | 'custom';
+  provider: 'ollama' | 'deepseek' | 'anthropic' | 'litellm' | 'direct' | 'custom';
   apiKey?: string;
   apiBase?: string;
   gatewayId?: string;
@@ -17,6 +18,9 @@ export interface ProviderConfig {
  *   - OpenAI-compatible at api.deepseek.com/v1 — createOpenAI with .chat().
  *     Must use .chat() — @ai-sdk/openai v3+ defaults to the Responses API (/responses)
  *     which DeepSeek does not support (returns 404).
+ *
+ * Anthropic Direct:
+ *   - Uses @ai-sdk/anthropic with native Anthropic API format.
  *
  * Ollama / LiteLLM / Custom:
  *   - Generic OpenAI-compatible fallback via createOpenAI with .chat().
@@ -36,6 +40,13 @@ export function getUnifiedModel(
       headers: extraHeaders,
     });
     model = deepseek.chat(modelId);
+  } else if (provider === 'anthropic' || (apiBase && apiBase.includes('api.anthropic.com'))) {
+    const anthropic = createAnthropic({
+      apiKey,
+      baseURL: apiBase,
+      headers: extraHeaders,
+    });
+    model = anthropic(modelId);
   } else {
     const openai = createOpenAI({
       apiKey,

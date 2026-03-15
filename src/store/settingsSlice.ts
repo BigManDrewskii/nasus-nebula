@@ -164,7 +164,7 @@ const DEFAULT_ROUTER_STATE: Omit<TaskRouterState, 'tokenUsage'> = {
 
 export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer', never]], [], SettingsSlice> = (set, get) => ({
   apiKey: '',
-  model: 'anthropic/claude-sonnet-4-20250514',
+  model: 'deepseek-chat',
   workspacePath: '',
   recentWorkspacePaths: [],
   apiBase: 'https://api.deepseek.com/v1',
@@ -221,31 +221,31 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
   setProvider: (provider) => {
     set({ provider })
     const s = get() as unknown as WithGatewayAccess & SettingsSlice
-    s.gateways.forEach((g) => {
-      if (g.id === provider || g.type === provider) {
-        if (!g.enabled) s.updateGateway(g.id, { enabled: true })
-      } else if (g.type !== 'ollama' && g.enabled) {
-        s.updateGateway(g.id, { enabled: false })
-      }
-    })
-      // Don't auto-fetch Ollama models on every provider switch — Ollama may not
-      // be running and the repeated failed requests cause console noise. Ollama
-      // models are fetched on demand from SettingsPanel when the user opens that
-      // section. Other providers are fine to fetch eagerly.
-      if (provider !== 'ollama') {
-        get().fetchModelsForProvider(provider)
-      }
-      const defaultModels: Record<string, string> = {
+    // Only ensure the selected provider's gateway is enabled — do not disable others.
+    // The multi-gateway failover system depends on multiple gateways being enabled simultaneously.
+    const gw = s.gateways.find((g) => g.id === provider || g.type === provider)
+    if (gw && !gw.enabled) {
+      s.updateGateway(gw.id, { enabled: true })
+    }
+    // Don't auto-fetch Ollama models on every provider switch — Ollama may not
+    // be running and the repeated failed requests cause console noise.
+    if (provider !== 'ollama') {
+      get().fetchModelsForProvider(provider)
+    }
+    const defaultModels: Record<string, string> = {
       deepseek: 'deepseek-chat',
+      anthropic: 'claude-sonnet-4-5',
       ollama: 'llama3.3:latest',
       custom: '',
     }
     const currentModel = get().model
-    const deepseekModelIds = ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder']
     const isModelValidForProvider = (() => {
       if (!currentModel) return false
       if (provider === 'deepseek') {
-        return deepseekModelIds.includes(currentModel)
+        return ['deepseek-chat', 'deepseek-reasoner', 'deepseek-coder'].includes(currentModel)
+      }
+      if (provider === 'anthropic') {
+        return ['claude-sonnet-4-5', 'claude-haiku-4-5'].includes(currentModel)
       }
       if (provider === 'ollama') {
         return get().ollamaModels.some(m => m.name === currentModel)
@@ -282,6 +282,24 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [['zustand/immer',
           const registryModels = getModelsForGateway('deepseek')
           const models = registryModels.map((m) => ({
             id: (m.ids as Record<string, string>).deepseek!,
+            name: m.canonicalName,
+            description: m.description ?? '',
+            context_length: m.contextWindow,
+            architecture: { tokenizer: '', instruct_type: null, input_modalities: ['text'], output_modalities: ['text'] },
+            pricing: {
+              prompt: String(m.inputCostPer1M / 1_000_000),
+              completion: String(m.outputCostPer1M / 1_000_000),
+            },
+            top_provider: { context_length: null, is_moderated: false },
+          }))
+          ;(set as (patch: Record<string, unknown>) => void)({ openRouterModels: models })
+          break
+        }
+        case 'anthropic': {
+          const { getModelsForGateway: getAnthropicModels } = await import('../agent/gateway/modelRegistry')
+          const anthropicModels = getAnthropicModels('anthropic')
+          const models = anthropicModels.map((m) => ({
+            id: (m.ids as Record<string, string>).anthropic!,
             name: m.canonicalName,
             description: m.description ?? '',
             context_length: m.contextWindow,

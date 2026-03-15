@@ -114,6 +114,11 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
         })),
   )
 
+  const hasConfiguredGateway = useAppStore(s =>
+    s.gateways.some(g => g.enabled && (g.apiKey?.trim().length > 0 || g.type === 'ollama'))
+  )
+  const gatewayConfigReady = useAppStore(s => s.gatewayConfigReady)
+
     // Monitor gateway failovers and show notifications
     useEffect(() => {
       if (lastGatewayEvent?.type === 'fallback' && task?.id) {
@@ -871,6 +876,16 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                       {activeModelBadge.displayName}
                     </span>
                   )}
+                  {lastGatewayEvent?.type === 'fallback' && isActive && (
+                    <span
+                      title={`Fell back from ${lastGatewayEvent.gatewayLabel} — using ${lastGatewayEvent.nextGatewayId ?? 'fallback'}`}
+                      className="cv-meta-badge"
+                      style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.15)' }}
+                    >
+                      <Pxi name="arrow-right-arrow-left" size={8} />
+                      Fallback active
+                    </span>
+                  )}
                   {!isActive && routingPreview && (
                     <span title={routingPreview.reason} className="cv-meta-badge cv-meta-badge--preview">
                       <Pxi name="route" size={8} />
@@ -893,6 +908,17 @@ export function ChatView({ task, onNewTask: _onNewTask, onOpenSettings, outputVi
                 </div>
               )}
 
+              {gatewayConfigReady && !hasConfiguredGateway && (
+                <div className="mx-4 mb-3 flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                  <span>No API key configured. Add a DeepSeek key to get started — Claude can be added as a fallback.</span>
+                  <button
+                    onClick={() => useAppStore.getState().openSettings('general')}
+                    className="ml-4 rounded px-3 py-1 text-xs font-medium bg-amber-500/20 hover:bg-amber-500/30 transition-colors whitespace-nowrap"
+                  >
+                    Open Settings →
+                  </button>
+                </div>
+              )}
               <UserInputArea
                 ref={inputRef}
                 onSend={(c) => { setRoutingPreview(null); handleSend(c) }}

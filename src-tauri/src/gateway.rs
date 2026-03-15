@@ -24,6 +24,8 @@ pub enum GatewayType {
     Requesty,
     /// DeepSeek direct API (https://api.deepseek.com/v1)
     Deepseek,
+    /// Anthropic direct API (https://api.anthropic.com/v1)
+    Anthropic,
     Litellm,
     Direct,
     Ollama,
@@ -52,14 +54,14 @@ pub struct GatewayConfig {
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            id: "openrouter".to_string(),
-            gateway_type: GatewayType::Openrouter,
-            label: "OpenRouter".to_string(),
-            api_base: "https://openrouter.ai/api/v1".to_string(),
+            id: "deepseek".to_string(),
+            gateway_type: GatewayType::Deepseek,
+            label: "DeepSeek (Direct)".to_string(),
+            api_base: "https://api.deepseek.com/v1".to_string(),
             api_key: String::new(),
             priority: 0,
             enabled: true,
-            native_routing: true,
+            native_routing: false,
             max_retries: 2,
             timeout_ms: 180_000,
             extra_headers: HashMap::new(),
@@ -284,46 +286,23 @@ pub trait StoreRead {
 pub fn default_gateways() -> Vec<GatewayConfig> {
     vec![
         GatewayConfig {
-            id: "openrouter".to_string(),
-            gateway_type: GatewayType::Openrouter,
-            label: "OpenRouter".to_string(),
-            api_base: "https://openrouter.ai/api/v1".to_string(),
-            api_key: String::new(),
-            priority: 0,
-            enabled: true,
-            native_routing: true,
-            max_retries: 2,
-            timeout_ms: 180_000,
-            extra_headers: {
-                let mut h = HashMap::new();
-                h.insert("HTTP-Referer".to_string(), "https://nasus.app".to_string());
-                h.insert("X-Title".to_string(), "Nasus".to_string());
-                h
-            },
-        },
-        GatewayConfig {
-            id: "requesty".to_string(),
-            gateway_type: GatewayType::Requesty,
-            label: "Requesty".to_string(),
-            api_base: "https://router.requesty.ai/v1".to_string(),
-            api_key: String::new(),
-            priority: 1,
-            enabled: false,
-            native_routing: true,
-            max_retries: 2,
-            timeout_ms: 180_000,
-            extra_headers: {
-                let mut h = HashMap::new();
-                h.insert("HTTP-Referer".to_string(), "https://nasus.app".to_string());
-                h.insert("X-Title".to_string(), "Nasus".to_string());
-                h
-            },
-        },
-        GatewayConfig {
             id: "deepseek".to_string(),
             gateway_type: GatewayType::Deepseek,
             label: "DeepSeek (Direct)".to_string(),
             api_base: "https://api.deepseek.com/v1".to_string(),
+            api_key: String::new(),
+            priority: 0,
+            enabled: true,
+            native_routing: false,
+            max_retries: 2,
+            timeout_ms: 180_000,
+            extra_headers: HashMap::new(),
+        },
+        GatewayConfig {
+            id: "anthropic".to_string(),
+            gateway_type: GatewayType::Anthropic,
+            label: "Anthropic (Claude)".to_string(),
+            api_base: "https://api.anthropic.com/v1".to_string(),
             api_key: String::new(),
             priority: 5,
             enabled: false,
@@ -346,14 +325,14 @@ pub fn default_gateways() -> Vec<GatewayConfig> {
             extra_headers: HashMap::new(),
         },
         GatewayConfig {
-            id: "litellm".to_string(),
-            gateway_type: GatewayType::Litellm,
-            label: "LiteLLM Proxy".to_string(),
-            api_base: "http://localhost:4000/v1".to_string(),
+            id: "custom".to_string(),
+            gateway_type: GatewayType::Custom,
+            label: "Custom".to_string(),
+            api_base: String::new(),
             api_key: String::new(),
-            priority: 15,
+            priority: 20,
             enabled: false,
-            native_routing: true,
+            native_routing: false,
             max_retries: 2,
             timeout_ms: 180_000,
             extra_headers: HashMap::new(),
@@ -429,7 +408,13 @@ pub async fn test_gateway(api_base: String, api_key: String) -> NasusResult<serd
         .timeout(Duration::from_secs(10));
 
     if !api_key.is_empty() {
-        req = req.header("Authorization", format!("Bearer {api_key}"));
+        if api_base.contains("api.anthropic.com") {
+            req = req
+                .header("x-api-key", &api_key)
+                .header("anthropic-version", "2023-06-01");
+        } else {
+            req = req.header("Authorization", format!("Bearer {api_key}"));
+        }
     }
 
     let resp = req

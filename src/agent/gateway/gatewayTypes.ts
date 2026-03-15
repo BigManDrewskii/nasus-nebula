@@ -13,7 +13,7 @@
 
 // ─── Gateway Configuration ─────────────────────────────────────────────────
 
-export type GatewayType = 'ollama' | 'deepseek' | 'litellm' | 'direct' | 'custom'
+export type GatewayType = 'ollama' | 'deepseek' | 'anthropic' | 'litellm' | 'direct' | 'custom'
 
 export interface GatewayConfig {
   /** Unique identifier for this gateway instance */
@@ -134,18 +134,6 @@ export type GatewayEventCallback = (event: GatewayEvent) => void
 
 export const DEFAULT_GATEWAYS: GatewayConfig[] = [
   {
-    id: 'ollama',
-    type: 'ollama',
-    label: 'Ollama (Local)',
-    apiBase: 'http://localhost:11434/v1',
-    apiKey: '',
-    priority: 10,
-    enabled: false,
-    nativeRouting: false,
-    maxRetries: 1,
-    timeoutMs: 300_000, // Local models can be slow
-  },
-  {
     id: 'deepseek',
     type: 'deepseek',
     label: 'DeepSeek (Direct)',
@@ -156,6 +144,30 @@ export const DEFAULT_GATEWAYS: GatewayConfig[] = [
     nativeRouting: false,
     maxRetries: 2,
     timeoutMs: 180_000,
+  },
+  {
+    id: 'anthropic',
+    type: 'anthropic',
+    label: 'Anthropic (Claude)',
+    apiBase: 'https://api.anthropic.com/v1',
+    apiKey: '',
+    priority: 5,
+    enabled: false,
+    nativeRouting: false,
+    maxRetries: 2,
+    timeoutMs: 180_000,
+  },
+  {
+    id: 'ollama',
+    type: 'ollama',
+    label: 'Ollama (Local)',
+    apiBase: 'http://localhost:11434/v1',
+    apiKey: '',
+    priority: 10,
+    enabled: false,
+    nativeRouting: false,
+    maxRetries: 1,
+    timeoutMs: 300_000,
   },
   {
     id: 'custom',

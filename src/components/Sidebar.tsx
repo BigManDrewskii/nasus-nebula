@@ -453,15 +453,20 @@ function SidebarFooter({ onSettings }: { onSettings: () => void }) {
 // ── FooterModelInfo ────────────────────────────────────────────────────────────
 
 function FooterModelInfo({ hov }: { hov: boolean }) {
-  const { provider, model, gatewayHealth } = useAppStore(
+  const { provider, model, gatewayHealth, gateways } = useAppStore(
     useShallow((s) => ({
       provider: s.provider,
       model: s.model,
       gatewayHealth: s.gatewayHealth,
+      gateways: s.gateways,
     }))
   )
 
-  const healthStatus = gatewayHealth.find((h) => h.gatewayId === provider)?.status ?? 'unknown'
+  const activeGateway = gateways
+    .filter(g => g.enabled)
+    .sort((a, b) => a.priority - b.priority)[0]
+
+  const healthStatus = gatewayHealth.find((h) => h.gatewayId === activeGateway?.id)?.status ?? 'unknown'
   const healthColor  = {
     healthy:  '#22c55e',
     degraded: '#f59e0b',
@@ -473,9 +478,10 @@ function FooterModelInfo({ hov }: { hov: boolean }) {
   const displayModel = shortModel.length > 20 ? shortModel.slice(0, 18) + '…' : shortModel
 
   const providerLabel =
-    provider === 'ollama' ? 'Local'      :
-    provider === 'vercel' ? 'Vercel'     :
-                            'OpenRouter'
+    activeGateway?.type === 'ollama'    ? 'Local'    :
+    activeGateway?.type === 'deepseek'  ? 'DeepSeek' :
+    activeGateway?.type === 'anthropic' ? 'Claude'   :
+    activeGateway?.label                ?? (provider === 'ollama' ? 'Local' : 'AI')
 
   return (
     <span className="sb-footer-model-info">

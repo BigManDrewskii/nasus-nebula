@@ -218,17 +218,17 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         }>('get_config').catch(() => null)
 
         // Load per-provider keys from OS keyring — the most reliable persistence path
-        const [dsKeyringKey] = await Promise.all([
+        const [dsKeyringKey, anthropicKeyringKey] = await Promise.all([
           tauriInvoke<string>('get_provider_key', { provider: 'deepseek' }).catch(() => ''),
+          tauriInvoke<string>('get_provider_key', { provider: 'anthropic' }).catch(() => ''),
         ])
 
         const { gateways: currentGateways } = get()
 
         let updatedGateways: GatewayConfig[]
 
-          if (savedGateways && savedGateways.length > 0 && savedGateways.some(g => g.apiKey)) {
-          // Use the full saved gateways (have real API keys) — this is the normal path
-          // after the user has saved settings at least once with the new code.
+          if (savedGateways && savedGateways.length > 0) {
+          // Merge saved gateway config into defaults.
           // Note: Rust serializes with camelCase, so apiKey/apiBase are correct but
           // gatewayType != type — we merge only the fields that exist on the JS type.
           updatedGateways = currentGateways.map(g => {
@@ -236,10 +236,12 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
             if (!saved) return g
             return {
               ...g,
-              apiKey: saved.apiKey ?? g.apiKey,
+              apiKey: saved.apiKey || g.apiKey,          // never overwrite a real key with empty string
               apiBase: saved.apiBase ?? g.apiBase,
               enabled: saved.enabled ?? g.enabled,
               priority: saved.priority ?? g.priority,
+              label: saved.label ?? g.label,
+              extraHeaders: saved.extraHeaders ?? g.extraHeaders,
             }
           })
         } else if (config) {
@@ -266,6 +268,7 @@ export const createGatewaySlice: StateCreator<GatewaySlice, [['zustand/immer', n
         // are written by SettingsPanel.checkAndSave and are the most up-to-date values
         updatedGateways = updatedGateways.map(g => {
           if (g.id === 'deepseek' && dsKeyringKey) return { ...g, apiKey: dsKeyringKey }
+          if (g.id === 'anthropic' && anthropicKeyringKey) return { ...g, apiKey: anthropicKeyringKey, enabled: true }
           return g
         })
 

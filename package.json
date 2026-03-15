@@ -18,6 +18,7 @@
     "build:sidecar": "npm install --prefix src-tauri/sidecar && node_modules/.bin/esbuild src-tauri/sidecar/stagehand-bridge.js --bundle --platform=node --target=node18 --external:playwright-core --external:bufferutil --external:utf-8-validate --outfile=src-tauri/sidecar/stagehand-bridge.bundle.js"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/openai": "^3.0.39",
     "@eslint/eslintrc": "^3.3.5",
     "@git-diff-view/react": "^0.1.1",

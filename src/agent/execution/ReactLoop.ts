@@ -37,7 +37,38 @@ const log = createLogger('ReactLoop')
 function _providerFromBase(apiBase: string): string | undefined {
   if (apiBase.includes('deepseek.com')) return 'deepseek'
   if (apiBase.includes('api.openai.com')) return 'openai'
+  if (apiBase.includes('api.anthropic.com')) return 'anthropic'
   return undefined
+}
+
+/**
+ * Returns true for errors that are unrecoverable and should halt the ReAct loop
+ * immediately rather than triggering the outer retry/backoff logic.
+ *
+ * Covers:
+ *  - All gateways exhausted ("All LLM gateways failed")
+ *  - No gateways configured ("No gateways available")
+ *  - Permanent auth failures (HTTP 401/403, "invalid api key", "unauthorized")
+ *
+ * Does NOT cover transient errors (network timeout, 429, 502/503) — those
+ * should fall through to the retry loop.
+ */
+function _isPermanentLlmError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  return (
+    msg.includes('all llm gateways failed') ||
+    msg.includes('no gateways available') ||
+    msg.includes('invalid api key') ||
+    msg.includes('unauthorized') ||
+    // Match "authentication failed" / "authentication error"
+    msg.includes('authentication') ||
+    // HTTP status codes for permanent auth/authz failures
+    msg.includes('http 401') ||
+    msg.includes('http 403') ||
+    msg.includes(' 401 ') ||
+    msg.includes(' 403 ')
+  )
 }
 
 // ── Public interfaces ────────────────────────────────────────────────────────
@@ -210,15 +241,32 @@ export class ReactLoop {
         }
       }
 
-      // LLM call
+      // LLM call — permanent errors (auth failure, all gateways exhausted) are
+      // re-thrown by callLLM; catch them here for an immediate clean exit.
       const hasOuterRetriesLeft = consecutiveLlmFailures < MAX_CONSECUTIVE_LLM_FAILURES
-      const llmResult = await this.callLLM(
-        messages, signal, activeToolDefs, resolvedConnection,
-        forcePowerfulModel, hasOuterRetriesLeft, callbacks,
-      )
+      let llmResult: Awaited<ReturnType<typeof this.callLLM>>
+      try {
+        llmResult = await this.callLLM(
+          messages, signal, activeToolDefs, resolvedConnection,
+          forcePowerfulModel, hasOuterRetriesLeft, callbacks,
+        )
+      } catch (permanentErr) {
+        if (signal?.aborted) return done('aborted')
+        const errMsg = permanentErr instanceof Error ? permanentErr.message : String(permanentErr)
+        log.error('callLLM threw permanent error — halting loop', permanentErr instanceof Error ? permanentErr : new Error(errMsg))
+        return done('error', errMsg)
+      }
 
       if (!llmResult) {
         if (signal?.aborted) return done('aborted')
+
+        const hasKey = useAppStore.getState().gateways?.some(
+          (g: { enabled: boolean; apiKey: string }) => g.enabled && g.apiKey?.trim().length > 0
+        ) ?? false
+
+        if (!hasKey) {
+          return done('error', 'No API key configured. Open Settings → Gateway and add your DeepSeek API key.')
+        }
 
         consecutiveLlmFailures++
         if (consecutiveLlmFailures <= MAX_CONSECUTIVE_LLM_FAILURES) {
@@ -403,6 +451,11 @@ export class ReactLoop {
           log.warn('Removed partial assistant+tool_calls message after stream error')
         }
       }
+      // Re-throw unrecoverable errors so the ReAct loop exits immediately instead of
+      // burning retries. Covers: all gateways exhausted, no configured gateways,
+      // and permanent auth failures (401/403). Transient errors (network timeouts,
+      // 429 rate limits, 502/503) are swallowed so the outer retry logic handles them.
+      if (_isPermanentLlmError(_err)) throw _err
       return null
     }
   }

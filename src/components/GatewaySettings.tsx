@@ -33,7 +33,7 @@ export function GatewaySettings() {
   })))
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
-  const needsSetup = gateways.every(g => !g.enabled || !g.apiKey.trim())
+  const needsSetup = !gateways.some(g => g.enabled && g.apiKey?.trim())
 
   const handleUpdate = useCallback((id: string, updates: Partial<GatewayConfig>) => {
     updateGateway(id, updates)
@@ -70,7 +70,7 @@ export function GatewaySettings() {
         >
           <Pxi name="warning" size={13} style={{ color: '#eab308', flexShrink: 0 }} />
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--tx-secondary)', flex: 1 }}>
-            No API key configured. Enable a gateway below and paste your key to get started.
+            Add a DeepSeek key to get started. Optionally add a Claude key as fallback.
           </span>
           <button
             onClick={() => setExpandedId('deepseek')}
@@ -266,6 +266,16 @@ function GatewayItem({
               {gateway.label}
             </span>
             <span className="gw-item-type-badge">{gateway.type}</span>
+            {gateway.priority === 0 && gateway.enabled && (
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--amber)', background: 'oklch(64% 0.214 40.1 / 0.12)', border: '1px solid oklch(64% 0.214 40.1 / 0.3)', borderRadius: 3, padding: '1px 5px' }}>
+                Primary
+              </span>
+            )}
+            {gateway.priority > 0 && gateway.enabled && gateway.apiKey?.trim() && (
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#94a3b8', background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 3, padding: '1px 5px' }}>
+                Fallback
+              </span>
+            )}
           </div>
           <span className="text-tertiary gw-item-base truncate">{gateway.apiBase}</span>
         </div>
@@ -336,8 +346,9 @@ function GatewayItem({
                 }
               }}
               placeholder={
-                gateway.type === 'ollama'   ? 'Not required for local' :
-                gateway.type === 'deepseek' ? 'sk-… (from platform.deepseek.com/api-keys)' :
+                gateway.type === 'ollama'    ? 'Not required for local' :
+                gateway.type === 'deepseek'  ? 'sk-… (from platform.deepseek.com/api-keys)' :
+                gateway.type === 'anthropic' ? 'sk-ant-… (from console.anthropic.com)' :
                 'sk-…'
               }
               className="gw-input"
@@ -348,9 +359,40 @@ function GatewayItem({
               </span>
             )}
             {gateway.type === 'deepseek' && (
-              <span className="text-tertiary gw-deepseek-hint">
-                Supported models: <code className="font-mono text-secondary">deepseek-chat</code> (V3), <code className="font-mono text-secondary">deepseek-reasoner</code> (R1 / R1-0528)
-              </span>
+              <>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Get your API key at{' '}
+                  <a
+                    href="https://platform.deepseek.com/api_keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline"
+                  >
+                    platform.deepseek.com/api_keys
+                  </a>
+                </p>
+                <span className="text-tertiary gw-deepseek-hint">
+                  Supported models: <code className="font-mono text-secondary">deepseek-chat</code> (V3), <code className="font-mono text-secondary">deepseek-reasoner</code> (R1 / R1-0528)
+                </span>
+              </>
+            )}
+            {gateway.type === 'anthropic' && (
+              <>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Get your API key at{' '}
+                  <a
+                    href="https://console.anthropic.com/settings/keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline"
+                  >
+                    console.anthropic.com/settings/keys
+                  </a>
+                </p>
+                <span className="text-tertiary gw-deepseek-hint">
+                  Supported models: <code className="font-mono text-secondary">claude-sonnet-4-5</code>, <code className="font-mono text-secondary">claude-haiku-4-5</code>
+                </span>
+              </>
             )}
           </div>
 

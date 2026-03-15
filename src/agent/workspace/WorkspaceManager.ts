@@ -53,6 +53,34 @@ export class WorkspaceManager {
   private taskTitles: Map<string, string> = new Map()
   private initialized = false
 
+  // ── Path validation ──────────────────────────────────────────────────────────
+
+  /**
+   * Validate that a workspace-relative file path is safe to use.
+   *
+   * Rejects:
+   *  - Absolute Unix paths  (/etc/passwd)
+   *  - Absolute Windows paths  (C:\..., \\server\...)
+   *  - Path traversal components  (..)
+   *
+   * The Rust backend (`workspace_read`, `workspace_write`, `workspace_delete`)
+   * runs a second validation via `validate_path_no_traversal` as defence-in-depth.
+   */
+  private validateFilePath(filePath: string): void {
+    // Reject absolute Unix paths
+    if (filePath.startsWith('/') || filePath.startsWith('\\')) {
+      throw new Error(`Absolute paths are not permitted in workspace operations: "${filePath}"`)
+    }
+    // Reject absolute Windows paths (C:\ or UNC \\server\share)
+    if (/^[A-Za-z]:[\\/]/.test(filePath)) {
+      throw new Error(`Absolute paths are not permitted in workspace operations: "${filePath}"`)
+    }
+    // Reject path traversal components
+    if (filePath.split('/').some(part => part === '..') || filePath.split('\\').some(part => part === '..')) {
+      throw new Error(`Path traversal detected: the path escapes the workspace boundary`)
+    }
+  }
+
   // ── History helpers ──────────────────────────────────────────────────────────
 
   private getHistory(taskId: string): Map<string, string[]> {
@@ -158,6 +186,7 @@ export class WorkspaceManager {
 
   async readFile(taskId: string, filePath: string): Promise<string> {
     if (!this.initialized) await this.init()
+    this.validateFilePath(filePath)
 
     const workspacePath = await this.getWorkspacePath(taskId)
     const result = await tauriInvoke<string>('workspace_read', { taskId, path: filePath, workspacePath })
@@ -187,16 +216,9 @@ export class WorkspaceManager {
 
   async writeFile(taskId: string, filePath: string, content: string, skipHistoryPush = false): Promise<void> {
     if (!this.initialized) await this.init()
+    this.validateFilePath(filePath)
 
     const workspacePath = await this.getWorkspacePath(taskId)
-
-    // Path traversal guard — reject any path containing '..' components.
-    // Browser-safe: does not use Node.js path module. The Rust backend also
-    // validates with validate_path_no_traversal as a second line of defence.
-    if (filePath.split('/').some(part => part === '..')) {
-      throw new Error(`Path traversal detected: the path escapes the workspace boundary`)
-    }
-
     await tauriInvoke('workspace_write', { taskId, path: filePath, content, workspacePath })
 
     // Update content cache
@@ -227,6 +249,7 @@ export class WorkspaceManager {
 
   async deleteFile(taskId: string, filePath: string): Promise<void> {
     if (!this.initialized) await this.init()
+    this.validateFilePath(filePath)
 
     const workspacePath = await this.getWorkspacePath(taskId)
     await tauriInvoke('workspace_delete', { taskId, path: filePath, workspacePath })
