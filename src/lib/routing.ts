@@ -36,6 +36,10 @@ export function isPaidRoute(
   const { mode, budget } = routerConfig
 
   if (mode === 'auto') {
+    // Only providers with a meaningful free tier honor the budget field.
+    // Unknown / direct providers (anthropic, litellm, custom, etc.) are always paid.
+    const supportsFreeOptions = provider === 'deepseek' || provider === 'openrouter'
+    if (!supportsFreeOptions) return true
     return budget !== 'free'
   }
 
